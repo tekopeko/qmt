@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Admin — QMT{% endblock %}
+{% block content %}
+<h1 style="font-size:1.8rem; margin-bottom:4px;">Tjedni raspored</h1>
+<p class="hint" style="margin-bottom:24px;">
+  Stavke se automatski pretvaraju u termine za svaki tjedan koji netko otvori.
+  Kapacitet <strong>1</strong> = individualni termin (1:1).
+</p>
+
+<table style="width:100%; border-collapse:collapse; margin-bottom:34px; font-size:.92rem;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--ink); text-align:left;">
+      <th style="padding:8px 6px;">Dan</th><th>Vrijeme</th><th>Naziv</th>
+      <th>Trajanje</th><th>Mjesta</th><th>Status</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in templates_list %}
+    <tr style="border-bottom:1px solid var(--line); {% if not t.active %}opacity:.45;{% endif %}">
+      <td style="padding:8px 6px;">{{ weekdays[t.weekday] }}</td>
+      <td style="font-variant-numeric:tabular-nums;">{{ "%02d:%02d"|format(t.start_min // 60, t.start_min % 60) }}</td>
+      <td><strong>{{ t.title }}</strong>{% if t.note %} <span class="hint">— {{ t.note }}</span>{% endif %}</td>
+      <td>{{ t.duration_min }} min</td>
+      <td>{{ t.capacity }}{% if t.capacity == 1 %} <span class="hint">(1:1)</span>{% endif %}</td>
+      <td>{{ "aktivna" if t.active else "pauzirana" }}</td>
+      <td style="white-space:nowrap;">
+        <a class="btn btn-ghost btn-sm" href="/admin/templates/{{ t.id }}">Uredi</a>
+        <form method="post" action="/admin/templates/{{ t.id }}/toggle" style="margin:0; display:inline;">
+          <input type="hidden" name="active" value="{{ '0' if t.active else '1' }}">
+          <button class="btn-sm btn-ghost" type="submit">{{ "Pauziraj" if t.active else "Aktiviraj" }}</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" style="padding:16px 6px;" class="hint">Još nema stavki — dodaj prvu ispod.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2 style="font-size:1.1rem; margin-bottom:12px;">Nova stavka rasporeda</h2>
+<form method="post" action="/admin/templates" style="max-width:560px;">
+  <div class="field"><label>Naziv</label>
+    <input type="text" name="title" placeholder="npr. Grupni trening / Individualni trening / Rehabilitacija" required></div>
+  <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px;">
+    <div class="field"><label>Dan</label>
+      <select name="weekday">{% for w in weekdays %}<option value="{{ loop.index0 }}">{{ w }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Početak</label><input type="time" name="time" value="18:00" required></div>
+    <div class="field"><label>Trajanje (min)</label><input type="number" name="duration_min" value="60" min="15" step="5"></div>
+    <div class="field"><label>Mjesta (1 = individualno)</label><input type="number" name="capacity" value="8" min="1" max="40"></div>
+  </div>
+  <div class="field"><label>Napomena (opcionalno)</label><input type="text" name="note"></div>
+  <button type="submit" class="btn-signal">Dodaj u raspored</button>
+</form>
+
+<h2 style="font-size:1.1rem; margin:38px 0 12px;">Jednokratni termin</h2>
+<p class="hint" style="margin-bottom:12px;">Izvan tjednog rasporeda — dodatni 1:1, zamjenski trening, radionica.</p>
+<form method="post" action="/admin/oneoff" style="max-width:560px;">
+  <div class="field"><label for="o-title">Naziv</label>
+    <input id="o-title" type="text" name="title" placeholder="npr. Individualni trening (zamjena)" required></div>
+  <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px;">
+    <div class="field"><label for="o-day">Datum</label><input id="o-day" type="date" name="day" required></div>
+    <div class="field"><label for="o-time">Početak</label><input id="o-time" type="time" name="time" value="09:00" required></div>
+    <div class="field"><label for="o-dur">Trajanje (min)</label><input id="o-dur" type="number" name="duration_min" value="60" min="15" step="5"></div>
+    <div class="field"><label for="o-cap">Mjesta (1 = individualno)</label><input id="o-cap" type="number" name="capacity" value="1" min="1" max="40"></div>
+  </div>
+  <div class="field"><label for="o-note">Napomena (neobavezno)</label><input id="o-note" type="text" name="note"></div>
+  <button type="submit" class="btn-signal">Dodaj termin</button>
+</form>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Polaznici — QMT{% endblock %}
+{% block content %}
+<p><a href="/" class="hint">← natrag na raspored</a></p>
+<h1 style="font-size:1.6rem; margin:10px 0 2px;">{{ sess.title }}</h1>
+<p class="hint" style="margin-bottom:20px;">
+  {{ local_time.strftime("%-d.%-m.%Y. %H:%M") }} · {{ sess.duration_min }} min ·
+  {{ people|length }}/{{ sess.capacity }} mjesta
+  {% if sess.canceled %} · <strong style="color:var(--danger);">OTKAZANO</strong>{% endif %}
+</p>
+
+<ul style="padding:0; max-width:480px;">
+  {% for p in people %}
+  <li style="list-style:none; padding:9px 4px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between;">
+    <strong>{{ p.name or "—" }}</strong><span class="hint">{{ p.email }}</span>
+  </li>
+  {% else %}
+  <li style="list-style:none;" class="hint">Nitko još nije rezervirao.</li>
+  {% endfor %}
+</ul>
+
+<form method="post" action="/admin/session/{{ sess.id }}/cancel" style="margin-top:22px;">
+  {% if sess.canceled %}
+    <input type="hidden" name="undo" value="1">
+    <button type="submit" class="btn-ghost">Vrati termin</button>
+  {% else %}
+    <button type="submit" style="border-color:var(--danger); background:var(--danger);"
+            onclick="return confirm('Otkazati ovaj termin? Polaznici će ga vidjeti prekriženog.')">Otkaži termin</button>
+  {% endif %}
+</form>
+{% endblock %}

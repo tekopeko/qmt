@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Uredi stavku — QMT{% endblock %}
+{% block content %}
+<p><a href="/admin" class="hint">← natrag na raspored</a></p>
+<h1 style="font-size:1.6rem; margin:10px 0 4px;">Uredi stavku rasporeda</h1>
+<p class="hint" style="margin-bottom:22px;">
+  Promjena vrijedi za sve <strong>buduće termine bez rezervacija</strong> — oni se preračunaju
+  automatski. Termini koje je netko već rezervirao ostaju kakvi jesu (otkaži ih ručno ako treba).
+</p>
+
+<form method="post" action="/admin/templates/{{ t.id }}/edit" style="max-width:560px;">
+  <div class="field"><label for="title">Naziv</label>
+    <input id="title" type="text" name="title" value="{{ t.title }}" required></div>
+  <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px;">
+    <div class="field"><label for="weekday">Dan</label>
+      <select id="weekday" name="weekday">
+        {% for w in weekdays %}<option value="{{ loop.index0 }}" {% if loop.index0 == t.weekday %}selected{% endif %}>{{ w }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="time">Početak</label>
+      <input id="time" type="time" name="time" value="{{ time_value }}" required></div>
+    <div class="field"><label for="duration">Trajanje (min)</label>
+      <input id="duration" type="number" name="duration_min" value="{{ t.duration_min }}" min="15" step="5"></div>
+    <div class="field"><label for="capacity">Mjesta (1 = individualno)</label>
+      <input id="capacity" type="number" name="capacity" value="{{ t.capacity }}" min="1" max="40"></div>
+  </div>
+  <div class="field"><label for="note">Napomena (neobavezno)</label>
+    <input id="note" type="text" name="note" value="{{ t.note or '' }}"></div>
+  <button type="submit" class="btn-signal">Spremi promjene</button>
+</form>
+
+<form method="post" action="/admin/templates/{{ t.id }}/delete" style="margin-top:26px;"
+      onsubmit="return confirm('Obrisati &quot;{{ t.title }}&quot; iz tjednog rasporeda? Budući termini bez rezervacija nestaju; rezervirani ostaju.')">
+  <button type="submit" class="btn-ghost" style="border-color:var(--danger); color:var(--danger);">Obriši stavku</button>
+</form>
+{% endblock %}

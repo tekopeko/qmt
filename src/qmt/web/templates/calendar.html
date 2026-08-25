@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Raspored — QMT{% endblock %}
+{% block head %}
+<style>
+  .week-head { display: flex; align-items: baseline; justify-content: space-between;
+               gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .week-head h1 { font-size: clamp(1.5rem, 3.5vw, 2.1rem); }
+  .week-head .range { color: var(--muted); font-weight: 600; font-size: .95rem; }
+  .week-nav { display: flex; gap: 8px; }
+
+  /* 7 day columns on desktop; a single scrolling list on phones. */
+  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+  .day-col { min-width: 0; }
+  .day-head {
+    font: 700 .78rem var(--font-display); text-transform: uppercase; letter-spacing: .06em;
+    padding: 7px 9px; background: var(--ground-2); border-bottom: 2px solid var(--ink);
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 6px;                      /* "Ponedjeljak" + date must never touch */
+  }
+  .day-head .num { color: var(--muted); font-family: var(--font-body); font-weight: 600; }
+  .day-col.today .day-head { background: var(--signal); color: var(--signal-ink); }
+  .day-col.today .day-head .num { color: var(--signal-ink); }
+
+  .sess {
+    border: 1px solid var(--line); border-top: none; padding: 9px 9px 10px;
+    background: var(--ground); position: relative;
+  }
+  .sess .t { font: 800 .92rem var(--font-body); }
+  .sess .name { font-size: .84rem; font-weight: 600; margin: 1px 0 5px; }
+  .sess .cap { font-size: .76rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sess.mine { border-left: 4px solid var(--signal); background: #fdeeed; }
+  .sess.full:not(.mine) .cap { color: var(--danger); font-weight: 700; }
+  .sess.past, .sess.canceled { opacity: .45; }
+  .sess.canceled .name { text-decoration: line-through; }
+  .tag-11 { font-size: .64rem; font-weight: 800; letter-spacing: .05em; background: var(--ink);
+            color: #fff; padding: 1px 5px; margin-left: 4px; vertical-align: 1px; }
+  .sess form { margin-top: 7px; }
+  .sess .none { color: var(--muted); font-size: .8rem; padding: 12px 9px; border: 1px dashed var(--line);
+                border-top: none; }
+
+  .mine-list { margin-top: 34px; }
+  .mine-list h2 { font-size: 1.05rem; margin-bottom: 10px; }
+  .mine-list li { font-size: .92rem; padding: 6px 0; border-bottom: 1px solid var(--line);
+                  list-style: none; display: flex; gap: 10px; }
+  .mine-list .when { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 130px; }
+
+  @media (max-width: 860px) {
+    .week { grid-template-columns: 1fr; }
+    .day-col.empty-day { display: none; }   /* phones: skip blank days, show a compact agenda */
+    .week.all-empty { display: none; }      /* fully empty week: the message above stands alone */
+  }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="week-head">
+  <div>
+    <h1>Raspored</h1>
+    <span class="range">{{ monday.strftime("%-d.%-m.") }} – {{ days[-1].date.strftime("%-d.%-m.%Y.") }}</span>
+  </div>
+  <div class="week-nav">
+    <a class="btn btn-ghost btn-sm" href="/?week={{ prev_week }}">← prošli</a>
+    <a class="btn btn-ghost btn-sm" href="/">danas</a>
+    <a class="btn btn-ghost btn-sm" href="/?week={{ next_week }}">sljedeći →</a>
+  </div>
+</div>
+
+{% set week_empty = days | map(attribute="sessions") | map("length") | sum == 0 %}
+{% if week_empty %}
+  <p class="hint" style="padding: 30px 0 10px;">Ovaj tjedan nema termina.
+  {% if user.is_trainer %}<a href="/admin">Dodaj ih u rasporedu →</a>{% endif %}</p>
+{% endif %}
+<div class="week{% if week_empty %} all-empty{% endif %}">
+  {% for day in days %}
+  <div class="day-col {% if day.is_today %}today{% endif %} {% if not day.sessions %}empty-day{% endif %}">
+    <div class="day-head"><span>{{ day.name }}</span><span class="num">{{ day.date.strftime("%-d.%-m.") }}</span></div>
+    {% for s in day.sessions %}
+      <div class="sess {% if s.mine %}mine{% endif %} {% if s.full %}full{% endif %}
+                  {% if s.past %}past{% endif %} {% if s.canceled %}canceled{% endif %}">
+        <div class="t">{{ s.time }}–{{ s.end }}</div>
+        <div class="name">{{ s.title }}{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
+        <div class="cap">
+          {% if s.canceled %}otkazano
+          {% elif s.one_on_one %}{{ "rezervirano ✓" if s.mine else ("slobodno" if not s.full else "zauzeto") }}
+          {% else %}{{ s.booked }}/{{ s.capacity }} mjesta{% endif %}
+        </div>
+        {% if user.is_trainer %}
+          <form method="get" action="/admin/session/{{ s.id }}">
+            <button class="btn-sm btn-ghost" type="submit">Polaznici ({{ s.booked }})</button>
+          </form>
+        {% elif s.canceled or s.past %}
+        {% elif s.mine %}
+          {% if s.can_cancel %}
+          <form method="post" action="/cancel/{{ s.id }}">
+            <input type="hidden" name="week" value="{{ monday.isoformat() }}">
+            <button class="btn-sm btn-ghost" type="submit"
+                    aria-label="Otkaži {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">Otkaži</button>
+          </form>
+          {% else %}<div class="cap">rezervirano ✓</div>{% endif %}
+        {% elif not s.full %}
+          <form method="post" action="/book/{{ s.id }}">
+            <input type="hidden" name="week" value="{{ monday.isoformat() }}">
+            <button class="btn-sm btn-signal" type="submit"
+                    aria-label="Rezerviraj {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">Rezerviraj</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+    {% if not day.sessions %}<div class="none">Nema termina</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if upcoming and not user.is_trainer %}
+<div class="mine-list">
+  <h2>Moje rezervacije</h2>
+  <ul style="padding:0;">
+    {% for s in upcoming %}
+    <li{% if s.canceled %} style="opacity:.6;"{% endif %}>
+      <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
+      <span{% if s.canceled %} style="text-decoration: line-through;"{% endif %}>{{ s.title }}</span>
+      {% if s.canceled %}<strong style="color:var(--danger); font-size:.78rem;">OTKAZANO</strong>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% endblock %}

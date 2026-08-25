@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}QMT{% endblock %}</title>
+  <link rel="icon" href="/static/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@700&family=Inter:wght@400;500;600;700;800&display=swap">
+  <style>
+    /* ===== QMT design tokens — palette sampled from the actual LOGO =====
+       red #f80000 + grey #606060 on white. The logo is the identity; the old
+       Shopify theme's acid yellow was the theme's, not the brand's. */
+    :root {
+      --ink: #232323;
+      --ink-2: #4b4b4b;
+      --muted: #606060;          /* the logo grey */
+      --ground: #ffffff;
+      --ground-2: #f4f4f0;       /* off-white with the same warm bias */
+      --line: #e3e3dd;
+      --signal: #e10600;          /* logo red, slightly deepened for screens */
+      --signal-ink: #ffffff;     /* text ON the red */
+      --danger: #e10600;         /* same red family — destructive acts also confirm() */
+      --font-display: "PT Sans", system-ui, sans-serif;
+      --font-body: "Inter", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: var(--font-body); color: var(--ink); background: var(--ground);
+      line-height: 1.5; min-height: 100vh;
+    }
+    h1, h2, h3, .display {
+      font-family: var(--font-display); text-transform: uppercase;
+      letter-spacing: .01em; line-height: 1.1; text-wrap: balance;
+    }
+    a { color: inherit; }
+
+    /* ===== top bar: black slab, yellow mark ===== */
+    .topbar {
+      background: var(--ink); color: #fff;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 14px clamp(16px, 4vw, 40px);
+    }
+    .brand { display: flex; align-items: baseline; gap: 10px; text-decoration: none; }
+    .brand .mark { height: 40px; width: 40px; border-radius: 50%; display: block; }
+    .brand .full { font-weight: 600; font-size: .82rem; letter-spacing: .14em;
+                   text-transform: uppercase; color: #d8d8d4; }
+    .nav { display: flex; gap: 4px; align-items: center; }
+    .nav a, .nav button {
+      color: #d8d8d4; text-decoration: none; font: 600 .85rem var(--font-body);
+      padding: 7px 12px; border: none; background: none; cursor: pointer;
+    }
+    .nav a:hover, .nav button:hover { color: var(--signal); }
+    .nav a.on { color: var(--signal); }
+
+    main { max-width: 1080px; margin: 0 auto; padding: clamp(18px, 3vw, 34px) clamp(14px, 4vw, 40px) 60px; }
+
+    /* ===== controls ===== */
+    button, .btn {
+      font: 700 .85rem var(--font-body); text-transform: uppercase; letter-spacing: .05em;
+      border: 2px solid var(--ink); background: var(--ink); color: #fff;
+      padding: 9px 16px; cursor: pointer; text-decoration: none; display: inline-block;
+    }
+    button:hover, .btn:hover { background: var(--signal); color: var(--signal-ink); border-color: var(--signal); }
+    .btn-signal { background: var(--signal); color: var(--signal-ink); border-color: var(--signal); }
+    .btn-signal:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .btn-ghost { background: none; color: var(--ink); }
+    .btn-ghost:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .btn-sm { padding: 5px 10px; font-size: .74rem; }
+    input, select, textarea {
+      font: 400 .95rem var(--font-body); color: var(--ink);
+      border: 2px solid var(--line); background: var(--ground);
+      padding: 9px 12px; width: 100%;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--ink); }
+    label { font: 600 .78rem var(--font-body); text-transform: uppercase; letter-spacing: .06em;
+            color: var(--ink-2); display: block; margin-bottom: 4px; }
+    .field { margin-bottom: 14px; }
+
+    .alert {
+      border-left: 4px solid var(--danger); background: #fff2f2; color: var(--ink);
+      padding: 10px 14px; margin-bottom: 18px; font-size: .92rem;
+    }
+    .alert.ok { border-left-color: var(--muted); background: var(--ground-2); }
+    .hint { color: var(--muted); font-size: .85rem; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<header class="topbar">
+  <a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
+     <span class="full">Quality Movement Training</span></a>
+  {% if user %}
+  <nav class="nav">
+    <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Raspored</a>
+    {% if user.is_trainer %}<a href="/admin" class="{% if '/admin' in request.url.path %}on{% endif %}">Admin</a>{% endif %}
+    {% if mojimakrosi_url %}<a href="{{ mojimakrosi_url }}" target="_blank" rel="noopener">MojiMakrosi ↗</a>{% endif %}
+    <form method="post" action="/logout" style="margin:0"><button type="submit">Odjava</button></form>
+  </nav>
+  {% endif %}
+</header>
+<main>
+  {% if request.query_params.get("error") %}
+    <div class="alert" role="alert">{{ request.query_params.get("error") }}</div>
+  {% endif %}
+  {% if request.query_params.get("ok") %}
+    <div class="alert ok" role="status">{{ request.query_params.get("ok") }}</div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

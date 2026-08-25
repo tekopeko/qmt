@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} — QMT{% endblock %}
+{% block content %}
+<div style="max-width:420px; margin:10vh auto 0; text-align:center;">
+  <h1 style="font-size:3.4rem;"><span style="background:var(--signal); padding:0 14px;">{{ code }}</span></h1>
+  <p style="margin:14px 0 22px;">{{ message }}</p>
+  <a href="/" class="btn btn-ghost">← Na raspored</a>
+</div>
+{% endblock %}
