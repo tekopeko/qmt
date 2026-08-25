@@ -40,7 +40,7 @@ def make_user(email: str, is_trainer: bool = False) -> int:
 def client_for(email: str) -> TestClient:
     c = TestClient(app)
     r = c.post("/login", data={"email": email, "password": "lozinka123"}, follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/raspored", "login failed"
+    assert r.status_code == 303 and r.headers["location"] == "/", "login failed"
     return c
 
 
@@ -60,7 +60,7 @@ def test_signup_allowlist_and_login():
 
     r = c.post("/signup", data={"name": "Ivan", "email": "ivan@test.local",
                                 "password": "lozinka123"}, follow_redirects=False)
-    assert r.headers["location"] == "/raspored"  # signed in immediately
+    assert r.headers["location"] == "/"           # signed in immediately, on the homepage
 
     # SECURITY: signing up with the trainer's email must NOT grant admin —
     # sign-up proves nothing about ownership, so whoever registered first would
@@ -328,4 +328,22 @@ def test_landing_is_public_and_links_to_booking():
     assert "/raspored" in r.text
     # calendar itself still requires auth
     r = c.get("/raspored", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/login"
+    assert r.status_code == 303
+    assert r.headers["location"] == "/login?next=/raspored"
+
+
+def test_login_returns_to_the_page_that_bounced_you():
+    make_user("ivan@test.local")
+    c = TestClient(app)
+    r = c.post("/login", data={"email": "ivan@test.local", "password": "lozinka123",
+                               "next": "/raspored"}, follow_redirects=False)
+    assert r.headers["location"] == "/raspored"
+
+
+def test_login_next_cannot_be_an_open_redirect():
+    make_user("ivan@test.local")
+    for evil in ("https://evil.example", "//evil.example", "javascript:alert(1)"):
+        c = TestClient(app)
+        r = c.post("/login", data={"email": "ivan@test.local", "password": "lozinka123",
+                                   "next": evil}, follow_redirects=False)
+        assert r.headers["location"] == "/", evil

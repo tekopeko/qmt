@@ -42,8 +42,13 @@ Set: `ENV=production`, `SECRET_KEY` (random; boot fails on the dev default),
 
 ## Pages
 
-`/` is a **public landing** (hero, services, contact, "Rezerviraj termin" CTA) —
-the shop window, with a reserved "Uskoro" slot for videos/training content.
+`/` is a **public landing** (hero, services, gallery, contact, "Rezerviraj termin"
+CTA) — the shop window, with a reserved "Uskoro" slot for videos/training content.
+The **Galerija** auto-lists images in `src/qmt/web/static/gallery/` (sorted by
+filename) — adding a photo is a file drop, no code change. Instagram can only be
+scraped ~12 posts deep before the login wall, so new gallery material comes from
+the trainer's originals or an IG post link (its /embed/ page exposes the
+full-size image).
 `/raspored` is the authenticated calendar; login/signup redirect there. Trainer
 tools live under `/admin`.
 

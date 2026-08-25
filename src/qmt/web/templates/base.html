@@ -152,6 +152,7 @@
      <span class="full">Quality Movement Training</span></a>
   <nav class="nav">
     {% if user %}
+      <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if request.url.path.startswith('/raspored') %}on{% endif %}">Raspored</a>
       {% if user.is_trainer %}<a href="/admin" class="{% if '/admin' in request.url.path %}on{% endif %}">Admin</a>{% endif %}
       {% if mojimakrosi_url %}<a href="{{ mojimakrosi_url }}" target="_blank" rel="noopener">MojiMakrosi ↗</a>{% endif %}

@@ -26,6 +26,14 @@ WEEKDAYS = ["Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota", 
 WEEKDAYS_SHORT = ["pon", "uto", "sri", "čet", "pet", "sub", "ned"]
 
 
+def _safe_next(nxt: str | None) -> str:
+    """Only same-app paths — a `next` from the query string must never become
+    an open redirect to another site ("//evil.com", "https://...")."""
+    if nxt and nxt.startswith("/") and not nxt.startswith("//") and ":" not in nxt.split("?")[0]:
+        return nxt
+    return "/"
+
+
 def current_user(request: Request):
     uid = request.session.get("user_id")
     return db.get_user(uid) if uid else None
@@ -39,17 +47,25 @@ def _ctx(request: Request, user, **extra):
 # ---------- auth ----------
 
 @app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
-    return templates.TemplateResponse(request, "login.html", _ctx(request, None))
+def login_page(request: Request, next: str | None = None):
+    return templates.TemplateResponse(request, "login.html",
+                                      _ctx(request, None, next=_safe_next(next)))
 
 
 @app.post("/login")
-def login(request: Request, email: str = Form(...), password: str = Form(...)):
+def login(request: Request, email: str = Form(...), password: str = Form(...),
+          next: str = Form("/")):
+    dest = _safe_next(next)
     u = db.get_user_by_email(email)
     if u is None or not auth.verify_password(password, u.password_hash):
-        return RedirectResponse("/login?error=Pogrešan+email+ili+lozinka.", status_code=303)
+        from urllib.parse import quote
+        return RedirectResponse(f"/login?error=Pogrešan+email+ili+lozinka.&next={quote(dest)}",
+                                status_code=303)
     request.session["user_id"] = u.id
-    return RedirectResponse("/raspored", status_code=303)
+    # Homepage by default; back to the page that bounced them here otherwise —
+    # someone who clicked "Rezerviraj termin" must land in the calendar, not
+    # back on the landing page mid-task.
+    return RedirectResponse(dest, status_code=303)
 
 
 @app.get("/signup", response_class=HTMLResponse)
@@ -77,7 +93,7 @@ def signup(request: Request, name: str = Form(""), email: str = Form(...),
         # the unique constraint wins, the loser gets the same message as above.
         return RedirectResponse("/signup?error=Račun+već+postoji+—+prijavi+se.", status_code=303)
     request.session["user_id"] = u.id
-    return RedirectResponse("/raspored", status_code=303)
+    return RedirectResponse("/", status_code=303)
 
 
 @app.post("/logout")
@@ -94,16 +110,26 @@ def _monday_of(d: date) -> date:
 
 @app.get("/", response_class=HTMLResponse)
 def landing(request: Request):
-    """Public landing — the shop window. Booking lives at /raspored (auth)."""
+    """Public landing — the shop window. Booking lives at /raspored (auth).
+
+    The gallery is whatever images sit in static/gallery/ (sorted by name) —
+    adding a photo is a file drop, not a code change.
+    """
+    gallery_dir = Path(__file__).parent / "static" / "gallery"
+    gallery = sorted(
+        f.name for f in gallery_dir.glob("*")
+        if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
+    ) if gallery_dir.is_dir() else []
     return templates.TemplateResponse(request, "landing.html",
-                                      _ctx(request, current_user(request)))
+                                      _ctx(request, current_user(request), gallery=gallery))
 
 
 @app.get("/raspored", response_class=HTMLResponse)
 def calendar(request: Request, week: str | None = None):
     user = current_user(request)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        from urllib.parse import quote
+        return RedirectResponse(f"/login?next={quote('/raspored')}", status_code=303)
 
     today = config.today()
     try:

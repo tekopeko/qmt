@@ -58,6 +58,15 @@
   .svc p { color: var(--muted); font-size: .92rem; }
   .svc .meta { font: 600 .78rem var(--font-body); color: var(--accent); letter-spacing: .04em; }
 
+  /* gallery */
+  .gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .gal-item { overflow: hidden; display: block; aspect-ratio: 3 / 4; }
+  .gal-item img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transition: transform .25s ease;
+  }
+  .gal-item:hover img { transform: scale(1.04); }
+
   /* info band */
   .info { background: var(--surface); border-block: 1px solid var(--line); }
   .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 26px; }
@@ -141,6 +150,22 @@
   </div>
 </section>
 
+{% if gallery %}
+<section class="band" id="galerija">
+  <div class="band-inner">
+    <div class="sec-kicker">Galerija</div>
+    <h2>Iz dvorane</h2>
+    <div class="gal-grid">
+      {% for img in gallery %}
+      <a class="gal-item card" href="/static/gallery/{{ img }}" target="_blank" rel="noopener">
+        <img src="/static/gallery/{{ img }}" alt="Quality Movement Training — dvorana" loading="lazy">
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
 <section class="band info">
   <div class="band-inner info-grid">
     <div>
@@ -153,7 +178,16 @@
     </div>
     <div>
       <h3>Gdje smo</h3>
-      <p class="hint" style="font-size:.92rem;">Virovska 1, Zagreb</p>
+      <p class="hint" style="font-size:.92rem; margin-bottom:6px;">Virovska 1, Zagreb</p>
+      {# query_place_id pins the exact building — the text query alone is ambiguous
+         (Maps offers "Virovska ul." vs "Virovska ul. 1" and opens a picker). The
+         id comes from the place's own Maps URL; the text stays as fallback. #}
+      <a href="https://www.google.com/maps/search/?api=1&query=Virovska+ul.+1%2C+Zagreb&query_place_id=ChIJtSVeRefXZUcRM03Say70HFo"
+         target="_blank" rel="noopener"
+         style="display:inline-flex; align-items:center; gap:6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
+        Otvori u Google kartama
+      </a>
     </div>
     <div>
       <h3>Kontakt</h3>

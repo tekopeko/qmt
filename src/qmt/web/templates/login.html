@@ -5,6 +5,7 @@
   <h1 style="font-size:2rem; margin-bottom:4px;">Prijava</h1>
   <p class="hint" style="margin-bottom:22px;">Quality Movement Training — rezervacija termina.</p>
   <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{ next or '/' }}">
     <div class="field"><label for="email">Email</label><input id="email" type="email" name="email" autocomplete="email" required autofocus></div>
     <div class="field"><label for="password">Lozinka</label><input id="password" type="password" name="password" autocomplete="current-password" required></div>
     <button type="submit" class="btn-signal" style="width:100%; padding:12px;">Prijavi se</button>
