@@ -1,89 +1,148 @@
 <!doctype html>
-<html lang="hr">
+<html lang="hr" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}QMT{% endblock %}</title>
+  <script>
+    // Apply the saved theme before first paint (no flash of the wrong theme).
+    try { var _t = localStorage.getItem('qmt-theme'); if (_t === 'light' || _t === 'dark') document.documentElement.setAttribute('data-theme', _t); } catch (e) {}
+  </script>
+  <title>{% block title %}QMT — Quality Movement Training{% endblock %}</title>
   <link rel="icon" href="/static/logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@700&family=Inter:wght@400;500;600;700;800&display=swap">
   <style>
-    /* ===== QMT design tokens — palette sampled from the actual LOGO =====
-       red #f80000 + grey #606060 on white. The logo is the identity; the old
-       Shopify theme's acid yellow was the theme's, not the brand's. */
-    :root {
-      --ink: #232323;
-      --ink-2: #4b4b4b;
-      --muted: #606060;          /* the logo grey */
-      --ground: #ffffff;
-      --ground-2: #f4f4f0;       /* off-white with the same warm bias */
-      --line: #e3e3dd;
-      --signal: #e10600;          /* logo red, slightly deepened for screens */
-      --signal-ink: #ffffff;     /* text ON the red */
-      --danger: #e10600;         /* same red family — destructive acts also confirm() */
+    /* ===== QMT design tokens — from the logo: red #f80000, grey #606060 =====
+       Modern surface language: rounded controls, soft depth, light + dark themes
+       (toggle top-right, saved in localStorage as 'qmt-theme'). */
+    :root, [data-theme="light"] {
+      --bg: #f7f7f5;
+      --surface: #ffffff;
+      --surface-2: #efefec;
+      --line: #e5e5e1;
+      --text: #1c1c1e;
+      --muted: #6b6b70;
+      --accent: #e10600;                                   /* the logo red */
+      --accent-strong: #c00500;
+      --accent-ink: #ffffff;
+      --accent-dim: rgba(225, 6, 0, .08);
+      --shadow: 0 1px 2px rgba(20, 20, 22, .05), 0 8px 24px rgba(20, 20, 22, .06);
+      --shadow-btn: 0 2px 10px rgba(225, 6, 0, .28);
+    }
+    [data-theme="dark"] {
+      --bg: #101012;
+      --surface: #1a1a1d;
+      --surface-2: #232327;
+      --line: #2c2c31;
+      --text: #f4f4f2;
+      --muted: #9a9aa0;
+      --accent: #ff342b;                                   /* brighter red for dark contrast */
+      --accent-strong: #ff5049;
+      --accent-ink: #ffffff;
+      --accent-dim: rgba(255, 52, 43, .12);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
+      --shadow-btn: 0 2px 12px rgba(255, 52, 43, .35);
+    }
+    /* Compat aliases — older templates use the original token names. */
+    :root, [data-theme="light"], [data-theme="dark"] {
+      --ink: var(--text); --ink-2: var(--text); --ground: var(--surface);
+      --ground-2: var(--surface-2); --signal: var(--accent);
+      --signal-ink: var(--accent-ink); --danger: var(--accent);
       --font-display: "PT Sans", system-ui, sans-serif;
       --font-body: "Inter", system-ui, sans-serif;
     }
     * { box-sizing: border-box; margin: 0; }
+    html { scroll-behavior: smooth; }
     body {
-      font-family: var(--font-body); color: var(--ink); background: var(--ground);
-      line-height: 1.5; min-height: 100vh;
+      font-family: var(--font-body); color: var(--text); background: var(--bg);
+      line-height: 1.55; min-height: 100vh;
     }
     h1, h2, h3, .display {
       font-family: var(--font-display); text-transform: uppercase;
       letter-spacing: .01em; line-height: 1.1; text-wrap: balance;
     }
     a { color: inherit; }
+    ::selection { background: var(--accent-dim); }
 
-    /* ===== top bar: black slab, yellow mark ===== */
+    /* ===== top bar: dark slab in both themes (the logo's home) ===== */
     .topbar {
-      background: var(--ink); color: #fff;
+      background: #161618; color: #fff;
       display: flex; align-items: center; justify-content: space-between;
-      gap: 12px; padding: 14px clamp(16px, 4vw, 40px);
+      gap: 12px; padding: 12px clamp(16px, 4vw, 40px);
+      position: sticky; top: 0; z-index: 40; flex-wrap: wrap;
     }
-    .brand { display: flex; align-items: baseline; gap: 10px; text-decoration: none; }
-    .brand .mark { height: 40px; width: 40px; border-radius: 50%; display: block; }
-    .brand .full { font-weight: 600; font-size: .82rem; letter-spacing: .14em;
-                   text-transform: uppercase; color: #d8d8d4; }
-    .nav { display: flex; gap: 4px; align-items: center; }
-    .nav a, .nav button {
-      color: #d8d8d4; text-decoration: none; font: 600 .85rem var(--font-body);
-      padding: 7px 12px; border: none; background: none; cursor: pointer;
+    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+    .brand .mark { height: 38px; width: 38px; border-radius: 50%; display: block; }
+    .brand .full { font-weight: 700; font-size: .8rem; letter-spacing: .15em;
+                   text-transform: uppercase; color: #e6e6e3; }
+    .nav { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; }
+    .nav a, .nav .navbtn {
+      color: #cfcfcc; text-decoration: none; font: 600 .88rem var(--font-body);
+      padding: 8px 13px; border: none; background: none; cursor: pointer;
+      border-radius: 10px; transition: background .15s, color .15s;
+      box-shadow: none; display: inline-flex; align-items: center;
     }
-    .nav a:hover, .nav button:hover { color: var(--signal); }
-    .nav a.on { color: var(--signal); }
+    .nav a:hover, .nav .navbtn:hover { color: #fff; background: rgba(255,255,255,.09); transform: none; }
+    .nav a.on { color: #fff; background: rgba(255,255,255,.13); }
+    .nav a.cta { background: var(--accent); color: #fff; font-weight: 700; margin-left: 6px; }
+    .nav a.cta:hover { background: var(--accent-strong); }
+    .theme-toggle { font-size: 1.05rem; line-height: 1; }
 
-    main { max-width: 1080px; margin: 0 auto; padding: clamp(18px, 3vw, 34px) clamp(14px, 4vw, 40px) 60px; }
+    main { max-width: 1100px; margin: 0 auto; padding: clamp(18px, 3vw, 34px) clamp(14px, 4vw, 40px) 70px; }
+    main.full { max-width: none; padding: 0; }
 
-    /* ===== controls ===== */
+    /* ===== controls: rounded, soft, no boxes ===== */
     button, .btn {
-      font: 700 .85rem var(--font-body); text-transform: uppercase; letter-spacing: .05em;
-      border: 2px solid var(--ink); background: var(--ink); color: #fff;
-      padding: 9px 16px; cursor: pointer; text-decoration: none; display: inline-block;
+      font: 600 .92rem var(--font-body);
+      border: none; border-radius: 12px; cursor: pointer;
+      padding: 11px 20px; text-decoration: none; display: inline-flex;
+      align-items: center; justify-content: center; gap: 8px;
+      background: var(--accent); color: var(--accent-ink);
+      box-shadow: var(--shadow-btn);
+      transition: transform .12s ease, background .15s;
     }
-    button:hover, .btn:hover { background: var(--signal); color: var(--signal-ink); border-color: var(--signal); }
-    .btn-signal { background: var(--signal); color: var(--signal-ink); border-color: var(--signal); }
-    .btn-signal:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
-    .btn-ghost { background: none; color: var(--ink); }
-    .btn-ghost:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
-    .btn-sm { padding: 5px 10px; font-size: .74rem; }
+    button:hover, .btn:hover { background: var(--accent-strong); transform: translateY(-1px); }
+    button:active, .btn:active { transform: translateY(0); }
+    .btn-signal { /* legacy alias for the primary button */ }
+    .btn-ghost, button.btn-ghost {
+      background: var(--surface); color: var(--text);
+      border: 1px solid var(--line); box-shadow: none;
+    }
+    .btn-ghost:hover { background: var(--surface-2); transform: none; }
+    .btn-quiet, button.btn-quiet { background: var(--accent-dim); color: var(--accent); box-shadow: none; }
+    .btn-quiet:hover { background: var(--accent); color: var(--accent-ink); }
+    .btn-sm { padding: 7px 13px; font-size: .8rem; border-radius: 10px; }
+    button:focus-visible, .btn:focus-visible, a:focus-visible {
+      outline: 2px solid var(--accent); outline-offset: 2px;
+    }
     input, select, textarea {
-      font: 400 .95rem var(--font-body); color: var(--ink);
-      border: 2px solid var(--line); background: var(--ground);
-      padding: 9px 12px; width: 100%;
+      font: 400 .95rem var(--font-body); color: var(--text);
+      border: 1.5px solid var(--line); background: var(--surface);
+      padding: 10px 13px; width: 100%; border-radius: 12px;
+      transition: border-color .15s;
     }
-    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--ink); }
-    label { font: 600 .78rem var(--font-body); text-transform: uppercase; letter-spacing: .06em;
-            color: var(--ink-2); display: block; margin-bottom: 4px; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    label { font: 600 .76rem var(--font-body); text-transform: uppercase; letter-spacing: .06em;
+            color: var(--muted); display: block; margin-bottom: 5px; }
     .field { margin-bottom: 14px; }
 
-    .alert {
-      border-left: 4px solid var(--danger); background: #fff2f2; color: var(--ink);
-      padding: 10px 14px; margin-bottom: 18px; font-size: .92rem;
+    .card {
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: 16px; box-shadow: var(--shadow);
     }
-    .alert.ok { border-left-color: var(--muted); background: var(--ground-2); }
+
+    .alert {
+      border-radius: 12px; background: var(--accent-dim); color: var(--text);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      padding: 11px 15px; margin-bottom: 18px; font-size: .92rem;
+    }
+    .alert.ok { background: var(--surface); border-color: var(--line); }
     .hint { color: var(--muted); font-size: .85rem; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -91,16 +150,20 @@
 <header class="topbar">
   <a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
      <span class="full">Quality Movement Training</span></a>
-  {% if user %}
   <nav class="nav">
-    <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Raspored</a>
-    {% if user.is_trainer %}<a href="/admin" class="{% if '/admin' in request.url.path %}on{% endif %}">Admin</a>{% endif %}
-    {% if mojimakrosi_url %}<a href="{{ mojimakrosi_url }}" target="_blank" rel="noopener">MojiMakrosi ↗</a>{% endif %}
-    <form method="post" action="/logout" style="margin:0"><button type="submit">Odjava</button></form>
+    {% if user %}
+      <a href="/raspored" class="{% if request.url.path.startswith('/raspored') %}on{% endif %}">Raspored</a>
+      {% if user.is_trainer %}<a href="/admin" class="{% if '/admin' in request.url.path %}on{% endif %}">Admin</a>{% endif %}
+      {% if mojimakrosi_url %}<a href="{{ mojimakrosi_url }}" target="_blank" rel="noopener">MojiMakrosi ↗</a>{% endif %}
+      <form method="post" action="/logout" style="margin:0"><button type="submit" class="navbtn">Odjava</button></form>
+    {% else %}
+      <a href="/login" class="{% if '/login' in request.url.path %}on{% endif %}">Prijava</a>
+      <a href="/raspored" class="cta">Rezerviraj termin</a>
+    {% endif %}
+    <button type="button" class="navbtn theme-toggle" onclick="qmtToggleTheme()" aria-label="Promijeni temu"><span id="themeIcon">🌙</span></button>
   </nav>
-  {% endif %}
 </header>
-<main>
+<main class="{% block main_class %}{% endblock %}">
   {% if request.query_params.get("error") %}
     <div class="alert" role="alert">{{ request.query_params.get("error") }}</div>
   {% endif %}
@@ -109,5 +172,21 @@
   {% endif %}
   {% block content %}{% endblock %}
 </main>
+<script>
+  function qmtApplyIcon() {
+    var d = document.documentElement.getAttribute('data-theme') === 'dark';
+    var el = document.getElementById('themeIcon');
+    if (el) el.textContent = d ? '☀️' : '🌙';
+  }
+  function qmtToggleTheme() {
+    var d = document.documentElement.getAttribute('data-theme') === 'dark';
+    var next = d ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('qmt-theme', next); } catch (e) {}
+    qmtApplyIcon();
+  }
+  qmtApplyIcon();
+</script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

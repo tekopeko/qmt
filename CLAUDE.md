@@ -40,6 +40,13 @@ Set: `ENV=production`, `SECRET_KEY` (random; boot fails on the dev default),
 `DATABASE_URL`, `TRAINER_EMAIL` (that account = admin), `ALLOWED_EMAILS`.
 `/healthz` is the liveness probe.
 
+## Pages
+
+`/` is a **public landing** (hero, services, contact, "Rezerviraj termin" CTA) —
+the shop window, with a reserved "Uskoro" slot for videos/training content.
+`/raspored` is the authenticated calendar; login/signup redirect there. Trainer
+tools live under `/admin`.
+
 ## Architecture — the one idea
 
 **A single booking mechanism covers everything the studio offers.**
@@ -68,10 +75,16 @@ explicitly). Semantics locked by tests.
   `db.BookingError`.
 - **QMT design tokens come from the LOGO, not the old store theme.** The logo
   (`src/qmt/web/static/logo.png`, red/grey triangle — sampled `#f80000` red,
-  `#606060` grey) is the identity: signal `#e10600` (white text on it), muted
-  `#606060`, ink `#232323`, white ground. The Shopify theme's acid yellow was a
-  false lead — do not reintroduce it. PT Sans (uppercase display) + Inter (body).
-  Buttons are square, bold, uppercase. Don't soften it.
+  `#606060` grey) is the identity. Accent `--accent` (#e10600 light / #ff342b
+  dark), neutral surfaces, PT Sans uppercase display + Inter body. The Shopify
+  theme's acid yellow was a false lead — do not reintroduce it.
+- **Modern surface language, light + dark.** Rounded controls (12px) and cards
+  (14–16px), soft shadows, no hard boxy borders. Both themes are first-class:
+  tokens per `[data-theme]` in base.html, toggle top-right, saved as
+  `localStorage['qmt-theme']`, pre-paint script avoids theme flash. Legacy token
+  names (`--ink`, `--signal`…) are aliased in base.html — new code uses the new
+  names. Never style with a raw hex that only works in one theme (the 1:1 chip
+  bug: white-on-white in dark).
 - **Every schema change is an Alembic migration** (`alembic revision --autogenerate`).
 - **Tests must stay green** (`pytest -q`). New booking rules get a test — especially
   anything that must hold under concurrency (see `test_capacity_race_no_overbooking`).

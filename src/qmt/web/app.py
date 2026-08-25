@@ -49,7 +49,7 @@ def login(request: Request, email: str = Form(...), password: str = Form(...)):
     if u is None or not auth.verify_password(password, u.password_hash):
         return RedirectResponse("/login?error=Pogrešan+email+ili+lozinka.", status_code=303)
     request.session["user_id"] = u.id
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/raspored", status_code=303)
 
 
 @app.get("/signup", response_class=HTMLResponse)
@@ -77,7 +77,7 @@ def signup(request: Request, name: str = Form(""), email: str = Form(...),
         # the unique constraint wins, the loser gets the same message as above.
         return RedirectResponse("/signup?error=Račun+već+postoji+—+prijavi+se.", status_code=303)
     request.session["user_id"] = u.id
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/raspored", status_code=303)
 
 
 @app.post("/logout")
@@ -93,6 +93,13 @@ def _monday_of(d: date) -> date:
 
 
 @app.get("/", response_class=HTMLResponse)
+def landing(request: Request):
+    """Public landing — the shop window. Booking lives at /raspored (auth)."""
+    return templates.TemplateResponse(request, "landing.html",
+                                      _ctx(request, current_user(request)))
+
+
+@app.get("/raspored", response_class=HTMLResponse)
 def calendar(request: Request, week: str | None = None):
     user = current_user(request)
     if user is None:
@@ -153,7 +160,7 @@ def _redirect_back(week: str, error: str | None = None, ok: str | None = None) -
     "/&error=..." is not a query string and the message silently vanishes."""
     from urllib.parse import quote
 
-    back = f"/?week={week}" if week else "/"
+    back = f"/raspored?week={week}" if week else "/raspored"
     for key, val in (("error", error), ("ok", ok)):
         if val:
             back += ("&" if "?" in back else "?") + f"{key}=" + quote(val)
@@ -324,7 +331,7 @@ def add_oneoff(request: Request, title: str = Form(...), day: str = Form(...),
         return RedirectResponse("/admin?error=Neispravan+datum+ili+vrijeme.", status_code=303)
     db.add_oneoff_session(title.strip(), starts, max(15, min(240, duration_min)),
                           max(1, min(40, capacity)), note.strip() or None)
-    return RedirectResponse(f"/?week={(d - timedelta(days=d.weekday())).isoformat()}", status_code=303)
+    return RedirectResponse(f"/raspored?week={(d - timedelta(days=d.weekday())).isoformat()}", status_code=303)
 
 
 @app.exception_handler(HTTPException)

@@ -40,7 +40,7 @@ def make_user(email: str, is_trainer: bool = False) -> int:
 def client_for(email: str) -> TestClient:
     c = TestClient(app)
     r = c.post("/login", data={"email": email, "password": "lozinka123"}, follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/", "login failed"
+    assert r.status_code == 303 and r.headers["location"] == "/raspored", "login failed"
     return c
 
 
@@ -60,7 +60,7 @@ def test_signup_allowlist_and_login():
 
     r = c.post("/signup", data={"name": "Ivan", "email": "ivan@test.local",
                                 "password": "lozinka123"}, follow_redirects=False)
-    assert r.headers["location"] == "/"          # signed in immediately
+    assert r.headers["location"] == "/raspored"  # signed in immediately
 
     # SECURITY: signing up with the trainer's email must NOT grant admin —
     # sign-up proves nothing about ownership, so whoever registered first would
@@ -186,7 +186,7 @@ def test_calendar_renders_sessions():
     with db.session_scope() as s:
         s.add(SessionTemplate(title="Grupni trening", weekday=0, start_min=18 * 60))
     monday = config.today() + timedelta(days=(7 - config.today().weekday()))
-    page = c.get(f"/?week={monday.isoformat()}").text
+    page = c.get(f"/raspored?week={monday.isoformat()}").text
     assert "Grupni trening" in page
     assert "Rezerviraj" in page
 
@@ -211,7 +211,7 @@ def test_booking_error_is_visible_even_without_week_param():
     c = client_for("ivan@test.local")
     r = c.post(f"/book/{sid}", data={}, follow_redirects=False)
     loc = r.headers["location"]
-    assert loc.startswith("/?error="), loc       # parseable query, message shown
+    assert loc.startswith("/raspored?error="), loc   # parseable query, message shown
 
 
 def test_materialize_clamped_to_booking_window():
@@ -244,8 +244,8 @@ def test_canceled_session_booking_can_be_dropped_inside_cutoff():
 def test_malformed_week_param_falls_back():
     make_user("ivan@test.local")
     c = client_for("ivan@test.local")
-    assert c.get("/?week=not-a-date").status_code == 200
-    assert c.get("/?week=9999-99-99").status_code == 200
+    assert c.get("/raspored?week=not-a-date").status_code == 200
+    assert c.get("/raspored?week=9999-99-99").status_code == 200
 
 
 # ---------- template editing (the trainer reshapes the schedule at will) ----------
@@ -318,3 +318,14 @@ def test_template_delete_prunes_unbooked_keeps_booked():
         rows = s.scalars(select(TrainingSession)).all()
     assert len(rows) == 1 and rows[0].id == sid_booked
     assert rows[0].template_id is None   # orphaned but alive, bookings intact
+
+
+def test_landing_is_public_and_links_to_booking():
+    c = TestClient(app)
+    r = c.get("/")                               # no login required
+    assert r.status_code == 200
+    assert "Rezerviraj termin" in r.text
+    assert "/raspored" in r.text
+    # calendar itself still requires auth
+    r = c.get("/raspored", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"

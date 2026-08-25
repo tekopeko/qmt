@@ -9,34 +9,39 @@
   .week-nav { display: flex; gap: 8px; }
 
   /* 7 day columns on desktop; a single scrolling list on phones. */
-  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
-  .day-col { min-width: 0; }
+  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
+  .day-col {
+    min-width: 0; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; box-shadow: var(--shadow);
+    align-self: start;
+  }
   .day-head {
     font: 700 .78rem var(--font-display); text-transform: uppercase; letter-spacing: .06em;
-    padding: 7px 9px; background: var(--ground-2); border-bottom: 2px solid var(--ink);
+    padding: 9px 11px; background: var(--surface-2);
     display: flex; justify-content: space-between; align-items: baseline;
     gap: 6px;                      /* "Ponedjeljak" + date must never touch */
   }
   .day-head .num { color: var(--muted); font-family: var(--font-body); font-weight: 600; }
-  .day-col.today .day-head { background: var(--signal); color: var(--signal-ink); }
-  .day-col.today .day-head .num { color: var(--signal-ink); }
+  .day-col.today .day-head { background: var(--accent); color: var(--accent-ink); }
+  .day-col.today .day-head .num { color: var(--accent-ink); }
 
   .sess {
-    border: 1px solid var(--line); border-top: none; padding: 9px 9px 10px;
-    background: var(--ground); position: relative;
+    border-top: 1px solid var(--line); padding: 10px 11px 12px;
+    background: transparent; position: relative;
   }
+  .sess:first-of-type { border-top: none; }
   .sess .t { font: 800 .92rem var(--font-body); }
   .sess .name { font-size: .84rem; font-weight: 600; margin: 1px 0 5px; }
   .sess .cap { font-size: .76rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .sess.mine { border-left: 4px solid var(--signal); background: #fdeeed; }
+  .sess.mine { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-dim); }
   .sess.full:not(.mine) .cap { color: var(--danger); font-weight: 700; }
   .sess.past, .sess.canceled { opacity: .45; }
   .sess.canceled .name { text-decoration: line-through; }
-  .tag-11 { font-size: .64rem; font-weight: 800; letter-spacing: .05em; background: var(--ink);
-            color: #fff; padding: 1px 5px; margin-left: 4px; vertical-align: 1px; }
+  .tag-11 { font-size: .64rem; font-weight: 800; letter-spacing: .05em;
+            background: var(--accent-dim); color: var(--accent); border-radius: 6px;
+            padding: 1px 6px; margin-left: 4px; vertical-align: 1px; }
   .sess form { margin-top: 7px; }
-  .sess .none { color: var(--muted); font-size: .8rem; padding: 12px 9px; border: 1px dashed var(--line);
-                border-top: none; }
+  .sess .none { color: var(--muted); font-size: .8rem; padding: 12px 11px; }
 
   .mine-list { margin-top: 34px; }
   .mine-list h2 { font-size: 1.05rem; margin-bottom: 10px; }
@@ -59,9 +64,9 @@
     <span class="range">{{ monday.strftime("%-d.%-m.") }} – {{ days[-1].date.strftime("%-d.%-m.%Y.") }}</span>
   </div>
   <div class="week-nav">
-    <a class="btn btn-ghost btn-sm" href="/?week={{ prev_week }}">← prošli</a>
-    <a class="btn btn-ghost btn-sm" href="/">danas</a>
-    <a class="btn btn-ghost btn-sm" href="/?week={{ next_week }}">sljedeći →</a>
+    <a class="btn btn-ghost btn-sm" href="/raspored?week={{ prev_week }}">← prošli</a>
+    <a class="btn btn-ghost btn-sm" href="/raspored">danas</a>
+    <a class="btn btn-ghost btn-sm" href="/raspored?week={{ next_week }}">sljedeći →</a>
   </div>
 </div>
 
@@ -106,7 +111,7 @@
         {% endif %}
       </div>
     {% endfor %}
-    {% if not day.sessions %}<div class="none">Nema termina</div>{% endif %}
+    {% if not day.sessions %}<div class="none" style="color:var(--muted); font-size:.8rem; padding:12px 11px;">Nema termina</div>{% endif %}
   </div>
   {% endfor %}
 </div>
