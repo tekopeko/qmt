@@ -24,6 +24,10 @@ TRAINER = ("trener@qmt.local", "Trener QMT", "trener123", True)
 CLIENTS = [
     ("ivan@qmt.local", "Ivan Horvat", "lozinka123", False),
     ("ana@qmt.local", "Ana Kovač", "lozinka123", False),
+    ("marko@qmt.local", "Marko Babić", "lozinka123", False),
+    ("petra@qmt.local", "Petra Novak", "lozinka123", False),
+    ("luka@qmt.local", "Luka Perić", "lozinka123", False),
+    ("sara@qmt.local", "Sara Jurić", "lozinka123", False),
 ]
 
 # Modeled on the real studio (Setmore: open Mon/Wed/Thu/Fri 07:00-20:00):
@@ -71,5 +75,45 @@ def main() -> None:
         print(f"  {len(TIMETABLE)} stavki")
 
 
+def fill_bookings() -> None:
+    """Book a believable spread across this week.
+
+    An all-empty calendar hides the whole point of the app — capacity. Partly
+    full sessions ("5/8 mjesta"), one sold-out slot and one taken 1:1 make the
+    rules visible at a glance, which is what a demo needs to show.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import select
+
+    from qmt.models import TrainingSession, User
+
+    monday = db.config.today() - timedelta(days=db.config.today().weekday())
+    db.materialize_week(monday)
+    with db.session_scope() as s:
+        clients = list(s.scalars(select(User).where(~User.is_trainer).order_by(User.id)))
+        sessions = list(s.scalars(
+            select(TrainingSession)
+            .where(TrainingSession.starts_at > db.datetime.now(db.config.TZ))
+            .order_by(TrainingSession.starts_at)))
+    # how many of the 6 clients take each of the next sessions
+    spread = [6, 3, 5, 1, 8, 2, 4, 0, 3, 1, 2, 5]
+    booked = 0
+    for i, (sess, n) in enumerate(zip(sessions, spread)):
+        # Rotate who attends: always taking clients[:n] puts the first client in
+        # every single session, which reads as a bug rather than a busy week.
+        take = min(n, sess.capacity, len(clients))
+        rotated = clients[i % len(clients):] + clients[: i % len(clients)]
+        for c in rotated[:take]:
+            try:
+                db.book(c.id, sess.id)
+                booked += 1
+            except db.BookingError:
+                pass
+    print(f"  {booked} rezervacija")
+
+
 if __name__ == "__main__":
     main()
+    print("bookings:")
+    fill_bookings()
