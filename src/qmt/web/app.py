@@ -9,8 +9,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -41,7 +41,8 @@ def current_user(request: Request):
 
 def _ctx(request: Request, user, **extra):
     return {"request": request, "user": user, "weekdays_short": WEEKDAYS_SHORT,
-            "mojimakrosi_url": config.MOJIMAKROSI_URL, **extra}
+            "mojimakrosi_url": config.MOJIMAKROSI_URL,
+            "max_media_mb": config.MAX_MEDIA_MB, **extra}
 
 
 # ---------- auth ----------
@@ -358,6 +359,223 @@ def add_oneoff(request: Request, title: str = Form(...), day: str = Form(...),
     db.add_oneoff_session(title.strip(), starts, max(15, min(240, duration_min)),
                           max(1, min(40, capacity)), note.strip() or None)
     return RedirectResponse(f"/raspored?week={(d - timedelta(days=d.weekday())).isoformat()}", status_code=303)
+
+
+# ---------- treninzi (custom training programmes) ----------
+
+_MEDIA_KINDS = {
+    ".jpg": "img", ".jpeg": "img", ".png": "img", ".webp": "img", ".gif": "img",
+    ".mp4": "video", ".mov": "video", ".m4v": "video", ".webm": "video",
+}
+_MEDIA_TYPES = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+    ".webp": "image/webp", ".gif": "image/gif", ".mp4": "video/mp4",
+    ".mov": "video/quicktime", ".m4v": "video/x-m4v", ".webm": "video/webm",
+}
+
+
+def _save_media(upload: UploadFile | None) -> tuple[str | None, str | None]:
+    """Store an uploaded exercise image/video; returns (filename, kind).
+
+    Chunked to a size cap — a phone video can be huge and must fail cleanly,
+    not fill the disk. Raises ValueError with a Croatian message on refusal.
+    """
+    if upload is None or not (upload.filename or "").strip():
+        return None, None
+    import secrets
+
+    suffix = Path(upload.filename).suffix.lower()
+    if suffix not in _MEDIA_KINDS:
+        raise ValueError("Nepodržan format — dozvoljeno: jpg, png, webp, gif, mp4, mov, webm.")
+    config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{secrets.token_hex(8)}{suffix}"
+    dest = config.MEDIA_DIR / name
+    limit = config.MAX_MEDIA_MB * 1024 * 1024
+    total = 0
+    with open(dest, "wb") as f:
+        while chunk := upload.file.read(1 << 20):
+            total += len(chunk)
+            if total > limit:
+                f.close()
+                dest.unlink(missing_ok=True)
+                raise ValueError(f"Datoteka je veća od {config.MAX_MEDIA_MB} MB.")
+            f.write(chunk)
+    if total == 0:
+        dest.unlink(missing_ok=True)
+        return None, None
+    return name, _MEDIA_KINDS[suffix]
+
+
+def _unlink_media(name: str | None) -> None:
+    if name:
+        (config.MEDIA_DIR / name).unlink(missing_ok=True)
+
+
+def _program_or_403(request: Request, program_id: int):
+    """(user, program) if the requester may SEE this programme, else raise."""
+    user = current_user(request)
+    if user is None:
+        return None, None
+    p = db.get_program(program_id)
+    if p is None:
+        raise HTTPException(status_code=404)
+    if not user.is_trainer and p.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Ovo nije tvoj trening.")
+    return user, p
+
+
+@app.get("/treninzi", response_class=HTMLResponse)
+def treninzi(request: Request):
+    user = current_user(request)
+    if user is None:
+        from urllib.parse import quote
+        return RedirectResponse(f"/login?next={quote('/treninzi')}", status_code=303)
+    if user.is_trainer:
+        return templates.TemplateResponse(request, "treninzi_admin.html", _ctx(
+            request, user, rows=db.all_programs(), clients=db.list_clients()))
+    return templates.TemplateResponse(request, "treninzi.html", _ctx(
+        request, user, programs=db.programs_for(user.id)))
+
+
+@app.post("/treninzi")
+def create_program(request: Request, user_id: int = Form(...), title: str = Form(...),
+                   intro: str = Form("")):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    title = title.strip()
+    if not title:
+        return RedirectResponse("/treninzi?error=Naziv+je+obavezan.", status_code=303)
+    pid = db.create_program(user_id, title, intro.strip() or None)
+    return RedirectResponse(f"/treninzi/{pid}/uredi", status_code=303)
+
+
+@app.get("/treninzi/{program_id}", response_class=HTMLResponse)
+def program_view(request: Request, program_id: int):
+    user, p = _program_or_403(request, program_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    with db.session_scope() as s:
+        client = s.get(db.User, p.user_id)
+    return templates.TemplateResponse(request, "trening_view.html", _ctx(
+        request, user, p=p, client=client))
+
+
+@app.get("/treninzi/{program_id}/uredi", response_class=HTMLResponse)
+def program_edit_page(request: Request, program_id: int):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    p = db.get_program(program_id)
+    if p is None:
+        raise HTTPException(status_code=404)
+    with db.session_scope() as s:
+        client = s.get(db.User, p.user_id)
+    return templates.TemplateResponse(request, "trening_edit.html", _ctx(
+        request, user, p=p, client=client))
+
+
+@app.post("/treninzi/{program_id}/edit")
+def program_edit(request: Request, program_id: int, title: str = Form(...),
+                 intro: str = Form("")):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    db.update_program(program_id, title.strip() or "Trening", intro.strip() or None)
+    return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Spremljeno.", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/delete")
+def program_delete(request: Request, program_id: int):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    for name in db.delete_program(program_id):
+        _unlink_media(name)
+    return RedirectResponse("/treninzi?ok=Trening+je+obrisan.", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/items")
+async def item_add(request: Request, program_id: int, title: str = Form(...),
+                   body: str = Form(""), media: UploadFile | None = File(None)):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    if db.get_program(program_id) is None:
+        raise HTTPException(status_code=404)
+    from urllib.parse import quote
+    try:
+        media_name, media_kind = _save_media(media)
+    except ValueError as e:
+        return RedirectResponse(f"/treninzi/{program_id}/uredi?error={quote(str(e))}",
+                                status_code=303)
+    db.add_item(program_id, title.strip() or "Vježba", body.strip() or None,
+                media_name, media_kind)
+    return RedirectResponse(f"/treninzi/{program_id}/uredi", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/items/{item_id}/edit")
+async def item_edit(request: Request, program_id: int, item_id: int,
+                    title: str = Form(...), body: str = Form(""),
+                    media: UploadFile | None = File(None)):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    from urllib.parse import quote
+    try:
+        media_name, media_kind = _save_media(media)
+    except ValueError as e:
+        return RedirectResponse(f"/treninzi/{program_id}/uredi?error={quote(str(e))}",
+                                status_code=303)
+    old = db.update_item(item_id, title.strip() or "Vježba", body.strip() or None,
+                         media_name, media_kind)
+    if media_name:
+        _unlink_media(old)
+    return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Spremljeno.", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/items/{item_id}/delete")
+def item_delete(request: Request, program_id: int, item_id: int):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    _unlink_media(db.delete_item(item_id))
+    return RedirectResponse(f"/treninzi/{program_id}/uredi", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/items/{item_id}/move")
+def item_move(request: Request, program_id: int, item_id: int, dir: str = Form(...)):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    db.move_item(item_id, "up" if dir == "up" else "down")
+    return RedirectResponse(f"/treninzi/{program_id}/uredi", status_code=303)
+
+
+@app.get("/media/{name}")
+def media(request: Request, name: str):
+    """Programme media — auth-gated, never a public static mount: a custom
+    programme is personal content, visible to its client and the trainer only."""
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if "/" in name or "\\" in name or ".." in name:
+        raise HTTPException(status_code=404)
+    p = db.media_owner_program(name)
+    if p is None:
+        raise HTTPException(status_code=404)
+    if not user.is_trainer and p.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Ovo nije tvoj sadržaj.")
+    path = config.MEDIA_DIR / name
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(path, media_type=_MEDIA_TYPES.get(path.suffix.lower()))
+
+
+@app.get("/nutricionizam", response_class=HTMLResponse)
+def nutricionizam(request: Request):
+    return templates.TemplateResponse(request, "nutricionizam.html",
+                                      _ctx(request, current_user(request)))
 
 
 @app.exception_handler(HTTPException)

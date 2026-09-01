@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Uredi: {{ p.title }} — QMT{% endblock %}
+{% block content %}
+<p><a href="/treninzi" class="hint">← svi treninzi</a></p>
+<h1 style="font-size:1.6rem; margin:10px 0 2px;">Uredi trening</h1>
+<p class="hint" style="margin-bottom:20px;">
+  za: <strong>{{ client.name or client.email }}</strong> ·
+  <a href="/treninzi/{{ p.id }}" style="color:var(--accent);">pogledaj kako polaznik vidi →</a>
+</p>
+
+<form method="post" action="/treninzi/{{ p.id }}/edit" class="card" style="max-width:640px; padding:18px 20px; margin-bottom:30px;">
+  <div class="field"><label for="pt">Naziv</label>
+    <input id="pt" type="text" name="title" value="{{ p.title }}" required></div>
+  <div class="field"><label for="pi">Uvod</label>
+    <textarea id="pi" name="intro" rows="2">{{ p.intro or "" }}</textarea></div>
+  <button type="submit" class="btn-sm">Spremi</button>
+</form>
+
+<h2 style="font-size:1.05rem; margin-bottom:12px;">Vježbe</h2>
+<div style="display:flex; flex-direction:column; gap:14px; max-width:760px;">
+  {% for it in p.items %}
+  <div class="card" style="padding:16px 18px;">
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <span style="font:700 .85rem var(--font-body); color:var(--accent); min-width:1.4em;">{{ loop.index }}</span>
+      <strong style="flex:1;">{{ it.title }}</strong>
+      {% if it.media_name %}
+        <span class="hint">{{ "🎬 video" if it.media_kind == "video" else "🖼 slika" }}</span>
+      {% endif %}
+      <form method="post" action="/treninzi/{{ p.id }}/items/{{ it.id }}/move" style="margin:0; display:inline;">
+        <input type="hidden" name="dir" value="up">
+        <button class="btn-ghost btn-sm" {% if loop.first %}disabled style="opacity:.35;"{% endif %}
+                aria-label="Pomakni gore">↑</button>
+      </form>
+      <form method="post" action="/treninzi/{{ p.id }}/items/{{ it.id }}/move" style="margin:0; display:inline;">
+        <input type="hidden" name="dir" value="down">
+        <button class="btn-ghost btn-sm" {% if loop.last %}disabled style="opacity:.35;"{% endif %}
+                aria-label="Pomakni dolje">↓</button>
+      </form>
+      <form method="post" action="/treninzi/{{ p.id }}/items/{{ it.id }}/delete" style="margin:0; display:inline;"
+            onsubmit="return confirm('Obrisati vježbu &quot;{{ it.title }}&quot;?')">
+        <button class="btn-ghost btn-sm" style="color:var(--accent);">Obriši</button>
+      </form>
+    </div>
+    <details style="margin-top:10px;">
+      <summary class="hint" style="cursor:pointer;">Uredi vježbu</summary>
+      <form method="post" action="/treninzi/{{ p.id }}/items/{{ it.id }}/edit"
+            enctype="multipart/form-data" style="margin-top:12px;">
+        <div class="field"><label>Naziv</label><input type="text" name="title" value="{{ it.title }}" required></div>
+        <div class="field"><label>Upute (serije, ponavljanja, tempo…)</label>
+          <textarea name="body" rows="3">{{ it.body or "" }}</textarea></div>
+        <div class="field"><label>{{ "Zamijeni mediju" if it.media_name else "Dodaj sliku ili video" }}</label>
+          <input type="file" name="media" accept="image/*,video/*"></div>
+        <button type="submit" class="btn-sm">Spremi vježbu</button>
+      </form>
+    </details>
+  </div>
+  {% else %}
+  <p class="hint">Još nema vježbi — dodaj prvu ispod.</p>
+  {% endfor %}
+</div>
+
+<h2 style="font-size:1.05rem; margin:30px 0 12px;">Nova vježba</h2>
+<form method="post" action="/treninzi/{{ p.id }}/items" enctype="multipart/form-data"
+      class="card" style="max-width:640px; padding:18px 20px;">
+  <div class="field"><label for="nv-t">Naziv</label>
+    <input id="nv-t" type="text" name="title" placeholder="npr. Goblet čučanj" required></div>
+  <div class="field"><label for="nv-b">Upute</label>
+    <textarea id="nv-b" name="body" rows="3" placeholder="3 × 10, tempo 3-1-1, odmor 90 s…"></textarea></div>
+  <div class="field"><label for="nv-m">Slika ili video (neobavezno, do {{ max_media_mb }} MB)</label>
+    <input id="nv-m" type="file" name="media" accept="image/*,video/*"></div>
+  <button type="submit">Dodaj vježbu</button>
+</form>
+
+<form method="post" action="/treninzi/{{ p.id }}/delete" style="margin-top:34px;"
+      onsubmit="return confirm('Obrisati cijeli trening &quot;{{ p.title }}&quot;? Ovo briše i sve vježbe i medije.')">
+  <button class="btn-ghost" style="color:var(--accent); border-color:var(--accent);">Obriši cijeli trening</button>
+</form>
+{% endblock %}

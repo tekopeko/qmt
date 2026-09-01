@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Treninzi — QMT{% endblock %}
+{% block content %}
+<h1 style="font-size:1.8rem; margin-bottom:4px;">Moji treninzi</h1>
+<p class="hint" style="margin-bottom:24px;">Programi koje je trener složio za tebe.</p>
+
+{% if programs %}
+<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:16px;">
+  {% for p in programs %}
+  <a class="card" href="/treninzi/{{ p.id }}"
+     style="padding:20px 22px; text-decoration:none; display:flex; flex-direction:column; gap:6px;">
+    <strong style="font-size:1.02rem;">{{ p.title }}</strong>
+    {% if p.intro %}<span class="hint" style="display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{ p.intro }}</span>{% endif %}
+    <span class="hint" style="margin-top:auto; color:var(--accent); font-weight:600;">
+      {{ p.items|length }} {{ "vježba" if p.items|length % 10 == 1 and p.items|length % 100 != 11 else "vježbi" }} →
+    </span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="padding:34px; text-align:center;">
+  <p style="margin-bottom:6px;"><strong>Još nemaš dodijeljen trening.</strong></p>
+  <p class="hint">Trener će ti ovdje objaviti tvoj program — javit će ti kad bude spreman.</p>
+</div>
+{% endif %}
+{% endblock %}

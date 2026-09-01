@@ -91,3 +91,48 @@ class Booking(Base):
 
     session: Mapped[TrainingSession] = relationship(back_populates="bookings")
     user: Mapped[User] = relationship()
+
+
+class Program(Base):
+    """A custom training programme the trainer builds FOR one client.
+
+    Client-scoped like everything else: the assigned user and the trainer see
+    it, nobody else. Content lives in ordered `ProgramItem`s (text + media).
+    """
+
+    __tablename__ = "programs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    intro: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    items: Mapped[list["ProgramItem"]] = relationship(
+        back_populates="program", cascade="all, delete-orphan", order_by="ProgramItem.position"
+    )
+
+
+class ProgramItem(Base):
+    """One exercise/step of a programme: title + instructions + optional media.
+
+    Media is an uploaded file (image or video) stored under data/uploads and
+    served only through the auth-gated /media route — programmes are personal.
+    """
+
+    __tablename__ = "program_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    program_id: Mapped[int] = mapped_column(
+        ForeignKey("programs.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(160))
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    media_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    media_kind: Mapped[str | None] = mapped_column(String(8), nullable=True)  # "img" | "video"
+
+    program: Mapped[Program] = relationship(back_populates="items")

@@ -77,16 +77,6 @@
   .info a { color: var(--accent); text-decoration: none; font-weight: 600; }
   .info a:hover { text-decoration: underline; }
 
-  /* soon strip + footer */
-  .soon {
-    border: 1.5px dashed var(--line); border-radius: 16px; padding: 22px 26px;
-    display: flex; align-items: center; gap: 16px; color: var(--muted);
-  }
-  .soon .tag {
-    font: 700 .7rem var(--font-body); letter-spacing: .1em; text-transform: uppercase;
-    background: var(--accent-dim); color: var(--accent); border-radius: 999px; padding: 4px 12px;
-    white-space: nowrap;
-  }
   footer {
     padding: 26px clamp(20px, 6vw, 72px); border-top: 1px solid var(--line);
     color: var(--muted); font-size: .84rem;
@@ -198,18 +188,8 @@
   </div>
 </section>
 
-<section class="band">
-  <div class="band-inner">
-    <div class="soon">
-      <span class="tag">Uskoro</span>
-      <span>Video sadržaji, programi treninga i vježbe s uputama — sve na jednom mjestu, uz tvoje rezervacije.</span>
-    </div>
-  </div>
-</section>
-
 <footer>
   <span>© Quality Movement Training, Zagreb</span>
-  <span><a href="/raspored" style="color:var(--accent); text-decoration:none; font-weight:600;">Rezerviraj termin →</a></span>
 </footer>
 
 {% endblock %}

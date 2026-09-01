@@ -113,7 +113,26 @@ def fill_bookings() -> None:
     print(f"  {booked} rezervacija")
 
 
+def seed_program() -> None:
+    """One example programme for Ivan, so /treninzi demos non-empty."""
+    from sqlalchemy import delete, select
+
+    from qmt.models import Program, User
+
+    with db.session_scope() as s:
+        s.execute(delete(Program))
+        ivan = s.scalar(select(User).where(User.email == "ivan@qmt.local"))
+    pid = db.create_program(ivan.id, "Povratak nakon ozljede — tjedan 1",
+                            "Tri kruga, odmor 90 s između vježbi. Tempo kontroliran.")
+    db.add_item(pid, "Goblet čučanj", "3 × 10 · 12 kg\nTempo 3-1-1, pete cijelo vrijeme na podu.", None, None)
+    db.add_item(pid, "Mrtvo dizanje s girjom", "3 × 8 · 16 kg\nNeutralna kralježnica, zastani sekundu gore.", None, None)
+    db.add_item(pid, "Farmerski nosač", "3 × 30 m · 2 × 20 kg\nRamena dolje, pogled naprijed.", None, None)
+    print("  primjer programa za Ivana (3 vježbe)")
+
+
 if __name__ == "__main__":
     main()
     print("bookings:")
     fill_bookings()
+    print("treninzi:")
+    seed_program()

@@ -56,7 +56,13 @@ def email_allowed(email: str) -> bool:
 # Optional cross-link to the sibling app (the first, zero-coupling step of the
 # eventual merge): set MOJIMAKROSI_URL and the nav shows a link. Nothing else is
 # shared — no imports, no DB access.
-MOJIMAKROSI_URL = os.environ.get("MOJIMAKROSI_URL", "").strip()
+MOJIMAKROSI_URL = os.environ.get("MOJIMAKROSI_URL", "https://mojimakrosi.com").strip()
+
+# Uploaded programme media (exercise images/videos). Local disk for now — on
+# Railway this is EPHEMERAL and needs a volume or R2 before real use (a redeploy
+# would eat the trainer's videos). Deliberately outside static/: personal content.
+MEDIA_DIR = PROJECT_ROOT / "data" / "uploads"
+MAX_MEDIA_MB = int(os.environ.get("MAX_MEDIA_MB", "60"))
 
 # Booking rules.
 CANCEL_CUTOFF_HOURS = int(os.environ.get("CANCEL_CUTOFF_HOURS", "3"))

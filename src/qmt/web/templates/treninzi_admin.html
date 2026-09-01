@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Treninzi — QMT{% endblock %}
+{% block content %}
+<h1 style="font-size:1.8rem; margin-bottom:4px;">Treninzi</h1>
+<p class="hint" style="margin-bottom:24px;">
+  Svaki trening pripada jednom polazniku — vidi ga samo on. Dodaj vježbe s tekstom,
+  slikom ili videom, poredaj ih i program je objavljen.
+</p>
+
+<h2 style="font-size:1.05rem; margin-bottom:12px;">Novi trening</h2>
+<form method="post" action="/treninzi" class="card" style="max-width:560px; padding:20px 22px; margin-bottom:34px;">
+  <div class="field"><label for="np-user">Polaznik</label>
+    <select id="np-user" name="user_id" required>
+      {% for c in clients %}<option value="{{ c.id }}">{{ c.name or c.email }}</option>{% endfor %}
+    </select></div>
+  <div class="field"><label for="np-title">Naziv treninga</label>
+    <input id="np-title" type="text" name="title" placeholder="npr. Povratak nakon ozljede — tjedan 1" required></div>
+  <div class="field"><label for="np-intro">Uvod (neobavezno)</label>
+    <textarea id="np-intro" name="intro" rows="2" placeholder="Kratke upute, cilj programa…"></textarea></div>
+  <button type="submit">Kreiraj i dodaj vježbe</button>
+</form>
+
+<h2 style="font-size:1.05rem; margin-bottom:12px;">Svi treninzi</h2>
+{% if rows %}
+<div style="overflow-x:auto;">
+<table style="width:100%; border-collapse:collapse; font-size:.92rem;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--line); text-align:left;">
+      <th style="padding:8px 6px;">Polaznik</th><th>Trening</th><th>Vježbe</th><th>Zadnja izmjena</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p, u, n in rows %}
+    <tr style="border-bottom:1px solid var(--line);">
+      <td style="padding:9px 6px;"><strong>{{ u.name or u.email }}</strong></td>
+      <td>{{ p.title }}</td>
+      <td>{{ n }}</td>
+      <td class="hint">{{ p.updated_at.strftime("%-d.%-m.%Y.") }}</td>
+      <td style="white-space:nowrap; text-align:right;">
+        <a class="btn btn-ghost btn-sm" href="/treninzi/{{ p.id }}">Pogledaj</a>
+        <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/uredi">Uredi</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="hint">Još nema treninga — kreiraj prvi gore.</p>
+{% endif %}
+{% endblock %}

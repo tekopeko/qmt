@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ p.title }} — QMT{% endblock %}
+{% block content %}
+<p><a href="/treninzi" class="hint">← svi treninzi</a></p>
+<h1 style="font-size:1.7rem; margin:10px 0 4px;">{{ p.title }}</h1>
+<p class="hint" style="margin-bottom:6px;">
+  {% if user.is_trainer %}za: <strong>{{ client.name or client.email }}</strong> · {% endif %}
+  {{ p.items|length }} {{ "vježba" if p.items|length % 10 == 1 and p.items|length % 100 != 11 else "vježbi" }}
+</p>
+{% if p.intro %}<p style="max-width:64ch; margin-bottom:10px; white-space:pre-line;">{{ p.intro }}</p>{% endif %}
+{% if user.is_trainer %}
+  <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/uredi">Uredi trening</a>
+{% endif %}
+
+<div style="display:flex; flex-direction:column; gap:18px; margin-top:26px; max-width:760px;">
+  {% for it in p.items %}
+  <div class="card" style="padding:0; overflow:hidden;">
+    {% if it.media_name %}
+      {% if it.media_kind == "video" %}
+        <video controls preload="metadata" style="width:100%; display:block; background:#000; max-height:460px;"
+               src="/media/{{ it.media_name }}"></video>
+      {% else %}
+        <img src="/media/{{ it.media_name }}" alt="{{ it.title }}" loading="lazy"
+             style="width:100%; display:block; max-height:460px; object-fit:cover;">
+      {% endif %}
+    {% endif %}
+    <div style="padding:18px 22px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <span style="font:700 .8rem var(--font-body); color:var(--accent);">{{ loop.index }}</span>
+        <h3 style="font-size:1.05rem;">{{ it.title }}</h3>
+      </div>
+      {% if it.body %}<p style="margin-top:8px; white-space:pre-line;">{{ it.body }}</p>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="hint">Trening još nema vježbi.</p>
+  {% endfor %}
+</div>
+{% endblock %}

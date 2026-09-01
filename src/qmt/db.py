@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import config
-from .models import Base, Booking, SessionTemplate, TrainingSession, User
+from .models import Base, Booking, Program, ProgramItem, SessionTemplate, TrainingSession, User
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -281,3 +281,143 @@ def my_upcoming(user_id: int) -> list[TrainingSession]:
             .where(Booking.user_id == user_id, TrainingSession.starts_at >= datetime.now(config.TZ))
             .order_by(TrainingSession.starts_at)
         ).all())
+
+
+# ---------- training programmes (treninzi) ----------
+
+def list_clients() -> list[User]:
+    """Everyone the trainer can build a programme for."""
+    with session_scope() as s:
+        return list(s.scalars(select(User).where(~User.is_trainer)
+                              .order_by(User.name, User.email)))
+
+
+def programs_for(user_id: int) -> list[Program]:
+    from sqlalchemy.orm import selectinload
+
+    with session_scope() as s:
+        # items eager-loaded: rows are detached once the session closes, and the
+        # list template shows each programme's exercise count
+        return list(s.scalars(select(Program).where(Program.user_id == user_id)
+                              .options(selectinload(Program.items))
+                              .order_by(Program.updated_at.desc())))
+
+
+def all_programs() -> list[tuple[Program, User, int]]:
+    """Trainer overview: every programme + its client + item count."""
+    with session_scope() as s:
+        rows = s.execute(
+            select(Program, User, func.count(ProgramItem.id))
+            .join(User, User.id == Program.user_id)
+            .join(ProgramItem, ProgramItem.program_id == Program.id, isouter=True)
+            .group_by(Program.id, User.id)
+            .order_by(User.name, User.email, Program.updated_at.desc())
+        ).all()
+        return [(p, u, n) for p, u, n in rows]
+
+
+def create_program(user_id: int, title: str, intro: str | None) -> int:
+    with session_scope() as s:
+        p = Program(user_id=user_id, title=title, intro=intro)
+        s.add(p)
+        s.flush()
+        return p.id
+
+
+def get_program(program_id: int) -> Program | None:
+    from sqlalchemy.orm import selectinload
+
+    with session_scope() as s:
+        return s.scalar(select(Program).where(Program.id == program_id)
+                        .options(selectinload(Program.items)))
+
+
+def update_program(program_id: int, title: str, intro: str | None) -> None:
+    with session_scope() as s:
+        p = s.get(Program, program_id)
+        if p is not None:
+            p.title, p.intro = title, intro
+
+
+def delete_program(program_id: int) -> list[str]:
+    """Delete a programme; returns media filenames the caller should unlink."""
+    with session_scope() as s:
+        p = s.get(Program, program_id)
+        if p is None:
+            return []
+        media = [i.media_name for i in p.items if i.media_name]
+        s.delete(p)
+        return media
+
+
+def add_item(program_id: int, title: str, body: str | None,
+             media_name: str | None, media_kind: str | None) -> int:
+    with session_scope() as s:
+        last = s.scalar(select(func.coalesce(func.max(ProgramItem.position), 0))
+                        .where(ProgramItem.program_id == program_id))
+        it = ProgramItem(program_id=program_id, position=last + 1, title=title,
+                         body=body, media_name=media_name, media_kind=media_kind)
+        s.add(it)
+        s.get(Program, program_id).updated_at = func.now()
+        s.flush()
+        return it.id
+
+
+def get_item(item_id: int) -> ProgramItem | None:
+    with session_scope() as s:
+        return s.get(ProgramItem, item_id)
+
+
+def update_item(item_id: int, title: str, body: str | None,
+                media_name: str | None = None, media_kind: str | None = None) -> str | None:
+    """Update text; if new media given, swap it in and return the OLD filename."""
+    with session_scope() as s:
+        it = s.get(ProgramItem, item_id)
+        if it is None:
+            return None
+        old = None
+        it.title, it.body = title, body
+        if media_name:
+            old = it.media_name
+            it.media_name, it.media_kind = media_name, media_kind
+        return old
+
+
+def delete_item(item_id: int) -> str | None:
+    """Delete an item; returns its media filename for the caller to unlink."""
+    with session_scope() as s:
+        it = s.get(ProgramItem, item_id)
+        if it is None:
+            return None
+        media = it.media_name
+        pid = it.program_id
+        s.delete(it)
+        s.flush()
+        # close the gap so positions stay 1..n and moves keep working
+        for i, row in enumerate(s.scalars(
+                select(ProgramItem).where(ProgramItem.program_id == pid)
+                .order_by(ProgramItem.position)), start=1):
+            row.position = i
+        return media
+
+
+def move_item(item_id: int, direction: str) -> None:
+    """Swap an item with its neighbour ("up" | "down")."""
+    with session_scope() as s:
+        it = s.get(ProgramItem, item_id)
+        if it is None:
+            return
+        rows = list(s.scalars(select(ProgramItem)
+                              .where(ProgramItem.program_id == it.program_id)
+                              .order_by(ProgramItem.position)))
+        idx = next(i for i, r in enumerate(rows) if r.id == item_id)
+        j = idx - 1 if direction == "up" else idx + 1
+        if 0 <= j < len(rows):
+            rows[idx].position, rows[j].position = rows[j].position, rows[idx].position
+
+
+def media_owner_program(media_name: str) -> Program | None:
+    """Which programme owns this media file? (for the auth-gated /media route)"""
+    with session_scope() as s:
+        it = s.scalar(select(ProgramItem).where(ProgramItem.media_name == media_name))
+        return s.get(Program, it.program_id) if it else None
