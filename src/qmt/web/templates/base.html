@@ -10,6 +10,14 @@
   </script>
   <title>{% block title %}QMT — Quality Movement Training{% endblock %}</title>
   <link rel="icon" href="/static/logo.png">
+  {# ===== PWA: installable on Android and iOS ===== #}
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="theme-color" content="#161618">
+  {# iOS ignores the manifest for home-screen installs and needs these instead #}
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="QMT">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@700&family=Inter:wght@400;500;600;700;800&display=swap">
@@ -191,6 +199,12 @@
     qmtApplyIcon();
   }
   qmtApplyIcon();
+  // PWA: register the root-scoped service worker (no-op where unsupported)
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/sw.js").catch(function () {});
+    });
+  }
 </script>
 {% block scripts %}{% endblock %}
 </body>

@@ -690,6 +690,15 @@ async def croatian_http_errors(request: Request, exc: HTTPException):
     return await http_exception_handler(request, exc)
 
 
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    """Served from the root so the SW can control the whole origin —
+    /static/sw.js could only control /static/."""
+    path = Path(__file__).parent / "static" / "sw.js"
+    return FileResponse(path, media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
