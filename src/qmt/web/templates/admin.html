@@ -7,7 +7,8 @@
   Kapacitet <strong>1</strong> = individualni termin (1:1).
 </p>
 
-<table style="width:100%; border-collapse:collapse; margin-bottom:34px; font-size:.92rem;">
+<div style="overflow-x:auto; margin-bottom:34px;">
+<table style="width:100%; border-collapse:collapse; font-size:.92rem;">
   <thead>
     <tr style="border-bottom:2px solid var(--ink); text-align:left;">
       <th style="padding:8px 6px;">Dan</th><th>Vrijeme</th><th>Naziv</th>
@@ -36,6 +37,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 
 <h2 style="font-size:1.1rem; margin-bottom:12px;">Nova stavka rasporeda</h2>
 <form method="post" action="/admin/templates" style="max-width:560px;">

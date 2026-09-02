@@ -49,11 +49,14 @@ filename) — adding a photo is a file drop, no code change. Instagram can only 
 scraped ~12 posts deep before the login wall, so new gallery material comes from
 the trainer's originals or an IG post link (its /embed/ page exposes the
 full-size image).
-`/raspored` is the authenticated calendar. `/treninzi` are custom training
-programmes: the trainer builds one PER CLIENT (ordered exercises: title, text,
-optional image/video upload); the client sees only their own. Media is stored in
-`data/uploads/` (gitignored) and served ONLY via the auth-gated `/media/{name}`
-route — never a public static mount. `/nutricionizam` explains and links the
+`/raspored` is the authenticated calendar. `/treninzi` is a **library +
+assignments**: the trainer builds a programme once (ordered exercises: title,
+text, optional image/video upload) and hands it out via `ProgramAssignment`
+(programme, client, day) — same programme to many clients/days, unique per
+(programme, client, day). A client sees a programme (and its media) ONLY through
+an assignment; the library is trainer-only. Media is stored in `data/uploads/`
+(gitignored) and served ONLY via the auth-gated `/media/{name}` route — never a
+public static mount. `/nutricionizam` explains and links the
 sibling app (mojimakrosi.com, `MOJIMAKROSI_URL`): accounts are separate for now,
 clients are told to register with the same email so linking stays possible.
 Trainer tools live under `/admin`; login lands on `/` (or `?next=`).
@@ -104,6 +107,18 @@ explicitly). Semantics locked by tests.
   their own bookings; rosters (other people's names/emails) are trainer-only.
 - **Jinja + dicts:** never key a template dict `items` — Jinja resolves `d.items` to
   the builtin method (this bit us on day one; the calendar uses `sessions`).
+- **Every screen works on every device — STANDING GOAL.** Phones are the primary
+  client device. Any UI change must hold at 390 px: no horizontal page pan (wide
+  tables scroll inside their own `overflow-x:auto` container), tap targets stay
+  comfortable, grids collapse to single column. Verify with the phone emulator
+  (Playwright 390×844) before calling UI work done — same discipline as
+  mojimakrosi. `document.documentElement.scrollWidth - clientWidth` must be 0.
+- **QMT is a PWA** (manifest + icons from the logo + root-scoped `/sw.js` with
+  `Service-Worker-Allowed: /`). The SW never caches HTML or `/media` — pages are
+  per-user and time-sensitive; it caches immutable statics only and shows a
+  Croatian offline notice. `start_url` is `/raspored`. Playwright's Chromium
+  registers it, so a stale SW can explain "weird" test behaviour — bump the
+  VERSION string in sw.js when changing cached assets.
 
 ## Gotchas
 
@@ -124,6 +139,7 @@ explicitly). Semantics locked by tests.
 ## Roadmap (agreed with the owner)
 
 1. ✅ Booking MVP
-2. ✅ Treninzi: per-client programmes with media; /nutricionizam sibling link
+2. ✅ Treninzi: programme library + dated per-client assignments, media;
+   /nutricionizam sibling link; PWA; standing mobile-first rule
 3. ✅ Email verify + password reset (Resend); deploy runbook in DEPLOY.md
 4. Deeper mojimakrosi link-up (shared identity by email, plan-gated bundles)
