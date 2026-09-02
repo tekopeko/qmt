@@ -39,10 +39,19 @@ def current_user(request: Request):
     return db.get_user(uid) if uid else None
 
 
+def _is_owner(user) -> bool:
+    """The app owner = the TRAINER_EMAIL account (mojimakrosi's owner-by-email
+    pattern). Only the owner manages roles; trainers run the gym. At handover,
+    changing the env var moves ownership with no DB surgery."""
+    return bool(user and config.TRAINER_EMAIL
+                and (user.email or "").strip().lower() == config.TRAINER_EMAIL)
+
+
 def _ctx(request: Request, user, **extra):
     return {"request": request, "user": user, "weekdays_short": WEEKDAYS_SHORT,
             "mojimakrosi_url": config.MOJIMAKROSI_URL,
-            "max_media_mb": config.MAX_MEDIA_MB, **extra}
+            "max_media_mb": config.MAX_MEDIA_MB,
+            "is_owner": _is_owner(user), **extra}
 
 
 # ---------- auth ----------
@@ -291,8 +300,17 @@ def _require_trainer(request: Request):
     user = current_user(request)
     if user is None:
         return None, RedirectResponse("/login", status_code=303)
-    if not user.is_trainer:
+    if not (user.is_trainer or _is_owner(user)):
         raise HTTPException(status_code=403, detail="Samo trener")
+    return user, None
+
+
+def _require_owner(request: Request):
+    user = current_user(request)
+    if user is None:
+        return None, RedirectResponse("/login", status_code=303)
+    if not _is_owner(user):
+        raise HTTPException(status_code=403, detail="Samo vlasnik aplikacije")
     return user, None
 
 
@@ -688,6 +706,36 @@ async def croatian_http_errors(request: Request, exc: HTTPException):
     from fastapi.exception_handlers import http_exception_handler
 
     return await http_exception_handler(request, exc)
+
+
+# ---------- korisnici (owner only: roster + trainer grants) ----------
+
+@app.get("/korisnici", response_class=HTMLResponse)
+def users_page(request: Request):
+    user, redirect = _require_owner(request)
+    if redirect:
+        return redirect
+    return templates.TemplateResponse(request, "korisnici.html", _ctx(
+        request, user, users=db.list_all_users(),
+        owner_email=config.TRAINER_EMAIL))
+
+
+@app.post("/korisnici/{user_id}/trainer")
+def grant_trainer(request: Request, user_id: int, revoke: str = Form("")):
+    user, redirect = _require_owner(request)
+    if redirect:
+        return redirect
+    with db.session_scope() as s:
+        target = s.get(db.User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404)
+    if revoke == "1" and _is_owner(target):
+        return RedirectResponse("/korisnici?error=Vlasniku+se+uloga+ne+može+ukinuti.",
+                                status_code=303)
+    db.set_trainer_id(user_id, revoke != "1")
+    from urllib.parse import quote
+    msg = f"{target.name or target.email} " + ("više nije trener." if revoke == "1" else "je sada trener.")
+    return RedirectResponse(f"/korisnici?ok={quote(msg)}", status_code=303)
 
 
 @app.get("/sw.js", include_in_schema=False)

@@ -95,6 +95,21 @@ def reset_password(email: str, password_hash: str, expected_marker: str) -> bool
         return True
 
 
+def list_all_users() -> list[User]:
+    """Owner roster — every account, newest first."""
+    with session_scope() as s:
+        return list(s.scalars(select(User).order_by(User.created_at.desc(), User.id.desc())))
+
+
+def set_trainer_id(user_id: int, is_trainer: bool) -> bool:
+    with session_scope() as s:
+        u = s.get(User, user_id)
+        if u is None:
+            return False
+        u.is_trainer = is_trainer
+        return True
+
+
 def set_trainer(email: str, is_trainer: bool = True) -> bool:
     """Out-of-band admin grant (scripts/seed only — no route calls this)."""
     with session_scope() as s:

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Korisnici — QMT{% endblock %}
+{% block content %}
+<h1 style="font-size:1.8rem; margin-bottom:4px;">Korisnici</h1>
+<p class="hint" style="margin-bottom:24px;">
+  Svi registrirani računi. Trener upravlja rasporedom, treninzima i vidi polaznike —
+  uloge dodjeljuje samo vlasnik aplikacije.
+</p>
+
+<div style="overflow-x:auto;">
+<table style="width:100%; border-collapse:collapse; font-size:.92rem;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--line); text-align:left;">
+      <th style="padding:8px 6px;">Ime</th><th>Email</th><th>Status</th><th>Uloga</th>
+      <th>Registriran</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    {% set u_is_owner = owner_email and (u.email or "")|lower == owner_email %}
+    <tr style="border-bottom:1px solid var(--line);">
+      <td style="padding:9px 6px;"><strong>{{ u.name or "—" }}</strong></td>
+      <td style="word-break:break-all;">{{ u.email }}</td>
+      <td>
+        {% if u.email_verified %}<span style="color:var(--good); font-weight:600;">potvrđen</span>
+        {% else %}<span class="hint">čeka potvrdu</span>{% endif %}
+      </td>
+      <td>
+        {% if u_is_owner %}<span style="color:var(--accent); font-weight:700;">vlasnik</span>
+        {% elif u.is_trainer %}<span style="font-weight:700;">trener</span>
+        {% else %}<span class="hint">polaznik</span>{% endif %}
+      </td>
+      <td class="hint" style="white-space:nowrap;">{{ u.created_at.strftime("%-d.%-m.%Y.") }}</td>
+      <td style="text-align:right; white-space:nowrap;">
+        {% if not u_is_owner %}
+          {% if u.is_trainer %}
+          <form method="post" action="/korisnici/{{ u.id }}/trainer" style="margin:0; display:inline;"
+                onsubmit="return confirm('Ukinuti ulogu trenera za {{ u.name or u.email }}?')">
+            <input type="hidden" name="revoke" value="1">
+            <button class="btn-sm btn-ghost" type="submit">Ukini trenera</button>
+          </form>
+          {% else %}
+          <form method="post" action="/korisnici/{{ u.id }}/trainer" style="margin:0; display:inline;"
+                onsubmit="return confirm('Promovirati {{ u.name or u.email }} u trenera? Vidjet će sve polaznike, rasporede i treninge.')">
+            <button class="btn-sm btn-quiet" type="submit">Promoviraj u trenera</button>
+          </form>
+          {% endif %}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

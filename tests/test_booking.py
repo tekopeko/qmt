@@ -350,3 +350,39 @@ def test_login_next_cannot_be_an_open_redirect():
         r = c.post("/login", data={"email": "ivan@test.local", "password": "lozinka123",
                                    "next": evil}, follow_redirects=False)
         assert r.headers["location"] == "/", evil
+
+
+# ---------- korisnici (owner-only roster + trainer grants) ----------
+
+def test_owner_roster_and_trainer_grants():
+    """Owner (TRAINER_EMAIL account) sees all users and grants/revokes trainer.
+    A mere trainer is NOT the owner and gets 403 — roles are the owner's alone."""
+    make_user("trener@test.local")               # email matches TRAINER_EMAIL -> owner
+    ivan = make_user("ivan@test.local")
+    co = client_for("trener@test.local")
+
+    page = co.get("/korisnici").text
+    assert "ivan@test.local" in page and "vlasnik" in page
+
+    # promote ivan -> he gains trainer powers
+    r = co.post(f"/korisnici/{ivan}/trainer", data={}, follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    ci = client_for("ivan@test.local")
+    assert ci.get("/admin").status_code == 200   # trainer now
+    # ...but still NOT owner: no roster access
+    assert ci.get("/korisnici").status_code == 403
+    assert ci.post(f"/korisnici/{ivan}/trainer", data={}).status_code == 403
+
+    # revoke
+    r = co.post(f"/korisnici/{ivan}/trainer", data={"revoke": "1"}, follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    ci2 = client_for("ivan@test.local")
+    assert ci2.get("/admin").status_code == 403
+
+
+def test_owner_cannot_be_revoked_and_passes_trainer_gates():
+    uid = make_user("trener@test.local")         # owner WITHOUT is_trainer flag
+    co = client_for("trener@test.local")
+    assert co.get("/admin").status_code == 200   # owner passes trainer gates
+    r = co.post(f"/korisnici/{uid}/trainer", data={"revoke": "1"}, follow_redirects=False)
+    assert "error=" in r.headers["location"]     # refuses to strip the owner
