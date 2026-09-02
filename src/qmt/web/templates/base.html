@@ -183,8 +183,15 @@
 <header class="topbar">
   <a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
      <span class="full">Quality Movement Training</span></a>
+  {# auth pages keep only the brand — no competing actions while someone is
+     typing a password (the Stripe/Notion pattern); the logo is the way out #}
+  {% set auth_page = request.url.path in ('/login', '/signup', '/forgot', '/reset', '/verify-sent')
+                     or request.url.path.startswith('/auth/') %}
+  {% if not auth_page %}
   <button type="button" class="navbtn nav-burger" onclick="qmtToggleNav()"
           aria-label="Izbornik" aria-expanded="false" aria-controls="mainNav">☰</button>
+  {% endif %}
+  {% if not auth_page %}
   <nav class="nav" id="mainNav">
     {% if user %}
       <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Početna</a>
@@ -200,6 +207,7 @@
     {% endif %}
     <button type="button" class="navbtn theme-toggle" onclick="qmtToggleTheme()" aria-label="Promijeni temu"><span id="themeIcon">🌙</span></button>
   </nav>
+  {% endif %}
 </header>
 <main class="{% block main_class %}{% endblock %}">
   {% if request.query_params.get("error") %}
@@ -229,8 +237,9 @@
     var open = nav.classList.toggle("open");
     document.querySelector(".nav-burger").setAttribute("aria-expanded", open ? "true" : "false");
   }
-  // picking a destination closes the drawer
-  document.getElementById("mainNav").addEventListener("click", function (e) {
+  // picking a destination closes the drawer (nav absent on auth pages)
+  var _nav = document.getElementById("mainNav");
+  if (_nav) _nav.addEventListener("click", function (e) {
     if (e.target.closest("a")) this.classList.remove("open");
   });
   // PWA: register the root-scoped service worker (no-op where unsupported)
