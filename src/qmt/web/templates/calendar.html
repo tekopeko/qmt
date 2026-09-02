@@ -84,15 +84,20 @@
                   {% if s.past %}past{% endif %} {% if s.canceled %}canceled{% endif %}">
         <div class="t">{{ s.time }}–{{ s.end }}</div>
         <div class="name">{{ s.title }}{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
+        {# capacity line: for the trainer the Polaznici button already carries it,
+           so only the canceled/1:1 states show here; clients still need "X/8 mjesta" #}
+        {% set show_cap = s.canceled or not user.is_trainer %}
+        {% if show_cap %}
         <div class="cap">
           {% if s.canceled %}otkazano
           {% elif s.one_on_one %}{{ "rezervirano ✓" if s.mine else ("slobodno" if not s.full else "zauzeto") }}
           {% else %}{{ s.booked }}/{{ s.capacity }} mjesta{% endif %}
         </div>
+        {% endif %}
         {% if user.is_trainer %}
           <form method="get" action="/admin/session/{{ s.id }}">
-            <button class="btn-sm btn-ghost" type="submit">Polaznici
-              <span style="font-weight:700; color:{{ 'var(--accent)' if s.full else 'var(--good)' }};">{{ s.booked }}</span><span style="color:var(--muted);">/{{ s.capacity }}</span></button>
+            {# one flex child so the button's gap:8px doesn't split "5" from "/8" #}
+            <button class="btn-sm btn-ghost" type="submit"><span>Polaznici <span style="font-weight:700; color:{{ 'var(--accent)' if s.full else 'var(--good)' }};">{{ s.booked }}</span><span style="color:var(--muted);">/{{ s.capacity }}</span></span></button>
           </form>
         {% elif s.canceled or s.past %}
         {% elif s.mine %}
