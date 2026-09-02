@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Uredi: {{ p.title }} — QMT{% endblock %}
 {% block content %}
-<p><a href="/treninzi" class="hint">← svi treninzi</a></p>
+<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Uređivanje</span></nav>
 <h1 style="font-size:1.6rem; margin:10px 0 2px;">Uredi trening</h1>
 <p class="hint" style="margin-bottom:20px;">
   u biblioteci — dodijeli ga polazniku na stranici Treninzi ·

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Polaznici — QMT{% endblock %}
 {% block content %}
-<p><a href="/raspored" class="hint">← natrag na raspored</a></p>
+<nav class="crumbs" aria-label="Putanja"><a href="/raspored">Raspored</a><span class="sep">/</span><span class="here">{{ sess.title }}</span></nav>
 <h1 style="font-size:1.6rem; margin:10px 0 2px;">{{ sess.title }}</h1>
 <p class="hint" style="margin-bottom:20px;">
   {{ local_time.strftime("%-d.%-m.%Y. %H:%M") }} · {{ sess.duration_min }} min ·

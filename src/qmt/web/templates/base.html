@@ -88,13 +88,15 @@
     .brand .full { font-weight: 700; font-size: .8rem; letter-spacing: .15em;
                    text-transform: uppercase; color: #e6e6e3; }
     .nav { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; }
-    .nav a, .nav .navbtn {
+    /* .nav-burger sits OUTSIDE .nav (it toggles it), so it must be named here
+       explicitly or it falls back to the red default-button style */
+    .nav a, .nav .navbtn, .nav-burger {
       color: #cfcfcc; text-decoration: none; font: 600 .88rem var(--font-body);
       padding: 8px 13px; border: none; background: none; cursor: pointer;
       border-radius: 10px; transition: background .15s, color .15s;
       box-shadow: none; display: inline-flex; align-items: center;
     }
-    .nav a:hover, .nav .navbtn:hover { color: #fff; background: rgba(255,255,255,.09); transform: none; }
+    .nav a:hover, .nav .navbtn:hover, .nav-burger:hover { color: #fff; background: rgba(255,255,255,.09); transform: none; }
     .nav a.on { color: #fff; background: rgba(255,255,255,.13); }
     .nav a.cta { background: var(--accent); color: #fff; font-weight: 700; margin-left: 6px; }
     .nav a.cta:hover { background: var(--accent-strong); }
@@ -104,6 +106,11 @@
     /* ===== mobile: seven inline items cannot fit 390px — drawer behind ☰ ===== */
     @media (max-width: 860px) {
       .nav-burger { display: inline-flex; }
+      /* brand + burger must share ONE row — with wrap, a 360px phone (Galaxy S8+)
+         pushed the burger onto a second line below the bar */
+      .topbar { flex-wrap: nowrap; }
+      .brand { min-width: 0; }
+      .brand .full { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .nav {
         display: none;
         position: absolute; top: 100%; left: 0; right: 0;
@@ -120,6 +127,10 @@
       .nav form { width: 100%; }
       .nav a.cta { margin-left: 0; justify-content: center; }
       .theme-toggle { justify-content: center; }
+    }
+    @media (max-width: 430px) {
+      /* the full wordmark at .8rem/.15em overflows a 360px bar */
+      .brand .full { font-size: .68rem; letter-spacing: .1em; }
     }
 
     main { max-width: 1100px; margin: 0 auto; padding: clamp(18px, 3vw, 34px) clamp(14px, 4vw, 40px) 70px; }
@@ -174,6 +185,16 @@
                 background: color-mix(in srgb, var(--good) 10%, var(--surface));
                 border-color: color-mix(in srgb, var(--good) 35%, transparent); }
     .hint { color: var(--muted); font-size: .85rem; }
+
+    /* breadcrumb on detail pages: parent segment is the link, current one stands */
+    .crumbs { display: flex; align-items: baseline; gap: 9px; margin-bottom: 14px;
+              font: 700 .72rem var(--font-display); text-transform: uppercase;
+              letter-spacing: .09em; }
+    .crumbs a { color: var(--muted); text-decoration: none; transition: color .15s; }
+    .crumbs a:hover { color: var(--accent); }
+    .crumbs .sep { color: var(--muted); opacity: .55; }
+    .crumbs .here { color: var(--text); min-width: 0; white-space: nowrap;
+                    overflow: hidden; text-overflow: ellipsis; }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition: none !important; animation: none !important; }

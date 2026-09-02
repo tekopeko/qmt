@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ p.title }} — QMT{% endblock %}
 {% block content %}
-<p><a href="/treninzi" class="hint">← svi treninzi</a></p>
+<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><span class="here">{{ p.title }}</span></nav>
 <h1 style="font-size:1.7rem; margin:10px 0 4px;">{{ p.title }}</h1>
 <p class="hint" style="margin-bottom:6px;">
   {{ p.items|length }} {{ "vježba" if p.items|length % 10 == 1 and p.items|length % 100 != 11 else "vježbi" }}
