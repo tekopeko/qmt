@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="hr" data-theme="light">
+<html lang="hr" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script>
     // Apply the saved theme before first paint (no flash of the wrong theme).
+    // Default is dark (set on <html>); honour a saved choice either way.
     try { var _t = localStorage.getItem('qmt-theme'); if (_t === 'light' || _t === 'dark') document.documentElement.setAttribute('data-theme', _t); } catch (e) {}
   </script>
   <title>{% block title %}QMT — Quality Movement Training{% endblock %}</title>
@@ -27,6 +28,7 @@
       --accent-strong: #c00500;
       --accent-ink: #ffffff;
       --accent-dim: rgba(225, 6, 0, .08);
+      --good: #15803d;                                     /* filled-spots green, readable on light */
       --shadow: 0 1px 2px rgba(20, 20, 22, .05), 0 8px 24px rgba(20, 20, 22, .06);
       --shadow-btn: 0 2px 10px rgba(225, 6, 0, .28);
     }
@@ -41,6 +43,7 @@
       --accent-strong: #ff5049;
       --accent-ink: #ffffff;
       --accent-dim: rgba(255, 52, 43, .12);
+      --good: #4ade80;                                     /* brighter green for dark contrast */
       --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
       --shadow-btn: 0 2px 12px rgba(255, 52, 43, .35);
     }

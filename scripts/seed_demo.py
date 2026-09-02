@@ -47,12 +47,13 @@ def upsert_user(email: str, name: str, password: str, is_trainer: bool) -> None:
     with db.session_scope() as s:
         u = s.scalar(select(User).where(User.email == email))
         if u is None:
-            s.add(User(email=email, name=name,
-                       password_hash=auth.hash_password(password), is_trainer=is_trainer))
+            u = User(email=email, name=name, password_hash=auth.hash_password(password))
+            s.add(u)
             print(f"  + {email}" + ("  (trener)" if is_trainer else ""))
         else:
-            u.is_trainer = is_trainer
             print(f"  = {email} (postoji)")
+        u.is_trainer = is_trainer
+        u.email_verified = True   # dev accounts skip the email round-trip
 
 
 def main() -> None:

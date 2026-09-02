@@ -64,9 +64,9 @@
     <span class="range">{{ monday.strftime("%-d.%-m.") }} – {{ days[-1].date.strftime("%-d.%-m.%Y.") }}</span>
   </div>
   <div class="week-nav">
-    <a class="btn btn-ghost btn-sm" href="/raspored?week={{ prev_week }}">← prošli</a>
+    <a class="btn btn-ghost btn-sm" href="/raspored?week={{ prev_week }}">← prošli tjedan</a>
     <a class="btn btn-ghost btn-sm" href="/raspored">danas</a>
-    <a class="btn btn-ghost btn-sm" href="/raspored?week={{ next_week }}">sljedeći →</a>
+    <a class="btn btn-ghost btn-sm" href="/raspored?week={{ next_week }}">idući tjedan →</a>
   </div>
 </div>
 
@@ -91,7 +91,8 @@
         </div>
         {% if user.is_trainer %}
           <form method="get" action="/admin/session/{{ s.id }}">
-            <button class="btn-sm btn-ghost" type="submit">Polaznici ({{ s.booked }})</button>
+            <button class="btn-sm btn-ghost" type="submit">Polaznici
+              <span style="font-weight:700; color:{{ 'var(--accent)' if s.full else 'var(--good)' }};">{{ s.booked }}</span><span style="color:var(--muted);">/{{ s.capacity }}</span></button>
           </form>
         {% elif s.canceled or s.past %}
         {% elif s.mine %}
