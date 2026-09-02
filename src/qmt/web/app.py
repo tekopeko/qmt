@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import auth, config, db
+from .. import auth, config, db, mailer
 
 app = FastAPI(title="QMT")
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=config.IS_PROD)
@@ -62,6 +62,9 @@ def login(request: Request, email: str = Form(...), password: str = Form(...),
         from urllib.parse import quote
         return RedirectResponse(f"/login?error=Pogrešan+email+ili+lozinka.&next={quote(dest)}",
                                 status_code=303)
+    if not u.email_verified:
+        # correct password but unproven inbox: re-issue the link instead of a dead end
+        return _send_verification(request, u.email)
     request.session["user_id"] = u.id
     # Homepage by default; back to the page that bounced them here otherwise —
     # someone who clicked "Rezerviraj termin" must land in the calendar, not
@@ -88,13 +91,24 @@ def signup(request: Request, name: str = Form(""), email: str = Form(...),
     if db.get_user_by_email(email) is not None:
         return RedirectResponse("/signup?error=Račun+već+postoji+—+prijavi+se.", status_code=303)
     try:
-        u = db.create_user(email, name, auth.hash_password(password))
+        db.create_user(email, name, auth.hash_password(password))
     except Exception:
         # check-then-insert race: two simultaneous signups for the same email —
         # the unique constraint wins, the loser gets the same message as above.
         return RedirectResponse("/signup?error=Račun+već+postoji+—+prijavi+se.", status_code=303)
-    request.session["user_id"] = u.id
-    return RedirectResponse("/", status_code=303)
+    return _send_verification(request, email)
+
+
+def _send_verification(request: Request, email: str):
+    """Email the verify link, or in dev show it on-page. Never on-page in prod —
+    there the link would be world-readable."""
+    link = f"{config.PUBLIC_BASE_URL}/auth/verify?token={auth.make_verify_token(email)}"
+    sent = mailer.send_verification_email(email, link)
+    if not sent and config.IS_PROD:
+        return RedirectResponse(
+            "/signup?error=Slanje+emaila+nije+uspjelo+—+javi+se+treneru.", status_code=303)
+    return templates.TemplateResponse(request, "verify_sent.html", _ctx(
+        request, None, email=email, dev_link=None if sent else link))
 
 
 @app.post("/logout")
@@ -216,6 +230,59 @@ def cancel(request: Request, session_id: int, week: str = Form("")):
     except db.BookingError as e:
         return _redirect_back(week, str(e))
     return _redirect_back(week, ok="Rezervacija je otkazana.")
+
+
+@app.get("/auth/verify")
+def auth_verify(request: Request, token: str = ""):
+    email = auth.read_verify_token(token)
+    if email is None:
+        return RedirectResponse(
+            "/login?error=Link+nije+valjan+ili+je+istekao+—+prijavi+se+za+novi.", status_code=303)
+    db.mark_email_verified(email)
+    return RedirectResponse("/login?ok=Email+je+potvrđen+—+prijavi+se.", status_code=303)
+
+
+@app.get("/forgot", response_class=HTMLResponse)
+def forgot_page(request: Request):
+    return templates.TemplateResponse(request, "forgot.html", _ctx(request, None))
+
+
+@app.post("/forgot")
+def forgot(request: Request, email: str = Form(...)):
+    email = email.strip().lower()
+    u = db.get_user_by_email(email)
+    # Same response whether or not the account exists — no enumeration.
+    if u is None:
+        return templates.TemplateResponse(request, "verify_sent.html", _ctx(
+            request, None, email=email, dev_link=None, reset_mode=True))
+    link = f"{config.PUBLIC_BASE_URL}/reset?token={auth.make_reset_token(u.email, u.password_hash)}"
+    sent = mailer.send_password_reset_email(u.email, link)
+    if not sent and config.IS_PROD:
+        return RedirectResponse("/forgot?error=Slanje+emaila+nije+uspjelo.", status_code=303)
+    return templates.TemplateResponse(request, "verify_sent.html", _ctx(
+        request, None, email=email, dev_link=None if sent else link, reset_mode=True))
+
+
+@app.get("/reset", response_class=HTMLResponse)
+def reset_page(request: Request, token: str = ""):
+    if auth.read_reset_token(token) is None:
+        return RedirectResponse("/forgot?error=Link+nije+valjan+ili+je+istekao.", status_code=303)
+    return templates.TemplateResponse(request, "reset.html", _ctx(request, None, token=token))
+
+
+@app.post("/reset")
+def reset(request: Request, token: str = Form(...), password: str = Form(...)):
+    data = auth.read_reset_token(token)
+    if data is None:
+        return RedirectResponse("/forgot?error=Link+nije+valjan+ili+je+istekao.", status_code=303)
+    if not auth.password_ok(password):
+        from urllib.parse import quote
+        return RedirectResponse(f"/reset?token={quote(token)}&error=Lozinka+mora+imati+barem+8+znakova.",
+                                status_code=303)
+    email, marker = data
+    if not db.reset_password(email, auth.hash_password(password), marker):
+        return RedirectResponse("/forgot?error=Link+je+već+iskorišten+—+zatraži+novi.", status_code=303)
+    return RedirectResponse("/login?ok=Lozinka+je+promijenjena+—+prijavi+se.", status_code=303)
 
 
 # ---------- trainer admin ----------

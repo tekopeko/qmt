@@ -30,6 +30,9 @@ class User(Base):
     # The trainer runs the timetable and sees rosters; clients only see their own
     # bookings. Same one-owner shape as mojimakrosi's is_admin.
     is_trainer: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # Sign-up proves nothing about inbox ownership until this is true; login
+    # refuses unverified accounts (same contract as mojimakrosi).
+    email_verified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

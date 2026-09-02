@@ -69,6 +69,31 @@ def create_user(email: str, name: str, password_hash: str) -> User:
         return u
 
 
+def mark_email_verified(email: str) -> bool:
+    with session_scope() as s:
+        u = s.scalar(select(User).where(func.lower(User.email) == email.strip().lower()))
+        if u is None:
+            return False
+        u.email_verified = True
+        return True
+
+
+def reset_password(email: str, password_hash: str, expected_marker: str) -> bool:
+    """Set a new password only if the reset token's marker still matches the
+    CURRENT hash — locked FOR UPDATE so a token cannot be redeemed twice
+    concurrently (mojimakrosi's proven single-use guard)."""
+    from . import auth as _auth
+
+    with session_scope() as s:
+        u = s.scalar(select(User).where(func.lower(User.email) == email.strip().lower())
+                     .with_for_update())
+        if u is None or _auth.pw_marker(u.password_hash) != expected_marker:
+            return False
+        u.password_hash = password_hash
+        u.email_verified = True
+        return True
+
+
 def set_trainer(email: str, is_trainer: bool = True) -> bool:
     """Out-of-band admin grant (scripts/seed only — no route calls this)."""
     with session_scope() as s:

@@ -30,6 +30,7 @@ def clean_db(tmp_path, monkeypatch):
 
 def make_user(email: str, is_trainer: bool = False) -> int:
     u = db.create_user(email, email.split("@")[0], auth.hash_password("lozinka123"))
+    db.mark_email_verified(email)   # login refuses unverified accounts
     if is_trainer:
         db.set_trainer(email)
     return u.id

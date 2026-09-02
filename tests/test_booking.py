@@ -31,6 +31,7 @@ def clean_db():
 
 def make_user(email: str, is_trainer: bool = False) -> int:
     u = db.create_user(email, email.split("@")[0], auth.hash_password("lozinka123"))
+    db.mark_email_verified(email)   # login refuses unverified accounts
     if is_trainer:
         with db.session_scope() as s:
             s.get(User, u.id).is_trainer = True
@@ -60,7 +61,8 @@ def test_signup_allowlist_and_login():
 
     r = c.post("/signup", data={"name": "Ivan", "email": "ivan@test.local",
                                 "password": "lozinka123"}, follow_redirects=False)
-    assert r.headers["location"] == "/"           # signed in immediately, on the homepage
+    assert r.status_code == 200                   # verify page, NOT signed in
+    assert "Provjeri email" in r.text or "Link (dev)" in r.text
 
     # SECURITY: signing up with the trainer's email must NOT grant admin —
     # sign-up proves nothing about ownership, so whoever registered first would
@@ -69,6 +71,7 @@ def test_signup_allowlist_and_login():
     c2.post("/signup", data={"name": "T", "email": "trener@test.local",
                              "password": "lozinka123"}, follow_redirects=False)
     u = db.get_user_by_email("trener@test.local")
+    assert not u.email_verified
     assert not u.is_trainer
     assert db.set_trainer("trener@test.local")   # the out-of-band grant works
     assert db.get_user_by_email("trener@test.local").is_trainer

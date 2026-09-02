@@ -1,7 +1,9 @@
-"""Auth: bcrypt password hashing (lifted from mojimakrosi's proven auth.py).
+"""Auth: bcrypt password hashing + signed email tokens (mojimakrosi ancestry).
 
-Login is password-based, sessions ride a signed cookie. Email verification /
-password reset come later, together with Resend — before the public deploy.
+Login is password-based, sessions ride a signed cookie. A token is the signed,
+lower-cased email validated by signature + max-age — no server-side store.
+Password-reset tokens additionally carry a marker of the CURRENT password hash,
+so a used token dies the moment the password changes (single-use).
 
 Only file that imports `bcrypt`.
 """
@@ -56,3 +58,52 @@ def verify_password(password: str, password_hash: str | None) -> bool:
         return bcrypt.checkpw(_pw_bytes(password), password_hash.encode("utf-8"))
     except (ValueError, TypeError):
         return False
+
+
+# ---------- signed email tokens ----------
+
+import hashlib
+
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+
+from . import config
+
+_VERIFY_SALT = "qmt-verify-email"
+_RESET_SALT = "qmt-reset-password"
+VERIFY_MAX_AGE_SECONDS = 24 * 60 * 60   # sign-up links: 24 h
+RESET_MAX_AGE_SECONDS = 60 * 60         # reset links: 1 h
+
+
+def _serializer(salt: str) -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(str(config.SECRET_KEY), salt=salt)
+
+
+def make_verify_token(email: str) -> str:
+    return _serializer(_VERIFY_SALT).dumps(email.strip().lower())
+
+
+def read_verify_token(token: str) -> str | None:
+    try:
+        return _serializer(_VERIFY_SALT).loads(token, max_age=VERIFY_MAX_AGE_SECONDS)
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+def pw_marker(password_hash: str | None) -> str:
+    """Short fingerprint of the current hash — embedded in reset tokens so each
+    token works exactly once (the marker stops matching after the change)."""
+    return hashlib.sha256((password_hash or "none").encode()).hexdigest()[:16]
+
+
+def make_reset_token(email: str, password_hash: str | None) -> str:
+    return _serializer(_RESET_SALT).dumps(
+        {"e": email.strip().lower(), "m": pw_marker(password_hash)})
+
+
+def read_reset_token(token: str) -> tuple[str, str] | None:
+    """(email, marker) or None."""
+    try:
+        d = _serializer(_RESET_SALT).loads(token, max_age=RESET_MAX_AGE_SECONDS)
+        return d["e"], d["m"]
+    except (BadSignature, SignatureExpired, KeyError, TypeError):
+        return None

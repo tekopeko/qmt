@@ -56,6 +56,9 @@ def upsert_user(email: str, name: str, password: str, is_trainer: bool) -> None:
 
 
 def main() -> None:
+    from qmt import config
+    if config.IS_PROD or "railway" in config.DATABASE_URL or "rlwy.net" in config.DATABASE_URL:
+        sys.exit("ODBIJENO: seed je dev RESET (briše rezervacije i treninge) — nikad na produkciju.")
     print("users:")
     upsert_user(*TRAINER)
     for c in CLIENTS:

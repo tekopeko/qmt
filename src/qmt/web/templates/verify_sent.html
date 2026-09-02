@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Provjeri email — QMT{% endblock %}
+{% block content %}
+<div style="max-width:460px; margin:8vh auto 0;">
+  <h1 style="font-size:1.7rem; margin-bottom:8px;">
+    {{ "Provjeri email" if not dev_link else "Link (dev)" }}</h1>
+  {% if reset_mode is defined and reset_mode %}
+    <p>Ako račun za <strong>{{ email }}</strong> postoji, poslali smo link za novu lozinku.
+    Link vrijedi <strong>1 sat</strong>.</p>
+  {% else %}
+    <p>Poslali smo link za potvrdu na <strong>{{ email }}</strong>.
+    Klikni ga i račun je spreman — link vrijedi <strong>24 sata</strong>.</p>
+  {% endif %}
+  {% if dev_link %}
+    <div class="card" style="padding:14px 16px; margin-top:16px; word-break:break-all;">
+      <span class="hint">Email nije konfiguriran (dev) — evo linka:</span><br>
+      <a href="{{ dev_link }}" style="color:var(--accent);">{{ dev_link }}</a>
+    </div>
+  {% endif %}
+  <p class="hint" style="margin-top:18px;"><a href="/login">← natrag na prijavu</a></p>
+</div>
+{% endblock %}

@@ -64,6 +64,19 @@ MOJIMAKROSI_URL = os.environ.get("MOJIMAKROSI_URL", "https://mojimakrosi.com").s
 MEDIA_DIR = PROJECT_ROOT / "data" / "uploads"
 MAX_MEDIA_MB = int(os.environ.get("MAX_MEDIA_MB", "60"))
 
+# Email (Resend) — verification + password reset. Unset in dev: the links are
+# shown on-page instead of sent (never in prod — there they would be public).
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "QMT <onboarding@resend.dev>").strip()
+PUBLIC_BASE_URL = os.environ.get(
+    "PUBLIC_BASE_URL", "http://127.0.0.1:8100"
+).strip().rstrip("/")
+
+
+def email_enabled() -> bool:
+    return bool(RESEND_API_KEY)
+
+
 # Booking rules.
 CANCEL_CUTOFF_HOURS = int(os.environ.get("CANCEL_CUTOFF_HOURS", "3"))
 BOOKING_HORIZON_DAYS = int(os.environ.get("BOOKING_HORIZON_DAYS", "28"))

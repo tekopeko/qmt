@@ -31,14 +31,14 @@ pytest -q                                  # tests live in tests/ and must stay 
 ```
 
 Demo logins: `trener@qmt.local/trener123` (admin), `ivan@qmt.local/lozinka123`,
-`ana@qmt.local/lozinka123`.
+`ana@qmt.local/lozinka123` (seed marks them verified; real sign-ups must click the
+emailed verify link before login works).
 
 ### Deployment (Railway)
 
-Dockerfile → `start.sh` runs `alembic upgrade head` then uvicorn on `$PORT`.
-Set: `ENV=production`, `SECRET_KEY` (random; boot fails on the dev default),
-`DATABASE_URL`, `TRAINER_EMAIL` (that account = admin), `ALLOWED_EMAILS`.
-`/healthz` is the liveness probe.
+See **DEPLOY.md** for the full runbook (Railway project, `/app/data` volume for
+media, variables, qmt.mojimakrosi.com DNS, first-boot trainer bootstrap,
+backups). Dockerfile → `start.sh` migrates then serves; `/healthz` is the probe.
 
 ## Pages
 
@@ -76,7 +76,8 @@ explicitly). Semantics locked by tests.
 | `src/qmt/config.py` | `.env`, `TRAINER_EMAIL`/`ALLOWED_EMAILS` allowlist, booking knobs (`CANCEL_CUTOFF_HOURS`, `BOOKING_HORIZON_DAYS`), prod guards |
 | `src/qmt/models.py` | `User` (`is_trainer`), `SessionTemplate`, `TrainingSession`, `Booking` |
 | `src/qmt/db.py` | Queries + booking rules. **`book()` locks the session row FOR UPDATE** and re-counts inside the lock — capacity must hold under concurrent taps (tested) |
-| `src/qmt/auth.py` | Only bcrypt importer (lifted from macro_tracker). Email verify/reset: add with Resend **before** public deploy |
+| `src/qmt/auth.py` | Only bcrypt importer + signed email tokens (verify 24 h; reset 1 h, single-use via `pw_marker`) |
+| `src/qmt/mailer.py` | Only Resend importer (lazy httpx). Senders return `False` without a key → dev shows the link on-page (app.py refuses that path in prod) |
 | `src/qmt/web/app.py` | All routes. Auth = `current_user()` helper per route (promote to middleware if routes multiply) |
 | `src/qmt/web/templates/` | Jinja2. Design tokens in `base.html` |
 
@@ -124,6 +125,5 @@ explicitly). Semantics locked by tests.
 
 1. ✅ Booking MVP
 2. ✅ Treninzi: per-client programmes with media; /nutricionizam sibling link
-3. Email verify + password reset via Resend, then public deploy on the QMT domain
-   (media needs a Railway volume or R2 first — data/uploads is ephemeral!)
+3. ✅ Email verify + password reset (Resend); deploy runbook in DEPLOY.md
 4. Deeper mojimakrosi link-up (shared identity by email, plan-gated bundles)

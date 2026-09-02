@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Nova lozinka — QMT{% endblock %}
+{% block content %}
+<div style="max-width:400px; margin:8vh auto 0;">
+  <h1 style="font-size:1.8rem; margin-bottom:4px;">Postavi novu lozinku</h1>
+  <p class="hint" style="margin-bottom:22px;">Link vrijedi sat vremena i može se iskoristiti jednom.</p>
+  <form method="post" action="/reset">
+    <input type="hidden" name="token" value="{{ token }}">
+    <div class="field"><label for="password">Nova lozinka (barem 8 znakova)</label>
+      <input id="password" type="password" name="password" autocomplete="new-password" minlength="8" required autofocus></div>
+    <button type="submit" style="width:100%; padding:12px;">Spremi lozinku</button>
+  </form>
+</div>
+{% endblock %}
