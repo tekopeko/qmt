@@ -123,19 +123,20 @@ def fill_bookings(client_ids: list[int]) -> None:
 
 
 def seed_programs() -> None:
-    made = 0
-    for email, title, intro, items in PROGRAMS:
+    """Library programmes + dated assignments (spread across the next days)."""
+    made = assigned = 0
+    for offset, (email, title, intro, items) in enumerate(PROGRAMS):
         with db.session_scope() as s:
             u = s.scalar(select(User).where(func.lower(User.email) == email))
-            exists = s.scalar(select(func.count()).select_from(Program)
-                              .where(Program.user_id == u.id, Program.title == title))
-        if exists:
-            continue
-        pid = db.create_program(u.id, title, intro)
-        for ex_title, body in items:
-            db.add_item(pid, ex_title, body, None, None)
-        made += 1
-    print(f"  programmes: {made} novih")
+            pid = s.scalar(select(Program.id).where(Program.title == title))
+        if pid is None:
+            pid = db.create_program(title, intro)
+            for ex_title, body in items:
+                db.add_item(pid, ex_title, body, None, None)
+            made += 1
+        if db.assign_program(pid, u.id, config.today() + timedelta(days=offset)):
+            assigned += 1
+    print(f"  programmes: {made} novih, {assigned} dodjela")
 
 
 def main() -> None:

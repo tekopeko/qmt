@@ -2,22 +2,41 @@
 {% block title %}Treninzi — QMT{% endblock %}
 {% block content %}
 <h1 style="font-size:1.8rem; margin-bottom:4px;">Moji treninzi</h1>
-<p class="hint" style="margin-bottom:24px;">Programi koje je trener složio za tebe.</p>
+<p class="hint" style="margin-bottom:24px;">Treninzi koje ti je trener dodijelio, po danima.</p>
 
-{% if programs %}
-<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:16px;">
-  {% for p in programs %}
-  <a class="card" href="/treninzi/{{ p.id }}"
-     style="padding:20px 22px; text-decoration:none; display:flex; flex-direction:column; gap:6px;">
-    <strong style="font-size:1.02rem;">{{ p.title }}</strong>
-    {% if p.intro %}<span class="hint" style="display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{ p.intro }}</span>{% endif %}
-    <span class="hint" style="margin-top:auto; color:var(--accent); font-weight:600;">
-      {{ p.items|length }} {{ "vježba" if p.items|length % 10 == 1 and p.items|length % 100 != 11 else "vježbi" }} →
-    </span>
+{% macro assignment_card(a, highlight) %}
+  <a class="card" href="/treninzi/{{ a.program.id }}"
+     style="padding:16px 20px; text-decoration:none; display:flex; gap:16px; align-items:center;
+            {% if highlight %}box-shadow: inset 3px 0 0 var(--accent);{% endif %}">
+    <div style="min-width:74px; text-align:center;">
+      <div style="font:700 .72rem var(--font-body); text-transform:uppercase; letter-spacing:.06em;
+                  color:{{ 'var(--accent)' if highlight else 'var(--muted)' }};">
+        {{ weekdays_short[a.date.weekday()] }}</div>
+      <div style="font:800 1.05rem var(--font-body);">{{ a.date.strftime("%-d.%-m.") }}</div>
+    </div>
+    <div style="flex:1; min-width:0;">
+      <strong>{{ a.program.title }}</strong>
+      <div class="hint">{{ a.program.items|length }} {{ "vježba" if a.program.items|length % 10 == 1 and a.program.items|length % 100 != 11 else "vježbi" }}{% if a.note %} · {{ a.note }}{% endif %}</div>
+    </div>
+    <span style="color:var(--accent); font-weight:700;">→</span>
   </a>
-  {% endfor %}
+{% endmacro %}
+
+{% if upcoming %}
+<h2 style="font-size:1.02rem; margin-bottom:10px;">Nadolazeći</h2>
+<div style="display:flex; flex-direction:column; gap:10px; max-width:640px; margin-bottom:30px;">
+  {% for a in upcoming %}{{ assignment_card(a, a.date == today) }}{% endfor %}
 </div>
-{% else %}
+{% endif %}
+
+{% if past %}
+<h2 style="font-size:1.02rem; margin-bottom:10px;">Odrađeni</h2>
+<div style="display:flex; flex-direction:column; gap:10px; max-width:640px; opacity:.75;">
+  {% for a in past %}{{ assignment_card(a, false) }}{% endfor %}
+</div>
+{% endif %}
+
+{% if not upcoming and not past %}
 <div class="card" style="padding:34px; text-align:center;">
   <p style="margin-bottom:6px;"><strong>Još nemaš dodijeljen trening.</strong></p>
   <p class="hint">Trener će ti ovdje objaviti tvoj program — javit će ti kad bude spreman.</p>

@@ -8,10 +8,10 @@ created one-off.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date as SADate, datetime
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, text,
+    Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -97,16 +97,17 @@ class Booking(Base):
 
 
 class Program(Base):
-    """A custom training programme the trainer builds FOR one client.
+    """A training programme in the trainer's LIBRARY — content, not ownership.
 
-    Client-scoped like everything else: the assigned user and the trainer see
-    it, nobody else. Content lives in ordered `ProgramItem`s (text + media).
+    Programmes are reusable: the trainer builds one (ordered `ProgramItem`s of
+    text + media) and then hands it out via `ProgramAssignment` — this
+    programme, this client, this day. A client sees a programme only through
+    an assignment; the library itself is trainer-only.
     """
 
     __tablename__ = "programs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(160))
     intro: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -117,6 +118,36 @@ class Program(Base):
     items: Mapped[list["ProgramItem"]] = relationship(
         back_populates="program", cascade="all, delete-orphan", order_by="ProgramItem.position"
     )
+    assignments: Mapped[list["ProgramAssignment"]] = relationship(
+        back_populates="program", cascade="all, delete-orphan"
+    )
+
+
+class ProgramAssignment(Base):
+    """One hand-out: programme X for client Y on day Z.
+
+    The same programme may be assigned to many clients and to the same client
+    on many days (repeating a workout is normal) — but only once per
+    (programme, client, day).
+    """
+
+    __tablename__ = "program_assignments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    program_id: Mapped[int] = mapped_column(
+        ForeignKey("programs.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    date: Mapped[SADate] = mapped_column(Date, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("program_id", "user_id", "date", name="uq_assignment_program_user_date"),
+    )
+
+    program: Mapped[Program] = relationship(back_populates="assignments")
+    user: Mapped["User"] = relationship()
 
 
 class ProgramItem(Base):

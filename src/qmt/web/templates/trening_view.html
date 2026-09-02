@@ -4,7 +4,6 @@
 <p><a href="/treninzi" class="hint">← svi treninzi</a></p>
 <h1 style="font-size:1.7rem; margin:10px 0 4px;">{{ p.title }}</h1>
 <p class="hint" style="margin-bottom:6px;">
-  {% if user.is_trainer %}za: <strong>{{ client.name or client.email }}</strong> · {% endif %}
   {{ p.items|length }} {{ "vježba" if p.items|length % 10 == 1 and p.items|length % 100 != 11 else "vježbi" }}
 </p>
 {% if p.intro %}<p style="max-width:64ch; margin-bottom:10px; white-space:pre-line;">{{ p.intro }}</p>{% endif %}

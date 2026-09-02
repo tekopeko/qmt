@@ -12,9 +12,13 @@ os.environ["TRAINER_EMAIL"] = "trener@test.local"
 import pytest
 from fastapi.testclient import TestClient
 
+from datetime import timedelta
+
 from qmt import auth, config, db
 from qmt.models import Base, User
 from qmt.web.app import app
+
+TODAY = config.today()
 
 PNG = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)  # enough to be a non-empty "image"
 
@@ -50,34 +54,69 @@ def trainer_with_clients():
     return client_for("trener@test.local"), ivan, ana
 
 
-def test_program_is_private_to_its_client():
+def test_library_program_visible_only_through_assignment():
     ct, ivan, ana = trainer_with_clients()
-    r = ct.post("/treninzi", data={"user_id": ivan, "title": "Tjedan 1"}, follow_redirects=False)
+    r = ct.post("/treninzi", data={"title": "Tjedan 1"}, follow_redirects=False)
     assert "/uredi" in r.headers["location"]
     pid = int(r.headers["location"].split("/")[2])
 
+    # unassigned: NO client may open it — it is library-only
     ci = client_for("ivan@test.local")
-    assert "Tjedan 1" in ci.get("/treninzi").text          # ivan sees his programme
+    assert ci.get(f"/treninzi/{pid}").status_code == 403
+    assert "Tjedan 1" not in ci.get("/treninzi").text
+
+    # assign to ivan for today -> he sees it, dated; ana still does not
+    r = ct.post(f"/treninzi/{pid}/assign",
+                data={"user_id": ivan, "day": TODAY.isoformat()}, follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    page = ci.get("/treninzi").text
+    assert "Tjedan 1" in page and "Nadolazeći" in page
     assert ci.get(f"/treninzi/{pid}").status_code == 200
-
     ca = client_for("ana@test.local")
-    assert "Tjedan 1" not in ca.get("/treninzi").text      # ana does not
-    assert ca.get(f"/treninzi/{pid}").status_code == 403   # and cannot open it
+    assert "Tjedan 1" not in ca.get("/treninzi").text
+    assert ca.get(f"/treninzi/{pid}").status_code == 403
+
+    # duplicate (programme, client, day) is refused with a message
+    r = ct.post(f"/treninzi/{pid}/assign",
+                data={"user_id": ivan, "day": TODAY.isoformat()}, follow_redirects=False)
+    assert "error=" in r.headers["location"]
+
+    # unassign -> access gone
+    aid = db.assignments_for(ivan)[0].id
+    ct.post(f"/assignments/{aid}/delete")
+    assert ci.get(f"/treninzi/{pid}").status_code == 403
 
 
-def test_clients_cannot_create_or_edit():
+def test_same_program_many_clients_many_days():
+    ct, ivan, ana = trainer_with_clients()
+    pid = db.create_program("Krug A", None)
+    assert db.assign_program(pid, ivan, TODAY)
+    assert db.assign_program(pid, ana, TODAY)                       # other client, same day
+    assert db.assign_program(pid, ivan, TODAY + timedelta(days=2))  # same client, other day
+    assert not db.assign_program(pid, ivan, TODAY)                  # exact duplicate refused
+    assert len(db.assignments_for(ivan)) == 2
+    assert len(db.assignments_for(ana)) == 1
+
+
+def test_clients_cannot_create_assign_or_edit():
     ct, ivan, _ = trainer_with_clients()
-    pid = db.create_program(ivan, "T", None)
+    pid = db.create_program("T", None)
+    db.assign_program(pid, ivan, TODAY)
     ci = client_for("ivan@test.local")
-    assert ci.post("/treninzi", data={"user_id": ivan, "title": "X"}).status_code == 403
+    assert ci.post("/treninzi", data={"title": "X"}).status_code == 403
+    assert ci.post(f"/treninzi/{pid}/assign",
+                   data={"user_id": ivan, "day": TODAY.isoformat()}).status_code == 403
     assert ci.get(f"/treninzi/{pid}/uredi").status_code == 403
     assert ci.post(f"/treninzi/{pid}/items", data={"title": "X"}).status_code == 403
     assert ci.post(f"/treninzi/{pid}/delete").status_code == 403
+    aid = db.assignments_for(ivan)[0].id
+    assert ci.post(f"/assignments/{aid}/delete").status_code == 403
 
 
 def test_item_upload_and_media_gating():
     ct, ivan, ana = trainer_with_clients()
-    pid = db.create_program(ivan, "S medijem", None)
+    pid = db.create_program("S medijem", None)
+    db.assign_program(pid, ivan, TODAY)
     r = ct.post(f"/treninzi/{pid}/items",
                 data={"title": "Čučanj", "body": "3x10"},
                 files={"media": ("cucanj.png", io.BytesIO(PNG), "image/png")},
@@ -96,7 +135,7 @@ def test_item_upload_and_media_gating():
 
 def test_media_rejects_bad_type_and_traversal():
     ct, ivan, _ = trainer_with_clients()
-    pid = db.create_program(ivan, "T", None)
+    pid = db.create_program("T", None)
     r = ct.post(f"/treninzi/{pid}/items",
                 data={"title": "X"},
                 files={"media": ("napad.exe", io.BytesIO(b"MZ..."), "application/x-msdownload")},
@@ -108,7 +147,7 @@ def test_media_rejects_bad_type_and_traversal():
 
 def test_item_reorder_and_delete_keep_positions_dense():
     ct, ivan, _ = trainer_with_clients()
-    pid = db.create_program(ivan, "T", None)
+    pid = db.create_program("T", None)
     for name in ("A", "B", "C"):
         db.add_item(pid, name, None, None, None)
     a, b, c = [i.id for i in db.get_program(pid).items]
@@ -126,7 +165,7 @@ def test_item_reorder_and_delete_keep_positions_dense():
 
 def test_delete_program_removes_media_files():
     ct, ivan, _ = trainer_with_clients()
-    pid = db.create_program(ivan, "T", None)
+    pid = db.create_program("T", None)
     ct.post(f"/treninzi/{pid}/items", data={"title": "V"},
             files={"media": ("v.png", io.BytesIO(PNG), "image/png")})
     name = db.get_program(pid).items[0].media_name

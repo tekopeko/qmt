@@ -17,7 +17,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import config
-from .models import Base, Booking, Program, ProgramItem, SessionTemplate, TrainingSession, User
+from .models import (Base, Booking, Program, ProgramAssignment, ProgramItem,
+                     SessionTemplate, TrainingSession, User)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -317,33 +318,81 @@ def list_clients() -> list[User]:
                               .order_by(User.name, User.email)))
 
 
-def programs_for(user_id: int) -> list[Program]:
+def assignments_for(user_id: int) -> list[ProgramAssignment]:
+    """A client's handed-out trainings, newest date first (programme+items eager)."""
     from sqlalchemy.orm import selectinload
 
     with session_scope() as s:
-        # items eager-loaded: rows are detached once the session closes, and the
-        # list template shows each programme's exercise count
-        return list(s.scalars(select(Program).where(Program.user_id == user_id)
-                              .options(selectinload(Program.items))
-                              .order_by(Program.updated_at.desc())))
+        return list(s.scalars(
+            select(ProgramAssignment).where(ProgramAssignment.user_id == user_id)
+            .options(selectinload(ProgramAssignment.program).selectinload(Program.items))
+            .order_by(ProgramAssignment.date.desc(), ProgramAssignment.id.desc())))
 
 
-def all_programs() -> list[tuple[Program, User, int]]:
-    """Trainer overview: every programme + its client + item count."""
+def client_can_view(program_id: int, user_id: int) -> bool:
+    """A client may open a programme (and its media) only if it was assigned to them."""
+    with session_scope() as s:
+        return bool(s.scalar(select(func.count()).select_from(ProgramAssignment)
+                             .where(ProgramAssignment.program_id == program_id,
+                                    ProgramAssignment.user_id == user_id)))
+
+
+def all_programs() -> list[tuple[Program, int, int]]:
+    """Trainer library: every programme + item count + assignment count."""
+    with session_scope() as s:
+        items = (select(ProgramItem.program_id, func.count().label("n"))
+                 .group_by(ProgramItem.program_id).subquery())
+        assigns = (select(ProgramAssignment.program_id, func.count().label("n"))
+                   .group_by(ProgramAssignment.program_id).subquery())
+        rows = s.execute(
+            select(Program, func.coalesce(items.c.n, 0), func.coalesce(assigns.c.n, 0))
+            .join(items, items.c.program_id == Program.id, isouter=True)
+            .join(assigns, assigns.c.program_id == Program.id, isouter=True)
+            .order_by(Program.updated_at.desc())
+        ).all()
+        return [(p, ni, na) for p, ni, na in rows]
+
+
+def assignments_overview(limit: int = 100) -> list[tuple[ProgramAssignment, Program, User]]:
+    """Trainer view of hand-outs, newest date first."""
     with session_scope() as s:
         rows = s.execute(
-            select(Program, User, func.count(ProgramItem.id))
-            .join(User, User.id == Program.user_id)
-            .join(ProgramItem, ProgramItem.program_id == Program.id, isouter=True)
-            .group_by(Program.id, User.id)
-            .order_by(User.name, User.email, Program.updated_at.desc())
+            select(ProgramAssignment, Program, User)
+            .join(Program, Program.id == ProgramAssignment.program_id)
+            .join(User, User.id == ProgramAssignment.user_id)
+            .order_by(ProgramAssignment.date.desc(), ProgramAssignment.id.desc())
+            .limit(limit)
         ).all()
-        return [(p, u, n) for p, u, n in rows]
+        return [(a, p, u) for a, p, u in rows]
 
 
-def create_program(user_id: int, title: str, intro: str | None) -> int:
+def assign_program(program_id: int, user_id: int, on_date, note: str | None = None) -> bool:
+    """Hand a programme to a client for a day. False on the (program, user, day)
+    duplicate — assigning the same workout twice for the same day is a mistake,
+    not a request."""
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        with session_scope() as s:
+            s.add(ProgramAssignment(program_id=program_id, user_id=user_id,
+                                    date=on_date, note=note))
+        return True
+    except IntegrityError:
+        return False
+
+
+def unassign(assignment_id: int) -> bool:
     with session_scope() as s:
-        p = Program(user_id=user_id, title=title, intro=intro)
+        a = s.get(ProgramAssignment, assignment_id)
+        if a is None:
+            return False
+        s.delete(a)
+        return True
+
+
+def create_program(title: str, intro: str | None) -> int:
+    with session_scope() as s:
+        p = Program(title=title, intro=intro)
         s.add(p)
         s.flush()
         return p.id

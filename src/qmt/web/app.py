@@ -479,14 +479,16 @@ def _unlink_media(name: str | None) -> None:
 
 
 def _program_or_403(request: Request, program_id: int):
-    """(user, program) if the requester may SEE this programme, else raise."""
+    """(user, program) if the requester may SEE this programme, else raise.
+    A client sees a programme only through an assignment; the library is
+    trainer-only."""
     user = current_user(request)
     if user is None:
         return None, None
     p = db.get_program(program_id)
     if p is None:
         raise HTTPException(status_code=404)
-    if not user.is_trainer and p.user_id != user.id:
+    if not user.is_trainer and not db.client_can_view(program_id, user.id):
         raise HTTPException(status_code=403, detail="Ovo nije tvoj trening.")
     return user, p
 
@@ -499,22 +501,55 @@ def treninzi(request: Request):
         return RedirectResponse(f"/login?next={quote('/treninzi')}", status_code=303)
     if user.is_trainer:
         return templates.TemplateResponse(request, "treninzi_admin.html", _ctx(
-            request, user, rows=db.all_programs(), clients=db.list_clients()))
+            request, user, rows=db.all_programs(), clients=db.list_clients(),
+            handouts=db.assignments_overview(), today=config.today()))
+    assignments = db.assignments_for(user.id)
+    today = config.today()
     return templates.TemplateResponse(request, "treninzi.html", _ctx(
-        request, user, programs=db.programs_for(user.id)))
+        request, user,
+        upcoming=sorted([a for a in assignments if a.date >= today], key=lambda a: a.date),
+        past=[a for a in assignments if a.date < today],
+        today=today))
 
 
 @app.post("/treninzi")
-def create_program(request: Request, user_id: int = Form(...), title: str = Form(...),
-                   intro: str = Form("")):
+def create_program(request: Request, title: str = Form(...), intro: str = Form("")):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     title = title.strip()
     if not title:
         return RedirectResponse("/treninzi?error=Naziv+je+obavezan.", status_code=303)
-    pid = db.create_program(user_id, title, intro.strip() or None)
+    pid = db.create_program(title, intro.strip() or None)
     return RedirectResponse(f"/treninzi/{pid}/uredi", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/assign")
+def assign_program(request: Request, program_id: int, user_id: int = Form(...),
+                   day: str = Form(...), note: str = Form("")):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    if db.get_program(program_id) is None:
+        raise HTTPException(status_code=404)
+    try:
+        on = date.fromisoformat(day)
+    except ValueError:
+        return RedirectResponse("/treninzi?error=Neispravan+datum.", status_code=303)
+    if db.assign_program(program_id, user_id, on, note.strip() or None):
+        return RedirectResponse("/treninzi?ok=Trening+je+dodijeljen.", status_code=303)
+    return RedirectResponse(
+        "/treninzi?error=Taj+trening+je+već+dodijeljen+tom+polazniku+za+taj+dan.",
+        status_code=303)
+
+
+@app.post("/assignments/{assignment_id}/delete")
+def delete_assignment(request: Request, assignment_id: int):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    db.unassign(assignment_id)
+    return RedirectResponse("/treninzi?ok=Dodjela+je+uklonjena.", status_code=303)
 
 
 @app.get("/treninzi/{program_id}", response_class=HTMLResponse)
@@ -522,10 +557,8 @@ def program_view(request: Request, program_id: int):
     user, p = _program_or_403(request, program_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    with db.session_scope() as s:
-        client = s.get(db.User, p.user_id)
     return templates.TemplateResponse(request, "trening_view.html", _ctx(
-        request, user, p=p, client=client))
+        request, user, p=p))
 
 
 @app.get("/treninzi/{program_id}/uredi", response_class=HTMLResponse)
@@ -536,10 +569,8 @@ def program_edit_page(request: Request, program_id: int):
     p = db.get_program(program_id)
     if p is None:
         raise HTTPException(status_code=404)
-    with db.session_scope() as s:
-        client = s.get(db.User, p.user_id)
     return templates.TemplateResponse(request, "trening_edit.html", _ctx(
-        request, user, p=p, client=client))
+        request, user, p=p))
 
 
 @app.post("/treninzi/{program_id}/edit")
@@ -631,7 +662,7 @@ def media(request: Request, name: str):
     p = db.media_owner_program(name)
     if p is None:
         raise HTTPException(status_code=404)
-    if not user.is_trainer and p.user_id != user.id:
+    if not user.is_trainer and not db.client_can_view(p.id, user.id):
         raise HTTPException(status_code=403, detail="Ovo nije tvoj sadržaj.")
     path = config.MEDIA_DIR / name
     if not path.is_file():

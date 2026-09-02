@@ -3,38 +3,54 @@
 {% block content %}
 <h1 style="font-size:1.8rem; margin-bottom:4px;">Treninzi</h1>
 <p class="hint" style="margin-bottom:24px;">
-  Svaki trening pripada jednom polazniku — vidi ga samo on. Dodaj vježbe s tekstom,
-  slikom ili videom, poredaj ih i program je objavljen.
+  Biblioteka programa: složi trening jednom, pa ga dodijeli bilo kojem polazniku za
+  određeni dan. Polaznik vidi samo ono što mu je dodijeljeno.
 </p>
 
-<h2 style="font-size:1.05rem; margin-bottom:12px;">Novi trening</h2>
-<form method="post" action="/treninzi" class="card" style="max-width:560px; padding:20px 22px; margin-bottom:34px;">
-  <div class="field"><label for="np-user">Polaznik</label>
-    <select id="np-user" name="user_id" required>
-      {% for c in clients %}<option value="{{ c.id }}">{{ c.name or c.email }}</option>{% endfor %}
-    </select></div>
-  <div class="field"><label for="np-title">Naziv treninga</label>
-    <input id="np-title" type="text" name="title" placeholder="npr. Povratak nakon ozljede — tjedan 1" required></div>
-  <div class="field"><label for="np-intro">Uvod (neobavezno)</label>
-    <textarea id="np-intro" name="intro" rows="2" placeholder="Kratke upute, cilj programa…"></textarea></div>
-  <button type="submit">Kreiraj i dodaj vježbe</button>
-</form>
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:18px; max-width:900px; margin-bottom:34px;">
+  <form method="post" action="/treninzi" class="card" style="padding:20px 22px;">
+    <h2 style="font-size:1.02rem; margin-bottom:12px;">Novi trening</h2>
+    <div class="field"><label for="np-title">Naziv</label>
+      <input id="np-title" type="text" name="title" placeholder="npr. Snaga — uvodni blok" required></div>
+    <div class="field"><label for="np-intro">Uvod (neobavezno)</label>
+      <textarea id="np-intro" name="intro" rows="2" placeholder="Kratke upute, cilj programa…"></textarea></div>
+    <button type="submit">Kreiraj i dodaj vježbe</button>
+  </form>
 
-<h2 style="font-size:1.05rem; margin-bottom:12px;">Svi treninzi</h2>
+  <form method="post" action="" class="card" style="padding:20px 22px;"
+        onsubmit="this.action='/treninzi/'+this.program_id.value+'/assign';">
+    <h2 style="font-size:1.02rem; margin-bottom:12px;">Dodijeli trening</h2>
+    <div class="field"><label for="as-p">Trening</label>
+      <select id="as-p" name="program_id" required>
+        {% for p, ni, na in rows %}<option value="{{ p.id }}">{{ p.title }} ({{ ni }} vj.)</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="as-u">Polaznik</label>
+      <select id="as-u" name="user_id" required>
+        {% for c in clients %}<option value="{{ c.id }}">{{ c.name or c.email }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="as-d">Dan</label>
+      <input id="as-d" type="date" name="day" value="{{ today.isoformat() }}" required></div>
+    <div class="field"><label for="as-n">Napomena (neobavezno)</label>
+      <input id="as-n" type="text" name="note" placeholder="npr. prije grupnog termina"></div>
+    <button type="submit" {% if not rows or not clients %}disabled style="opacity:.5;"{% endif %}>Dodijeli</button>
+  </form>
+</div>
+
+<h2 style="font-size:1.05rem; margin-bottom:12px;">Biblioteka</h2>
 {% if rows %}
-<div style="overflow-x:auto;">
+<div style="overflow-x:auto; margin-bottom:34px;">
 <table style="width:100%; border-collapse:collapse; font-size:.92rem;">
   <thead>
     <tr style="border-bottom:2px solid var(--line); text-align:left;">
-      <th style="padding:8px 6px;">Polaznik</th><th>Trening</th><th>Vježbe</th><th>Zadnja izmjena</th><th></th>
+      <th style="padding:8px 6px;">Trening</th><th>Vježbe</th><th>Dodjele</th><th>Zadnja izmjena</th><th></th>
     </tr>
   </thead>
   <tbody>
-    {% for p, u, n in rows %}
+    {% for p, ni, na in rows %}
     <tr style="border-bottom:1px solid var(--line);">
-      <td style="padding:9px 6px;"><strong>{{ u.name or u.email }}</strong></td>
-      <td>{{ p.title }}</td>
-      <td>{{ n }}</td>
+      <td style="padding:9px 6px;"><strong>{{ p.title }}</strong></td>
+      <td>{{ ni }}</td>
+      <td>{{ na }}</td>
       <td class="hint">{{ p.updated_at.strftime("%-d.%-m.%Y.") }}</td>
       <td style="white-space:nowrap; text-align:right;">
         <a class="btn btn-ghost btn-sm" href="/treninzi/{{ p.id }}">Pogledaj</a>
@@ -46,6 +62,40 @@
 </table>
 </div>
 {% else %}
-<p class="hint">Još nema treninga — kreiraj prvi gore.</p>
+<p class="hint" style="margin-bottom:34px;">Biblioteka je prazna — kreiraj prvi trening gore.</p>
+{% endif %}
+
+<h2 style="font-size:1.05rem; margin-bottom:12px;">Dodjele</h2>
+{% if handouts %}
+<div style="overflow-x:auto;">
+<table style="width:100%; border-collapse:collapse; font-size:.92rem;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--line); text-align:left;">
+      <th style="padding:8px 6px;">Dan</th><th>Polaznik</th><th>Trening</th><th>Napomena</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a, p, u in handouts %}
+    <tr style="border-bottom:1px solid var(--line); {% if a.date < today %}opacity:.55;{% endif %}">
+      <td style="padding:9px 6px; white-space:nowrap;">
+        <strong>{{ weekdays_short[a.date.weekday()] }} {{ a.date.strftime("%-d.%-m.%Y.") }}</strong>
+        {% if a.date == today %}<span style="color:var(--accent); font-weight:700;"> · danas</span>{% endif %}
+      </td>
+      <td>{{ u.name or u.email }}</td>
+      <td>{{ p.title }}</td>
+      <td class="hint">{{ a.note or "" }}</td>
+      <td style="text-align:right;">
+        <form method="post" action="/assignments/{{ a.id }}/delete" style="margin:0; display:inline;"
+              onsubmit="return confirm('Ukloniti dodjelu \'{{ p.title }}\' ({{ u.name or u.email }}, {{ a.date.strftime('%-d.%-m.') }})?')">
+          <button class="btn-sm btn-ghost" type="submit">Ukloni</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="hint">Još ništa nije dodijeljeno.</p>
 {% endif %}
 {% endblock %}
