@@ -99,6 +99,28 @@
     .nav a.cta { background: var(--accent); color: #fff; font-weight: 700; margin-left: 6px; }
     .nav a.cta:hover { background: var(--accent-strong); }
     .theme-toggle { font-size: 1.05rem; line-height: 1; }
+    .nav-burger { display: none; font-size: 1.35rem; padding: 6px 12px; }
+
+    /* ===== mobile: seven inline items cannot fit 390px — drawer behind ☰ ===== */
+    @media (max-width: 860px) {
+      .nav-burger { display: inline-flex; }
+      .nav {
+        display: none;
+        position: absolute; top: 100%; left: 0; right: 0;
+        flex-direction: column; align-items: stretch; gap: 2px;
+        background: #161618; padding: 8px 14px 16px;
+        border-top: 1px solid rgba(255, 255, 255, .08);
+        box-shadow: 0 16px 28px rgba(0, 0, 0, .45);
+      }
+      .nav.open { display: flex; }
+      .nav a, .nav .navbtn {
+        padding: 13px 14px; font-size: 1rem; border-radius: 10px;
+        justify-content: flex-start; width: 100%;
+      }
+      .nav form { width: 100%; }
+      .nav a.cta { margin-left: 0; justify-content: center; }
+      .theme-toggle { justify-content: center; }
+    }
 
     main { max-width: 1100px; margin: 0 auto; padding: clamp(18px, 3vw, 34px) clamp(14px, 4vw, 40px) 70px; }
     main.full { max-width: none; padding: 0; }
@@ -161,7 +183,9 @@
 <header class="topbar">
   <a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
      <span class="full">Quality Movement Training</span></a>
-  <nav class="nav">
+  <button type="button" class="navbtn nav-burger" onclick="qmtToggleNav()"
+          aria-label="Izbornik" aria-expanded="false" aria-controls="mainNav">☰</button>
+  <nav class="nav" id="mainNav">
     {% if user %}
       <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if request.url.path.startswith('/raspored') %}on{% endif %}">Raspored</a>
@@ -200,6 +224,15 @@
     qmtApplyIcon();
   }
   qmtApplyIcon();
+  function qmtToggleNav() {
+    var nav = document.getElementById("mainNav");
+    var open = nav.classList.toggle("open");
+    document.querySelector(".nav-burger").setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  // picking a destination closes the drawer
+  document.getElementById("mainNav").addEventListener("click", function (e) {
+    if (e.target.closest("a")) this.classList.remove("open");
+  });
   // PWA: register the root-scoped service worker (no-op where unsupported)
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {

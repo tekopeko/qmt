@@ -124,6 +124,8 @@ explicitly). Semantics locked by tests.
 
 - `.env` is optional in dev — defaults hit local Postgres DB `qmt`, session key is a
   dev constant, allowlist is empty (only `TRAINER_EMAIL`, if set, may sign up).
+  Set `TRAINER_EMAIL=trener@qmt.local` in dev `.env` to make the seeded trainer
+  the OWNER locally — without it nobody is owner and /korisnici is unreachable.
 - Sessions are stored tz-aware (Europe/Zagreb) — compare against
   `datetime.now(config.TZ)`, never naive `now()`.
 - Cancelled sessions stay in the calendar crossed out on purpose (a vanished session
