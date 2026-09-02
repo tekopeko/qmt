@@ -22,7 +22,20 @@ TZ = ZoneInfo("Europe/Zagreb")
 ENV = os.environ.get("ENV", "development").strip().lower()
 IS_PROD = ENV == "production"
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql+psycopg:///qmt")
+def _normalize_db_url(url: str) -> str:
+    """Managed hosts (Railway, Heroku, …) inject `postgres://` or `postgresql://`,
+    which SQLAlchemy maps to the psycopg2 dialect — but we install psycopg 3.
+    Same lesson macro_tracker's config already encodes; forgetting it crashed
+    the very first Railway deploy at `alembic upgrade head`."""
+    for scheme in ("postgres://", "postgresql://", "postgresql+psycopg2://"):
+        if url.startswith(scheme):
+            return "postgresql+psycopg://" + url[len(scheme):]
+    return url
+
+
+DATABASE_URL = _normalize_db_url(
+    os.environ.get("DATABASE_URL", "postgresql+psycopg:///qmt").strip()
+)
 
 _DEV_SECRET = "dev-secret-do-not-use-in-prod"
 SECRET_KEY = os.environ.get("SECRET_KEY", _DEV_SECRET)
