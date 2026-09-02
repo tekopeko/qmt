@@ -92,7 +92,9 @@
         <div class="cap">
           {% if s.canceled %}otkazano
           {% elif s.one_on_one %}{{ "rezervirano ✓" if s.mine else ("slobodno" if not s.full else "zauzeto") }}
-          {% else %}{{ s.booked }}/{{ s.capacity }} mjesta{% endif %}
+          {# free spots: green count, same convention as the trainer's Polaznici
+             button; when full the .sess.full rule paints the whole line red #}
+          {% else %}<span{% if not s.full %} style="color:var(--good); font-weight:700;"{% endif %}>{{ s.booked }}</span>/{{ s.capacity }} mjesta{% endif %}
         </div>
         {% endif %}
         {% if user.is_trainer %}
