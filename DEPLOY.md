@@ -18,7 +18,7 @@ is: new project → paste variables → repoint DNS. Nothing else is account-bou
    | `ENV` | `production` |
    | `SECRET_KEY` | `python3 -c "import secrets;print(secrets.token_hex(32))"` |
    | `DATABASE_URL` | reference the Railway Postgres (internal URL) — note driver: `postgresql+psycopg://` |
-   | `TRAINER_EMAIL` | the trainer's real address |
+   | `OWNER_EMAIL` | the app owner's address (Tvrtko) — controls roles and /korisnici |
    | `ALLOWED_EMAILS` | first clients, comma-separated (owner's address too, for testing) |
    | `PUBLIC_BASE_URL` | `https://qmt.mojimakrosi.com` |
    | `RESEND_API_KEY` | existing Resend account |
@@ -36,7 +36,7 @@ Railway shows a target → add **CNAME `qmt` → that target** in Cloudflare
 ## 3. First boot (order matters)
 
 1. Open `https://qmt.mojimakrosi.com` — landing should render.
-2. Trainer **signs up** with `TRAINER_EMAIL` → clicks the verification email.
+2. Owner **signs up** with `OWNER_EMAIL` → clicks the verification email.
 3. Grant admin from the laptop (signup NEVER grants it):
    ```bash
    DATABASE_URL="<railway PUBLIC postgres url, +psycopg>" python scripts/make_trainer.py <trainer email>

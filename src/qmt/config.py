@@ -48,10 +48,11 @@ def _env_email(name: str) -> str:
     return os.environ.get(name, "").strip().strip("\"'").strip().lower()
 
 
-# The trainer (owner). Always allowed, always admin.
-TRAINER_EMAIL = _env_email("TRAINER_EMAIL")
-if IS_PROD and not TRAINER_EMAIL:
-    raise RuntimeError("Set TRAINER_EMAIL when ENV=production.")
+# The app owner. Always allowed to sign up, passes every trainer gate, and is
+# the only account that may manage roles (/korisnici).
+OWNER_EMAIL = _env_email("OWNER_EMAIL")
+if IS_PROD and not OWNER_EMAIL:
+    raise RuntimeError("Set OWNER_EMAIL when ENV=production.")
 
 
 def _allowlist() -> set[str]:
@@ -61,7 +62,7 @@ def _allowlist() -> set[str]:
 
 def email_allowed(email: str) -> bool:
     e = email.strip().lower()
-    if TRAINER_EMAIL and e == TRAINER_EMAIL:
+    if OWNER_EMAIL and e == OWNER_EMAIL:
         return True
     return e in _allowlist()
 

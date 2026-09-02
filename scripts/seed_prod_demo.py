@@ -33,7 +33,7 @@ from qmt.models import (              # noqa: E402
     Booking, Program, SessionTemplate, TrainingSession, User,
 )
 
-TRAINER_EMAIL = config.TRAINER_EMAIL or "tvrtko.doresic@gmail.com"
+OWNER_EMAIL = config.OWNER_EMAIL or "tvrtko.doresic@gmail.com"
 
 CLIENTS = [
     ("marko.horvat.demo@example.com", "Marko Horvat"),
@@ -163,10 +163,10 @@ def main() -> None:
     print("treninzi:")
     seed_programs()
 
-    if db.set_trainer(TRAINER_EMAIL):
-        print(f"trainer: {TRAINER_EMAIL} → admin")
+    if db.set_trainer(OWNER_EMAIL):
+        print(f"trainer: {OWNER_EMAIL} → admin")
     else:
-        print(f"trainer: {TRAINER_EMAIL} NOT found — sign up first, then re-run "
+        print(f"trainer: {OWNER_EMAIL} NOT found — sign up first, then re-run "
               f"(or run scripts/make_trainer.py)")
     print("done.")
 

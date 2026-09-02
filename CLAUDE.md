@@ -76,7 +76,7 @@ explicitly). Semantics locked by tests.
 
 | Path | Role |
 |---|---|
-| `src/qmt/config.py` | `.env`, `TRAINER_EMAIL`/`ALLOWED_EMAILS` allowlist, booking knobs (`CANCEL_CUTOFF_HOURS`, `BOOKING_HORIZON_DAYS`), prod guards |
+| `src/qmt/config.py` | `.env`, `OWNER_EMAIL`/`ALLOWED_EMAILS` allowlist, booking knobs (`CANCEL_CUTOFF_HOURS`, `BOOKING_HORIZON_DAYS`), prod guards |
 | `src/qmt/models.py` | `User` (`is_trainer`), `SessionTemplate`, `TrainingSession`, `Booking` |
 | `src/qmt/db.py` | Queries + booking rules. **`book()` locks the session row FOR UPDATE** and re-counts inside the lock — capacity must hold under concurrent taps (tested) |
 | `src/qmt/auth.py` | Only bcrypt importer + signed email tokens (verify 24 h; reset 1 h, single-use via `pw_marker`) |
@@ -123,8 +123,8 @@ explicitly). Semantics locked by tests.
 ## Gotchas
 
 - `.env` is optional in dev — defaults hit local Postgres DB `qmt`, session key is a
-  dev constant, allowlist is empty (only `TRAINER_EMAIL`, if set, may sign up).
-  Set `TRAINER_EMAIL=trener@qmt.local` in dev `.env` to make the seeded trainer
+  dev constant, allowlist is empty (only `OWNER_EMAIL`, if set, may sign up).
+  Set `OWNER_EMAIL=trener@qmt.local` in dev `.env` to make the seeded trainer
   the OWNER locally — without it nobody is owner and /korisnici is unreachable.
 - Sessions are stored tz-aware (Europe/Zagreb) — compare against
   `datetime.now(config.TZ)`, never naive `now()`.

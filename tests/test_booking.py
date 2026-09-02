@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
 os.environ["ALLOWED_EMAILS"] = "ivan@test.local,ana@test.local,treći@test.local"
-os.environ["TRAINER_EMAIL"] = "trener@test.local"
+os.environ["OWNER_EMAIL"] = "trener@test.local"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -355,9 +355,9 @@ def test_login_next_cannot_be_an_open_redirect():
 # ---------- korisnici (owner-only roster + trainer grants) ----------
 
 def test_owner_roster_and_trainer_grants():
-    """Owner (TRAINER_EMAIL account) sees all users and grants/revokes trainer.
+    """Owner (OWNER_EMAIL account) sees all users and grants/revokes trainer.
     A mere trainer is NOT the owner and gets 403 — roles are the owner's alone."""
-    make_user("trener@test.local")               # email matches TRAINER_EMAIL -> owner
+    make_user("trener@test.local")               # email matches OWNER_EMAIL -> owner
     ivan = make_user("ivan@test.local")
     co = client_for("trener@test.local")
 

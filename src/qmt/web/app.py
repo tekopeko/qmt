@@ -40,11 +40,11 @@ def current_user(request: Request):
 
 
 def _is_owner(user) -> bool:
-    """The app owner = the TRAINER_EMAIL account (mojimakrosi's owner-by-email
-    pattern). Only the owner manages roles; trainers run the gym. At handover,
-    changing the env var moves ownership with no DB surgery."""
-    return bool(user and config.TRAINER_EMAIL
-                and (user.email or "").strip().lower() == config.TRAINER_EMAIL)
+    """The app owner = the OWNER_EMAIL account (mojimakrosi's owner-by-email
+    pattern). Only the owner manages roles; trainers run the gym. Ownership
+    stays with the env var — it is deliberately NOT hand-over-able in-app."""
+    return bool(user and config.OWNER_EMAIL
+                and (user.email or "").strip().lower() == config.OWNER_EMAIL)
 
 
 def _ctx(request: Request, user, **extra):
@@ -733,7 +733,7 @@ def users_page(request: Request):
         return redirect
     return templates.TemplateResponse(request, "korisnici.html", _ctx(
         request, user, users=db.list_all_users(),
-        owner_email=config.TRAINER_EMAIL))
+        owner_email=config.OWNER_EMAIL))
 
 
 @app.post("/korisnici/{user_id}/trainer")

@@ -7,7 +7,7 @@ import os
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
 os.environ["ALLOWED_EMAILS"] = "ivan@test.local,ana@test.local"
-os.environ["TRAINER_EMAIL"] = "trener@test.local"
+os.environ["OWNER_EMAIL"] = "trener@test.local"
 
 import pytest
 from fastapi.testclient import TestClient
