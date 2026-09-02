@@ -194,13 +194,29 @@ def calendar(request: Request, week: str | None = None):
         # key is "sessions", NOT "items" — Jinja resolves dict.items to the builtin method
         days.append({"date": d, "name": WEEKDAYS[i], "is_today": d == today, "sessions": sessions})
 
+    # "Moje rezervacije" as day columns mirroring the week grid. my_upcoming()
+    # is chronological, so grouping consecutive rows by local date suffices —
+    # and it may span two weeks, hence dates (not weekdays) as the group key.
+    mine_days = []
+    for sess in db.my_upcoming(user.id):
+        local = sess.starts_at.astimezone(config.TZ)
+        if not mine_days or mine_days[-1]["date"] != local.date():
+            mine_days.append({"date": local.date(), "name": WEEKDAYS[local.weekday()],
+                              "is_today": local.date() == today, "sessions": []})
+        mine_days[-1]["sessions"].append({
+            "time": local.strftime("%H:%M"),
+            "end": (local + timedelta(minutes=sess.duration_min)).strftime("%H:%M"),
+            "title": sess.title,
+            "canceled": sess.canceled,
+            "one_on_one": sess.capacity == 1,
+        })
+
     return templates.TemplateResponse(request, "calendar.html", _ctx(
         request, user,
         days=days, monday=monday,
         prev_week=(monday - timedelta(days=7)).isoformat(),
         next_week=(monday + timedelta(days=7)).isoformat(),
-        upcoming=db.my_upcoming(user.id),
-        tz=config.TZ,
+        mine_days=mine_days,
     ))
 
 

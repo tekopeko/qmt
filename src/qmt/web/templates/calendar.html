@@ -45,12 +45,13 @@
 
   .mine-list { margin-top: 34px; }
   .mine-list h2 { font-size: 1.05rem; margin-bottom: 10px; }
-  .mine-list li { font-size: .92rem; padding: 6px 0; border-bottom: 1px solid var(--line);
-                  list-style: none; display: flex; gap: 10px; }
-  .mine-list .when { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 130px; }
+  /* auto-fill (not auto-fit): keep the empty tracks so a few day columns stay
+     the same width as the week grid's instead of stretching across the page */
+  .mine-week { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+               gap: 12px; }
 
   @media (max-width: 860px) {
-    .week { grid-template-columns: 1fr; }
+    .week, .mine-week { grid-template-columns: 1fr; }
     .day-col.empty-day { display: none; }   /* phones: skip blank days, show a compact agenda */
     .week.all-empty { display: none; }      /* fully empty week: the message above stands alone */
   }
@@ -122,18 +123,23 @@
   {% endfor %}
 </div>
 
-{% if upcoming and not user.is_trainer %}
+{% if mine_days and not user.is_trainer %}
 <div class="mine-list">
   <h2>Moje rezervacije</h2>
-  <ul style="padding:0;">
-    {% for s in upcoming %}
-    <li{% if s.canceled %} style="opacity:.6;"{% endif %}>
-      <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
-      <span{% if s.canceled %} style="text-decoration: line-through;"{% endif %}>{{ s.title }}</span>
-      {% if s.canceled %}<strong style="color:var(--danger); font-size:.78rem;">OTKAZANO</strong>{% endif %}
-    </li>
+  <div class="mine-week">
+    {% for day in mine_days %}
+    <div class="day-col {% if day.is_today %}today{% endif %}">
+      <div class="day-head"><span>{{ day.name }}</span><span class="num">{{ day.date.strftime("%-d.%-m.") }}</span></div>
+      {% for s in day.sessions %}
+      <div class="sess {% if s.canceled %}canceled{% endif %}">
+        <div class="t">{{ s.time }}–{{ s.end }}</div>
+        <div class="name">{{ s.title }}{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
+        {% if s.canceled %}<div class="cap" style="color:var(--danger); font-weight:700;">OTKAZANO</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
     {% endfor %}
-  </ul>
+  </div>
 </div>
 {% endif %}
 

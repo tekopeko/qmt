@@ -170,7 +170,9 @@
       border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
       padding: 11px 15px; margin-bottom: 18px; font-size: .92rem;
     }
-    .alert.ok { background: var(--surface); border-color: var(--line); }
+    .alert.ok { color: var(--good); font-weight: 600;
+                background: color-mix(in srgb, var(--good) 10%, var(--surface));
+                border-color: color-mix(in srgb, var(--good) 35%, transparent); }
     .hint { color: var(--muted); font-size: .85rem; }
 
     @media (prefers-reduced-motion: reduce) {
