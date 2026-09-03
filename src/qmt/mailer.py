@@ -39,6 +39,23 @@ def send_verification_email(to: str, link: str) -> bool:
       </div>""")
 
 
+def send_new_user_notice(owner_email: str, new_email: str, full_name: str | None) -> bool:
+    """Tell the owner a new user just VERIFIED (mojimakrosi's pattern — sign-up
+    alone can be a bot row that never opens its inbox)."""
+    import html as _html
+
+    # Escaped: name and email are attacker-controlled and land in the owner's
+    # mail client as HTML.
+    who = _html.escape(f"{full_name} <{new_email}>" if full_name else new_email)
+    return _send(owner_email, "Novi korisnik — QMT", f"""
+      <div style="font-family:sans-serif;max-width:480px">
+        <h2>Quality Movement Training</h2>
+        <p>Novi korisnik je potvrdio račun:</p>
+        <p style="font-size:16px;font-weight:700">{who}</p>
+        <p style="color:#777;font-size:13px">Članarinu mu dodijeli na stranici Članarine.</p>
+      </div>""")
+
+
 def send_password_reset_email(to: str, link: str) -> bool:
     return _send(to, "Nova lozinka za QMT", f"""
       <div style="font-family:sans-serif;max-width:480px">

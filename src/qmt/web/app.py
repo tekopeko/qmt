@@ -283,7 +283,18 @@ def auth_verify(request: Request, token: str = ""):
     if email is None:
         return RedirectResponse(
             "/login?error=Link+nije+valjan+ili+je+istekao+—+prijavi+se+za+novi.", status_code=303)
-    db.mark_email_verified(email)
+    newly = db.mark_email_verified(email)
+    if newly is None:
+        return RedirectResponse("/login?error=Račun+ne+postoji+—+registriraj+se.", status_code=303)
+    # Owner hears about REAL arrivals only: first verification, never a
+    # re-clicked link, never the owner verifying their own account.
+    if newly and config.OWNER_EMAIL and email.strip().lower() != config.OWNER_EMAIL:
+        u = db.get_user_by_email(email)
+        try:
+            mailer.send_new_user_notice(config.OWNER_EMAIL, email,
+                                        u.full_name if u else None)
+        except Exception:
+            pass   # never block a verification on the courtesy mail
     return RedirectResponse("/login?ok=Email+je+potvrđen+—+prijavi+se.", status_code=303)
 
 

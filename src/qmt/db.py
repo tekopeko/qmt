@@ -72,13 +72,18 @@ def create_user(email: str, name: str, password_hash: str) -> User:
         return u
 
 
-def mark_email_verified(email: str) -> bool:
+def mark_email_verified(email: str) -> bool | None:
+    """None: no such account. True: NEWLY verified (fire the owner notice).
+    False: was already verified (a re-clicked link must not notify again).
+    Locked FOR UPDATE so two concurrent clicks can't both read 'newly'."""
     with session_scope() as s:
-        u = s.scalar(select(User).where(func.lower(User.email) == email.strip().lower()))
+        u = s.scalar(select(User).where(func.lower(User.email) == email.strip().lower())
+                     .with_for_update())
         if u is None:
-            return False
+            return None
+        newly = not u.email_verified
         u.email_verified = True
-        return True
+        return newly
 
 
 def reset_password(email: str, password_hash: str, expected_marker: str) -> bool:

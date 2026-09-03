@@ -87,3 +87,52 @@ def test_forgot_does_not_reveal_whether_account_exists():
     a = c.post("/forgot", data={"email": "nepostoji@test.local"})
     b_resp = c.post("/forgot", data={"email": "ivan@test.local"})
     assert a.status_code == b_resp.status_code == 200
+
+
+def test_owner_notified_once_on_first_verification(monkeypatch):
+    from qmt import mailer
+
+    sent = []
+    monkeypatch.setattr(mailer, "send_new_user_notice",
+                        lambda owner, email, name: sent.append((owner, email, name)) or True)
+
+    c = TestClient(app)
+    signup(c)
+    token = auth.make_verify_token("ivan@test.local")
+    c.get(f"/auth/verify?token={token}", follow_redirects=False)
+    assert sent == [("trener@test.local", "ivan@test.local", "Ivan")]
+
+    # a re-clicked link verifies nothing new -> no second notice
+    c.get(f"/auth/verify?token={token}", follow_redirects=False)
+    assert len(sent) == 1
+
+
+def test_owner_verifying_own_account_sends_no_notice(monkeypatch):
+    from qmt import mailer
+
+    sent = []
+    monkeypatch.setattr(mailer, "send_new_user_notice",
+                        lambda *a: sent.append(a) or True)
+
+    # the owner's address bypasses the allowlist by design
+    c = TestClient(app)
+    c.post("/signup", data={"name": "T", "email": "trener@test.local",
+                            "password": "lozinka123"}, follow_redirects=False)
+    token = auth.make_verify_token("trener@test.local")
+    c.get(f"/auth/verify?token={token}", follow_redirects=False)
+    assert sent == []
+
+
+def test_notice_failure_never_blocks_verification(monkeypatch):
+    from qmt import mailer
+
+    def boom(*a):
+        raise RuntimeError("resend down")
+
+    monkeypatch.setattr(mailer, "send_new_user_notice", boom)
+    c = TestClient(app)
+    signup(c)
+    token = auth.make_verify_token("ivan@test.local")
+    r = c.get(f"/auth/verify?token={token}", follow_redirects=False)
+    from urllib.parse import unquote
+    assert "potvrđen" in unquote(r.headers["location"])   # verified regardless
