@@ -95,13 +95,27 @@ def test_program_visible_only_by_matching_combo():
     assert ci.get(f"/treninzi/{bare}").status_code == 403
 
 
-def test_ensure_online_skeletons_idempotent():
+def test_ensure_online_skeletons_idempotent_and_prefilled():
     from qmt import upitnik
 
     assert db.ensure_online_skeletons() == len(upitnik.LEVELS) * len(upitnik.GOALS)
     assert db.ensure_online_skeletons() == 0            # second run adds nothing
-    combos = {(p.level, p.goal) for p, _ in db.all_programs() if p.level}
+    rows = [(p, ni) for p, ni in db.all_programs() if p.level]
+    combos = {(p.level, p.goal) for p, _ in rows}
     assert combos == {(lv, g) for lv in upitnik.LEVELS for g in upitnik.GOALS}
+    # every slot ships with default exercises — no combo renders empty...
+    assert all(ni > 0 for _, ni in rows)
+    counts = {p.id: ni for p, ni in rows}
+    db.ensure_online_skeletons()                        # ...and reruns never duplicate them
+    assert {p.id: ni for p, ni in db.all_programs() if p.level} == counts
+
+    # a slot the trainer emptied-and-refilled keeps HIS content: any item blocks the backfill
+    pid = next(p.id for p, _ in rows)
+    for item in db.get_program(pid).items:
+        db.delete_item(item.id)
+    db.add_item(pid, "Trenerova vježba", "5 × 5", None, None)
+    db.ensure_online_skeletons()
+    assert [i.title for i in db.get_program(pid).items] == ["Trenerova vježba"]
 
 
 def test_clients_cannot_create_or_edit():

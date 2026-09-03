@@ -146,21 +146,15 @@ def fill_bookings() -> None:
 
 
 def seed_program() -> None:
-    """The 9 combo skeletons; Ivan's combo (srednja/gornji) gets real items."""
-    from sqlalchemy import delete, select
+    """The 9 combo programmes, each pre-filled with the default exercises."""
+    from sqlalchemy import delete
 
     from qmt.models import Program
 
     with db.session_scope() as s:
         s.execute(delete(Program))
     made = db.ensure_online_skeletons()
-    with db.session_scope() as s:
-        pid = s.scalar(select(Program.id).where(Program.level == "srednja",
-                                                Program.goal == "gornji"))
-    db.add_item(pid, "Potisak s klupe", "3 × 10 · 40 kg\nLopatice skupljene, kontrolirano dolje.", None, None)
-    db.add_item(pid, "Veslanje u pretklonu", "3 × 12 · 10 kg\nPovuci prema pojasu, leđa ravna.", None, None)
-    db.add_item(pid, "Potisak iznad glave", "3 × 8 · bučice\nTrup čvrst, bez zaklona.", None, None)
-    print(f"  {made} skica programa, Ivanova kombinacija (srednja/gornji) ima vježbe")
+    print(f"  {made} programa (razina × cilj), svi s osnovnim vježbama")
 
 
 def seed_karton() -> None:

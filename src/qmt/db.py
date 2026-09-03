@@ -545,11 +545,51 @@ def client_can_view(program: Program, user_id: int) -> bool:
             and program.level == onb.level and program.goal == onb.goal)
 
 
+# Default content for the combo slots: the SAME structure per cilj, only the
+# prescription (serije × ponavljanja · kg) scales with the razina. Nothing
+# fancy — placeholders the trainer edits, so no slot ever renders empty.
+# (exercise, technique cue, {razina: prescription})
+_DEFAULT_ITEMS = {
+    "cijelo": [
+        ("Goblet čučanj", "Pete cijelo vrijeme na podu, trup uspravan.",
+         {"pocetna": "3 × 8 · 8 kg", "srednja": "4 × 10 · 16 kg", "napredna": "4 × 12 · 24 kg"}),
+        ("Sklekovi", "Tijelo u ravnoj liniji, bez propadanja kuka.",
+         {"pocetna": "3 × 5 (s koljena)", "srednja": "3 × 10", "napredna": "4 × 15"}),
+        ("Veslanje u pretklonu", "Povuci prema pojasu, leđa ravna.",
+         {"pocetna": "3 × 10 · 2 × 6 kg", "srednja": "3 × 12 · 2 × 10 kg", "napredna": "4 × 12 · 2 × 14 kg"}),
+        ("Plank", "Lopatice aktivne, gluteusi stisnuti.",
+         {"pocetna": "3 × 20 s", "srednja": "3 × 40 s", "napredna": "3 × 60 s"}),
+    ],
+    "gornji": [
+        ("Potisak s bučicama na klupi", "Lopatice skupljene, spusti kontrolirano.",
+         {"pocetna": "3 × 8 · 2 × 6 kg", "srednja": "4 × 10 · 2 × 12 kg", "napredna": "4 × 12 · 2 × 18 kg"}),
+        ("Veslanje u pretklonu", "Povuci prema pojasu, leđa ravna.",
+         {"pocetna": "3 × 10 · 2 × 6 kg", "srednja": "4 × 10 · 2 × 12 kg", "napredna": "4 × 12 · 2 × 16 kg"}),
+        ("Potisak iznad glave", "Trup čvrst, bez zaklona u leđima.",
+         {"pocetna": "3 × 8 · 2 × 4 kg", "srednja": "3 × 10 · 2 × 8 kg", "napredna": "4 × 10 · 2 × 12 kg"}),
+        ("Biceps pregib", "Laktovi mirni uz tijelo, puni opseg pokreta.",
+         {"pocetna": "2 × 10 · 2 × 4 kg", "srednja": "3 × 12 · 2 × 8 kg", "napredna": "3 × 15 · 2 × 10 kg"}),
+    ],
+    "donji": [
+        ("Goblet čučanj", "Koljena prate smjer stopala.",
+         {"pocetna": "3 × 8 · 8 kg", "srednja": "4 × 10 · 20 kg", "napredna": "4 × 12 · 28 kg"}),
+        ("Iskorak unatrag", "Koljeno prati smjer stopala, trup uspravan.",
+         {"pocetna": "3 × 6 po nozi", "srednja": "3 × 10 po nozi · 2 × 8 kg", "napredna": "4 × 10 po nozi · 2 × 12 kg"}),
+        ("Rumunjsko mrtvo dizanje", "Neutralna kralježnica, kukovi idu unatrag.",
+         {"pocetna": "3 × 8 · 12 kg", "srednja": "4 × 10 · 24 kg", "napredna": "4 × 10 · 32 kg"}),
+        ("Glute most", "Stisni gluteuse gore i zadrži sekundu.",
+         {"pocetna": "3 × 12", "srednja": "3 × 15 · 10 kg", "napredna": "4 × 15 · 20 kg"}),
+    ],
+}
+
+
 def ensure_online_skeletons() -> int:
-    """Create any missing (razina × cilj) slot as an empty skeleton programme.
+    """Create any missing (razina × cilj) slot and fill EMPTY ones with the
+    default exercises.
 
     Runs when the trainer opens Online treninzi — a fresh deploy heals itself,
-    no seed run needed. Returns how many were created.
+    no seed run needed. A slot the trainer already put ANY item into is never
+    touched. Returns how many programmes were created.
     """
     from .upitnik import GOALS, LEVELS
 
@@ -563,8 +603,18 @@ def ensure_online_skeletons() -> int:
                     continue
                 s.add(Program(title=f"{goal_label} — {level_label.lower()}",
                               level=level, goal=goal,
-                              intro="Skica programa — trener uređuje sadržaj."))
+                              intro="Odmor 60–90 s između serija. Tempo kontroliran."))
                 made += 1
+    with session_scope() as s:
+        empty = s.execute(
+            select(Program.id, Program.level, Program.goal)
+            .outerjoin(ProgramItem, ProgramItem.program_id == Program.id)
+            .where(Program.level.is_not(None))
+            .group_by(Program.id).having(func.count(ProgramItem.id) == 0)).all()
+    for pid, level, goal in empty:
+        for title, cue, by_level in _DEFAULT_ITEMS.get(goal, []):
+            if level in by_level:
+                add_item(pid, title, f"{by_level[level]}\n{cue}", None, None)
     return made
 
 
