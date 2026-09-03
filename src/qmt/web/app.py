@@ -49,10 +49,17 @@ def _is_owner(user) -> bool:
                 and (user.email or "").strip().lower() == config.OWNER_EMAIL)
 
 
+def _has_online(user) -> bool:
+    """May this user see Online treninzi at all? Trainer always; clients only
+    with an active `online` plan (the tab is a paid product, not a teaser)."""
+    return bool(user) and (user.is_trainer or "online" in db.active_plan_kinds(user.id))
+
+
 def _ctx(request: Request, user, **extra):
     return {"request": request, "user": user, "weekdays_short": WEEKDAYS_SHORT,
             "mojimakrosi_url": config.MOJIMAKROSI_URL,
             "max_media_mb": config.MAX_MEDIA_MB,
+            "show_online": _has_online(user),
             "is_owner": _is_owner(user), **extra}
 
 
@@ -77,6 +84,10 @@ def login(request: Request, email: str = Form(...), password: str = Form(...),
         # correct password but unproven inbox: re-issue the link instead of a dead end
         return _send_verification(request, u.email)
     request.session["user_id"] = u.id
+    # New clients first complete their basic info (ime, prezime, datum) —
+    # the profil page explains itself; trainers are exempt.
+    if not u.is_trainer and not u.profile_complete:
+        return RedirectResponse("/profil?dopuni=1", status_code=303)
     # Homepage by default; back to the page that bounced them here otherwise —
     # someone who clicked "Rezerviraj termin" must land in the calendar, not
     # back on the landing page mid-task.
@@ -477,6 +488,42 @@ def add_oneoff(request: Request, title: str = Form(...), day: str = Form(...),
     return RedirectResponse(f"/raspored?week={(d - timedelta(days=d.weekday())).isoformat()}", status_code=303)
 
 
+# ---------- profil (basic info, prompted after signup) ----------
+
+@app.get("/profil", response_class=HTMLResponse)
+def profil_page(request: Request):
+    user = current_user(request)
+    if user is None:
+        from urllib.parse import quote
+        return RedirectResponse(f"/login?next={quote('/profil')}", status_code=303)
+    return templates.TemplateResponse(request, "profil.html", _ctx(
+        request, user,
+        first_login="dopuni" in request.query_params,
+        memberships=[{"label": PLAN_LABELS.get(m.plan, m.plan),
+                      "next_payment": m.next_payment,
+                      "active": m.is_active(config.today())}
+                     for m in db.memberships_for(user.id)]))
+
+
+@app.post("/profil")
+def profil_save(request: Request, name: str = Form(...), last_name: str = Form(...),
+                birth_date: str = Form(""), phone: str = Form("")):
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    born = None
+    if birth_date.strip():
+        try:
+            born = date.fromisoformat(birth_date)
+            assert date(1900, 1, 1) <= born <= config.today()
+        except (ValueError, AssertionError):
+            return RedirectResponse("/profil?error=Neispravan+datum+rođenja.", status_code=303)
+    if not name.strip() or not last_name.strip():
+        return RedirectResponse("/profil?error=Ime+i+prezime+su+obavezni.", status_code=303)
+    db.update_profile(user.id, name, last_name, born, phone)
+    return RedirectResponse("/profil?ok=Podaci+su+spremljeni.", status_code=303)
+
+
 # ---------- karton (personal file: upitnik + diary + calendar) ----------
 
 def _render_karton(request: Request, viewer, subject, own: bool):
@@ -484,8 +531,13 @@ def _render_karton(request: Request, viewer, subject, own: bool):
 
     onboarding = db.get_onboarding(subject.id)
     answers = json.loads(onboarding.answers) if onboarding else {}
+    today = config.today()
+    born = subject.birth_date
+    age = (today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+           if born else None)
     return templates.TemplateResponse(request, "karton.html", _ctx(
-        request, viewer, subject=subject, own=own,
+        request, viewer, subject=subject, own=own, age=age,
+        can_upitnik=own and _has_online(subject),
         onboarding=onboarding, answers=answers,
         questions=upitnik.QUESTIONS, levels=upitnik.LEVELS, goals=upitnik.GOALS,
         max_score=upitnik.MAX_SCORE,
@@ -528,6 +580,11 @@ def upitnik_page(request: Request):
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/upitnik')}", status_code=303)
+    if not _has_online(user):
+        return RedirectResponse(
+            "/karton?error=Upitnik+je+dio+online+članarine+—+javi+se+treneru.", status_code=303)
+    if user.is_trainer:
+        return RedirectResponse("/treninzi", status_code=303)
     import json
 
     existing = db.get_onboarding(user.id)
@@ -543,6 +600,9 @@ async def upitnik_submit(request: Request):
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
+    if not _has_online(user):
+        return RedirectResponse(
+            "/karton?error=Upitnik+je+dio+online+članarine+—+javi+se+treneru.", status_code=303)
     form = await request.form()
     import json
 
@@ -560,8 +620,9 @@ async def upitnik_submit(request: Request):
         return RedirectResponse("/upitnik?error=Odgovori+na+sva+pitanja.", status_code=303)
     score, level = upitnik.score_answers(picked)
     db.save_onboarding(user.id, json.dumps(picked), score, level, goal)
+    # straight to the programmes — the routing is the whole point of the upitnik
     return RedirectResponse(
-        f"/karton?ok=Upitnik+je+spremljen+—+{upitnik.LEVELS[level].replace(' ', '+')}.",
+        f"/treninzi?ok=Upitnik+je+spremljen+—+{upitnik.LEVELS[level].replace(' ', '+')}.",
         status_code=303)
 
 
@@ -655,11 +716,14 @@ def _program_or_403(request: Request, program_id: int):
     if p is None:
         raise HTTPException(status_code=404)
     if not user.is_trainer:
-        # Online treninzi exist for a client only AFTER the upitnik routed them
-        # into a razina — an assignment alone (e.g. seeded data) shows nothing.
+        # Paid product first, onboarding second: no active `online` plan means
+        # no programme content at all; with a plan, the upitnik must still
+        # route the client into a razina before assignments show.
+        if not _has_online(user):
+            raise HTTPException(status_code=403, detail="Online treninzi su dio zasebne članarine.")
         if db.get_onboarding(user.id) is None:
             raise HTTPException(status_code=403, detail="Prvo ispuni upitnik.")
-        if not db.client_can_view(program_id, user.id):
+        if not db.client_can_view(p, user.id):
             raise HTTPException(status_code=403, detail="Ovo nije tvoj trening.")
     return user, p
 
@@ -671,61 +735,35 @@ def treninzi(request: Request):
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/treninzi')}", status_code=303)
     if user.is_trainer:
+        db.ensure_online_skeletons()             # fresh deploys heal themselves
         return templates.TemplateResponse(request, "treninzi_admin.html", _ctx(
-            request, user, rows=db.all_programs(), clients=db.list_clients(),
-            upitnik_ids=db.onboarding_user_ids(),
-            handouts=db.assignments_overview(), today=config.today()))
-    has_upitnik = db.get_onboarding(user.id) is not None
-    # no upitnik -> no online treninzi at all; assignments stay hidden until
-    # the client is routed into a razina
-    assignments = db.assignments_for(user.id) if has_upitnik else []
-    today = config.today()
+            request, user, rows=db.all_programs(),
+            levels=upitnik.LEVELS, goals=upitnik.GOALS))
+    has_plan = _has_online(user)
+    onboarding = db.get_onboarding(user.id) if has_plan else None
+    # gates stack: no `online` plan -> only the gate card; with a plan but no
+    # upitnik -> only the prompt; then the matched programmes render — the
+    # whole online side is automatic, nothing is handed out per client
+    programs = (db.programs_for_combo(onboarding.level, onboarding.goal)
+                if onboarding else [])
     return templates.TemplateResponse(request, "treninzi.html", _ctx(
-        request, user,
-        upcoming=sorted([a for a in assignments if a.date >= today], key=lambda a: a.date),
-        past=[a for a in assignments if a.date < today],
-        has_upitnik=has_upitnik,
-        today=today))
+        request, user, programs=programs, onboarding=onboarding,
+        has_plan=has_plan, levels=upitnik.LEVELS, goals=upitnik.GOALS))
 
 
 @app.post("/treninzi")
-def create_program(request: Request, title: str = Form(...), intro: str = Form("")):
+def create_program(request: Request, title: str = Form(...), intro: str = Form(""),
+                   level: str = Form(...), goal: str = Form(...)):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     title = title.strip()
     if not title:
         return RedirectResponse("/treninzi?error=Naziv+je+obavezan.", status_code=303)
-    pid = db.create_program(title, intro.strip() or None)
+    if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
+        return RedirectResponse("/treninzi?error=Odaberi+razinu+i+cilj.", status_code=303)
+    pid = db.create_program(title, intro.strip() or None, level, goal)
     return RedirectResponse(f"/treninzi/{pid}/uredi", status_code=303)
-
-
-@app.post("/treninzi/{program_id}/assign")
-def assign_program(request: Request, program_id: int, user_id: int = Form(...),
-                   day: str = Form(...), note: str = Form("")):
-    user, redirect = _require_trainer(request)
-    if redirect:
-        return redirect
-    if db.get_program(program_id) is None:
-        raise HTTPException(status_code=404)
-    try:
-        on = date.fromisoformat(day)
-    except ValueError:
-        return RedirectResponse("/treninzi?error=Neispravan+datum.", status_code=303)
-    if db.assign_program(program_id, user_id, on, note.strip() or None):
-        return RedirectResponse("/treninzi?ok=Trening+je+dodijeljen.", status_code=303)
-    return RedirectResponse(
-        "/treninzi?error=Taj+trening+je+već+dodijeljen+tom+polazniku+za+taj+dan.",
-        status_code=303)
-
-
-@app.post("/assignments/{assignment_id}/delete")
-def delete_assignment(request: Request, assignment_id: int):
-    user, redirect = _require_trainer(request)
-    if redirect:
-        return redirect
-    db.unassign(assignment_id)
-    return RedirectResponse("/treninzi?ok=Dodjela+je+uklonjena.", status_code=303)
 
 
 @app.get("/treninzi/{program_id}", response_class=HTMLResponse)
@@ -746,16 +784,20 @@ def program_edit_page(request: Request, program_id: int):
     if p is None:
         raise HTTPException(status_code=404)
     return templates.TemplateResponse(request, "trening_edit.html", _ctx(
-        request, user, p=p))
+        request, user, p=p, levels=upitnik.LEVELS, goals=upitnik.GOALS))
 
 
 @app.post("/treninzi/{program_id}/edit")
 def program_edit(request: Request, program_id: int, title: str = Form(...),
-                 intro: str = Form("")):
+                 intro: str = Form(""), level: str = Form(...), goal: str = Form(...)):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    db.update_program(program_id, title.strip() or "Trening", intro.strip() or None)
+    if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
+        return RedirectResponse(f"/treninzi/{program_id}/uredi?error=Odaberi+razinu+i+cilj.",
+                                status_code=303)
+    db.update_program(program_id, title.strip() or "Trening", intro.strip() or None,
+                      level, goal)
     return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Spremljeno.", status_code=303)
 
 
@@ -838,8 +880,8 @@ def media(request: Request, name: str):
     p = db.media_owner_program(name)
     if p is None:
         raise HTTPException(status_code=404)
-    if not user.is_trainer and (db.get_onboarding(user.id) is None
-                                or not db.client_can_view(p.id, user.id)):
+    if not user.is_trainer and (not _has_online(user)
+                                or not db.client_can_view(p, user.id)):
         raise HTTPException(status_code=403, detail="Ovo nije tvoj sadržaj.")
     path = config.MEDIA_DIR / name
     if not path.is_file():

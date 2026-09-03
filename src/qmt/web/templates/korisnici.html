@@ -23,7 +23,7 @@
     {% for u in users %}
     {% set u_is_owner = owner_email and (u.email or "")|lower == owner_email %}
     <tr style="border-bottom:1px solid var(--line);">
-      <td style="padding:9px 6px;"><strong>{{ u.name or "—" }}</strong></td>
+      <td style="padding:9px 6px;"><strong>{{ u.full_name or "—" }}</strong></td>
       <td style="word-break:break-all;">{{ u.email }}</td>
       <td>
         {% if u.email_verified %}<span style="color:var(--good); font-weight:600;">potvrđen</span>

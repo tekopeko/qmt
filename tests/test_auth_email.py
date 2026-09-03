@@ -46,7 +46,7 @@ def test_unverified_cannot_log_in_and_verify_link_fixes_it():
 
     r = c.post("/login", data={"email": "ivan@test.local", "password": "lozinka123"},
                follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert r.status_code == 303 and r.headers["location"] == "/profil?dopuni=1"  # fresh signup -> complete the profile first
 
 
 def test_garbage_verify_token_is_rejected():
@@ -73,7 +73,7 @@ def test_password_reset_roundtrip_and_single_use():
     assert "error" in r.headers["location"]
     r = c.post("/login", data={"email": "ivan@test.local", "password": "novalozinka1"},
                follow_redirects=False)
-    assert r.headers["location"] == "/"
+    assert r.headers["location"] == "/profil?dopuni=1"  # signup-fresh account, profile not yet filled
 
     # the SAME token again must be dead (marker changed with the hash)
     r = c.post("/reset", data={"token": token, "password": "trecalozinka2"},

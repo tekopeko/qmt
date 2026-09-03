@@ -49,37 +49,18 @@ TIMETABLE = (
     + [("Individualni trening", d, "20:00", 60, 1, None, "individualni") for d in range(5)]
 )
 
-# programme title, intro, [(exercise, instructions)]
-PROGRAMS = [
-    ("marko.horvat.demo@example.com",
-     "Povratak nakon ozljede — tjedan 1",
-     "Tri kruga, odmor 90 s između vježbi. Tempo kontroliran, bez boli.",
-     [("Goblet čučanj", "3 × 10 · 12 kg\nTempo 3-1-1, pete cijelo vrijeme na podu."),
-      ("Mrtvo dizanje s girjom", "3 × 8 · 16 kg\nNeutralna kralježnica, zastani sekundu gore."),
-      ("Farmerski nosač", "3 × 30 m · 2 × 20 kg\nRamena dolje, pogled naprijed."),
-      ("Mrtvi buba (dead bug)", "3 × 10 po strani\nLumbalni dio prislonjen uz pod cijelo vrijeme.")]),
-    ("ana.kovac.demo@example.com",
-     "Snaga — uvodni blok",
-     "Dva kruga za početak, fokus na tehniku prije težine.",
-     [("Iskorak unatrag", "3 × 8 po nozi\nKoljeno prati smjer stopala."),
-      ("Potisak s bučicama", "3 × 10 · 8 kg\nLopatice skupljene, spusti kontrolirano."),
-      ("Veslanje u pretklonu", "3 × 12 · 10 kg\nPovuci prema pojasu, zadrži leđa ravna.")]),
-    ("ivan.juric.demo@example.com",
-     "Mobilnost i core — kućni program",
-     "Svaki dan ujutro, bez opreme. Kvaliteta pokreta prije brzine.",
-     [("Mačka-deva", "2 × 10 sporih ponavljanja\nDišite u ritmu pokreta."),
-      ("Bočni plank", "3 × 30 s po strani\nTijelo u ravnoj liniji, bez propadanja kuka."),
-      ("Ptica-pas (bird dog)", "3 × 8 po strani\nSuprotna ruka i noga, bez rotacije trupa.")]),
-]
-
-
 def upsert_client(email: str, name: str, login_pw: str | None) -> int:
+    from datetime import date
+
+    first, _, last = name.partition(" ")
     with db.session_scope() as s:
         u = s.scalar(select(User).where(func.lower(User.email) == email))
         if u is None:
-            u = User(email=email, name=name)
+            u = User(email=email)
             s.add(u)
-        u.name = name
+        u.name, u.last_name = first, last or None
+        # complete profile so demo logins don't bounce to /profil
+        u.birth_date = u.birth_date or date(1988 + len(email) % 12, 6, 21)
         u.email_verified = True                       # real, loginable-shaped account
         u.password_hash = (auth.hash_password(login_pw) if login_pw
                            else u.password_hash or auth.hash_password("!") )
@@ -135,20 +116,9 @@ def fill_bookings(client_ids: list[int]) -> None:
 
 
 def seed_programs() -> None:
-    """Library programmes + dated assignments (spread across the next days)."""
-    made = assigned = 0
-    for offset, (email, title, intro, items) in enumerate(PROGRAMS):
-        with db.session_scope() as s:
-            u = s.scalar(select(User).where(func.lower(User.email) == email))
-            pid = s.scalar(select(Program.id).where(Program.title == title))
-        if pid is None:
-            pid = db.create_program(title, intro)
-            for ex_title, body in items:
-                db.add_item(pid, ex_title, body, None, None)
-            made += 1
-        if db.assign_program(pid, u.id, config.today() + timedelta(days=offset)):
-            assigned += 1
-    print(f"  programmes: {made} novih, {assigned} dodjela")
+    """The 9 (razina × cilj) skeletons — the trainer fills in the content."""
+    made = db.ensure_online_skeletons()
+    print(f"  programmes: {made} skica (razina × cilj)")
 
 
 def main() -> None:

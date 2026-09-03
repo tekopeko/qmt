@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import threading
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
 os.environ["ALLOWED_EMAILS"] = "ivan@test.local,ana@test.local,treći@test.local"
@@ -35,6 +35,8 @@ def make_user(email: str, is_trainer: bool = False,
     Pass plans=() for a user with no membership."""
     u = db.create_user(email, email.split("@")[0], auth.hash_password("lozinka123"))
     db.mark_email_verified(email)   # login refuses unverified accounts
+    # complete profile — an incomplete one bounces login to /profil
+    db.update_profile(u.id, email.split("@")[0], "Test", date(1990, 1, 1), "")
     if is_trainer:
         with db.session_scope() as s:
             s.get(User, u.id).is_trainer = True

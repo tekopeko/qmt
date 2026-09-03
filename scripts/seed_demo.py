@@ -44,7 +44,7 @@ TIMETABLE = (
 
 # Who pays for what (sara deliberately has NO plan — shows the booking gate).
 PLANS = {
-    "ivan@qmt.local": ("grupni", "individualni"),
+    "ivan@qmt.local": ("grupni", "individualni", "online"),
     "ana@qmt.local": ("grupni",),
     "marko@qmt.local": ("grupni",),
     "petra@qmt.local": ("grupni", "individualni"),
@@ -53,14 +53,20 @@ PLANS = {
 
 
 def upsert_user(email: str, name: str, password: str, is_trainer: bool) -> None:
+    from datetime import date
+
+    first, _, last = name.partition(" ")
     with db.session_scope() as s:
         u = s.scalar(select(User).where(User.email == email))
         if u is None:
-            u = User(email=email, name=name, password_hash=auth.hash_password(password))
+            u = User(email=email, password_hash=auth.hash_password(password))
             s.add(u)
             print(f"  + {email}" + ("  (trener)" if is_trainer else ""))
         else:
             print(f"  = {email} (postoji)")
+        u.name, u.last_name = first, last or None
+        # complete profiles — otherwise every dev login bounces to /profil
+        u.birth_date = u.birth_date or date(1990 + len(email) % 9, 3, 14)
         u.is_trainer = is_trainer
         u.email_verified = True   # dev accounts skip the email round-trip
 
@@ -140,26 +146,21 @@ def fill_bookings() -> None:
 
 
 def seed_program() -> None:
-    """One library programme, assigned to Ivan for today and Ana for tomorrow."""
-    from datetime import timedelta
-
+    """The 9 combo skeletons; Ivan's combo (srednja/gornji) gets real items."""
     from sqlalchemy import delete, select
 
-    from qmt.models import Program, User
+    from qmt.models import Program
 
     with db.session_scope() as s:
         s.execute(delete(Program))
-        ivan = s.scalar(select(User).where(User.email == "ivan@qmt.local"))
-        ana = s.scalar(select(User).where(User.email == "ana@qmt.local"))
-    pid = db.create_program("Povratak nakon ozljede — tjedan 1",
-                            "Tri kruga, odmor 90 s između vježbi. Tempo kontroliran.")
-    db.add_item(pid, "Goblet čučanj", "3 × 10 · 12 kg\nTempo 3-1-1, pete cijelo vrijeme na podu.", None, None)
-    db.add_item(pid, "Mrtvo dizanje s girjom", "3 × 8 · 16 kg\nNeutralna kralježnica, zastani sekundu gore.", None, None)
-    db.add_item(pid, "Farmerski nosač", "3 × 30 m · 2 × 20 kg\nRamena dolje, pogled naprijed.", None, None)
-    today = db.config.today()
-    db.assign_program(pid, ivan.id, today)
-    db.assign_program(pid, ana.id, today + timedelta(days=1))
-    print("  1 program u biblioteci, 2 dodjele (Ivan danas, Ana sutra)")
+    made = db.ensure_online_skeletons()
+    with db.session_scope() as s:
+        pid = s.scalar(select(Program.id).where(Program.level == "srednja",
+                                                Program.goal == "gornji"))
+    db.add_item(pid, "Potisak s klupe", "3 × 10 · 40 kg\nLopatice skupljene, kontrolirano dolje.", None, None)
+    db.add_item(pid, "Veslanje u pretklonu", "3 × 12 · 10 kg\nPovuci prema pojasu, leđa ravna.", None, None)
+    db.add_item(pid, "Potisak iznad glave", "3 × 8 · bučice\nTrup čvrst, bez zaklona.", None, None)
+    print(f"  {made} skica programa, Ivanova kombinacija (srednja/gornji) ima vježbe")
 
 
 def seed_karton() -> None:

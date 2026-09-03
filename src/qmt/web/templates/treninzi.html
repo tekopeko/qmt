@@ -2,60 +2,47 @@
 {% block title %}Online treninzi — QMT{% endblock %}
 {% block content %}
 <h1 style="font-size:1.8rem; margin-bottom:4px;">Moji online treninzi</h1>
-<p class="hint" style="margin-bottom:24px;">Treninzi koje ti je trener dodijelio, po danima.</p>
+<p class="hint" style="margin-bottom:24px;">Program prilagođen tvojoj razini i cilju — određuje ih upitnik.</p>
 
-{% if not has_upitnik %}
+{% if not has_plan %}
+<div class="card" style="padding:34px; text-align:center; max-width:640px;">
+  <p style="margin-bottom:6px;"><strong>Online treninzi su dio zasebne članarine.</strong></p>
+  <p class="hint">Javi se treneru za pristup — plaćanje gotovinom ili karticom u dvorani.</p>
+</div>
+{% elif not onboarding %}
 <div class="card" style="padding:14px 18px; margin-bottom:22px; max-width:640px;
                          display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
   <div>
     <strong>Ispuni upitnik za online trening</strong>
-    <p class="hint" style="margin-top:2px;">Prema odgovorima te svrstavamo u razinu (početna / srednja / napredna) i cilj.</p>
+    <p class="hint" style="margin-top:2px;">Prema odgovorima te svrstavamo u razinu (početna / srednja / napredna) i cilj — program se otvara odmah.</p>
   </div>
   <a class="btn-sm btn-signal" href="/upitnik">Ispuni upitnik</a>
 </div>
-{% endif %}
+{% else %}
+<div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:18px;">
+  <span style="font:700 .78rem var(--font-display); text-transform:uppercase; letter-spacing:.07em;
+               background:var(--accent-dim); color:var(--accent); border-radius:8px; padding:4px 10px;">
+    {{ levels[onboarding.level] }} · {{ goals[onboarding.goal] }}</span>
+  <a class="hint" href="/upitnik" style="font-size:.8rem;">promijeni (ispuni upitnik ponovno)</a>
+</div>
 
-{% macro assignment_card(a, highlight) %}
-  <a class="card" href="/treninzi/{{ a.program.id }}"
+<div style="display:flex; flex-direction:column; gap:12px; max-width:640px;">
+  {% for p in programs %}
+  <a class="card" href="/treninzi/{{ p.id }}"
      style="padding:16px 20px; text-decoration:none; display:flex; gap:16px; align-items:center;
-            {% if highlight %}box-shadow: inset 3px 0 0 var(--accent);{% endif %}">
-    <div style="min-width:74px; text-align:center;">
-      <div style="font:700 .72rem var(--font-body); text-transform:uppercase; letter-spacing:.06em;
-                  color:{{ 'var(--accent)' if highlight else 'var(--muted)' }};">
-        {{ weekdays_short[a.date.weekday()] }}</div>
-      <div style="font:800 1.05rem var(--font-body);">{{ a.date.strftime("%-d.%-m.") }}</div>
-    </div>
+            box-shadow: inset 3px 0 0 var(--accent);">
     <div style="flex:1; min-width:0;">
-      <strong>{{ a.program.title }}</strong>
-      <div class="hint">{{ a.program.items|length }} {{ "vježba" if a.program.items|length % 10 == 1 and a.program.items|length % 100 != 11 else "vježbi" }}{% if a.note %} · {{ a.note }}{% endif %}</div>
+      <strong>{{ p.title }}</strong>
+      <div class="hint">{{ p.items|length }} {{ "vježba" if p.items|length % 10 == 1 and p.items|length % 100 != 11 else "vježbi" }}{% if p.intro %} · {{ p.intro | truncate(60) }}{% endif %}</div>
     </div>
     <span style="color:var(--accent); font-weight:700;">→</span>
   </a>
-{% endmacro %}
-
-{% if upcoming %}
-<h2 style="font-size:1.02rem; margin-bottom:10px;">Nadolazeći</h2>
-<div style="display:flex; flex-direction:column; gap:10px; max-width:640px; margin-bottom:30px;">
-  {% for a in upcoming %}{{ assignment_card(a, a.date == today) }}{% endfor %}
-</div>
-{% endif %}
-
-{% if past %}
-<h2 style="font-size:1.02rem; margin-bottom:10px;">Odrađeni</h2>
-<div style="display:flex; flex-direction:column; gap:10px; max-width:640px; opacity:.75;">
-  {% for a in past %}{{ assignment_card(a, false) }}{% endfor %}
-</div>
-{% endif %}
-
-{% if not upcoming and not past %}
-<div class="card" style="padding:34px; text-align:center;">
-  {% if has_upitnik %}
-  <p style="margin-bottom:6px;"><strong>Još nemaš dodijeljen trening.</strong></p>
-  <p class="hint">Trener će ti ovdje objaviti tvoj program — javit će ti kad bude spreman.</p>
   {% else %}
-  <p style="margin-bottom:6px;"><strong>Online treninzi počinju upitnikom.</strong></p>
-  <p class="hint">Dok ga ne ispuniš, ovdje nema treninga — odgovori nam govore koju razinu i cilj pripremiti za tebe.</p>
-  {% endif %}
+  <div class="card" style="padding:34px; text-align:center;">
+    <p style="margin-bottom:6px;"><strong>Program za tvoju kombinaciju još se priprema.</strong></p>
+    <p class="hint">Trener slaže sadržaj — provjeri uskoro.</p>
+  </div>
+  {% endfor %}
 </div>
 {% endif %}
 {% endblock %}

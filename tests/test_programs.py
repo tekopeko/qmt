@@ -32,20 +32,25 @@ def clean_db(tmp_path, monkeypatch):
     yield
 
 
-def make_user(email: str, is_trainer: bool = False) -> int:
+def make_user(email: str, is_trainer: bool = False, goal: str = "cijelo") -> int:
+    from datetime import date
+
     u = db.create_user(email, email.split("@")[0], auth.hash_password("lozinka123"))
     db.mark_email_verified(email)   # login refuses unverified accounts
+    db.update_profile(u.id, email.split("@")[0], "Test", date(1990, 1, 1), "")
     if is_trainer:
         db.set_trainer(email)
     else:
-        # online treninzi are gated on a filled upitnik; these tests exercise
-        # programme mechanics, so clients get one (the gate has its own tests)
+        # online treninzi are gated on the `online` plan + a filled upitnik;
+        # these tests exercise programme mechanics, so clients get both
+        # (the gates have their own tests). All-zero answers -> pocetna.
         import json
 
         from qmt import upitnik
+        db.record_payment(u.id, "online")
         picked = {q["key"]: 0 for q in upitnik.QUESTIONS}
         score, level = upitnik.score_answers(picked)
-        db.save_onboarding(u.id, json.dumps(picked), score, level, "cijelo")
+        db.save_onboarding(u.id, json.dumps(picked), score, level, goal)
     return u.id
 
 
@@ -58,74 +63,61 @@ def client_for(email: str) -> TestClient:
 
 def trainer_with_clients():
     make_user("trener@test.local", is_trainer=True)
-    ivan = make_user("ivan@test.local")
-    ana = make_user("ana@test.local")
+    ivan = make_user("ivan@test.local")                 # pocetna / cijelo
+    ana = make_user("ana@test.local", goal="gornji")    # pocetna / gornji
     return client_for("trener@test.local"), ivan, ana
 
 
-def test_library_program_visible_only_through_assignment():
+def test_program_visible_only_by_matching_combo():
     ct, ivan, ana = trainer_with_clients()
-    r = ct.post("/treninzi", data={"title": "Tjedan 1"}, follow_redirects=False)
+    r = ct.post("/treninzi", data={"title": "Tjedan 1", "level": "pocetna",
+                                   "goal": "cijelo"}, follow_redirects=False)
     assert "/uredi" in r.headers["location"]
     pid = int(r.headers["location"].split("/")[2])
 
-    # unassigned: NO client may open it — it is library-only
+    # matching IS the access: ivan (pocetna/cijelo) sees it automatically...
     ci = client_for("ivan@test.local")
-    assert ci.get(f"/treninzi/{pid}").status_code == 403
-    assert "Tjedan 1" not in ci.get("/treninzi").text
-
-    # assign to ivan for today -> he sees it, dated; ana still does not
-    r = ct.post(f"/treninzi/{pid}/assign",
-                data={"user_id": ivan, "day": TODAY.isoformat()}, follow_redirects=False)
-    assert "ok=" in r.headers["location"]
-    page = ci.get("/treninzi").text
-    assert "Tjedan 1" in page and "Nadolazeći" in page
+    assert "Tjedan 1" in ci.get("/treninzi").text
     assert ci.get(f"/treninzi/{pid}").status_code == 200
+    # ...ana (pocetna/gornji) does not
     ca = client_for("ana@test.local")
     assert "Tjedan 1" not in ca.get("/treninzi").text
     assert ca.get(f"/treninzi/{pid}").status_code == 403
 
-    # duplicate (programme, client, day) is refused with a message
-    r = ct.post(f"/treninzi/{pid}/assign",
-                data={"user_id": ivan, "day": TODAY.isoformat()}, follow_redirects=False)
-    assert "error=" in r.headers["location"]
-
-    # unassign -> access gone
-    aid = db.assignments_for(ivan)[0].id
-    ct.post(f"/assignments/{aid}/delete")
+    # re-tagging the combo instantly moves the audience — no hand-outs anywhere
+    ct.post(f"/treninzi/{pid}/edit", data={"title": "Tjedan 1", "level": "pocetna",
+                                           "goal": "gornji"}, follow_redirects=False)
+    assert ca.get(f"/treninzi/{pid}").status_code == 200
     assert ci.get(f"/treninzi/{pid}").status_code == 403
 
-
-def test_same_program_many_clients_many_days():
-    ct, ivan, ana = trainer_with_clients()
-    pid = db.create_program("Krug A", None)
-    assert db.assign_program(pid, ivan, TODAY)
-    assert db.assign_program(pid, ana, TODAY)                       # other client, same day
-    assert db.assign_program(pid, ivan, TODAY + timedelta(days=2))  # same client, other day
-    assert not db.assign_program(pid, ivan, TODAY)                  # exact duplicate refused
-    assert len(db.assignments_for(ivan)) == 2
-    assert len(db.assignments_for(ana)) == 1
+    # a programme with no combo is trainer-only
+    bare = db.create_program("Skica", None)
+    assert ci.get(f"/treninzi/{bare}").status_code == 403
 
 
-def test_clients_cannot_create_assign_or_edit():
+def test_ensure_online_skeletons_idempotent():
+    from qmt import upitnik
+
+    assert db.ensure_online_skeletons() == len(upitnik.LEVELS) * len(upitnik.GOALS)
+    assert db.ensure_online_skeletons() == 0            # second run adds nothing
+    combos = {(p.level, p.goal) for p, _ in db.all_programs() if p.level}
+    assert combos == {(lv, g) for lv in upitnik.LEVELS for g in upitnik.GOALS}
+
+
+def test_clients_cannot_create_or_edit():
     ct, ivan, _ = trainer_with_clients()
-    pid = db.create_program("T", None)
-    db.assign_program(pid, ivan, TODAY)
+    pid = db.create_program("T", None, "pocetna", "cijelo")
     ci = client_for("ivan@test.local")
-    assert ci.post("/treninzi", data={"title": "X"}).status_code == 403
-    assert ci.post(f"/treninzi/{pid}/assign",
-                   data={"user_id": ivan, "day": TODAY.isoformat()}).status_code == 403
+    assert ci.post("/treninzi", data={"title": "X", "level": "pocetna",
+                                      "goal": "cijelo"}).status_code == 403
     assert ci.get(f"/treninzi/{pid}/uredi").status_code == 403
     assert ci.post(f"/treninzi/{pid}/items", data={"title": "X"}).status_code == 403
     assert ci.post(f"/treninzi/{pid}/delete").status_code == 403
-    aid = db.assignments_for(ivan)[0].id
-    assert ci.post(f"/assignments/{aid}/delete").status_code == 403
 
 
 def test_item_upload_and_media_gating():
     ct, ivan, ana = trainer_with_clients()
-    pid = db.create_program("S medijem", None)
-    db.assign_program(pid, ivan, TODAY)
+    pid = db.create_program("S medijem", None, "pocetna", "cijelo")   # ivan's combo
     r = ct.post(f"/treninzi/{pid}/items",
                 data={"title": "Čučanj", "body": "3x10"},
                 files={"media": ("cucanj.png", io.BytesIO(PNG), "image/png")},

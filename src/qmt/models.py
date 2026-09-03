@@ -50,7 +50,13 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(320), unique=True)
+    # `name` predates the profile and holds the FIRST name; the rest of the
+    # basic info (profil page) lives in the columns below, all optional at
+    # signup — login nudges clients to /profil until prezime + datum are in.
     name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    birth_date: Mapped[SADate | None] = mapped_column(Date, nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # The trainer runs the timetable and sees rosters; clients only see their own
     # bookings. Same one-owner shape as mojimakrosi's is_admin.
@@ -59,6 +65,14 @@ class User(Base):
     # refuses unverified accounts (same contract as mojimakrosi).
     email_verified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def full_name(self) -> str | None:
+        return " ".join(p for p in (self.name, self.last_name) if p) or None
+
+    @property
+    def profile_complete(self) -> bool:
+        return bool(self.name and self.last_name and self.birth_date)
 
 
 class SessionTemplate(Base):
@@ -209,18 +223,21 @@ class TrainingLog(Base):
 
 
 class Program(Base):
-    """A training programme in the trainer's LIBRARY — content, not ownership.
+    """An online course variant: fixed (razina × cilj) slots, matched, not
+    assigned.
 
-    Programmes are reusable: the trainer builds one (ordered `ProgramItem`s of
-    text + media) and then hands it out via `ProgramAssignment` — this
-    programme, this client, this day. A client sees a programme only through
-    an assignment; the library itself is trainer-only.
+    The online side is AUTOMATED — the upitnik routes a client into a razina
+    and a cilj, and they see exactly the programmes tagged with that combo.
+    The trainer edits the content of the nine skeleton slots (created by
+    `db.ensure_online_skeletons`); no per-client hand-outs anywhere.
     """
 
     __tablename__ = "programs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(160))
+    level: Mapped[str | None] = mapped_column(String(12), nullable=True)   # upitnik.LEVELS key
+    goal: Mapped[str | None] = mapped_column(String(12), nullable=True)    # upitnik.GOALS key
     intro: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -230,36 +247,6 @@ class Program(Base):
     items: Mapped[list["ProgramItem"]] = relationship(
         back_populates="program", cascade="all, delete-orphan", order_by="ProgramItem.position"
     )
-    assignments: Mapped[list["ProgramAssignment"]] = relationship(
-        back_populates="program", cascade="all, delete-orphan"
-    )
-
-
-class ProgramAssignment(Base):
-    """One hand-out: programme X for client Y on day Z.
-
-    The same programme may be assigned to many clients and to the same client
-    on many days (repeating a workout is normal) — but only once per
-    (programme, client, day).
-    """
-
-    __tablename__ = "program_assignments"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    program_id: Mapped[int] = mapped_column(
-        ForeignKey("programs.id", ondelete="CASCADE"), index=True
-    )
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    date: Mapped[SADate] = mapped_column(Date, index=True)
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    __table_args__ = (
-        UniqueConstraint("program_id", "user_id", "date", name="uq_assignment_program_user_date"),
-    )
-
-    program: Mapped[Program] = relationship(back_populates="assignments")
-    user: Mapped["User"] = relationship()
 
 
 class ProgramItem(Base):

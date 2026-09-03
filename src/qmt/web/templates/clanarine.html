@@ -13,7 +13,7 @@
 <div class="card" style="padding:14px 18px; margin-bottom:14px; max-width:860px;">
   <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap;">
     <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
-      <strong>{{ row.user.name or "—" }}</strong><span class="hint">{{ row.user.email }}</span>
+      <strong>{{ row.user.full_name or "—" }}</strong><span class="hint">{{ row.user.email }}</span>
     </div>
     <a class="btn-sm btn-ghost" href="/karton/{{ row.user.id }}">Karton →</a>
   </div>
@@ -39,7 +39,7 @@
             <button class="btn-sm btn-quiet" type="submit">Evidentiraj uplatu</button>
           </form>
           <form method="post" action="/clanarine/{{ row.user.id }}/ukloni" style="display:inline; margin:0;"
-                onsubmit="return confirm('Ukloniti {{ plan_labels[m.plan] }} za {{ row.user.name or row.user.email }}?')">
+                onsubmit="return confirm('Ukloniti {{ plan_labels[m.plan] }} za {{ row.user.full_name or row.user.email }}?')">
             <input type="hidden" name="plan" value="{{ m.plan }}">
             <button class="btn-sm btn-ghost" type="submit">Ukloni</button>
           </form>

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Profil — QMT{% endblock %}
+{% block content %}
+<h1 style="font-size:1.7rem; margin-bottom:4px;">Profil</h1>
+<p class="hint" style="margin-bottom:26px;">Tvoji osnovni podaci — vidi ih samo trener.</p>
+
+{% if first_login and not user.profile_complete %}
+<div class="alert" role="status" style="max-width:560px;">
+  Dobrodošao/la! Dopuni osnovne podatke da te trener zna voditi — treba nam minuta.
+</div>
+{% endif %}
+
+<form method="post" action="/profil" class="card" style="max-width:560px; padding:18px 20px; margin-bottom:26px;">
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+    <div class="field"><label for="p-name">Ime</label>
+      <input id="p-name" type="text" name="name" value="{{ user.name or '' }}" required></div>
+    <div class="field"><label for="p-last">Prezime</label>
+      <input id="p-last" type="text" name="last_name" value="{{ user.last_name or '' }}" required></div>
+    <div class="field"><label for="p-born">Datum rođenja</label>
+      <input id="p-born" type="date" name="birth_date"
+             value="{{ user.birth_date.isoformat() if user.birth_date else '' }}"></div>
+    <div class="field"><label for="p-phone">Telefon (neobavezno)</label>
+      <input id="p-phone" type="tel" name="phone" value="{{ user.phone or '' }}" placeholder="09x xxx xxxx"></div>
+  </div>
+  <button type="submit" class="btn-signal">Spremi podatke</button>
+</form>
+
+<div class="card" style="max-width:560px; padding:16px 20px;">
+  <h2 style="font-size:.95rem; margin-bottom:10px;">Račun</h2>
+  <p style="font-size:.9rem; margin-bottom:4px;"><span class="hint">Email:</span> {{ user.email }}</p>
+  <p style="font-size:.9rem; margin-bottom:4px;"><span class="hint">Registriran:</span> {{ user.created_at.strftime("%-d.%-m.%Y.") }}</p>
+  {% if not user.is_trainer %}
+  <p style="font-size:.9rem;"><span class="hint">Članarina:</span>
+    {% for m in memberships %}
+      {{ m.label }}{% if not m.active %} <span style="color:var(--danger); font-weight:700; font-size:.78rem;">(istekla)</span>{% endif %}{% if not loop.last %}, {% endif %}
+    {% else %}<span class="hint">bez plana — javi se treneru</span>{% endfor %}
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

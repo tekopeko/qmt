@@ -9,6 +9,16 @@
 </p>
 
 <form method="post" action="/treninzi/{{ p.id }}/edit" class="card" style="max-width:640px; padding:18px 20px; margin-bottom:30px;">
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+    <div class="field"><label for="pe-goal">Cilj</label>
+      <select id="pe-goal" name="goal" required>
+        {% for k, l in goals.items() %}<option value="{{ k }}" {% if k == p.goal %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="pe-level">Razina</label>
+      <select id="pe-level" name="level" required>
+        {% for k, l in levels.items() %}<option value="{{ k }}" {% if k == p.level %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select></div>
+  </div>
   <div class="field"><label for="pt">Naziv</label>
     <input id="pt" type="text" name="title" value="{{ p.title }}" required></div>
   <div class="field"><label for="pi">Uvod</label>

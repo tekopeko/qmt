@@ -24,12 +24,19 @@ def clean_db():
     yield
 
 
-def make_user(email: str, is_trainer: bool = False) -> int:
+def make_user(email: str, is_trainer: bool = False,
+              plans: tuple[str, ...] = ("online",), complete: bool = True) -> int:
+    from datetime import date
+
     u = db.create_user(email, email.split("@")[0], auth.hash_password("lozinka123"))
     db.mark_email_verified(email)
+    if complete:  # incomplete profiles bounce login to /profil
+        db.update_profile(u.id, email.split("@")[0], "Test", date(1990, 1, 1), "")
     if is_trainer:
         with db.session_scope() as s:
             s.get(User, u.id).is_trainer = True
+    for plan in plans:
+        db.record_payment(u.id, plan)
     return u.id
 
 
@@ -115,23 +122,71 @@ def test_karton_self_other_and_trainer():
 
 # ---------- upitnik gates online treninzi ----------
 
-def test_assignments_hidden_until_upitnik_filled():
+def test_programs_hidden_until_upitnik_filled():
     make_user("trener@test.local", is_trainer=True)
-    ivan = make_user("ivan@test.local")
-    pid = db.create_program("Online blok A", None)
-    db.assign_program(pid, ivan, config.today())
+    make_user("ivan@test.local")                # has the online plan, no upitnik
+    pid = db.create_program("Online blok A", None, "pocetna", "cijelo")
 
     ci = client_for("ivan@test.local")
     page = ci.get("/treninzi").text
-    assert "Online blok A" not in page          # assignment exists, stays hidden
+    assert "Online blok A" not in page          # programme exists, stays hidden
     assert "Ispuni upitnik" in page
     assert ci.get(f"/treninzi/{pid}").status_code == 403   # direct URL too
 
+    # zeros -> pocetna; goal cijelo -> the combo above matches automatically
     ci.post("/upitnik", data={**{q["key"]: "0" for q in upitnik.QUESTIONS},
                               "goal": "cijelo"}, follow_redirects=False)
     page = ci.get("/treninzi").text
     assert "Online blok A" in page
     assert ci.get(f"/treninzi/{pid}").status_code == 200
+
+
+# ---------- online tab gated on the plan ----------
+
+def test_online_tab_gated_without_plan():
+    make_user("trener@test.local", is_trainer=True, plans=())
+    ivan = make_user("ivan@test.local", plans=())      # no online plan
+    pid = db.create_program("Online blok B", None, "pocetna", "cijelo")
+
+    ci = client_for("ivan@test.local")
+    page = ci.get("/raspored").text
+    assert "Online treninzi" not in page               # tab gone from the nav
+    page = ci.get("/treninzi").text                    # direct URL: gate card
+    assert "dio zasebne članarine" in page and "Online blok B" not in page
+    assert ci.get(f"/treninzi/{pid}").status_code == 403
+    r = ci.get("/upitnik", follow_redirects=False)     # upitnik gated too
+    assert r.status_code == 303 and "error" in r.headers["location"]
+
+    db.record_payment(ivan, "online")                  # plan paid -> tab back
+    assert "Online treninzi" in ci.get("/raspored").text
+    assert "Ispuni upitnik" in ci.get("/treninzi").text
+
+
+# ---------- profil ----------
+
+def test_incomplete_profile_bounces_login_then_saves():
+    make_user("ivan@test.local", plans=(), complete=False)
+    c = TestClient(app)
+    r = c.post("/login", data={"email": "ivan@test.local", "password": "lozinka123"},
+               follow_redirects=False)
+    assert r.headers["location"] == "/profil?dopuni=1"
+
+    r = c.post("/profil", data={"name": "Ivan", "last_name": "Horvat",
+                                "birth_date": "1992-04-01", "phone": "091 111 222"},
+               follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    u = db.get_user_by_email("ivan@test.local")
+    assert u.full_name == "Ivan Horvat" and u.profile_complete
+    assert u.birth_date.isoformat() == "1992-04-01"
+
+    r = c.post("/login", data={"email": "ivan@test.local", "password": "lozinka123"},
+               follow_redirects=False)
+    assert r.headers["location"] == "/"                # complete -> normal login
+
+    # garbage birth date refused
+    r = c.post("/profil", data={"name": "Ivan", "last_name": "Horvat",
+                                "birth_date": "3000-01-01"}, follow_redirects=False)
+    assert "error" in r.headers["location"]
 
 
 # ---------- post-training feedback ----------

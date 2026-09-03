@@ -79,11 +79,22 @@
     /* ===== top bar: dark slab in both themes (the logo's home) ===== */
     .topbar {
       background: #161618; color: #fff;
-      display: flex; align-items: center; justify-content: space-between;
+      display: flex; align-items: center;
       gap: 12px; padding: 12px clamp(16px, 4vw, 40px);
       position: sticky; top: 0; z-index: 40; flex-wrap: wrap;
     }
-    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+    /* brand pushes everything else right — nav, then the avatar at the edge */
+    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; margin-right: auto; }
+    .avatar {
+      width: 34px; height: 34px; border-radius: 50%; flex: none;
+      background: var(--accent); color: #fff;
+      font: 700 .78rem var(--font-body); letter-spacing: .02em;
+      display: flex; align-items: center; justify-content: center;
+      text-decoration: none; border: 2px solid transparent;
+      transition: border-color .15s, transform .12s;
+    }
+    .avatar:hover { transform: translateY(-1px); border-color: rgba(255,255,255,.4); }
+    .avatar.on { border-color: #fff; }
     .brand .mark { height: 38px; width: 38px; border-radius: 50%; display: block; }
     .brand .full { font-weight: 700; font-size: .8rem; letter-spacing: .15em;
                    text-transform: uppercase; color: #e6e6e3; }
@@ -220,7 +231,8 @@
       <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if request.url.path.startswith('/raspored') %}on{% endif %}">Raspored</a>
       {% if not user.is_trainer %}<a href="/karton" class="{% if request.url.path.startswith('/karton') or request.url.path.startswith('/upitnik') %}on{% endif %}">Karton</a>{% endif %}
-      <a href="/treninzi" class="{% if request.url.path.startswith('/treninzi') %}on{% endif %}">Online treninzi</a>
+      {# a paid product: without an active online plan the tab doesn't exist #}
+      {% if show_online %}<a href="/treninzi" class="{% if request.url.path.startswith('/treninzi') %}on{% endif %}">Online treninzi</a>{% endif %}
       <a href="/prehrana" class="{% if request.url.path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
       {% if user.is_trainer or is_owner %}<a href="/admin" class="{% if '/admin' in request.url.path %}on{% endif %}">Admin</a>
       <a href="/clanarine" class="{% if request.url.path.startswith('/clanarine') %}on{% endif %}">Članarine</a>{% endif %}
@@ -232,6 +244,11 @@
     {% endif %}
     <button type="button" class="navbtn theme-toggle" onclick="qmtToggleTheme()" aria-label="Promijeni temu"><span id="themeIcon">🌙</span></button>
   </nav>
+  {% endif %}
+  {% if user and not auth_page %}
+  {# the profil "tab" is an initials avatar, the way Google apps do it #}
+  <a href="/profil" class="avatar {% if request.url.path.startswith('/profil') %}on{% endif %}"
+     title="Profil — {{ user.full_name or user.email }}" aria-label="Profil">{{ ((user.name or user.email)[:1] ~ (user.last_name[:1] if user.last_name else "")) | upper }}</a>
   {% endif %}
 </header>
 <main class="{% block main_class %}{% endblock %}">

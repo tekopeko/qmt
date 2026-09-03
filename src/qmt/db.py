@@ -19,8 +19,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from . import config
 from .models import (PLAN_LABELS, Base, Booking, Membership, OnboardingResponse,
-                     Program, ProgramAssignment, ProgramItem, SessionTemplate,
-                     TrainingLog, TrainingSession, User)
+                     Program, ProgramItem, SessionTemplate, TrainingLog,
+                     TrainingSession, User)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -94,6 +94,19 @@ def reset_password(email: str, password_hash: str, expected_marker: str) -> bool
             return False
         u.password_hash = password_hash
         u.email_verified = True
+        return True
+
+
+def update_profile(user_id: int, name: str, last_name: str,
+                   birth_date: date | None, phone: str) -> bool:
+    with session_scope() as s:
+        u = s.get(User, user_id)
+        if u is None:
+            return False
+        u.name = name.strip() or None
+        u.last_name = last_name.strip() or None
+        u.birth_date = birth_date
+        u.phone = phone.strip() or None
         return True
 
 
@@ -421,12 +434,6 @@ def get_onboarding(user_id: int) -> OnboardingResponse | None:
                         .where(OnboardingResponse.user_id == user_id))
 
 
-def onboarding_user_ids() -> set[int]:
-    """Who has filled the upitnik — the trainer's assign UI marks the rest."""
-    with session_scope() as s:
-        return set(s.scalars(select(OnboardingResponse.user_id)))
-
-
 def pending_feedback(user_id: int, days: int = 7) -> list[TrainingSession]:
     """Attended sessions that ENDED (within the last `days`) and still have no
     feedback — the karton prompts these. Old unfilled ones expire quietly."""
@@ -514,88 +521,65 @@ def booking_history(user_id: int, limit: int = 20) -> list[TrainingSession]:
 
 # ---------- training programmes (treninzi) ----------
 
-def list_clients() -> list[User]:
-    """Everyone the trainer can build a programme for."""
-    with session_scope() as s:
-        return list(s.scalars(select(User).where(~User.is_trainer)
-                              .order_by(User.name, User.email)))
-
-
-def assignments_for(user_id: int) -> list[ProgramAssignment]:
-    """A client's handed-out trainings, newest date first (programme+items eager)."""
+def programs_for_combo(level: str, goal: str) -> list[Program]:
+    """The client's automatic programme(s): whatever is tagged with their
+    upitnik combo. No hand-outs — matching IS the access."""
     from sqlalchemy.orm import selectinload
 
     with session_scope() as s:
         return list(s.scalars(
-            select(ProgramAssignment).where(ProgramAssignment.user_id == user_id)
-            .options(selectinload(ProgramAssignment.program).selectinload(Program.items))
-            .order_by(ProgramAssignment.date.desc(), ProgramAssignment.id.desc())))
+            select(Program).where(Program.level == level, Program.goal == goal)
+            .options(selectinload(Program.items))
+            .order_by(Program.title)))
 
 
-def client_can_view(program_id: int, user_id: int) -> bool:
-    """A client may open a programme (and its media) only if it was assigned to them."""
+def client_can_view(program: Program, user_id: int) -> bool:
+    """A client sees a programme iff its (razina, cilj) matches their upitnik."""
+    onb = get_onboarding(user_id)
+    return (onb is not None and program.level is not None
+            and program.level == onb.level and program.goal == onb.goal)
+
+
+def ensure_online_skeletons() -> int:
+    """Create any missing (razina × cilj) slot as an empty skeleton programme.
+
+    Runs when the trainer opens Online treninzi — a fresh deploy heals itself,
+    no seed run needed. Returns how many were created.
+    """
+    from .upitnik import GOALS, LEVELS
+
+    made = 0
     with session_scope() as s:
-        return bool(s.scalar(select(func.count()).select_from(ProgramAssignment)
-                             .where(ProgramAssignment.program_id == program_id,
-                                    ProgramAssignment.user_id == user_id)))
+        have = {(p.level, p.goal) for p in s.scalars(
+            select(Program).where(Program.level.is_not(None)))}
+        for level, level_label in LEVELS.items():
+            for goal, goal_label in GOALS.items():
+                if (level, goal) in have:
+                    continue
+                s.add(Program(title=f"{goal_label} — {level_label.lower()}",
+                              level=level, goal=goal,
+                              intro="Skica programa — trener uređuje sadržaj."))
+                made += 1
+    return made
 
 
-def all_programs() -> list[tuple[Program, int, int]]:
-    """Trainer library: every programme + item count + assignment count."""
+def all_programs() -> list[tuple[Program, int]]:
+    """Trainer library: every programme + item count, combos first."""
     with session_scope() as s:
         items = (select(ProgramItem.program_id, func.count().label("n"))
                  .group_by(ProgramItem.program_id).subquery())
-        assigns = (select(ProgramAssignment.program_id, func.count().label("n"))
-                   .group_by(ProgramAssignment.program_id).subquery())
         rows = s.execute(
-            select(Program, func.coalesce(items.c.n, 0), func.coalesce(assigns.c.n, 0))
+            select(Program, func.coalesce(items.c.n, 0))
             .join(items, items.c.program_id == Program.id, isouter=True)
-            .join(assigns, assigns.c.program_id == Program.id, isouter=True)
-            .order_by(Program.updated_at.desc())
+            .order_by(Program.level.desc(), Program.goal, Program.title)
         ).all()
-        return [(p, ni, na) for p, ni, na in rows]
+        return [(p, ni) for p, ni in rows]
 
 
-def assignments_overview(limit: int = 100) -> list[tuple[ProgramAssignment, Program, User]]:
-    """Trainer view of hand-outs, newest date first."""
+def create_program(title: str, intro: str | None,
+                   level: str | None = None, goal: str | None = None) -> int:
     with session_scope() as s:
-        rows = s.execute(
-            select(ProgramAssignment, Program, User)
-            .join(Program, Program.id == ProgramAssignment.program_id)
-            .join(User, User.id == ProgramAssignment.user_id)
-            .order_by(ProgramAssignment.date.desc(), ProgramAssignment.id.desc())
-            .limit(limit)
-        ).all()
-        return [(a, p, u) for a, p, u in rows]
-
-
-def assign_program(program_id: int, user_id: int, on_date, note: str | None = None) -> bool:
-    """Hand a programme to a client for a day. False on the (program, user, day)
-    duplicate — assigning the same workout twice for the same day is a mistake,
-    not a request."""
-    from sqlalchemy.exc import IntegrityError
-
-    try:
-        with session_scope() as s:
-            s.add(ProgramAssignment(program_id=program_id, user_id=user_id,
-                                    date=on_date, note=note))
-        return True
-    except IntegrityError:
-        return False
-
-
-def unassign(assignment_id: int) -> bool:
-    with session_scope() as s:
-        a = s.get(ProgramAssignment, assignment_id)
-        if a is None:
-            return False
-        s.delete(a)
-        return True
-
-
-def create_program(title: str, intro: str | None) -> int:
-    with session_scope() as s:
-        p = Program(title=title, intro=intro)
+        p = Program(title=title, intro=intro, level=level, goal=goal)
         s.add(p)
         s.flush()
         return p.id
@@ -609,11 +593,12 @@ def get_program(program_id: int) -> Program | None:
                         .options(selectinload(Program.items)))
 
 
-def update_program(program_id: int, title: str, intro: str | None) -> None:
+def update_program(program_id: int, title: str, intro: str | None,
+                   level: str | None = None, goal: str | None = None) -> None:
     with session_scope() as s:
         p = s.get(Program, program_id)
         if p is not None:
-            p.title, p.intro = title, intro
+            p.title, p.intro, p.level, p.goal = title, intro, level, goal
 
 
 def delete_program(program_id: int) -> list[str]:
