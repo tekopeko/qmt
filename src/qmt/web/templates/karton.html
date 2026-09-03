@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Karton — QMT{% endblock %}
+{% block head %}
+<style>
+  .karton-grid { display:grid; grid-template-columns: 1.2fr .8fr; gap:26px; align-items:start; }
+  @media (max-width: 900px) { .karton-grid { grid-template-columns: 1fr; } }
+  .k-sec h2 { font-size:1.05rem; margin-bottom:12px; }
+  .log-entry { border-bottom:1px solid var(--line); padding:10px 2px; }
+  .log-entry .when { font-weight:700; font-variant-numeric:tabular-nums; }
+  .log-entry .rpe { font:700 .72rem var(--font-body); color:var(--accent);
+                    background:var(--accent-dim); border-radius:6px; padding:2px 7px; margin-left:8px; }
+  .log-entry p { white-space:pre-line; font-size:.92rem; margin-top:4px; }
+  .cal-row { display:flex; gap:10px; font-size:.9rem; padding:6px 0; border-bottom:1px solid var(--line); }
+  .cal-row .when { font-weight:700; font-variant-numeric:tabular-nums; min-width:130px; }
+</style>
+{% endblock %}
+{% block content %}
+{% if not own %}
+<nav class="crumbs" aria-label="Putanja"><a href="/clanarine">Članarine</a><span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
+{% endif %}
+<h1 style="font-size:1.7rem; margin-bottom:4px;">{% if own %}Moj karton{% else %}Karton — {{ subject.name or subject.email }}{% endif %}</h1>
+<p class="hint" style="margin-bottom:26px;">Dnevnik treninga, upitnik i termini na jednom mjestu.</p>
+
+<div class="card" style="padding:16px 20px; margin-bottom:26px; max-width:720px;">
+  {% if onboarding %}
+  <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;">
+    <div>
+      <div style="font:700 .72rem var(--font-display); text-transform:uppercase; letter-spacing:.08em; color:var(--muted);">Online trening — upitnik</div>
+      <div style="font:700 1.25rem var(--font-display); text-transform:uppercase; margin-top:4px;">
+        {{ levels[onboarding.level] }} <span style="color:var(--muted); font-family:var(--font-body); font-size:.85rem; font-weight:600; text-transform:none;">· {{ goals[onboarding.goal] }} · {{ onboarding.score }}/{{ max_score }} bodova</span>
+      </div>
+    </div>
+    {% if own %}<a class="btn-sm btn-ghost" href="/upitnik">Ispuni ponovno</a>{% endif %}
+  </div>
+  <details style="margin-top:12px;">
+    <summary class="hint" style="cursor:pointer;">Odgovori</summary>
+    <ul style="padding:8px 0 0 18px; font-size:.88rem;">
+      {% for q in questions %}
+      <li style="margin-bottom:4px;">{{ q.text }} — <strong>{{ q.options[answers[q.key]][0] }}</strong></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% elif own %}
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+    <div>
+      <strong>Upitnik za online trening još nije ispunjen.</strong>
+      <p class="hint" style="margin-top:2px;">Prema odgovorima te svrstavamo u razinu i biramo programe za tvoj cilj.</p>
+    </div>
+    <a class="btn-sm btn-signal" href="/upitnik">Ispuni upitnik</a>
+  </div>
+  {% else %}
+  <p class="hint">Upitnik još nije ispunjen.</p>
+  {% endif %}
+</div>
+
+<div class="karton-grid">
+  <div class="k-sec">
+    <h2>Dnevnik treninga</h2>
+    {% if own %}
+    <form method="post" action="/karton/log" class="card" style="padding:14px 16px; margin-bottom:18px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="field"><label for="log-day">Datum</label>
+          <input id="log-day" type="date" name="day" value="{{ today.isoformat() }}" max="{{ today.isoformat() }}" required></div>
+        <div class="field"><label for="log-effort">Napor (1–10, neobavezno)</label>
+          <select id="log-effort" name="effort">
+            <option value="">—</option>
+            {% for i in range(1, 11) %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+          </select></div>
+      </div>
+      <div class="field"><label for="log-note">Što si radio/la?</label>
+        <textarea id="log-note" name="note" rows="3" required
+                  placeholder="npr. Čučanj 3×8 · 60 kg&#10;Potisak s klupe 3×10 · 40 kg"></textarea></div>
+      <button type="submit" class="btn-sm btn-signal">Zabilježi trening</button>
+    </form>
+    {% endif %}
+    {% for entry in logs %}
+    <div class="log-entry">
+      <span class="when">{{ weekdays_short[entry.date.weekday()] }} {{ entry.date.strftime("%-d.%-m.%Y.") }}</span>
+      {% if entry.effort %}<span class="rpe">napor {{ entry.effort }}/10</span>{% endif %}
+      {% if own %}
+      <form method="post" action="/karton/log/{{ entry.id }}/delete" style="display:inline; float:right; margin:0;">
+        <button type="submit" class="btn-sm btn-ghost" style="padding:3px 9px; font-size:.72rem;">Obriši</button>
+      </form>
+      {% endif %}
+      <p>{{ entry.note }}</p>
+    </div>
+    {% else %}
+    <p class="hint">Još nema zapisa{% if own %} — zabilježi svoj prvi trening gore{% endif %}.</p>
+    {% endfor %}
+  </div>
+
+  <div class="k-sec">
+    <h2>Nadolazeći termini</h2>
+    {% for s in upcoming %}
+    <div class="cal-row {% if s.canceled %}canceled{% endif %}" {% if s.canceled %}style="opacity:.55;"{% endif %}>
+      <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
+      <span{% if s.canceled %} style="text-decoration:line-through;"{% endif %}>{{ s.title }}</span>
+      {% if s.canceled %}<strong style="color:var(--danger); font-size:.75rem;">OTKAZANO</strong>{% endif %}
+    </div>
+    {% else %}<p class="hint">Nema rezervacija — <a href="/raspored">otvori raspored</a>.</p>{% endfor %}
+
+    <h2 style="margin-top:28px;">Odrađeni termini</h2>
+    {% for s in history %}
+    <div class="cal-row" {% if s.canceled %}style="opacity:.55;"{% endif %}>
+      <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
+      <span>{{ s.title }}</span>
+    </div>
+    {% else %}<p class="hint">Još nema prošlih termina.</p>{% endfor %}
+  </div>
+</div>
+{% endblock %}

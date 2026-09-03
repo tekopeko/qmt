@@ -41,6 +41,9 @@
       </td>
       <td class="hint" style="white-space:nowrap;">{{ u.created_at.strftime("%-d.%-m.%Y.") }}</td>
       <td style="text-align:right; white-space:nowrap;">
+        {% if not u_is_owner and not u.is_trainer %}
+        <a class="btn-sm btn-ghost" href="/karton/{{ u.id }}">Karton</a>
+        {% endif %}
         {% if not u_is_owner %}
           {% if u.is_trainer %}
           <form method="post" action="/korisnici/{{ u.id }}/trainer" style="margin:0; display:inline;"

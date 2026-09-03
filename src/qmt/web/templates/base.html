@@ -219,6 +219,7 @@
     {% if user %}
       <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if request.url.path.startswith('/raspored') %}on{% endif %}">Raspored</a>
+      {% if not user.is_trainer %}<a href="/karton" class="{% if request.url.path.startswith('/karton') or request.url.path.startswith('/upitnik') %}on{% endif %}">Karton</a>{% endif %}
       <a href="/treninzi" class="{% if request.url.path.startswith('/treninzi') %}on{% endif %}">Online treninzi</a>
       <a href="/prehrana" class="{% if request.url.path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
       {% if user.is_trainer or is_owner %}<a href="/admin" class="{% if '/admin' in request.url.path %}on{% endif %}">Admin</a>

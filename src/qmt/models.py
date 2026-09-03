@@ -143,6 +143,51 @@ class Membership(Base):
         return today <= self.dospijece
 
 
+class OnboardingResponse(Base):
+    """A client's online-trening upitnik: raw answers + the computed routing.
+
+    One row per user — refilling overwrites (the routing should reflect the
+    CURRENT state, and the karton is not an archive of old self-assessments).
+    Answers are stored as JSON {question key: chosen option index} so the
+    karton can re-render them against qmt.upitnik.QUESTIONS.
+    """
+
+    __tablename__ = "onboarding_responses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
+    answers: Mapped[str] = mapped_column(Text)             # JSON: {key: option index}
+    score: Mapped[int] = mapped_column(Integer)
+    level: Mapped[str] = mapped_column(String(12))         # pocetna | srednja | napredna
+    goal: Mapped[str] = mapped_column(String(12))          # cijelo | gornji | donji
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user: Mapped[User] = relationship()
+
+
+class TrainingLog(Base):
+    """One diary entry in the karton: what the client did, how hard it felt.
+
+    Written by the client (the owner's "može si upisivati šta je radio,
+    kilaže"); the trainer reads it. Deliberately free-form text + one effort
+    number — structure can grow once real usage shows what's needed.
+    """
+
+    __tablename__ = "training_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    date: Mapped[SADate] = mapped_column(Date, index=True)
+    effort: Mapped[int | None] = mapped_column(Integer, nullable=True)   # RPE 1–10
+    note: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship()
+
+
 class Program(Base):
     """A training programme in the trainer's LIBRARY — content, not ownership.
 

@@ -4,6 +4,17 @@
 <h1 style="font-size:1.8rem; margin-bottom:4px;">Moji online treninzi</h1>
 <p class="hint" style="margin-bottom:24px;">Treninzi koje ti je trener dodijelio, po danima.</p>
 
+{% if not has_upitnik %}
+<div class="card" style="padding:14px 18px; margin-bottom:22px; max-width:640px;
+                         display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+  <div>
+    <strong>Ispuni upitnik za online trening</strong>
+    <p class="hint" style="margin-top:2px;">Prema odgovorima te svrstavamo u razinu (početna / srednja / napredna) i cilj.</p>
+  </div>
+  <a class="btn-sm btn-signal" href="/upitnik">Ispuni upitnik</a>
+</div>
+{% endif %}
+
 {% macro assignment_card(a, highlight) %}
   <a class="card" href="/treninzi/{{ a.program.id }}"
      style="padding:16px 20px; text-decoration:none; display:flex; gap:16px; align-items:center;

@@ -18,9 +18,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import config
-from .models import (PLAN_LABELS, Base, Booking, Membership, Program,
-                     ProgramAssignment, ProgramItem, SessionTemplate,
-                     TrainingSession, User)
+from .models import (PLAN_LABELS, Base, Booking, Membership, OnboardingResponse,
+                     Program, ProgramAssignment, ProgramItem, SessionTemplate,
+                     TrainingLog, TrainingSession, User)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -398,6 +398,62 @@ def memberships_overview() -> list[dict]:
     for m in all_m:
         by_user.setdefault(m.user_id, []).append(m)
     return [{"user": u, "plans": by_user.get(u.id, [])} for u in users]
+
+
+# ---------- karton (onboarding upitnik + training diary) ----------
+
+def save_onboarding(user_id: int, answers_json: str, score: int,
+                    level: str, goal: str) -> None:
+    """Upsert — refilling the upitnik replaces the previous routing."""
+    with session_scope() as s:
+        r = s.scalar(select(OnboardingResponse)
+                     .where(OnboardingResponse.user_id == user_id).with_for_update())
+        if r is None:
+            s.add(OnboardingResponse(user_id=user_id, answers=answers_json,
+                                     score=score, level=level, goal=goal))
+        else:
+            r.answers, r.score, r.level, r.goal = answers_json, score, level, goal
+
+
+def get_onboarding(user_id: int) -> OnboardingResponse | None:
+    with session_scope() as s:
+        return s.scalar(select(OnboardingResponse)
+                        .where(OnboardingResponse.user_id == user_id))
+
+
+def add_training_log(user_id: int, day: date, effort: int | None, note: str) -> int:
+    with session_scope() as s:
+        entry = TrainingLog(user_id=user_id, date=day, effort=effort, note=note)
+        s.add(entry)
+        s.flush()
+        return entry.id
+
+
+def delete_training_log(log_id: int, user_id: int) -> bool:
+    """Clients delete only their OWN entries — user_id is part of the match."""
+    with session_scope() as s:
+        entry = s.scalar(select(TrainingLog).where(TrainingLog.id == log_id,
+                                                   TrainingLog.user_id == user_id))
+        if entry is None:
+            return False
+        s.delete(entry)
+        return True
+
+
+def training_logs(user_id: int) -> list[TrainingLog]:
+    with session_scope() as s:
+        return list(s.scalars(select(TrainingLog).where(TrainingLog.user_id == user_id)
+                              .order_by(TrainingLog.date.desc(), TrainingLog.id.desc())))
+
+
+def booking_history(user_id: int, limit: int = 20) -> list[TrainingSession]:
+    """Past booked sessions, newest first — the karton's 'personal calendar'."""
+    with session_scope() as s:
+        return list(s.scalars(
+            select(TrainingSession).join(Booking, Booking.session_id == TrainingSession.id)
+            .where(Booking.user_id == user_id,
+                   TrainingSession.starts_at < datetime.now(config.TZ))
+            .order_by(TrainingSession.starts_at.desc()).limit(limit)))
 
 
 # ---------- training programmes (treninzi) ----------

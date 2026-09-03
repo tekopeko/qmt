@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import auth, config, db, mailer
+from .. import auth, config, db, mailer, upitnik
 from ..models import PLAN_LABELS, PLAN_TYPES, SESSION_KINDS
 
 app = FastAPI(title="QMT")
@@ -476,6 +476,121 @@ def add_oneoff(request: Request, title: str = Form(...), day: str = Form(...),
     return RedirectResponse(f"/raspored?week={(d - timedelta(days=d.weekday())).isoformat()}", status_code=303)
 
 
+# ---------- karton (personal file: upitnik + diary + calendar) ----------
+
+def _render_karton(request: Request, viewer, subject, own: bool):
+    import json
+
+    onboarding = db.get_onboarding(subject.id)
+    answers = json.loads(onboarding.answers) if onboarding else {}
+    return templates.TemplateResponse(request, "karton.html", _ctx(
+        request, viewer, subject=subject, own=own,
+        onboarding=onboarding, answers=answers,
+        questions=upitnik.QUESTIONS, levels=upitnik.LEVELS, goals=upitnik.GOALS,
+        max_score=upitnik.MAX_SCORE,
+        logs=db.training_logs(subject.id),
+        upcoming=db.my_upcoming(subject.id),
+        history=db.booking_history(subject.id),
+        today=config.today(), tz=config.TZ,
+    ))
+
+
+@app.get("/karton", response_class=HTMLResponse)
+def karton_self(request: Request):
+    user = current_user(request)
+    if user is None:
+        from urllib.parse import quote
+        return RedirectResponse(f"/login?next={quote('/karton')}", status_code=303)
+    if user.is_trainer:
+        # the trainer has no karton of their own — their view is per-client
+        return RedirectResponse("/clanarine", status_code=303)
+    return _render_karton(request, user, user, own=True)
+
+
+@app.get("/karton/{user_id}", response_class=HTMLResponse)
+def karton_client(request: Request, user_id: int):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    with db.session_scope() as s:
+        subject = s.get(db.User, user_id)
+    if subject is None:
+        raise HTTPException(status_code=404)
+    return _render_karton(request, user, subject, own=False)
+
+
+@app.get("/upitnik", response_class=HTMLResponse)
+def upitnik_page(request: Request):
+    user = current_user(request)
+    if user is None:
+        from urllib.parse import quote
+        return RedirectResponse(f"/login?next={quote('/upitnik')}", status_code=303)
+    import json
+
+    existing = db.get_onboarding(user.id)
+    return templates.TemplateResponse(request, "upitnik.html", _ctx(
+        request, user, questions=upitnik.QUESTIONS, goals=upitnik.GOALS,
+        picked=json.loads(existing.answers) if existing else {},
+        picked_goal=existing.goal if existing else None,
+    ))
+
+
+@app.post("/upitnik")
+async def upitnik_submit(request: Request):
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    form = await request.form()
+    import json
+
+    picked: dict[str, int] = {}
+    try:
+        for q in upitnik.QUESTIONS:
+            idx = int(form[q["key"]])
+            if not 0 <= idx < len(q["options"]):
+                raise ValueError
+            picked[q["key"]] = idx
+        goal = str(form["goal"])
+        if goal not in upitnik.GOALS:
+            raise ValueError
+    except (KeyError, ValueError):
+        return RedirectResponse("/upitnik?error=Odgovori+na+sva+pitanja.", status_code=303)
+    score, level = upitnik.score_answers(picked)
+    db.save_onboarding(user.id, json.dumps(picked), score, level, goal)
+    return RedirectResponse(
+        f"/karton?ok=Upitnik+je+spremljen+—+{upitnik.LEVELS[level].replace(' ', '+')}.",
+        status_code=303)
+
+
+@app.post("/karton/log")
+def karton_log_add(request: Request, day: str = Form(...), note: str = Form(...),
+                   effort: str = Form("")):
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    try:
+        d = date.fromisoformat(day)
+        rpe = int(effort) if effort.strip() else None
+        assert rpe is None or 1 <= rpe <= 10
+        assert d <= config.today()               # diary records the past, not plans
+    except (ValueError, AssertionError):
+        return RedirectResponse("/karton?error=Neispravan+datum+ili+napor.", status_code=303)
+    if not note.strip():
+        return RedirectResponse("/karton?error=Upiši+što+si+radio/la.", status_code=303)
+    db.add_training_log(user.id, d, rpe, note.strip())
+    return RedirectResponse("/karton?ok=Trening+je+zabilježen.", status_code=303)
+
+
+@app.post("/karton/log/{log_id}/delete")
+def karton_log_delete(request: Request, log_id: int):
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not db.delete_training_log(log_id, user.id):
+        raise HTTPException(status_code=404)
+    return RedirectResponse("/karton?ok=Zapis+je+obrisan.", status_code=303)
+
+
 # ---------- treninzi (custom training programmes) ----------
 
 _MEDIA_KINDS = {
@@ -557,6 +672,7 @@ def treninzi(request: Request):
         request, user,
         upcoming=sorted([a for a in assignments if a.date >= today], key=lambda a: a.date),
         past=[a for a in assignments if a.date < today],
+        has_upitnik=db.get_onboarding(user.id) is not None,
         today=today))
 
 

@@ -12,7 +12,10 @@
 {% for row in rows %}
 <div class="card" style="padding:14px 18px; margin-bottom:14px; max-width:860px;">
   <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap;">
-    <strong>{{ row.user.name or "—" }}</strong><span class="hint">{{ row.user.email }}</span>
+    <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
+      <strong>{{ row.user.name or "—" }}</strong><span class="hint">{{ row.user.email }}</span>
+    </div>
+    <a class="btn-sm btn-ghost" href="/karton/{{ row.user.id }}">Karton →</a>
   </div>
 
   {% if row.plans %}

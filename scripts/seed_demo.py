@@ -76,12 +76,15 @@ def main() -> None:
 
     print("timetable (dev RESET — replaces all templates/sessions/bookings):")
     from sqlalchemy import delete
-    from qmt.models import Booking, Membership, TrainingSession
+    from qmt.models import (Booking, Membership, OnboardingResponse,
+                            TrainingLog, TrainingSession)
     with db.session_scope() as s:
         s.execute(delete(Booking))
         s.execute(delete(TrainingSession))
         s.execute(delete(SessionTemplate))
         s.execute(delete(Membership))
+        s.execute(delete(OnboardingResponse))
+        s.execute(delete(TrainingLog))
         for title, wd, hhmm, dur, cap, note, kind in TIMETABLE:
             h, m = map(int, hhmm.split(":"))
             s.add(SessionTemplate(title=title, kind=kind, weekday=wd, start_min=h * 60 + m,
@@ -159,9 +162,30 @@ def seed_program() -> None:
     print("  1 program u biblioteci, 2 dodjele (Ivan danas, Ana sutra)")
 
 
+def seed_karton() -> None:
+    """Ivan: filled upitnik + two diary entries — the karton demo."""
+    import json
+    from datetime import timedelta
+
+    from qmt import upitnik
+
+    ivan = db.get_user_by_email("ivan@qmt.local")
+    picked = {"staz": 2, "tjedno": 2, "sklekovi": 1, "cucanj": 2, "ozljede": 2}
+    score, level = upitnik.score_answers(picked)
+    db.save_onboarding(ivan.id, json.dumps(picked), score, level, "gornji")
+    today = db.config.today()
+    db.add_training_log(ivan.id, today - timedelta(days=2), 7,
+                        "Čučanj 3×8 · 60 kg\nPotisak s klupe 3×10 · 40 kg\nVeslanje 3×12 · 35 kg")
+    db.add_training_log(ivan.id, today - timedelta(days=5), 5,
+                        "Mobilnost + core, lagani dan.")
+    print(f"  Ivan: upitnik ({level}, gornji dio) + 2 zapisa u dnevniku")
+
+
 if __name__ == "__main__":
     main()
     print("bookings:")
     fill_bookings()
     print("treninzi:")
     seed_program()
+    print("karton:")
+    seed_karton()
