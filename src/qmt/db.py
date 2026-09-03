@@ -8,8 +8,9 @@ count-then-insert check (the same race macro_tracker's LLM quota had), so
 
 from __future__ import annotations
 
+import calendar
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Iterator
 
 from sqlalchemy import create_engine, delete as sa_delete, func, select
@@ -17,8 +18,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import config
-from .models import (Base, Booking, Program, ProgramAssignment, ProgramItem,
-                     SessionTemplate, TrainingSession, User)
+from .models import (PLAN_LABELS, Base, Booking, Membership, Program,
+                     ProgramAssignment, ProgramItem, SessionTemplate,
+                     TrainingSession, User)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -130,9 +132,9 @@ def list_templates() -> list[SessionTemplate]:
 
 
 def add_template(title: str, weekday: int, start_min: int, duration_min: int,
-                 capacity: int, note: str | None) -> int:
+                 capacity: int, note: str | None, kind: str = "grupni") -> int:
     with session_scope() as s:
-        t = SessionTemplate(title=title, weekday=weekday, start_min=start_min,
+        t = SessionTemplate(title=title, kind=kind, weekday=weekday, start_min=start_min,
                             duration_min=duration_min, capacity=capacity, note=note)
         s.add(t)
         s.flush()
@@ -162,13 +164,14 @@ def _prune_future_unbooked(s, template_id: int) -> None:
 
 
 def update_template(template_id: int, title: str, weekday: int, start_min: int,
-                    duration_min: int, capacity: int, note: str | None) -> bool:
+                    duration_min: int, capacity: int, note: str | None,
+                    kind: str = "grupni") -> bool:
     with session_scope() as s:
         t = s.get(SessionTemplate, template_id)
         if t is None:
             return False
         t.title, t.weekday, t.start_min = title, weekday, start_min
-        t.duration_min, t.capacity, t.note = duration_min, capacity, note
+        t.duration_min, t.capacity, t.note, t.kind = duration_min, capacity, note, kind
         _prune_future_unbooked(s, template_id)
         return True
 
@@ -212,7 +215,7 @@ def materialize_week(monday) -> None:
                               t.start_min // 60, t.start_min % 60, tzinfo=config.TZ)
             s.execute(
                 pg_insert(TrainingSession).values(
-                    template_id=t.id, title=t.title, starts_at=starts,
+                    template_id=t.id, title=t.title, kind=t.kind, starts_at=starts,
                     duration_min=t.duration_min, capacity=t.capacity,
                 ).on_conflict_do_nothing(constraint="uq_session_template_start")
             )
@@ -242,9 +245,9 @@ def user_booking_ids(user_id: int, session_ids: list[int]) -> set[int]:
 
 
 def add_oneoff_session(title: str, starts_at: datetime, duration_min: int,
-                       capacity: int, note: str | None) -> int:
+                       capacity: int, note: str | None, kind: str = "grupni") -> int:
     with session_scope() as s:
-        sess = TrainingSession(title=title, starts_at=starts_at,
+        sess = TrainingSession(title=title, kind=kind, starts_at=starts_at,
                                duration_min=duration_min, capacity=capacity, note=note)
         s.add(sess)
         s.flush()
@@ -284,6 +287,10 @@ def book(user_id: int, session_id: int) -> None:
             raise BookingError("Termin je već počeo ili prošao.")
         if sess.starts_at > now + timedelta(days=config.BOOKING_HORIZON_DAYS):
             raise BookingError(f"Rezervacije se otvaraju {config.BOOKING_HORIZON_DAYS} dana unaprijed.")
+        if sess.kind not in active_plan_kinds(user_id, s):
+            raise BookingError(
+                f"Za termin \"{PLAN_LABELS.get(sess.kind, sess.kind)}\" treba "
+                "aktivna članarina — javi se treneru.")
         taken = s.scalar(select(func.count()).select_from(Booking).where(Booking.session_id == session_id))
         if taken >= sess.capacity:
             raise BookingError("Termin je popunjen.")
@@ -322,6 +329,75 @@ def my_upcoming(user_id: int) -> list[TrainingSession]:
             .where(Booking.user_id == user_id, TrainingSession.starts_at >= datetime.now(config.TZ))
             .order_by(TrainingSession.starts_at)
         ).all())
+
+
+# ---------- memberships (članarine) ----------
+
+def _add_month(d: date) -> date:
+    """Same day next month, clamped to month length (31.1. → 28.2.)."""
+    y, m = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
+    return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
+def active_plan_kinds(user_id: int, s: Session | None = None) -> set[str]:
+    """Plans whose dospijeće (next_payment + grace week) hasn't passed."""
+    cutoff = config.today() - timedelta(days=Membership.GRACE_DAYS)
+    q = select(Membership.plan).where(Membership.user_id == user_id,
+                                      Membership.next_payment >= cutoff)
+    if s is not None:
+        return set(s.scalars(q))
+    with session_scope() as scope:
+        return set(scope.scalars(q))
+
+
+def memberships_for(user_id: int) -> list[Membership]:
+    with session_scope() as s:
+        return list(s.scalars(select(Membership).where(Membership.user_id == user_id)
+                              .order_by(Membership.plan)))
+
+
+def record_payment(user_id: int, plan: str) -> Membership:
+    """Cash/card taken at the gym: start the plan or extend it by a month.
+
+    Paying early extends from the CURRENT due date, not from today — a payment
+    a week ahead must never shorten the cycle. A lapsed plan restarts from
+    today (nobody owes "back months" for time the gym wasn't used).
+    """
+    today = config.today()
+    with session_scope() as s:
+        m = s.scalar(select(Membership).where(Membership.user_id == user_id,
+                                              Membership.plan == plan).with_for_update())
+        base = m.next_payment if m is not None and m.next_payment > today else today
+        if m is None:
+            m = Membership(user_id=user_id, plan=plan, paid_on=today,
+                           next_payment=_add_month(base))
+            s.add(m)
+        else:
+            m.paid_on, m.next_payment = today, _add_month(base)
+        s.flush()
+        return m
+
+
+def remove_membership(user_id: int, plan: str) -> bool:
+    with session_scope() as s:
+        m = s.scalar(select(Membership).where(Membership.user_id == user_id,
+                                              Membership.plan == plan))
+        if m is None:
+            return False
+        s.delete(m)
+        return True
+
+
+def memberships_overview() -> list[dict]:
+    """Every client with their plans — the trainer's Članarine page."""
+    with session_scope() as s:
+        users = list(s.scalars(select(User).where(~User.is_trainer)
+                               .order_by(User.name, User.email)))
+        all_m = list(s.scalars(select(Membership).order_by(Membership.plan)))
+    by_user: dict[int, list[Membership]] = {}
+    for m in all_m:
+        by_user.setdefault(m.user_id, []).append(m)
+    return [{"user": u, "plans": by_user.get(u.id, [])} for u in users]
 
 
 # ---------- training programmes (treninzi) ----------

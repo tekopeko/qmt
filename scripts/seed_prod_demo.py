@@ -44,9 +44,9 @@ CLIENTS = [
 ]
 
 TIMETABLE = (
-    [("Grupni trening", d, h, 60, 8, None)
+    [("Grupni trening", d, h, 60, 8, None, "grupni")
      for d in (0, 2, 3, 4) for h in ("07:00", "16:00", "17:00", "18:00", "19:00")]
-    + [("Individualni trening", d, "20:00", 60, 1, None) for d in range(5)]
+    + [("Individualni trening", d, "20:00", 60, 1, None, "individualni") for d in range(5)]
 )
 
 # programme title, intro, [(exercise, instructions)]
@@ -93,11 +93,23 @@ def ensure_timetable() -> None:
         if have:
             print(f"  timetable: {have} stavki već postoje, preskačem")
             return
-        for title, wd, hhmm, dur, cap, note in TIMETABLE:
+        for title, wd, hhmm, dur, cap, note, kind in TIMETABLE:
             h, m = map(int, hhmm.split(":"))
-            s.add(SessionTemplate(title=title, weekday=wd, start_min=h * 60 + m,
+            s.add(SessionTemplate(title=title, kind=kind, weekday=wd, start_min=h * 60 + m,
                                   duration_min=dur, capacity=cap, note=note))
         print(f"  timetable: {len(TIMETABLE)} stavki dodano")
+
+
+def ensure_memberships(client_ids: list[int]) -> None:
+    """Booking is gated by plan since c4e8f19a52d7 — demo clients need one."""
+    n = 0
+    for i, uid in enumerate(client_ids):
+        if not db.active_plan_kinds(uid):
+            db.record_payment(uid, "grupni")
+            if i % 2 == 0:                       # a couple also take 1:1 termine
+                db.record_payment(uid, "individualni")
+            n += 1
+    print(f"  memberships: {n} klijenata dobilo plan")
 
 
 def fill_bookings(client_ids: list[int]) -> None:
@@ -158,6 +170,8 @@ def main() -> None:
 
     print("timetable:")
     ensure_timetable()
+    print("clanarine:")
+    ensure_memberships(ids)
     print("week:")
     fill_bookings(ids)
     print("treninzi:")

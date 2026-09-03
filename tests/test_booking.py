@@ -29,12 +29,17 @@ def clean_db():
     yield
 
 
-def make_user(email: str, is_trainer: bool = False) -> int:
+def make_user(email: str, is_trainer: bool = False,
+              plans: tuple[str, ...] = ("grupni",)) -> int:
+    """Default users can book grupni sessions — booking is plan-gated.
+    Pass plans=() for a user with no membership."""
     u = db.create_user(email, email.split("@")[0], auth.hash_password("lozinka123"))
     db.mark_email_verified(email)   # login refuses unverified accounts
     if is_trainer:
         with db.session_scope() as s:
             s.get(User, u.id).is_trainer = True
+    for plan in plans:
+        db.record_payment(u.id, plan)
     return u.id
 
 
@@ -386,3 +391,102 @@ def test_owner_cannot_be_revoked_and_passes_trainer_gates():
     assert co.get("/admin").status_code == 200   # owner passes trainer gates
     r = co.post(f"/korisnici/{uid}/trainer", data={"revoke": "1"}, follow_redirects=False)
     assert "error=" in r.headers["location"]     # refuses to strip the owner
+
+
+# ---------- članarine (membership plans gate booking) ----------
+
+def test_booking_requires_matching_active_plan():
+    uid = make_user("ivan@test.local", plans=())
+    sid = future_session(hours_from_now=24)                    # kind: grupni
+    with pytest.raises(db.BookingError, match="članarina"):
+        db.book(uid, sid)
+    db.record_payment(uid, "individualni")                     # wrong plan
+    with pytest.raises(db.BookingError, match="članarina"):
+        db.book(uid, sid)
+    db.record_payment(uid, "grupni")
+    db.book(uid, sid)                                          # now allowed
+
+
+def test_plan_kinds_are_separate():
+    uid = make_user("ana@test.local", plans=("rehabilitacija",))
+    sid = db.add_oneoff_session("Rehabilitacija",
+                                datetime.now(config.TZ) + timedelta(hours=24),
+                                60, 1, None, kind="rehabilitacija")
+    db.book(uid, sid)
+    grupni_sid = future_session(hours_from_now=25)
+    with pytest.raises(db.BookingError, match="članarina"):
+        db.book(uid, grupni_sid)
+
+
+def test_expired_plan_blocks_after_grace_week():
+    from qmt.models import Membership
+    uid = make_user("ivan@test.local")
+    sid = future_session(hours_from_now=24)
+    today = config.today()
+
+    def backdate(days: int):
+        with db.session_scope() as s:
+            m = s.scalar(db.select(Membership).where(Membership.user_id == uid))
+            m.next_payment = today - timedelta(days=days)
+
+    backdate(8)                                  # dospijeće (grace 7d) passed
+    with pytest.raises(db.BookingError, match="članarina"):
+        db.book(uid, sid)
+    backdate(7)                                  # dospijeće is exactly today
+    db.book(uid, sid)
+
+
+def test_record_payment_date_math():
+    uid = make_user("ivan@test.local", plans=())
+    today = config.today()
+
+    m = db.record_payment(uid, "grupni")         # first payment: month from today
+    assert m.paid_on == today
+    assert m.next_payment == db._add_month(today)
+    assert m.dospijece == m.next_payment + timedelta(days=7)
+
+    first_due = m.next_payment                   # paying early extends from the
+    m2 = db.record_payment(uid, "grupni")        # due date, never shortens
+    assert m2.next_payment == db._add_month(first_due)
+
+    from qmt.models import Membership
+    with db.session_scope() as s:                # long-lapsed plan restarts
+        row = s.scalar(db.select(Membership).where(Membership.user_id == uid))
+        row.next_payment = today - timedelta(days=40)
+    m3 = db.record_payment(uid, "grupni")
+    assert m3.next_payment == db._add_month(today)
+
+
+def test_add_month_clamps_to_month_length():
+    from datetime import date
+    assert db._add_month(date(2026, 1, 31)) == date(2026, 2, 28)
+    assert db._add_month(date(2026, 12, 15)) == date(2027, 1, 15)
+    assert db._add_month(date(2028, 1, 31)) == date(2028, 2, 29)   # leap year
+
+
+def test_clanarine_page_trainer_only_and_records_payment():
+    make_user("trener@test.local", is_trainer=True, plans=())
+    uid = make_user("ivan@test.local", plans=())
+
+    c = client_for("ivan@test.local")
+    assert c.get("/clanarine").status_code == 403
+
+    ct = client_for("trener@test.local")
+    assert ct.get("/clanarine").status_code == 200
+    r = ct.post(f"/clanarine/{uid}/uplata", data={"plan": "grupni"},
+                follow_redirects=False)
+    assert r.status_code == 303 and "ok=" in r.headers["location"]
+    assert db.active_plan_kinds(uid) == {"grupni"}
+
+    r = ct.post(f"/clanarine/{uid}/ukloni", data={"plan": "grupni"},
+                follow_redirects=False)
+    assert r.status_code == 303
+    assert db.active_plan_kinds(uid) == set()
+
+
+def test_calendar_shows_membership_gate():
+    make_user("ana@test.local", plans=())        # no plan at all
+    future_session(hours_from_now=1)             # today, this week
+    c = client_for("ana@test.local")
+    page = c.get("/raspored").text
+    assert "Nemaš aktivnu članarinu" in page

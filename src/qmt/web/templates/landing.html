@@ -44,7 +44,8 @@
   section.band h2 { font-size: clamp(1.5rem, 3vw, 2.1rem); margin-bottom: 26px; }
 
   /* services */
-  .svc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+  /* min 300px caps the row at 3 cards — six services read as a clean 3×2 */
+  .svc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 18px; }
   .svc {
     padding: 26px 24px; display: flex; flex-direction: column; gap: 10px;
     transition: transform .15s ease, box-shadow .15s ease;
@@ -135,6 +136,30 @@
         <h3>Rehabilitacija</h3>
         <p>Programi povratka treningu nakon ozljede, sa specijalnošću za lumbalnu kralježnicu.</p>
         <span class="meta">1:1 · stručno vođeno</span>
+      </div>
+      <div class="card svc">
+        <div class="ico">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="7.5" r="3"/><circle cx="16" cy="7.5" r="3"/><path d="M2.5 20c0-3 2.4-4.8 5.5-4.8s5.5 1.8 5.5 4.8"/><path d="M13 15.6c.9-.3 1.9-.4 3-.4 3.1 0 5.5 1.8 5.5 4.8"/></svg>
+        </div>
+        <h3>Poluindividualni trening</h3>
+        <p>Trening u dvoje ili troje — pola puta između grupe i rada 1:1, s istim fokusom na tehniku i napredak.</p>
+        <span class="meta">2–3 polaznika · 60 min</span>
+      </div>
+      <div class="card svc">
+        <div class="ico">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="12.5" rx="2"/><path d="M10 8.5l4.5 2.75L10 14z"/><path d="M8.5 20.5h7"/></svg>
+        </div>
+        <h3>Online trening</h3>
+        <p>Programi po razinama i ciljevima s video uputama — treniraj gdje god jesi, uz nadzor trenera.</p>
+        <span class="meta">po razinama · video upute</span>
+      </div>
+      <div class="card svc">
+        <div class="ico">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8c1-1.7 2.6-2.5 4.2-2.3 2.9.4 4.3 3.4 3.3 6.4-1 3.1-3.2 6.4-5.3 6.4-.8 0-1.5-.4-2.2-.4s-1.4.4-2.2.4c-2.1 0-4.3-3.3-5.3-6.4-1-3 .4-6 3.3-6.4C9.4 5.5 11 6.3 12 8z"/><path d="M12 8c0-2 1-3.4 2.6-4"/></svg>
+        </div>
+        <h3>Prehrana</h3>
+        <p>Vođenje prehrane uz aplikaciju MojiMakrosi — opišeš što jedeš, ona računa kalorije i makrose prema tvom cilju.</p>
+        <span class="meta">uz MojiMakrose · zdravi recepti</span>
       </div>
     </div>
   </div>

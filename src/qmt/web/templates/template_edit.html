@@ -11,6 +11,10 @@
 <form method="post" action="/admin/templates/{{ t.id }}/edit" style="max-width:560px;">
   <div class="field"><label for="title">Naziv</label>
     <input id="title" type="text" name="title" value="{{ t.title }}" required></div>
+  <div class="field"><label for="kind">Tip termina (određuje koja članarina vrijedi)</label>
+    <select id="kind" name="kind">
+      {% for k in kinds %}<option value="{{ k }}" {% if k == t.kind %}selected{% endif %}>{{ kind_labels[k] }}</option>{% endfor %}
+    </select></div>
   <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px;">
     <div class="field"><label for="weekday">Dan</label>
       <select id="weekday" name="weekday">

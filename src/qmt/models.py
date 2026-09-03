@@ -8,12 +8,25 @@ created one-off.
 
 from __future__ import annotations
 
-from datetime import date as SADate, datetime
+from datetime import date as SADate, datetime, timedelta
 
 from sqlalchemy import (
     Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+# Session kinds double as the bookable membership plans; "online" and "prehrana"
+# are plans without sessions (course access / nutrition tracking, billed apart).
+SESSION_KINDS = ("grupni", "individualni", "poluindividualni", "rehabilitacija")
+PLAN_TYPES = SESSION_KINDS + ("online", "prehrana")
+PLAN_LABELS = {
+    "grupni": "Grupni trening",
+    "individualni": "Individualni trening",
+    "poluindividualni": "Poluindividualni trening",
+    "rehabilitacija": "Rehabilitacija",
+    "online": "Online trening",
+    "prehrana": "Prehrana",
+}
 
 
 class Base(DeclarativeBase):
@@ -48,6 +61,7 @@ class SessionTemplate(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(20), server_default=text("'grupni'"), default="grupni")
     weekday: Mapped[int] = mapped_column(Integer)          # 0 = ponedjeljak
     start_min: Mapped[int] = mapped_column(Integer)        # minutes from midnight, local
     duration_min: Mapped[int] = mapped_column(Integer, server_default=text("60"), default=60)
@@ -65,6 +79,7 @@ class TrainingSession(Base):
         ForeignKey("session_templates.id", ondelete="SET NULL"), nullable=True, index=True
     )
     title: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(20), server_default=text("'grupni'"), default="grupni")
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     duration_min: Mapped[int] = mapped_column(Integer, server_default=text("60"), default=60)
     capacity: Mapped[int] = mapped_column(Integer, server_default=text("8"), default=8)
@@ -94,6 +109,38 @@ class Booking(Base):
 
     session: Mapped[TrainingSession] = relationship(back_populates="bookings")
     user: Mapped[User] = relationship()
+
+
+class Membership(Base):
+    """One paid plan for one client — the manual precursor to real payments.
+
+    The trainer records each uplata by hand (cash or card at the gym); dates do
+    the gating. `next_payment` lands a month after a payment, dospijeće (the
+    grace deadline) a week after that, and the plan admits booking of its
+    session kind until dospijeće passes.
+    """
+
+    __tablename__ = "memberships"
+
+    GRACE_DAYS = 7
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    plan: Mapped[str] = mapped_column(String(20))          # one of PLAN_TYPES
+    paid_on: Mapped[SADate] = mapped_column(Date)
+    next_payment: Mapped[SADate] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("user_id", "plan", name="uq_membership_user_plan"),)
+
+    user: Mapped[User] = relationship()
+
+    @property
+    def dospijece(self) -> SADate:
+        return self.next_payment + timedelta(days=self.GRACE_DAYS)
+
+    def is_active(self, today: SADate) -> bool:
+        return today <= self.dospijece
 
 
 class Program(Base):

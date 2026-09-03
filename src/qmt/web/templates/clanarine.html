@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Članarine — QMT{% endblock %}
+{% block content %}
+<h1 style="font-size:1.8rem; margin-bottom:4px;">Članarine</h1>
+<p class="hint" style="margin-bottom:24px; max-width:72ch;">
+  Ručna evidencija uplata (gotovina ili kartica u dvorani) — plaćanje kroz aplikaciju stiže
+  kasnije. Nakon evidentirane uplate sljedeća je za <strong>mjesec dana</strong>, dospijeće
+  <strong>tjedan</strong> nakon toga. Bez aktivne članarine polaznik ne može rezervirati
+  termine tog tipa.
+</p>
+
+{% for row in rows %}
+<div class="card" style="padding:14px 18px; margin-bottom:14px; max-width:860px;">
+  <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap;">
+    <strong>{{ row.user.name or "—" }}</strong><span class="hint">{{ row.user.email }}</span>
+  </div>
+
+  {% if row.plans %}
+  <div style="overflow-x:auto;">
+  <table style="width:100%; border-collapse:collapse; font-size:.88rem; margin-top:10px;">
+    <thead><tr style="text-align:left; border-bottom:1px solid var(--line);">
+      <th style="padding:6px 4px;">Plan</th><th>Zadnja uplata</th><th>Sljedeća uplata</th>
+      <th>Dospijeće</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for m in row.plans %}
+      <tr style="border-bottom:1px solid var(--line);">
+        <td style="padding:7px 4px;"><strong>{{ plan_labels[m.plan] }}</strong></td>
+        <td style="font-variant-numeric:tabular-nums;">{{ m.paid_on.strftime("%-d.%-m.%Y.") }}</td>
+        <td style="font-variant-numeric:tabular-nums;">{{ m.next_payment.strftime("%-d.%-m.%Y.") }}</td>
+        <td style="font-variant-numeric:tabular-nums;">{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</td>
+        <td>{% if m.is_active(today) %}<span style="color:var(--good); font-weight:700;">aktivna</span>
+            {% else %}<span style="color:var(--danger); font-weight:700;">istekla</span>{% endif %}</td>
+        <td style="white-space:nowrap; text-align:right;">
+          <form method="post" action="/clanarine/{{ row.user.id }}/uplata" style="display:inline; margin:0;">
+            <input type="hidden" name="plan" value="{{ m.plan }}">
+            <button class="btn-sm btn-quiet" type="submit">Evidentiraj uplatu</button>
+          </form>
+          <form method="post" action="/clanarine/{{ row.user.id }}/ukloni" style="display:inline; margin:0;"
+                onsubmit="return confirm('Ukloniti {{ plan_labels[m.plan] }} za {{ row.user.name or row.user.email }}?')">
+            <input type="hidden" name="plan" value="{{ m.plan }}">
+            <button class="btn-sm btn-ghost" type="submit">Ukloni</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="hint" style="margin-top:8px;">Nema članarina.</p>{% endif %}
+
+  {% set have = row.plans | map(attribute="plan") | list %}
+  {% set missing = plans | reject("in", have) | list %}
+  {% if missing %}
+  <form method="post" action="/clanarine/{{ row.user.id }}/uplata"
+        style="display:flex; gap:8px; margin-top:12px; align-items:center; max-width:440px;">
+    <select name="plan" style="flex:1;">
+      {% for p in missing %}<option value="{{ p }}">{{ plan_labels[p] }}</option>{% endfor %}
+    </select>
+    <button class="btn-sm btn-signal" type="submit" style="white-space:nowrap;">Dodaj + evidentiraj uplatu</button>
+  </form>
+  {% endif %}
+</div>
+{% else %}
+<p class="hint">Još nema polaznika.</p>
+{% endfor %}
+{% endblock %}

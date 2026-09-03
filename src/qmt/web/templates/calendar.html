@@ -111,6 +111,8 @@
                     aria-label="Otkaži {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">Otkaži</button>
           </form>
           {% else %}<div class="cap">rezervirano ✓</div>{% endif %}
+        {% elif not s.allowed %}
+          <div class="cap" title="Za ovaj tip termina treba aktivna članarina — javi se treneru.">potrebna članarina</div>
         {% elif not s.full %}
           <form method="post" action="/book/{{ s.id }}">
             <input type="hidden" name="week" value="{{ monday.isoformat() }}">
@@ -124,6 +126,32 @@
   </div>
   {% endfor %}
 </div>
+
+{% if not user.is_trainer %}
+<div class="mine-list">
+  <h2>Moja članarina</h2>
+  {% if memberships %}
+  <table style="border-collapse:collapse; font-size:.9rem;">
+    <thead><tr style="text-align:left; border-bottom:1px solid var(--line);">
+      <th style="padding:6px 18px 6px 0;">Plan</th><th style="padding-right:18px;">Sljedeća uplata</th>
+      <th style="padding-right:18px;">Dospijeće</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for m in memberships %}
+      <tr style="border-bottom:1px solid var(--line);">
+        <td style="padding:7px 18px 7px 0;"><strong>{{ m.label }}</strong></td>
+        <td style="font-variant-numeric:tabular-nums; padding-right:18px;">{{ m.next_payment.strftime("%-d.%-m.%Y.") }}</td>
+        <td style="font-variant-numeric:tabular-nums; padding-right:18px;">{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</td>
+        <td>{% if m.active %}<span style="color:var(--good); font-weight:700;">aktivna</span>
+            {% else %}<span style="color:var(--danger); font-weight:700;">istekla</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="hint">Nemaš aktivnu članarinu — za rezervacije javi se treneru (plaćanje gotovinom ili karticom u dvorani).</p>
+  {% endif %}
+</div>
+{% endif %}
 
 {% if mine_days and not user.is_trainer %}
 <div class="mine-list">

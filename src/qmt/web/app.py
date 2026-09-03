@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from .. import auth, config, db, mailer
+from ..models import PLAN_LABELS, PLAN_TYPES, SESSION_KINDS
 
 app = FastAPI(title="QMT")
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=config.IS_PROD)
@@ -165,6 +166,7 @@ def calendar(request: Request, week: str | None = None):
     start = datetime(monday.year, monday.month, monday.day, tzinfo=config.TZ)
     rows = db.sessions_between(start, start + timedelta(days=7))
     mine = db.user_booking_ids(user.id, [r["session"].id for r in rows])
+    my_plans = db.active_plan_kinds(user.id)
     now = datetime.now(config.TZ)
 
     # Group into 7 day columns; precompute everything the template needs so it
@@ -190,6 +192,8 @@ def calendar(request: Request, week: str | None = None):
                 "mine": sess.id in mine,
                 "can_cancel": sess.id in mine and now < cutoff,
                 "one_on_one": sess.capacity == 1,
+                # may this client book this kind? (trainer never books via UI)
+                "allowed": user.is_trainer or sess.kind in my_plans,
             })
         # key is "sessions", NOT "items" — Jinja resolves dict.items to the builtin method
         days.append({"date": d, "name": WEEKDAYS[i], "is_today": d == today, "sessions": sessions})
@@ -217,6 +221,10 @@ def calendar(request: Request, week: str | None = None):
         prev_week=(monday - timedelta(days=7)).isoformat(),
         next_week=(monday + timedelta(days=7)).isoformat(),
         mine_days=mine_days,
+        memberships=[{"label": PLAN_LABELS.get(m.plan, m.plan),
+                      "next_payment": m.next_payment, "dospijece": m.dospijece,
+                      "active": m.is_active(today)}
+                     for m in db.memberships_for(user.id)],
     ))
 
 
@@ -337,24 +345,26 @@ def admin_page(request: Request):
         return redirect
     return templates.TemplateResponse(request, "admin.html", _ctx(
         request, user, templates_list=db.list_templates(), weekdays=WEEKDAYS,
+        kinds=SESSION_KINDS, kind_labels=PLAN_LABELS,
     ))
 
 
 @app.post("/admin/templates")
 def add_template(request: Request, title: str = Form(...), weekday: int = Form(...),
                  time: str = Form(...), duration_min: int = Form(60),
-                 capacity: int = Form(8), note: str = Form("")):
+                 capacity: int = Form(8), note: str = Form(""),
+                 kind: str = Form("grupni")):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     try:
         h, m = map(int, time.split(":"))
-        assert 0 <= weekday <= 6 and 0 <= h <= 23 and 0 <= m <= 59
+        assert 0 <= weekday <= 6 and 0 <= h <= 23 and 0 <= m <= 59 and kind in SESSION_KINDS
     except (ValueError, AssertionError):
         return RedirectResponse("/admin?error=Neispravan+dan+ili+vrijeme.", status_code=303)
     db.add_template(title.strip(), weekday, h * 60 + m,
                     max(15, min(240, duration_min)), max(1, min(40, capacity)),
-                    note.strip() or None)
+                    note.strip() or None, kind)
     return RedirectResponse("/admin", status_code=303)
 
 
@@ -375,6 +385,7 @@ def edit_template_page(request: Request, template_id: int):
         raise HTTPException(status_code=404)
     return templates.TemplateResponse(request, "template_edit.html", _ctx(
         request, user, t=t, weekdays=WEEKDAYS,
+        kinds=SESSION_KINDS, kind_labels=PLAN_LABELS,
         time_value=f"{t.start_min // 60:02d}:{t.start_min % 60:02d}",
     ))
 
@@ -383,18 +394,20 @@ def edit_template_page(request: Request, template_id: int):
 def edit_template(request: Request, template_id: int, title: str = Form(...),
                   weekday: int = Form(...), time: str = Form(...),
                   duration_min: int = Form(60), capacity: int = Form(8),
-                  note: str = Form("")):
+                  note: str = Form(""), kind: str = Form("grupni")):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     try:
         start_min = _parse_slot(weekday, time)
+        if kind not in SESSION_KINDS:
+            raise ValueError
     except ValueError:
         return RedirectResponse(f"/admin/templates/{template_id}?error=Neispravan+dan+ili+vrijeme.",
                                 status_code=303)
     db.update_template(template_id, title.strip(), weekday, start_min,
                        max(15, min(240, duration_min)), max(1, min(40, capacity)),
-                       note.strip() or None)
+                       note.strip() or None, kind)
     return RedirectResponse("/admin?ok=Stavka+je+ažurirana.+Buduci+termini+bez+rezervacija+su+preračunati.",
                             status_code=303)
 
@@ -445,7 +458,8 @@ def cancel_session(request: Request, session_id: int, undo: str = Form("")):
 @app.post("/admin/oneoff")
 def add_oneoff(request: Request, title: str = Form(...), day: str = Form(...),
                time: str = Form(...), duration_min: int = Form(60),
-               capacity: int = Form(1), note: str = Form("")):
+               capacity: int = Form(1), note: str = Form(""),
+               kind: str = Form("grupni")):
     """One-off session outside the weekly timetable (extra 1:1, workshop...)."""
     user, redirect = _require_trainer(request)
     if redirect:
@@ -454,11 +468,11 @@ def add_oneoff(request: Request, title: str = Form(...), day: str = Form(...),
         d = date.fromisoformat(day)
         h, m = map(int, time.split(":"))
         starts = datetime(d.year, d.month, d.day, h, m, tzinfo=config.TZ)
-        assert starts > datetime.now(config.TZ)
+        assert starts > datetime.now(config.TZ) and kind in SESSION_KINDS
     except (ValueError, AssertionError):
         return RedirectResponse("/admin?error=Neispravan+datum+ili+vrijeme.", status_code=303)
     db.add_oneoff_session(title.strip(), starts, max(15, min(240, duration_min)),
-                          max(1, min(40, capacity)), note.strip() or None)
+                          max(1, min(40, capacity)), note.strip() or None, kind)
     return RedirectResponse(f"/raspored?week={(d - timedelta(days=d.weekday())).isoformat()}", status_code=303)
 
 
@@ -704,10 +718,56 @@ def media(request: Request, name: str):
     return FileResponse(path, media_type=_MEDIA_TYPES.get(path.suffix.lower()))
 
 
-@app.get("/nutricionizam", response_class=HTMLResponse)
-def nutricionizam(request: Request):
-    return templates.TemplateResponse(request, "nutricionizam.html",
+@app.get("/prehrana", response_class=HTMLResponse)
+def prehrana(request: Request):
+    return templates.TemplateResponse(request, "prehrana.html",
                                       _ctx(request, current_user(request)))
+
+
+@app.get("/nutricionizam", include_in_schema=False)
+def nutricionizam_legacy(request: Request):
+    """Old name — keep bookmarks/links alive."""
+    return RedirectResponse("/prehrana", status_code=301)
+
+
+# ---------- članarine (trainer records cash/card payments by hand) ----------
+
+@app.get("/clanarine", response_class=HTMLResponse)
+def clanarine_page(request: Request):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    return templates.TemplateResponse(request, "clanarine.html", _ctx(
+        request, user, rows=db.memberships_overview(),
+        plans=PLAN_TYPES, plan_labels=PLAN_LABELS, today=config.today()))
+
+
+@app.post("/clanarine/{user_id}/uplata")
+def clanarine_uplata(request: Request, user_id: int, plan: str = Form(...)):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    if plan not in PLAN_TYPES:
+        raise HTTPException(status_code=400, detail="Nepoznat plan.")
+    with db.session_scope() as s:
+        target = s.get(db.User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404)
+    m = db.record_payment(user_id, plan)
+    from urllib.parse import quote
+    msg = (f"{PLAN_LABELS[plan]}: uplata evidentirana — sljedeća "
+           f"{m.next_payment.strftime('%-d.%-m.%Y.')}")
+    return RedirectResponse(f"/clanarine?ok={quote(msg)}", status_code=303)
+
+
+@app.post("/clanarine/{user_id}/ukloni")
+def clanarine_ukloni(request: Request, user_id: int, plan: str = Form(...)):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    if not db.remove_membership(user_id, plan):
+        raise HTTPException(status_code=404)
+    return RedirectResponse("/clanarine?ok=Članarina+je+uklonjena.", status_code=303)
 
 
 @app.exception_handler(HTTPException)

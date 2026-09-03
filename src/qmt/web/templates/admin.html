@@ -20,7 +20,7 @@
     <tr style="border-bottom:1px solid var(--line); {% if not t.active %}opacity:.45;{% endif %}">
       <td style="padding:8px 6px;">{{ weekdays[t.weekday] }}</td>
       <td style="font-variant-numeric:tabular-nums;">{{ "%02d:%02d"|format(t.start_min // 60, t.start_min % 60) }}</td>
-      <td><strong>{{ t.title }}</strong>{% if t.note %} <span class="hint">— {{ t.note }}</span>{% endif %}</td>
+      <td><strong>{{ t.title }}</strong> <span class="hint">· {{ kind_labels[t.kind] }}</span>{% if t.note %} <span class="hint">— {{ t.note }}</span>{% endif %}</td>
       <td>{{ t.duration_min }} min</td>
       <td>{{ t.capacity }}{% if t.capacity == 1 %} <span class="hint">(1:1)</span>{% endif %}</td>
       <td>{{ "aktivna" if t.active else "pauzirana" }}</td>
@@ -43,6 +43,10 @@
 <form method="post" action="/admin/templates" style="max-width:560px;">
   <div class="field"><label>Naziv</label>
     <input type="text" name="title" placeholder="npr. Grupni trening / Individualni trening / Rehabilitacija" required></div>
+  <div class="field"><label>Tip termina (određuje koja članarina vrijedi)</label>
+    <select name="kind">
+      {% for k in kinds %}<option value="{{ k }}">{{ kind_labels[k] }}</option>{% endfor %}
+    </select></div>
   <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px;">
     <div class="field"><label>Dan</label>
       <select name="weekday">{% for w in weekdays %}<option value="{{ loop.index0 }}">{{ w }}</option>{% endfor %}</select></div>
@@ -59,6 +63,10 @@
 <form method="post" action="/admin/oneoff" style="max-width:560px;">
   <div class="field"><label for="o-title">Naziv</label>
     <input id="o-title" type="text" name="title" placeholder="npr. Individualni trening (zamjena)" required></div>
+  <div class="field"><label for="o-kind">Tip termina</label>
+    <select id="o-kind" name="kind">
+      {% for k in kinds %}<option value="{{ k }}" {% if k == "individualni" %}selected{% endif %}>{{ kind_labels[k] }}</option>{% endfor %}
+    </select></div>
   <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px;">
     <div class="field"><label for="o-day">Datum</label><input id="o-day" type="date" name="day" required></div>
     <div class="field"><label for="o-time">Početak</label><input id="o-time" type="time" name="time" value="09:00" required></div>

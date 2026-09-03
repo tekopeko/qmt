@@ -219,9 +219,10 @@
     {% if user %}
       <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if request.url.path.startswith('/raspored') %}on{% endif %}">Raspored</a>
-      <a href="/treninzi" class="{% if request.url.path.startswith('/treninzi') %}on{% endif %}">Treninzi</a>
-      <a href="/nutricionizam" class="{% if request.url.path.startswith('/nutricionizam') %}on{% endif %}">Nutricionizam</a>
-      {% if user.is_trainer or is_owner %}<a href="/admin" class="{% if '/admin' in request.url.path %}on{% endif %}">Admin</a>{% endif %}
+      <a href="/treninzi" class="{% if request.url.path.startswith('/treninzi') %}on{% endif %}">Online treninzi</a>
+      <a href="/prehrana" class="{% if request.url.path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
+      {% if user.is_trainer or is_owner %}<a href="/admin" class="{% if '/admin' in request.url.path %}on{% endif %}">Admin</a>
+      <a href="/clanarine" class="{% if request.url.path.startswith('/clanarine') %}on{% endif %}">Članarine</a>{% endif %}
       {% if is_owner %}<a href="/korisnici" class="{% if '/korisnici' in request.url.path %}on{% endif %}">Korisnici</a>{% endif %}
       <form method="post" action="/logout" style="margin:0"><button type="submit" class="navbtn">Odjava</button></form>
     {% else %}

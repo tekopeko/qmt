@@ -38,9 +38,18 @@ CLIENTS = [
 GROUP_DAYS = [0, 2, 3, 4]                     # pon, sri, čet, pet
 GROUP_HOURS = ["07:00", "16:00", "17:00", "18:00", "19:00"]
 TIMETABLE = (
-    [("Grupni trening", d, h, 60, 8, None) for d in GROUP_DAYS for h in GROUP_HOURS]
-    + [("Individualni trening", d, "20:00", 60, 1, None) for d in range(5)]
+    [("Grupni trening", d, h, 60, 8, None, "grupni") for d in GROUP_DAYS for h in GROUP_HOURS]
+    + [("Individualni trening", d, "20:00", 60, 1, None, "individualni") for d in range(5)]
 )
+
+# Who pays for what (sara deliberately has NO plan — shows the booking gate).
+PLANS = {
+    "ivan@qmt.local": ("grupni", "individualni"),
+    "ana@qmt.local": ("grupni",),
+    "marko@qmt.local": ("grupni",),
+    "petra@qmt.local": ("grupni", "individualni"),
+    "luka@qmt.local": ("grupni",),
+}
 
 
 def upsert_user(email: str, name: str, password: str, is_trainer: bool) -> None:
@@ -67,16 +76,26 @@ def main() -> None:
 
     print("timetable (dev RESET — replaces all templates/sessions/bookings):")
     from sqlalchemy import delete
-    from qmt.models import Booking, TrainingSession
+    from qmt.models import Booking, Membership, TrainingSession
     with db.session_scope() as s:
         s.execute(delete(Booking))
         s.execute(delete(TrainingSession))
         s.execute(delete(SessionTemplate))
-        for title, wd, hhmm, dur, cap, note in TIMETABLE:
+        s.execute(delete(Membership))
+        for title, wd, hhmm, dur, cap, note, kind in TIMETABLE:
             h, m = map(int, hhmm.split(":"))
-            s.add(SessionTemplate(title=title, weekday=wd, start_min=h * 60 + m,
+            s.add(SessionTemplate(title=title, kind=kind, weekday=wd, start_min=h * 60 + m,
                                   duration_min=dur, capacity=cap, note=note))
         print(f"  {len(TIMETABLE)} stavki")
+
+    print("clanarine:")
+    n = 0
+    for email, plans in PLANS.items():
+        u = db.get_user_by_email(email)
+        for plan in plans:
+            db.record_payment(u.id, plan)
+            n += 1
+    print(f"  {n} članarina (sara@qmt.local namjerno bez — demo blokade)")
 
 
 def fill_bookings() -> None:
