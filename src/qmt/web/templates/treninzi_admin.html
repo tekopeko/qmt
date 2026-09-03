@@ -8,21 +8,24 @@
   devet osnovnih varijanti (skice se stvore same) ili dodaš dodatne programe za istu kombinaciju.
 </p>
 
-<h2 style="font-size:1.05rem; margin-bottom:12px;">Programi po kombinacijama</h2>
+<h2 style="font-size:1.05rem; margin-bottom:12px;">Programi po razinama</h2>
 <div style="overflow-x:auto; margin-bottom:34px;">
 <table style="width:100%; border-collapse:collapse; font-size:.92rem;">
   <thead>
     <tr style="border-bottom:2px solid var(--line); text-align:left;">
-      <th style="padding:8px 6px;">Cilj</th><th>Razina</th><th>Trening</th><th>Vježbe</th><th>Zadnja izmjena</th><th></th>
+      <th style="padding:8px 6px;">Cilj</th><th>Trening</th><th>Vježbe</th><th>Zadnja izmjena</th><th></th>
     </tr>
   </thead>
   <tbody>
-    {% for p, ni in rows if p.level %}
+    {% for g in groups %}
+    <tr>
+      <td colspan="5" style="padding:14px 6px 7px; background:var(--surface-2);
+          font:700 .76rem var(--font-display); text-transform:uppercase; letter-spacing:.08em;
+          color:var(--accent); border-bottom:1px solid var(--line);">{{ g.label }}</td>
+    </tr>
+    {% for p, ni in g.rows %}
     <tr style="border-bottom:1px solid var(--line);">
       <td style="padding:9px 6px; white-space:nowrap;">{{ goals.get(p.goal, p.goal) }}</td>
-      <td style="white-space:nowrap;">
-        <span style="font:700 .74rem var(--font-body); background:var(--accent-dim); color:var(--accent);
-                     border-radius:7px; padding:2px 8px;">{{ levels.get(p.level, p.level) }}</span></td>
       <td><strong>{{ p.title }}</strong></td>
       <td>{{ ni }}{% if ni == 0 %} <span style="color:var(--danger); font-weight:700; font-size:.76rem;">prazno!</span>{% endif %}</td>
       <td class="hint">{{ p.updated_at.strftime("%-d.%-m.%Y.") }}</td>
@@ -31,10 +34,19 @@
         <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/uredi">Uredi</a>
       </td>
     </tr>
+    {% else %}
+    <tr><td colspan="5" class="hint" style="padding:9px 6px;">Nema programa za ovu razinu.</td></tr>
     {% endfor %}
-    {% for p, ni in rows if not p.level %}
-    <tr style="border-bottom:1px solid var(--line); opacity:.55;">
-      <td style="padding:9px 6px;" colspan="2"><span class="hint">bez kombinacije — nevidljivo polaznicima</span></td>
+    {% endfor %}
+    {% if untagged %}
+    <tr>
+      <td colspan="5" style="padding:14px 6px 7px; background:var(--surface-2);
+          font:700 .76rem var(--font-display); text-transform:uppercase; letter-spacing:.08em;
+          color:var(--muted); border-bottom:1px solid var(--line);">Bez kombinacije — nevidljivo polaznicima</td>
+    </tr>
+    {% for p, ni in untagged %}
+    <tr style="border-bottom:1px solid var(--line); opacity:.6;">
+      <td style="padding:9px 6px;" class="hint">—</td>
       <td><strong>{{ p.title }}</strong></td>
       <td>{{ ni }}</td>
       <td class="hint">{{ p.updated_at.strftime("%-d.%-m.%Y.") }}</td>
@@ -43,6 +55,7 @@
       </td>
     </tr>
     {% endfor %}
+    {% endif %}
   </tbody>
 </table>
 </div>

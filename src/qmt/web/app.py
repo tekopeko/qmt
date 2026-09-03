@@ -366,8 +366,18 @@ def admin_page(request: Request):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
+    # the timetable as the same 7-column week the clients see, but editable
+    days = [{"name": name, "templates": []} for name in WEEKDAYS]
+    for t in db.list_templates():                # already weekday+time ordered
+        end = (t.start_min + t.duration_min) % (24 * 60)
+        days[t.weekday]["templates"].append({
+            "id": t.id, "title": t.title, "active": t.active, "kind": t.kind,
+            "capacity": t.capacity, "note": t.note,
+            "time": f"{t.start_min // 60:02d}:{t.start_min % 60:02d}",
+            "end": f"{end // 60:02d}:{end % 60:02d}",
+        })
     return templates.TemplateResponse(request, "admin.html", _ctx(
-        request, user, templates_list=db.list_templates(), weekdays=WEEKDAYS,
+        request, user, days=days, weekdays=WEEKDAYS,
         kinds=SESSION_KINDS, kind_labels=PLAN_LABELS,
     ))
 
@@ -747,8 +757,18 @@ def treninzi(request: Request):
         return RedirectResponse(f"/login?next={quote('/treninzi')}", status_code=303)
     if user.is_trainer:
         db.ensure_online_skeletons()             # fresh deploys heal themselves
+        rows = db.all_programs()
+        goal_order = list(upitnik.GOALS)
+        # one section per razina, goals in a fixed order inside each
+        groups = [{"label": label,
+                   "rows": sorted((r for r in rows if r[0].level == level),
+                                  key=lambda r: (goal_order.index(r[0].goal)
+                                                 if r[0].goal in upitnik.GOALS else 99,
+                                                 r[0].title))}
+                  for level, label in upitnik.LEVELS.items()]
+        untagged = [r for r in rows if r[0].level not in upitnik.LEVELS]
         return templates.TemplateResponse(request, "treninzi_admin.html", _ctx(
-            request, user, rows=db.all_programs(),
+            request, user, groups=groups, untagged=untagged,
             levels=upitnik.LEVELS, goals=upitnik.GOALS))
     has_plan = _has_online(user)
     onboarding = db.get_onboarding(user.id) if has_plan else None

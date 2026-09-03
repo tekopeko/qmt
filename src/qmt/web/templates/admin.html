@@ -1,5 +1,31 @@
 {% extends "base.html" %}
 {% block title %}Admin — QMT{% endblock %}
+{% block head %}
+<style>
+  /* the same grid language as /raspored, but the cards are template EDITORS */
+  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 34px; }
+  .day-col {
+    min-width: 0; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); align-self: start;
+  }
+  .day-head {
+    font: 700 .78rem var(--font-display); text-transform: uppercase; letter-spacing: .06em;
+    padding: 9px 11px; background: var(--surface-2);
+  }
+  .sess { border-top: 1px solid var(--line); padding: 10px 11px 12px; }
+  .sess:first-of-type { border-top: none; }
+  .sess .t { font: 800 .92rem var(--font-body); }
+  .sess .name { font-size: .84rem; font-weight: 600; margin: 1px 0 3px; }
+  .sess .cap { font-size: .76rem; color: var(--muted); }
+  .sess.paused { opacity: .5; }
+  .sess.paused .name { text-decoration: line-through; }
+  .tag-11 { font-size: .64rem; font-weight: 800; letter-spacing: .05em;
+            background: var(--accent-dim); color: var(--accent); border-radius: 6px;
+            padding: 1px 6px; margin-left: 4px; vertical-align: 1px; }
+  .none { color: var(--muted); font-size: .8rem; padding: 12px 11px; }
+  @media (max-width: 860px) { .week { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
 <h1 style="font-size:1.8rem; margin-bottom:4px;">Tjedni raspored</h1>
 <p class="hint" style="margin-bottom:24px;">
@@ -7,36 +33,28 @@
   Kapacitet <strong>1</strong> = individualni termin (1:1).
 </p>
 
-<div style="overflow-x:auto; margin-bottom:34px;">
-<table style="width:100%; border-collapse:collapse; font-size:.92rem;">
-  <thead>
-    <tr style="border-bottom:2px solid var(--ink); text-align:left;">
-      <th style="padding:8px 6px;">Dan</th><th>Vrijeme</th><th>Naziv</th>
-      <th>Trajanje</th><th>Mjesta</th><th>Status</th><th></th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for t in templates_list %}
-    <tr style="border-bottom:1px solid var(--line); {% if not t.active %}opacity:.45;{% endif %}">
-      <td style="padding:8px 6px;">{{ weekdays[t.weekday] }}</td>
-      <td style="font-variant-numeric:tabular-nums;">{{ "%02d:%02d"|format(t.start_min // 60, t.start_min % 60) }}</td>
-      <td><strong>{{ t.title }}</strong> <span class="hint">· {{ kind_labels[t.kind] }}</span>{% if t.note %} <span class="hint">— {{ t.note }}</span>{% endif %}</td>
-      <td>{{ t.duration_min }} min</td>
-      <td>{{ t.capacity }}{% if t.capacity == 1 %} <span class="hint">(1:1)</span>{% endif %}</td>
-      <td>{{ "aktivna" if t.active else "pauzirana" }}</td>
-      <td style="white-space:nowrap;">
-        <a class="btn btn-ghost btn-sm" href="/admin/templates/{{ t.id }}">Uredi</a>
-        <form method="post" action="/admin/templates/{{ t.id }}/toggle" style="margin:0; display:inline;">
+<div class="week">
+  {% for day in days %}
+  <div class="day-col">
+    <div class="day-head">{{ day.name }}</div>
+    {% for t in day.templates %}
+    <div class="sess {% if not t.active %}paused{% endif %}">
+      <div class="t">{{ t.time }}–{{ t.end }}</div>
+      <div class="name">{{ t.title }}{% if t.capacity == 1 %}<span class="tag-11">1:1</span>{% endif %}</div>
+      <div class="cap">{{ kind_labels[t.kind] }} · {{ t.capacity }} mj.{% if not t.active %} · <strong>pauzirana</strong>{% endif %}{% if t.note %} · {{ t.note }}{% endif %}</div>
+      <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+        <a class="btn-sm btn-ghost btn" href="/admin/templates/{{ t.id }}">Uredi</a>
+        <form method="post" action="/admin/templates/{{ t.id }}/toggle" style="margin:0;">
           <input type="hidden" name="active" value="{{ '0' if t.active else '1' }}">
           <button class="btn-sm btn-ghost" type="submit">{{ "Pauziraj" if t.active else "Aktiviraj" }}</button>
         </form>
-      </td>
-    </tr>
+      </div>
+    </div>
     {% else %}
-    <tr><td colspan="7" style="padding:16px 6px;" class="hint">Još nema stavki — dodaj prvu ispod.</td></tr>
+    <div class="none">Nema termina</div>
     {% endfor %}
-  </tbody>
-</table>
+  </div>
+  {% endfor %}
 </div>
 
 <h2 style="font-size:1.1rem; margin-bottom:12px;">Nova stavka rasporeda</h2>
