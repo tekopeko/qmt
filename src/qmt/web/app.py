@@ -793,7 +793,9 @@ def users_page(request: Request):
         return redirect
     return templates.TemplateResponse(request, "korisnici.html", _ctx(
         request, user, users=db.list_all_users(),
-        owner_email=config.OWNER_EMAIL))
+        owner_email=config.OWNER_EMAIL,
+        plans_map={row["user"].id: row["plans"] for row in db.memberships_overview()},
+        plan_labels=PLAN_LABELS, today=config.today()))
 
 
 @app.post("/korisnici/{user_id}/trainer")

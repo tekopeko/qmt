@@ -12,7 +12,7 @@
   <thead>
     <tr style="border-bottom:2px solid var(--line); text-align:left;">
       <th style="padding:8px 6px;">Ime</th><th>Email</th><th>Status</th><th>Uloga</th>
-      <th>Registriran</th><th></th>
+      <th>Plan</th><th>Registriran</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -29,6 +29,15 @@
         {% if u_is_owner %}<span style="color:var(--accent); font-weight:700;">vlasnik</span>
         {% elif u.is_trainer %}<span style="font-weight:700;">trener</span>
         {% else %}<span class="hint">polaznik</span>{% endif %}
+      </td>
+      <td>
+        {% if u_is_owner or u.is_trainer %}<span class="hint">n/a</span>
+        {% else %}
+          {% set ms = plans_map.get(u.id, []) %}
+          {% if ms %}
+            {% for m in ms %}{{ plan_labels[m.plan] }}{% if not m.is_active(today) %} <span style="color:var(--danger); font-size:.78rem; font-weight:700;">(istekla)</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+          {% else %}<span class="hint">bez plana</span>{% endif %}
+        {% endif %}
       </td>
       <td class="hint" style="white-space:nowrap;">{{ u.created_at.strftime("%-d.%-m.%Y.") }}</td>
       <td style="text-align:right; white-space:nowrap;">
