@@ -421,6 +421,12 @@ def get_onboarding(user_id: int) -> OnboardingResponse | None:
                         .where(OnboardingResponse.user_id == user_id))
 
 
+def onboarding_user_ids() -> set[int]:
+    """Who has filled the upitnik — the trainer's assign UI marks the rest."""
+    with session_scope() as s:
+        return set(s.scalars(select(OnboardingResponse.user_id)))
+
+
 def add_training_log(user_id: int, day: date, effort: int | None, note: str) -> int:
     with session_scope() as s:
         entry = TrainingLog(user_id=user_id, date=day, effort=effort, note=note)

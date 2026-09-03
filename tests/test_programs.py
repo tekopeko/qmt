@@ -37,6 +37,15 @@ def make_user(email: str, is_trainer: bool = False) -> int:
     db.mark_email_verified(email)   # login refuses unverified accounts
     if is_trainer:
         db.set_trainer(email)
+    else:
+        # online treninzi are gated on a filled upitnik; these tests exercise
+        # programme mechanics, so clients get one (the gate has its own tests)
+        import json
+
+        from qmt import upitnik
+        picked = {q["key"]: 0 for q in upitnik.QUESTIONS}
+        score, level = upitnik.score_answers(picked)
+        db.save_onboarding(u.id, json.dumps(picked), score, level, "cijelo")
     return u.id
 
 

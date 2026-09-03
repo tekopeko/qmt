@@ -113,6 +113,27 @@ def test_karton_self_other_and_trainer():
     assert r.status_code == 303 and r.headers["location"] == "/clanarine"
 
 
+# ---------- upitnik gates online treninzi ----------
+
+def test_assignments_hidden_until_upitnik_filled():
+    make_user("trener@test.local", is_trainer=True)
+    ivan = make_user("ivan@test.local")
+    pid = db.create_program("Online blok A", None)
+    db.assign_program(pid, ivan, config.today())
+
+    ci = client_for("ivan@test.local")
+    page = ci.get("/treninzi").text
+    assert "Online blok A" not in page          # assignment exists, stays hidden
+    assert "Ispuni upitnik" in page
+    assert ci.get(f"/treninzi/{pid}").status_code == 403   # direct URL too
+
+    ci.post("/upitnik", data={**{q["key"]: "0" for q in upitnik.QUESTIONS},
+                              "goal": "cijelo"}, follow_redirects=False)
+    page = ci.get("/treninzi").text
+    assert "Online blok A" in page
+    assert ci.get(f"/treninzi/{pid}").status_code == 200
+
+
 # ---------- diary ----------
 
 def test_log_add_and_delete_own_only():

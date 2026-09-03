@@ -651,8 +651,13 @@ def _program_or_403(request: Request, program_id: int):
     p = db.get_program(program_id)
     if p is None:
         raise HTTPException(status_code=404)
-    if not user.is_trainer and not db.client_can_view(program_id, user.id):
-        raise HTTPException(status_code=403, detail="Ovo nije tvoj trening.")
+    if not user.is_trainer:
+        # Online treninzi exist for a client only AFTER the upitnik routed them
+        # into a razina — an assignment alone (e.g. seeded data) shows nothing.
+        if db.get_onboarding(user.id) is None:
+            raise HTTPException(status_code=403, detail="Prvo ispuni upitnik.")
+        if not db.client_can_view(program_id, user.id):
+            raise HTTPException(status_code=403, detail="Ovo nije tvoj trening.")
     return user, p
 
 
@@ -665,14 +670,18 @@ def treninzi(request: Request):
     if user.is_trainer:
         return templates.TemplateResponse(request, "treninzi_admin.html", _ctx(
             request, user, rows=db.all_programs(), clients=db.list_clients(),
+            upitnik_ids=db.onboarding_user_ids(),
             handouts=db.assignments_overview(), today=config.today()))
-    assignments = db.assignments_for(user.id)
+    has_upitnik = db.get_onboarding(user.id) is not None
+    # no upitnik -> no online treninzi at all; assignments stay hidden until
+    # the client is routed into a razina
+    assignments = db.assignments_for(user.id) if has_upitnik else []
     today = config.today()
     return templates.TemplateResponse(request, "treninzi.html", _ctx(
         request, user,
         upcoming=sorted([a for a in assignments if a.date >= today], key=lambda a: a.date),
         past=[a for a in assignments if a.date < today],
-        has_upitnik=db.get_onboarding(user.id) is not None,
+        has_upitnik=has_upitnik,
         today=today))
 
 
@@ -826,7 +835,8 @@ def media(request: Request, name: str):
     p = db.media_owner_program(name)
     if p is None:
         raise HTTPException(status_code=404)
-    if not user.is_trainer and not db.client_can_view(p.id, user.id):
+    if not user.is_trainer and (db.get_onboarding(user.id) is None
+                                or not db.client_can_view(p.id, user.id)):
         raise HTTPException(status_code=403, detail="Ovo nije tvoj sadržaj.")
     path = config.MEDIA_DIR / name
     if not path.is_file():

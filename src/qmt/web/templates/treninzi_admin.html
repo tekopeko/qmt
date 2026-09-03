@@ -26,7 +26,8 @@
       </select></div>
     <div class="field"><label for="as-u">Polaznik</label>
       <select id="as-u" name="user_id" required>
-        {% for c in clients %}<option value="{{ c.id }}">{{ c.name or c.email }}</option>{% endfor %}
+        {# a client without upitnik cannot SEE assignments — flag them here #}
+        {% for c in clients %}<option value="{{ c.id }}">{{ c.name or c.email }}{% if c.id not in upitnik_ids %} — bez upitnika!{% endif %}</option>{% endfor %}
       </select></div>
     <div class="field"><label for="as-d">Dan</label>
       <input id="as-d" type="date" name="day" value="{{ today.isoformat() }}" required></div>

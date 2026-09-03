@@ -49,8 +49,13 @@
 
 {% if not upcoming and not past %}
 <div class="card" style="padding:34px; text-align:center;">
+  {% if has_upitnik %}
   <p style="margin-bottom:6px;"><strong>Još nemaš dodijeljen trening.</strong></p>
   <p class="hint">Trener će ti ovdje objaviti tvoj program — javit će ti kad bude spreman.</p>
+  {% else %}
+  <p style="margin-bottom:6px;"><strong>Online treninzi počinju upitnikom.</strong></p>
+  <p class="hint">Dok ga ne ispuniš, ovdje nema treninga — odgovori nam govore koju razinu i cilj pripremiti za tebe.</p>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}
