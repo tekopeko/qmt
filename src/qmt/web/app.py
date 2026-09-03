@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from .. import auth, config, db, mailer, upitnik
-from ..models import PLAN_LABELS, PLAN_TYPES, SESSION_KINDS
+from ..models import PLAN_ABBR, PLAN_LABELS, PLAN_TYPES, SESSION_KINDS
 
 app = FastAPI(title="QMT")
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=config.IS_PROD)
@@ -911,7 +911,7 @@ def users_page(request: Request):
         request, user, users=db.list_all_users(),
         owner_email=config.OWNER_EMAIL,
         plans_map={row["user"].id: row["plans"] for row in db.memberships_overview()},
-        plan_labels=PLAN_LABELS, today=config.today()))
+        plan_labels=PLAN_LABELS, plan_abbr=PLAN_ABBR, today=config.today()))
 
 
 @app.post("/korisnici/{user_id}/trainer")

@@ -27,6 +27,15 @@ PLAN_LABELS = {
     "online": "Online trening",
     "prehrana": "Prehrana",
 }
+# Two-letter badges for tight tables (korisnici); legend renders from this.
+PLAN_ABBR = {
+    "grupni": "GT",
+    "individualni": "IT",
+    "poluindividualni": "PI",
+    "rehabilitacija": "RH",
+    "online": "OT",
+    "prehrana": "PR",
+}
 
 
 class Base(DeclarativeBase):
