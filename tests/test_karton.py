@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
 os.environ["ALLOWED_EMAILS"] = "ivan@test.local,ana@test.local"
@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from qmt import auth, config, db, upitnik
-from qmt.models import Base, User
+from qmt.models import Base, Booking, User
 from qmt.web.app import app
 
 
@@ -134,30 +134,79 @@ def test_assignments_hidden_until_upitnik_filled():
     assert ci.get(f"/treninzi/{pid}").status_code == 200
 
 
-# ---------- diary ----------
+# ---------- post-training feedback ----------
 
-def test_log_add_and_delete_own_only():
+def attended_session(uid: int, hours_ago: float = 3, duration: int = 60) -> int:
+    """A finished termin the user was booked into (booked directly — book()
+    rightly refuses past sessions)."""
+    sid = db.add_oneoff_session("Grupni trening",
+                                datetime.now(config.TZ) - timedelta(hours=hours_ago),
+                                duration, 8, None)
+    with db.session_scope() as s:
+        s.add(Booking(user_id=uid, session_id=sid))
+    return sid
+
+
+def test_feedback_prompted_after_attended_session():
+    ivan = make_user("ivan@test.local")
+    sid = attended_session(ivan)
+    ci = client_for("ivan@test.local")
+
+    assert [s.id for s in db.pending_feedback(ivan)] == [sid]
+    assert "Kako je bilo?" in ci.get("/karton").text
+
+    r = ci.post(f"/karton/feedback/{sid}",
+                data={"effort": "7", "feeling": "dobro", "note": "Čučanj 3×8 · 60 kg"},
+                follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    logs = db.training_logs(ivan)
+    assert len(logs) == 1
+    assert logs[0].session_id == sid and logs[0].effort == 7 and logs[0].feeling == "dobro"
+    assert db.pending_feedback(ivan) == []           # prompt is gone
+
+    # one feedback per termin
+    r = ci.post(f"/karton/feedback/{sid}", data={"effort": "5"}, follow_redirects=False)
+    assert "error" in r.headers["location"]
+    assert len(db.training_logs(ivan)) == 1
+
+
+def test_feedback_needs_attended_and_finished_session():
     ivan = make_user("ivan@test.local")
     make_user("ana@test.local")
     ci = client_for("ivan@test.local")
 
-    today = config.today()
-    r = ci.post("/karton/log", data={"day": today.isoformat(), "effort": "7",
-                                     "note": "Čučanj 3×8 · 60 kg"}, follow_redirects=False)
-    assert "ok=" in r.headers["location"]
-    logs = db.training_logs(ivan)
-    assert len(logs) == 1 and logs[0].effort == 7
-
-    # future date refused — the diary records what happened
-    r = ci.post("/karton/log", data={"day": (today + timedelta(days=2)).isoformat(),
-                                     "note": "x"}, follow_redirects=False)
+    # still running (started 10 min ago, lasts 60) -> refused, not yet pending
+    running = attended_session(ivan, hours_ago=10 / 60)
+    assert db.pending_feedback(ivan) == []
+    r = ci.post(f"/karton/feedback/{running}", data={"effort": "5"}, follow_redirects=False)
     assert "error" in r.headers["location"]
 
-    # ana cannot delete ivan's entry
+    # somebody else's session -> refused
+    ana = db.get_user_by_email("ana@test.local").id
+    theirs = attended_session(ana)
+    r = ci.post(f"/karton/feedback/{theirs}", data={"effort": "5"}, follow_redirects=False)
+    assert "error" in r.headers["location"]
+    assert db.training_logs(ivan) == []
+
+    # canceled session never asks for feedback
+    sid = attended_session(ivan)
+    db.set_session_canceled(sid, True)
+    assert db.pending_feedback(ivan) == []
+
+
+def test_feedback_delete_own_only():
+    ivan = make_user("ivan@test.local")
+    make_user("ana@test.local")
+    sid = attended_session(ivan)
+    ci = client_for("ivan@test.local")
+    ci.post(f"/karton/feedback/{sid}", data={"effort": "6"}, follow_redirects=False)
+    entry = db.training_logs(ivan)[0]
+
     ca = client_for("ana@test.local")
-    assert ca.post(f"/karton/log/{logs[0].id}/delete").status_code == 404
+    assert ca.post(f"/karton/log/{entry.id}/delete").status_code == 404
     assert len(db.training_logs(ivan)) == 1
 
-    r = ci.post(f"/karton/log/{logs[0].id}/delete", follow_redirects=False)
+    r = ci.post(f"/karton/log/{entry.id}/delete", follow_redirects=False)
     assert r.status_code == 303
     assert db.training_logs(ivan) == []
+    assert [s.id for s in db.pending_feedback(ivan)] == [sid]   # prompt returns

@@ -27,6 +27,9 @@ PLAN_LABELS = {
     "online": "Online trening",
     "prehrana": "Prehrana",
 }
+# Post-training feedback (the Strava pattern): RPE number + how it felt.
+FEELING_LABELS = {"slabo": "Slabo", "dobro": "Dobro", "odlicno": "Odlično"}
+
 # Two-letter badges for tight tables (korisnici); legend renders from this.
 PLAN_ABBR = {
     "grupni": "GT",
@@ -178,23 +181,31 @@ class OnboardingResponse(Base):
 
 
 class TrainingLog(Base):
-    """One diary entry in the karton: what the client did, how hard it felt.
+    """One karton entry: the client's post-training feedback.
 
-    Written by the client (the owner's "može si upisivati šta je radio,
-    kilaže"); the trainer reads it. Deliberately free-form text + one effort
-    number — structure can grow once real usage shows what's needed.
+    Created by the FEEDBACK flow, not free-form: once a booked termin ends,
+    the karton prompts "Kako je bilo?" for exactly that session (the Strava
+    pattern) — effort (RPE 1–10), feeling, optional comment. `session_id`
+    stays nullable for legacy/manual rows; at most one feedback per
+    (user, session).
     """
 
     __tablename__ = "training_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("training_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     date: Mapped[SADate] = mapped_column(Date, index=True)
     effort: Mapped[int | None] = mapped_column(Integer, nullable=True)   # RPE 1–10
+    feeling: Mapped[str | None] = mapped_column(String(10), nullable=True)  # FEELING_LABELS key
     note: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    __table_args__ = (UniqueConstraint("user_id", "session_id", name="uq_training_log_user_session"),)
+
     user: Mapped[User] = relationship()
+    session: Mapped[TrainingSession | None] = relationship()
 
 
 class Program(Base):

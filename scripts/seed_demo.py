@@ -175,10 +175,18 @@ def seed_karton() -> None:
     db.save_onboarding(ivan.id, json.dumps(picked), score, level, "gornji")
     today = db.config.today()
     db.add_training_log(ivan.id, today - timedelta(days=2), 7,
-                        "Čučanj 3×8 · 60 kg\nPotisak s klupe 3×10 · 40 kg\nVeslanje 3×12 · 35 kg")
+                        "Čučanj 3×8 · 60 kg\nPotisak s klupe 3×10 · 40 kg\nVeslanje 3×12 · 35 kg",
+                        feeling="dobro")
     db.add_training_log(ivan.id, today - timedelta(days=5), 5,
                         "Mobilnost + core, lagani dan.")
-    print(f"  Ivan: upitnik ({level}, gornji dio) + 2 zapisa u dnevniku")
+    # a termin that ended two hours ago -> karton greets Ivan with "Kako je bilo?"
+    from qmt.models import Booking
+    sid = db.add_oneoff_session("Grupni trening",
+                                db.datetime.now(db.config.TZ) - timedelta(hours=2),
+                                60, 8, None, "grupni")
+    with db.session_scope() as s:
+        s.add(Booking(user_id=ivan.id, session_id=sid))
+    print(f"  Ivan: upitnik ({level}, gornji dio), 2 zapisa, 1 osvrt na čekanju")
 
 
 if __name__ == "__main__":

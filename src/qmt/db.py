@@ -427,9 +427,55 @@ def onboarding_user_ids() -> set[int]:
         return set(s.scalars(select(OnboardingResponse.user_id)))
 
 
-def add_training_log(user_id: int, day: date, effort: int | None, note: str) -> int:
+def pending_feedback(user_id: int, days: int = 7) -> list[TrainingSession]:
+    """Attended sessions that ENDED (within the last `days`) and still have no
+    feedback — the karton prompts these. Old unfilled ones expire quietly."""
+    now = datetime.now(config.TZ)
     with session_scope() as s:
-        entry = TrainingLog(user_id=user_id, date=day, effort=effort, note=note)
+        done = select(TrainingLog.session_id).where(
+            TrainingLog.user_id == user_id, TrainingLog.session_id.is_not(None))
+        rows = s.scalars(
+            select(TrainingSession)
+            .join(Booking, Booking.session_id == TrainingSession.id)
+            .where(Booking.user_id == user_id,
+                   ~TrainingSession.canceled,
+                   TrainingSession.starts_at >= now - timedelta(days=days),
+                   ~TrainingSession.id.in_(done))
+            .order_by(TrainingSession.starts_at.desc())).all()
+    # "ended" depends on each session's own duration — filter in Python
+    return [x for x in rows if x.starts_at + timedelta(minutes=x.duration_min) < now]
+
+
+def add_session_feedback(user_id: int, session_id: int, effort: int,
+                         feeling: str | None, note: str) -> None:
+    """Feedback is tied to an ATTENDED, FINISHED termin — never free-floating."""
+    now = datetime.now(config.TZ)
+    with session_scope() as s:
+        sess = s.get(TrainingSession, session_id)
+        booked = s.scalar(select(func.count()).select_from(Booking).where(
+            Booking.session_id == session_id, Booking.user_id == user_id))
+        if sess is None or not booked:
+            raise BookingError("Termin ne postoji ili nisi bio/la prijavljen/a.")
+        if sess.canceled:
+            raise BookingError("Termin je otkazan — nema osvrta.")
+        if sess.starts_at + timedelta(minutes=sess.duration_min) >= now:
+            raise BookingError("Termin još nije završio.")
+        existing = s.scalar(select(func.count()).select_from(TrainingLog).where(
+            TrainingLog.user_id == user_id, TrainingLog.session_id == session_id))
+        if existing:
+            raise BookingError("Osvrt za ovaj termin već postoji.")
+        s.add(TrainingLog(user_id=user_id, session_id=session_id,
+                          date=sess.starts_at.astimezone(config.TZ).date(),
+                          effort=effort, feeling=feeling, note=note))
+
+
+def add_training_log(user_id: int, day: date, effort: int | None, note: str,
+                     feeling: str | None = None) -> int:
+    """Direct insert without a session link — seeds/legacy only; the app flow
+    goes through add_session_feedback."""
+    with session_scope() as s:
+        entry = TrainingLog(user_id=user_id, date=day, effort=effort,
+                            feeling=feeling, note=note)
         s.add(entry)
         s.flush()
         return entry.id
@@ -447,9 +493,13 @@ def delete_training_log(log_id: int, user_id: int) -> bool:
 
 
 def training_logs(user_id: int) -> list[TrainingLog]:
+    from sqlalchemy.orm import joinedload
+
     with session_scope() as s:
-        return list(s.scalars(select(TrainingLog).where(TrainingLog.user_id == user_id)
-                              .order_by(TrainingLog.date.desc(), TrainingLog.id.desc())))
+        return list(s.scalars(
+            select(TrainingLog).where(TrainingLog.user_id == user_id)
+            .options(joinedload(TrainingLog.session))    # rendered after the scope closes
+            .order_by(TrainingLog.date.desc(), TrainingLog.id.desc())))
 
 
 def booking_history(user_id: int, limit: int = 20) -> list[TrainingSession]:

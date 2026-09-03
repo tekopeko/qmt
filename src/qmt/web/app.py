@@ -16,7 +16,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from .. import auth, config, db, mailer, upitnik
-from ..models import PLAN_ABBR, PLAN_LABELS, PLAN_TYPES, SESSION_KINDS
+from ..models import (FEELING_LABELS, PLAN_ABBR, PLAN_LABELS, PLAN_TYPES,
+                      SESSION_KINDS)
 
 app = FastAPI(title="QMT")
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=config.IS_PROD)
@@ -489,6 +490,8 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         questions=upitnik.QUESTIONS, levels=upitnik.LEVELS, goals=upitnik.GOALS,
         max_score=upitnik.MAX_SCORE,
         logs=db.training_logs(subject.id),
+        pending=db.pending_feedback(subject.id) if own else [],
+        feelings=FEELING_LABELS,
         upcoming=db.my_upcoming(subject.id),
         history=db.booking_history(subject.id),
         today=config.today(), tz=config.TZ,
@@ -562,23 +565,23 @@ async def upitnik_submit(request: Request):
         status_code=303)
 
 
-@app.post("/karton/log")
-def karton_log_add(request: Request, day: str = Form(...), note: str = Form(...),
-                   effort: str = Form("")):
+@app.post("/karton/feedback/{session_id}")
+def karton_feedback(request: Request, session_id: int, effort: int = Form(...),
+                    feeling: str = Form(""), note: str = Form("")):
+    """Post-training osvrt — offered by the app after a booked termin ends,
+    never a free-floating diary entry."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
+    if not 1 <= effort <= 10 or (feeling and feeling not in FEELING_LABELS):
+        return RedirectResponse("/karton?error=Neispravan+osvrt.", status_code=303)
     try:
-        d = date.fromisoformat(day)
-        rpe = int(effort) if effort.strip() else None
-        assert rpe is None or 1 <= rpe <= 10
-        assert d <= config.today()               # diary records the past, not plans
-    except (ValueError, AssertionError):
-        return RedirectResponse("/karton?error=Neispravan+datum+ili+napor.", status_code=303)
-    if not note.strip():
-        return RedirectResponse("/karton?error=Upiši+što+si+radio/la.", status_code=303)
-    db.add_training_log(user.id, d, rpe, note.strip())
-    return RedirectResponse("/karton?ok=Trening+je+zabilježen.", status_code=303)
+        db.add_session_feedback(user.id, session_id, effort,
+                                feeling or None, note.strip())
+    except db.BookingError as e:
+        from urllib.parse import quote
+        return RedirectResponse(f"/karton?error={quote(str(e))}", status_code=303)
+    return RedirectResponse("/karton?ok=Osvrt+je+spremljen.", status_code=303)
 
 
 @app.post("/karton/log/{log_id}/delete")

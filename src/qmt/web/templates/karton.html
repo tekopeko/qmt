@@ -57,35 +57,50 @@
   <div class="k-sec">
     <h2>Dnevnik treninga</h2>
     {% if own %}
-    <form method="post" action="/karton/log" class="card" style="padding:14px 16px; margin-bottom:18px;">
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-        <div class="field"><label for="log-day">Datum</label>
-          <input id="log-day" type="date" name="day" value="{{ today.isoformat() }}" max="{{ today.isoformat() }}" required></div>
-        <div class="field"><label for="log-effort">Napor (1–10, neobavezno)</label>
-          <select id="log-effort" name="effort">
-            <option value="">—</option>
-            {% for i in range(1, 11) %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
-          </select></div>
-      </div>
-      <div class="field"><label for="log-note">Što si radio/la?</label>
-        <textarea id="log-note" name="note" rows="3" required
-                  placeholder="npr. Čučanj 3×8 · 60 kg&#10;Potisak s klupe 3×10 · 40 kg"></textarea></div>
-      <button type="submit" class="btn-sm btn-signal">Zabilježi trening</button>
-    </form>
+      {% for s in pending %}
+      {# a finished booked termin without feedback — the app asks, Strava-style #}
+      <form method="post" action="/karton/feedback/{{ s.id }}" class="card"
+            style="padding:14px 16px; margin-bottom:14px; box-shadow: inset 3px 0 0 var(--accent);">
+        <div style="margin-bottom:10px;">
+          <strong>Kako je bilo?</strong>
+          <span class="hint">{{ s.title }} · {{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="field"><label for="fb-effort-{{ s.id }}">Napor (1 lagano – 10 maksimalno)</label>
+            <select id="fb-effort-{{ s.id }}" name="effort" required>
+              <option value="" disabled selected>—</option>
+              {% for i in range(1, 11) %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+            </select></div>
+          <div class="field"><label for="fb-feeling-{{ s.id }}">Osjećaj</label>
+            <select id="fb-feeling-{{ s.id }}" name="feeling">
+              <option value="">—</option>
+              {% for k, l in feelings.items() %}<option value="{{ k }}">{{ l }}</option>{% endfor %}
+            </select></div>
+        </div>
+        <div class="field"><label for="fb-note-{{ s.id }}">Komentar (neobavezno)</label>
+          <textarea id="fb-note-{{ s.id }}" name="note" rows="2"
+                    placeholder="npr. kilaže, što je išlo dobro/loše"></textarea></div>
+        <button type="submit" class="btn-sm btn-signal">Spremi osvrt</button>
+      </form>
+      {% else %}
+      <p class="hint" style="margin-bottom:14px;">Nakon svakog odrađenog termina ovdje te čeka kratki osvrt (napor, osjećaj, komentar).</p>
+      {% endfor %}
     {% endif %}
     {% for entry in logs %}
     <div class="log-entry">
       <span class="when">{{ weekdays_short[entry.date.weekday()] }} {{ entry.date.strftime("%-d.%-m.%Y.") }}</span>
       {% if entry.effort %}<span class="rpe">napor {{ entry.effort }}/10</span>{% endif %}
+      {% if entry.feeling %}<span class="rpe" style="color:var(--good); background:color-mix(in srgb, var(--good) 12%, transparent);">{{ feelings.get(entry.feeling, entry.feeling) }}</span>{% endif %}
       {% if own %}
       <form method="post" action="/karton/log/{{ entry.id }}/delete" style="display:inline; float:right; margin:0;">
         <button type="submit" class="btn-sm btn-ghost" style="padding:3px 9px; font-size:.72rem;">Obriši</button>
       </form>
       {% endif %}
-      <p>{{ entry.note }}</p>
+      {% if entry.session %}<div class="hint" style="font-size:.8rem; margin-top:2px;">{{ entry.session.title }} · {{ entry.session.starts_at.astimezone(tz).strftime("%H:%M") }}</div>{% endif %}
+      {% if entry.note %}<p>{{ entry.note }}</p>{% endif %}
     </div>
     {% else %}
-    <p class="hint">Još nema zapisa{% if own %} — zabilježi svoj prvi trening gore{% endif %}.</p>
+    {% if not own %}<p class="hint">Još nema zapisa — nastaju iz osvrta nakon odrađenih termina.</p>{% endif %}
     {% endfor %}
   </div>
 
