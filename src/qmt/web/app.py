@@ -157,8 +157,20 @@ def landing(request: Request):
         f.name for f in gallery_dir.glob("*")
         if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
     ) if gallery_dir.is_dir() else []
-    return templates.TemplateResponse(request, "landing.html",
-                                      _ctx(request, current_user(request), gallery=gallery))
+    user = current_user(request)
+    return templates.TemplateResponse(request, "landing.html", _ctx(
+        request, user, gallery=gallery,
+        my_plans=db.active_plan_kinds(user.id) if user else set()))
+
+
+@app.get("/cjenik", response_class=HTMLResponse)
+def cjenik(request: Request):
+    """Plan pricing — public; the future card-payment entry point. Prices are
+    placeholders until the owner supplies real ones."""
+    user = current_user(request)
+    return templates.TemplateResponse(request, "cjenik.html", _ctx(
+        request, user, plans=PLAN_TYPES, plan_labels=PLAN_LABELS,
+        my_plans=db.active_plan_kinds(user.id) if user else set()))
 
 
 @app.get("/raspored", response_class=HTMLResponse)

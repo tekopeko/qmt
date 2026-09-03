@@ -58,6 +58,13 @@
   .svc h3 { font-size: 1.02rem; }
   .svc p { color: var(--muted); font-size: .92rem; }
   .svc .meta { font: 600 .78rem var(--font-body); color: var(--accent); letter-spacing: .04em; }
+  /* the CTA fades in on hover/focus; on touch screens (no hover) it's always there */
+  .svc .svc-cta { align-self: flex-start; margin-top: 6px; opacity: 0;
+                  transform: translateY(4px); transition: opacity .18s, transform .18s; }
+  .svc:hover .svc-cta, .svc:focus-within .svc-cta { opacity: 1; transform: none; }
+  @media (hover: none), (max-width: 860px) { .svc .svc-cta { opacity: 1; transform: none; } }
+  .svc .owned { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
+                font: 700 .8rem var(--font-body); color: var(--good); }
 
   /* gallery */
   .gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
@@ -112,6 +119,10 @@
   <div class="band-inner">
     <div class="sec-kicker">Usluge</div>
     <h2>Treniraj kako tebi odgovara</h2>
+    {% macro plan_cta(key) -%}
+      {% if key in my_plans %}<span class="owned">✓ Aktivna članarina</span>
+      {%- else %}<a class="btn btn-sm svc-cta" href="/cjenik#plan-{{ key }}">Odaberi plan →</a>{% endif %}
+    {%- endmacro %}
     <div class="svc-grid">
       <div class="card svc">
         <div class="ico">
@@ -120,6 +131,7 @@
         <h3>Grupni trening</h3>
         <p>Satni termini u malim grupama — dovoljno malo za individualnu korekciju, dovoljno veliko za atmosferu.</p>
         <span class="meta">do 8 polaznika · 60 min</span>
+        {{ plan_cta("grupni") }}
       </div>
       <div class="card svc">
         <div class="ico">
@@ -128,6 +140,7 @@
         <h3>Individualni trening</h3>
         <p>Rad 1:1 prilagođen tvojim ciljevima, mogućnostima i rasporedu — od tehnike do specifične pripreme.</p>
         <span class="meta">1:1 · po dogovoru</span>
+        {{ plan_cta("individualni") }}
       </div>
       <div class="card svc">
         <div class="ico">
@@ -136,6 +149,7 @@
         <h3>Rehabilitacija</h3>
         <p>Programi povratka treningu nakon ozljede, sa specijalnošću za lumbalnu kralježnicu.</p>
         <span class="meta">1:1 · stručno vođeno</span>
+        {{ plan_cta("rehabilitacija") }}
       </div>
       <div class="card svc">
         <div class="ico">
@@ -144,6 +158,7 @@
         <h3>Poluindividualni trening</h3>
         <p>Trening u dvoje ili troje — pola puta između grupe i rada 1:1, s istim fokusom na tehniku i napredak.</p>
         <span class="meta">2–3 polaznika · 60 min</span>
+        {{ plan_cta("poluindividualni") }}
       </div>
       <div class="card svc">
         <div class="ico">
@@ -152,6 +167,7 @@
         <h3>Online trening</h3>
         <p>Programi po razinama i ciljevima s video uputama — treniraj gdje god jesi, uz nadzor trenera.</p>
         <span class="meta">po razinama · video upute</span>
+        {{ plan_cta("online") }}
       </div>
       <div class="card svc">
         <div class="ico">
@@ -160,6 +176,7 @@
         <h3>Prehrana</h3>
         <p>Vođenje prehrane uz aplikaciju MojiMakrosi — opišeš što jedeš, ona računa kalorije i makrose prema tvom cilju.</p>
         <span class="meta">uz MojiMakrose · zdravi recepti</span>
+        {{ plan_cta("prehrana") }}
       </div>
     </div>
   </div>

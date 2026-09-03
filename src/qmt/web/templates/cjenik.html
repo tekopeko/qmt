@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Cjenik — QMT{% endblock %}
+{% block head %}
+<style>
+  .plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+               gap: 18px; max-width: 1000px; }
+  .plan { padding: 22px 24px; display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 90px; }
+  .plan h3 { font-size: 1.02rem; }
+  .plan p { color: var(--muted); font-size: .9rem; flex: 1; }
+  .plan .price { font: 800 1.3rem var(--font-body); }
+  .plan .price small { font: 600 .8rem var(--font-body); color: var(--muted); }
+  .plan.mine { box-shadow: inset 3px 0 0 var(--good); }
+  .plan .owned { font: 700 .8rem var(--font-body); color: var(--good); }
+</style>
+{% endblock %}
+{% block content %}
+<h1 style="font-size:1.8rem; margin-bottom:4px;">Cjenik</h1>
+<p class="hint" style="margin-bottom:26px; max-width:70ch;">
+  Svaka usluga je zasebna članarina — plaća se mjesečno, sljedeća uplata dospijeva mjesec
+  dana nakon zadnje. Plaćanje karticom kroz aplikaciju stiže uskoro; do tada gotovinom ili
+  karticom u dvorani.
+</p>
+
+{% set desc = {
+  "grupni": "Satni termini u malim grupama do 8 polaznika — rezerviraš u rasporedu.",
+  "individualni": "Rad 1:1 s trenerom, termini po dogovoru.",
+  "poluindividualni": "Trening u dvoje ili troje — pola puta između grupe i 1:1.",
+  "rehabilitacija": "Programi povratka nakon ozljede, 1:1 stručno vođeni.",
+  "online": "Programi po tvojoj razini i cilju, s video uputama — gdje god jesi.",
+  "prehrana": "Vođenje prehrane uz aplikaciju MojiMakrosi i zdrave recepte.",
+} %}
+
+<div class="plan-grid">
+  {% for key in plans %}
+  <div class="card plan {% if key in my_plans %}mine{% endif %}" id="plan-{{ key }}">
+    <h3>{{ plan_labels[key] }}</h3>
+    <p>{{ desc[key] }}</p>
+    <div class="price">na upit <small>/ mjesečno</small></div>
+    {% if key in my_plans %}
+      <span class="owned">✓ Aktivna članarina</span>
+    {% elif user %}
+      <span class="hint" style="font-size:.82rem;">Za upis se javi treneru u dvorani — kartično plaćanje online stiže uskoro.</span>
+    {% else %}
+      <a class="btn btn-sm" style="align-self:flex-start;" href="/login?next=/cjenik">Prijavi se ili se registriraj</a>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

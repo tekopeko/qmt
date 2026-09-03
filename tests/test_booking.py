@@ -492,3 +492,14 @@ def test_calendar_shows_membership_gate():
     c = client_for("ana@test.local")
     page = c.get("/raspored").text
     assert "Nemaš aktivnu članarinu" in page
+
+
+def test_cjenik_public_and_landing_plan_cta_states():
+    page = TestClient(app).get("/").text
+    assert "Odaberi plan" in page                       # hover CTA on service cards
+    assert TestClient(app).get("/cjenik").status_code == 200
+
+    make_user("ivan@test.local")                        # default plan: grupni
+    ci = client_for("ivan@test.local")
+    assert "Aktivna članarina" in ci.get("/").text      # owned state on landing
+    assert "Aktivna članarina" in ci.get("/cjenik").text
