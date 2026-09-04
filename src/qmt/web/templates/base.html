@@ -77,14 +77,18 @@
     ::selection { background: var(--accent-dim); }
 
     /* ===== top bar: dark slab in both themes (the logo's home) ===== */
+    /* ONE row, always (the YouTube header): brand left, nav middle, avatar right.
+       Nothing wraps — when space runs out the wordmark shortens, then the nav
+       folds into the burger. A two-row topbar was the old failure mode. */
     .topbar {
       background: #161618; color: #fff;
-      display: flex; align-items: center;
+      display: flex; align-items: center; flex-wrap: nowrap;
       gap: 12px; padding: 12px clamp(16px, 4vw, 40px);
-      position: sticky; top: 0; z-index: 40; flex-wrap: wrap;
+      position: sticky; top: 0; z-index: 40;
     }
     /* brand pushes everything else right — nav, then the avatar at the edge */
-    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; margin-right: auto; }
+    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none;
+             margin-right: auto; flex: none; }
     .avatar-wrap { position: relative; flex: none; }
     .avatar {
       width: 34px; height: 34px; border-radius: 50%; flex: none; padding: 0;
@@ -99,13 +103,19 @@
     /* account menu behind the avatar — the Google pattern: identity, then actions */
     .user-menu {
       display: none; position: absolute; right: 0; top: calc(100% + 9px); z-index: 60;
-      min-width: 210px; padding: 6px; background: var(--surface); color: var(--text);
+      min-width: 252px; max-width: calc(100vw - 24px); padding: 6px; background: var(--surface); color: var(--text);
       border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
     }
     .user-menu.open { display: block; }
-    .user-menu .who { padding: 8px 12px 10px; border-bottom: 1px solid var(--line); margin-bottom: 5px; }
+    .user-menu .who { display: flex; align-items: center; gap: 10px;
+                      padding: 10px 12px 12px; border-bottom: 1px solid var(--line); margin-bottom: 5px; }
+    .user-menu .who-av { width: 36px; height: 36px; border-radius: 50%; flex: none;
+                         background: var(--accent); color: #fff;
+                         font: 700 .8rem var(--font-body);
+                         display: flex; align-items: center; justify-content: center; }
+    .user-menu .who-txt { min-width: 0; }
     .user-menu .who strong { display: block; font-size: .88rem; }
-    .user-menu .who span { font-size: .78rem; color: var(--muted); word-break: break-all; }
+    .user-menu .who span.mail { display: block; font-size: .78rem; color: var(--muted); word-break: break-all; }
     .user-menu form { margin: 0; }
     .user-menu a, .user-menu button {
       display: flex; width: 100%; justify-content: flex-start; text-align: left;
@@ -115,9 +125,12 @@
     }
     .user-menu a:hover, .user-menu button:hover { background: var(--surface-2); transform: none; }
     .brand .mark { height: 38px; width: 38px; border-radius: 50%; display: block; }
-    .brand .full { font-weight: 700; font-size: .8rem; letter-spacing: .15em;
-                   text-transform: uppercase; color: #e6e6e3; }
-    .nav { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; }
+    .brand .full, .brand .short {
+      font-weight: 700; font-size: .8rem; letter-spacing: .15em;
+      text-transform: uppercase; color: #e6e6e3; white-space: nowrap;
+    }
+    .brand .short { display: none; letter-spacing: .12em; }
+    .nav { display: flex; gap: 2px; align-items: center; flex-wrap: nowrap; }
     /* .nav-burger sits OUTSIDE .nav (it toggles it), so it must be named here
        explicitly or it falls back to the red default-button style */
     .nav a, .nav .navbtn, .nav-burger {
@@ -125,6 +138,7 @@
       padding: 8px 13px; border: none; background: none; cursor: pointer;
       border-radius: 10px; transition: background .15s, color .15s;
       box-shadow: none; display: inline-flex; align-items: center;
+      white-space: nowrap; flex: none;
     }
     .nav a:hover, .nav .navbtn:hover, .nav-burger:hover { color: #fff; background: rgba(255,255,255,.09); transform: none; }
     .nav a.on { color: #fff; background: rgba(255,255,255,.13); }
@@ -132,14 +146,18 @@
     .nav a.cta:hover { background: var(--accent-strong); }
     .nav-burger { display: none; font-size: 1.35rem; padding: 6px 12px; }
 
-    /* ===== mobile: seven inline items cannot fit 390px — drawer behind ☰ ===== */
-    @media (max-width: 860px) {
+    /* Step 1 — laptops: the full wordmark costs ~250px the owner's eight tabs
+       need, so it becomes "QMT" and the tabs tighten. */
+    @media (max-width: 1200px) {
+      .brand .full { display: none; }
+      .brand .short { display: inline; }
+      .nav a, .nav .navbtn { padding: 8px 10px; font-size: .84rem; }
+    }
+
+    /* Step 2 — the owner's eight tabs stop fitting here: fold into the ☰ drawer */
+    @media (max-width: 900px) {
       .nav-burger { display: inline-flex; }
-      /* brand + burger must share ONE row — with wrap, a 360px phone (Galaxy S8+)
-         pushed the burger onto a second line below the bar */
-      .topbar { flex-wrap: nowrap; }
       .brand { min-width: 0; }
-      .brand .full { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .nav {
         display: none;
         position: absolute; top: 100%; left: 0; right: 0;
@@ -155,10 +173,6 @@
       }
       .nav form { width: 100%; }
       .nav a.cta { margin-left: 0; justify-content: center; }
-    }
-    @media (max-width: 430px) {
-      /* the full wordmark at .8rem/.15em overflows a 360px bar */
-      .brand .full { font-size: .68rem; letter-spacing: .1em; }
     }
 
     main { max-width: 1100px; margin: 0 auto; padding: clamp(18px, 3vw, 34px) clamp(14px, 4vw, 40px) 70px; }
@@ -233,7 +247,7 @@
 <body>
 <header class="topbar">
   <a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
-     <span class="full">Quality Movement Training</span></a>
+     <span class="full">Quality Movement Training</span><span class="short">QMT</span></a>
   {# auth pages keep only the brand — no competing actions while someone is
      typing a password (the Stripe/Notion pattern); the logo is the way out #}
   {% set auth_page = request.url.path in ('/login', '/signup', '/forgot', '/reset', '/verify-sent')
@@ -263,15 +277,19 @@
   {% endif %}
   {% if user and not auth_page %}
   {# initials avatar opening the account menu, the way Google apps do it #}
+  {% set initials = ((user.name or user.email)[:1] ~ (user.last_name[:1] if user.last_name else "")) | upper %}
   <div class="avatar-wrap" id="avatarWrap">
     <button type="button" id="avatarBtn" onclick="qmtToggleUser()"
             class="avatar {% if request.url.path.startswith('/profil') %}on{% endif %}"
             aria-haspopup="true" aria-expanded="false" aria-controls="userMenu"
             title="{{ user.full_name or user.email }}"
-            aria-label="Račun">{{ ((user.name or user.email)[:1] ~ (user.last_name[:1] if user.last_name else "")) | upper }}</button>
+            aria-label="Račun">{{ initials }}</button>
     <div class="user-menu" id="userMenu" role="menu">
       <div class="who">
-        <strong>{{ user.full_name or "—" }}</strong><span>{{ user.email }}</span>
+        <span class="who-av" aria-hidden="true">{{ initials }}</span>
+        <span class="who-txt">
+          <strong>{{ user.full_name or "—" }}</strong><span class="mail">{{ user.email }}</span>
+        </span>
       </div>
       <a href="/profil" role="menuitem">Profil</a>
       {# stays open after a click: seeing the theme flip is the feedback #}
