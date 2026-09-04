@@ -377,6 +377,17 @@
   {% endif %}
   {% block content %}{% endblock %}
 </main>
+{# any form carrying data-confirm asks first — see qmtAskConfirm below #}
+<dialog id="confirmDlg" class="fb-modal" aria-labelledby="confirmTitle">
+  <div class="fb-box">
+    <h2 id="confirmTitle">Jesi li siguran/na?</h2>
+    <p class="fb-lead" id="confirmText"></p>
+    <div class="fb-actions">
+      <button type="button" class="btn-ghost btn-sm" onclick="qmtConfirmClose()">Odustani</button>
+      <button type="button" class="btn btn-sm" id="confirmGo">Potvrdi</button>
+    </div>
+  </div>
+</dialog>
 {% if feedback_prompt %}
 {# asked once per login: finished termini from the last 7 days with no osvrt.
    One primary action, an obvious way out — Escape and the backdrop both close it. #}
@@ -451,6 +462,43 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") qmtCloseUser();
   });
+  // A form with data-confirm asks before it posts. Nothing that removes
+  // something a client wrote should go through on a single stray click.
+  var _cf = null;
+  function qmtConfirmClose() {
+    var d = document.getElementById("confirmDlg");
+    if (d && d.open) d.close();
+    _cf = null;
+  }
+  function qmtAskConfirm(form) {
+    var d = document.getElementById("confirmDlg");
+    if (!d || !d.showModal) { form.dataset.confirmed = "1"; form.submit(); return; }
+    _cf = form;
+    document.getElementById("confirmTitle").textContent =
+      form.dataset.confirmTitle || "Jesi li siguran/na?";
+    document.getElementById("confirmText").textContent = form.dataset.confirm || "";
+    document.getElementById("confirmGo").textContent = form.dataset.confirmCta || "Potvrdi";
+    d.showModal();
+  }
+  document.addEventListener("submit", function (e) {
+    var f = e.target.closest("form[data-confirm]");
+    if (!f || f.dataset.confirmed) return;
+    e.preventDefault();
+    qmtAskConfirm(f);
+  });
+  (function () {
+    var go = document.getElementById("confirmGo"), d = document.getElementById("confirmDlg");
+    if (!go || !d) return;
+    // .submit() skips the submit event, so this cannot loop back into the guard
+    go.addEventListener("click", function () {
+      var f = _cf;
+      qmtConfirmClose();
+      if (f) { f.dataset.confirmed = "1"; f.submit(); }
+    });
+    d.addEventListener("click", function (e) { if (e.target === d) qmtConfirmClose(); });
+    d.addEventListener("close", function () { _cf = null; });
+  })();
+
   // the osvrt prompt: native <dialog> gives Escape + focus trapping for free,
   // the backdrop click is the one thing it doesn't
   var _fb = document.getElementById("fbPrompt");
