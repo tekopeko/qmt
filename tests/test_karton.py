@@ -292,6 +292,75 @@ def test_feedback_needs_attended_and_finished_session():
     assert db.pending_feedback(ivan) == []
 
 
+def test_feedback_is_editable_by_its_author_only():
+    ivan = make_user("ivan@test.local")
+    make_user("ana@test.local")
+    sid = attended_session(ivan)
+    ci = client_for("ivan@test.local")
+    ci.post(f"/karton/feedback/{sid}",
+            data={"effort": "7", "feeling": "dobro", "note": "Prvi zapis"},
+            follow_redirects=False)
+    entry = db.training_logs(ivan)[0]
+
+    # the osvrt is readable in the dnevnik, and carries its own editor
+    page = ci.get("/karton").text
+    assert "Prvi zapis" in page
+    assert f'id="log-{entry.id}"' in page
+    assert f"/karton/log/{entry.id}/edit" in page
+
+    r = ci.post(f"/karton/log/{entry.id}/edit",
+                data={"effort": "4", "feeling": "", "note": "Ipak lakše"},
+                follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    edited = db.training_logs(ivan)[0]
+    assert (edited.effort, edited.feeling, edited.note) == (4, None, "Ipak lakše")
+    assert edited.session_id == sid and edited.date == entry.date   # facts stay put
+
+    # somebody else's osvrt, and nonsense values, are both refused
+    ca = client_for("ana@test.local")
+    ca.post(f"/karton/log/{entry.id}/edit", data={"effort": "9", "note": "tuđe"},
+            follow_redirects=False)
+    r = ci.post(f"/karton/log/{entry.id}/edit", data={"effort": "44"},
+                follow_redirects=False)
+    assert "error" in r.headers["location"]
+    still = db.training_logs(ivan)[0]
+    assert (still.effort, still.note) == (4, "Ipak lakše")
+
+
+def test_absence_is_logged_without_touching_the_shared_termin():
+    ivan = make_user("ivan@test.local")
+    ana = make_user("ana@test.local")
+    sid = attended_session(ivan)
+    with db.session_scope() as s:                     # ana was in the same termin
+        s.add(Booking(user_id=ana, session_id=sid))
+    ci = client_for("ivan@test.local")
+
+    # every past termin is in the dnevnik, osvrt or not
+    page = ci.get("/karton").text
+    assert f'action="/karton/absent/{sid}"' in page
+
+    r = ci.post(f"/karton/absent/{sid}", follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    entry = db.training_logs(ivan)[0]
+    assert entry.absent and entry.session_id == sid
+    assert entry.effort is None and entry.feeling is None
+    assert db.pending_feedback(ivan) == []            # it stops asking
+
+    with db.session_scope() as s:                     # the termin itself is untouched
+        assert not s.get(db.TrainingSession, sid).canceled
+    assert [x.id for x in db.pending_feedback(ana)] == [sid]   # ana is still asked
+
+    # one row per termin: an osvrt can't follow an absence, and vice versa
+    r = ci.post(f"/karton/feedback/{sid}", data={"effort": "5"}, follow_redirects=False)
+    assert "error" in r.headers["location"]
+    r = ci.post(f"/karton/absent/{sid}", follow_redirects=False)
+    assert "error" in r.headers["location"]
+    # an absence has nothing to edit — undo it by deleting, then write the osvrt
+    assert not db.update_training_log(entry.id, ivan, 5, None, "ipak sam bio")
+    ci.post(f"/karton/log/{entry.id}/delete", follow_redirects=False)
+    assert [x.id for x in db.pending_feedback(ivan)] == [sid]
+
+
 def test_feedback_delete_own_only():
     ivan = make_user("ivan@test.local")
     make_user("ana@test.local")

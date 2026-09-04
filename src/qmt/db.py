@@ -500,27 +500,46 @@ def pending_feedback(user_id: int, days: int = 7) -> list[TrainingSession]:
     return [x for x in rows if x.starts_at + timedelta(minutes=x.duration_min) < now]
 
 
+def _log_target(s, user_id: int, session_id: int) -> TrainingSession:
+    """The one termin a diary row may be written against: booked by this client,
+    finished, not called off, and not already written up."""
+    now = datetime.now(config.TZ)
+    sess = s.get(TrainingSession, session_id)
+    booked = s.scalar(select(func.count()).select_from(Booking).where(
+        Booking.session_id == session_id, Booking.user_id == user_id))
+    if sess is None or not booked:
+        raise BookingError("Termin ne postoji ili nisi bio/la prijavljen/a.")
+    if sess.canceled:
+        raise BookingError("Termin je otkazan — nema osvrta.")
+    if sess.starts_at + timedelta(minutes=sess.duration_min) >= now:
+        raise BookingError("Termin još nije završio.")
+    existing = s.scalar(select(func.count()).select_from(TrainingLog).where(
+        TrainingLog.user_id == user_id, TrainingLog.session_id == session_id))
+    if existing:
+        raise BookingError("Zapis za ovaj termin već postoji.")
+    return sess
+
+
 def add_session_feedback(user_id: int, session_id: int, effort: int,
                          feeling: str | None, note: str) -> None:
     """Feedback is tied to an ATTENDED, FINISHED termin — never free-floating."""
-    now = datetime.now(config.TZ)
     with session_scope() as s:
-        sess = s.get(TrainingSession, session_id)
-        booked = s.scalar(select(func.count()).select_from(Booking).where(
-            Booking.session_id == session_id, Booking.user_id == user_id))
-        if sess is None or not booked:
-            raise BookingError("Termin ne postoji ili nisi bio/la prijavljen/a.")
-        if sess.canceled:
-            raise BookingError("Termin je otkazan — nema osvrta.")
-        if sess.starts_at + timedelta(minutes=sess.duration_min) >= now:
-            raise BookingError("Termin još nije završio.")
-        existing = s.scalar(select(func.count()).select_from(TrainingLog).where(
-            TrainingLog.user_id == user_id, TrainingLog.session_id == session_id))
-        if existing:
-            raise BookingError("Osvrt za ovaj termin već postoji.")
+        sess = _log_target(s, user_id, session_id)
         s.add(TrainingLog(user_id=user_id, session_id=session_id,
                           date=sess.starts_at.astimezone(config.TZ).date(),
                           effort=effort, feeling=feeling, note=note))
+
+
+def mark_session_absent(user_id: int, session_id: int, note: str = "") -> None:
+    """"Nisam bio/la" — the client's own no-show. It closes the termin off the
+    same way an osvrt does (one row per user+session, so the karton stops
+    asking), but records absence instead of effort. The TrainingSession is left
+    alone: it is shared with everyone else who booked it."""
+    with session_scope() as s:
+        sess = _log_target(s, user_id, session_id)
+        s.add(TrainingLog(user_id=user_id, session_id=session_id,
+                          date=sess.starts_at.astimezone(config.TZ).date(),
+                          effort=None, feeling=None, note=note, absent=True))
 
 
 def add_training_log(user_id: int, day: date, effort: int | None, note: str,
@@ -533,6 +552,22 @@ def add_training_log(user_id: int, day: date, effort: int | None, note: str,
         s.add(entry)
         s.flush()
         return entry.id
+
+
+def update_training_log(log_id: int, user_id: int, effort: int | None,
+                        feeling: str | None, note: str) -> bool:
+    """Edit an osvrt in place. Only what the client wrote is editable — the
+    termin it hangs off, and its date, are facts and stay put."""
+    with session_scope() as s:
+        entry = s.scalar(select(TrainingLog).where(TrainingLog.id == log_id,
+                                                   TrainingLog.user_id == user_id))
+        if entry is None or entry.absent:
+            # an absence has nothing to edit — delete it and write the osvrt
+            return False
+        entry.effort = effort
+        entry.feeling = feeling
+        entry.note = note
+        return True
 
 
 def delete_training_log(log_id: int, user_id: int) -> bool:

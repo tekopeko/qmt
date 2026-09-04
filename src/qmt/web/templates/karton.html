@@ -63,37 +63,48 @@
   @media (max-width: 900px) { .karton-grid { grid-template-columns:1fr; } }
   /* the modal deep-links to #osvrti — clear the sticky topbar when it lands */
   .k-sec h2 { font-size:1.05rem; margin-bottom:12px; scroll-margin-top: 84px; }
-  .log-entry { border-bottom:1px solid var(--line); padding:10px 2px; }
+  /* every past termin is a row here: written up, marked absent, or still open */
+  .log-entry { border-bottom:1px solid var(--line); padding:11px 10px;
+               border-radius:10px; scroll-margin-top:96px; transition:background .4s; }
+  .log-entry:target { background:var(--accent-dim); }
+  /* just finished, nothing written yet — the one row that asks for something */
+  .log-entry.fresh { box-shadow:inset 3px 0 0 var(--accent); background:var(--surface); }
+  .log-entry.is-absent { opacity:.62; }
+  .log-entry .le-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .log-entry .when { font-weight:700; font-variant-numeric:tabular-nums; }
+  .log-entry .what { color:var(--muted); font-size:.88rem; min-width:0;
+                     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip { font:600 .72rem var(--font-body); color:var(--muted);
+          background:var(--surface-2); border-radius:6px; padding:2px 8px; }
+  .chip.off { text-transform:uppercase; letter-spacing:.04em; }
   .log-entry .rpe { font:700 .72rem var(--font-body); color:var(--accent);
-                    background:var(--accent-dim); border-radius:6px; padding:2px 7px; margin-left:8px; }
+                    background:var(--accent-dim); border-radius:6px; padding:2px 7px; }
+  .log-entry .rpe.feel { color:var(--good);
+                         background:color-mix(in srgb, var(--good) 12%, transparent); }
+  /* "Slabo" in success-green read as a contradiction */
+  .log-entry .rpe.feel.low { color:var(--muted); background:var(--surface-2); }
   .log-entry p { white-space:pre-line; font-size:.92rem; margin-top:4px; }
+  .le-actions { display:flex; align-items:center; gap:4px; margin-left:auto; }
+  .le-actions form { margin:0; }
+  /* text actions, not buttons — they must not compete with "Spremi osvrt" */
+  .lnk { background:none; box-shadow:none; color:var(--muted); padding:3px 7px;
+         border-radius:8px; font:600 .74rem var(--font-body); }
+  .lnk:hover { background:var(--surface-2); color:var(--text); transform:none; }
+  .le-edit { display:none; padding-top:10px; }
+  .log-entry.editing .le-edit { display:block; }
+  .log-entry.editing .le-read p { display:none; }
 
-  /* one card, two peer lists, one on screen at a time */
+  /* the rail keeps one job: what's still ahead */
   .termini { background:var(--surface); border:1px solid var(--line);
-             border-radius:16px; padding:14px; }
-  .seg { display:flex; gap:3px; background:var(--surface-2); border-radius:11px;
-         padding:3px; margin-bottom:12px; }
-  .seg button {
-    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
-    padding:7px 8px; border:none; border-radius:9px; background:none; cursor:pointer;
-    box-shadow:none; color:var(--muted); font:600 .8rem var(--font-body);
-    transition:background .15s, color .15s;
-  }
-  .seg button:hover { color:var(--text); transform:none; }
-  /* the selected chip carries the accent tint — "lighter than the track" flips
-     meaning between the two themes, a tint does not */
-  .seg button[aria-selected="true"] { background:var(--accent-dim); color:var(--accent); }
-  .seg .n { font-size:.72rem; font-variant-numeric:tabular-nums; color:var(--muted);
-            background:var(--bg); border-radius:999px; padding:1px 7px; }
-  .seg button[aria-selected="true"] .n { color:var(--accent); background:var(--surface); }
+             border-radius:16px; padding:16px; }
+  .termini h2 { font-size:.95rem; margin-bottom:8px; }
   .cal-row { display:flex; align-items:baseline; gap:10px; font-size:.88rem;
              padding:8px 4px; border-bottom:1px solid var(--line); }
   .cal-row:last-child { border-bottom:none; }
   .cal-row .when { font-weight:700; font-variant-numeric:tabular-nums;
                    white-space:nowrap; min-width:118px; }
-  .cal-row .what { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .cal-row .tick { margin-left:auto; color:var(--good); font-size:.78rem; }
+  .cal-row .what { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+                   color:var(--text); font-size:.88rem; }
   .termini .empty { font-size:.85rem; color:var(--muted); padding:6px 4px; }
   .termini .more { display:inline-block; margin-top:10px; font-size:.8rem; color:var(--muted); }
   .termini .more:hover { color:var(--accent); }
@@ -132,6 +143,9 @@
     {% for i in range(3) %}<span class="{% if i < rung %}on{% endif %}"></span>{% endfor %}
   </div>
   <p class="ramp-note">Razina {{ rung }} od 3 — programi na /treninzi prate ovu razinu i cilj.</p>
+  {% if not own %}
+  {# the trainer has no "Ispuni ponovno" — for them the answers (ozljede!) are
+     the only place this information exists #}
   <details>
     <summary>Odgovori</summary>
     <ul>
@@ -140,6 +154,7 @@
       {% endfor %}
     </ul>
   </details>
+  {% endif %}
 </section>
 {% elif can_upitnik %}
 <section class="upitnik">
@@ -167,15 +182,112 @@
 <div class="karton-grid">
   <div class="k-sec">
     <h2 id="osvrti">Dnevnik treninga</h2>
-    {% if own %}
-      {% for s in pending %}
-      {# a finished booked termin without feedback — the app asks, Strava-style #}
-      <form method="post" action="/karton/feedback/{{ s.id }}" class="card"
-            style="padding:14px 16px; margin-bottom:14px; box-shadow: inset 3px 0 0 var(--accent);">
-        <div style="margin-bottom:10px;">
-          <strong>Kako je bilo?</strong>
-          <span class="hint">{{ s.title }} · {{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
+    <p class="hint" style="margin-bottom:12px;">
+      {% if own %}Svaki odrađeni termin završi ovdje — ispuni osvrt (napor, osjećaj, komentar)
+      ili označi da nisi bio/la.
+      {% else %}Odrađeni termini i osvrti.{% endif %}
+    </p>
+    {% for row in diary %}
+    {% set log = row.log %}{% set s = row.session %}
+
+    {% if log and not log.absent %}
+    {# written up: the osvrt reads first, editable in place #}
+    <div class="log-entry" id="log-{{ log.id }}">
+      <div class="le-read">
+        <div class="le-head">
+          <span class="when">{{ weekdays_short[row.at.weekday()] }} {{ row.at.strftime("%-d.%-m.%Y.") }}</span>
+          {% if log.effort %}<span class="rpe">napor {{ log.effort }}/10</span>{% endif %}
+          {% if log.feeling %}<span class="rpe feel {% if log.feeling == 'slabo' %}low{% endif %}">{{ feelings.get(log.feeling, log.feeling) }}</span>{% endif %}
+          {% if own %}
+          <span class="le-actions">
+            <button type="button" class="lnk" onclick="qmtToggleForm('log-{{ log.id }}')">Uredi</button>
+            <form method="post" action="/karton/log/{{ log.id }}/delete">
+              <button type="submit" class="lnk">Obriši</button>
+            </form>
+          </span>
+          {% endif %}
         </div>
+        {% if s %}<div class="hint" style="font-size:.8rem; margin-top:2px;">{{ s.title }} · {{ s.starts_at.astimezone(tz).strftime("%H:%M") }}</div>{% endif %}
+        {% if log.note %}<p>{{ log.note }}</p>{% endif %}
+      </div>
+      {% if own %}
+      {# same fields as writing it, pre-filled — the termin it hangs off is a
+         fact, so only napor/osjećaj/komentar are editable #}
+      <form class="le-edit" method="post" action="/karton/log/{{ log.id }}/edit">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="field"><label for="ed-effort-{{ log.id }}">Napor (1 lagano – 10 maksimalno)</label>
+            <select id="ed-effort-{{ log.id }}" name="effort" required>
+              {% for i in range(1, 11) %}
+              <option value="{{ i }}" {% if log.effort == i %}selected{% endif %}>{{ i }}</option>
+              {% endfor %}
+            </select></div>
+          <div class="field"><label for="ed-feeling-{{ log.id }}">Osjećaj</label>
+            <select id="ed-feeling-{{ log.id }}" name="feeling">
+              <option value="">—</option>
+              {% for k, l in feelings.items() %}
+              <option value="{{ k }}" {% if log.feeling == k %}selected{% endif %}>{{ l }}</option>
+              {% endfor %}
+            </select></div>
+        </div>
+        <div class="field"><label for="ed-note-{{ log.id }}">Komentar</label>
+          <textarea id="ed-note-{{ log.id }}" name="note" rows="3">{{ log.note or "" }}</textarea></div>
+        <div style="display:flex; gap:9px;">
+          <button type="submit" class="btn-sm btn-signal">Spremi</button>
+          <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('log-{{ log.id }}')">Odustani</button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+
+    {% elif log and log.absent %}
+    {# the client said they weren't there — still a record, just not a training #}
+    <div class="log-entry is-absent" id="log-{{ log.id }}">
+      <div class="le-head">
+        <span class="when">{{ weekdays_short[row.at.weekday()] }} {{ row.at.strftime("%-d.%-m.%Y.") }}</span>
+        {% if s %}<span class="what">{{ s.title }} · {{ s.starts_at.astimezone(tz).strftime("%H:%M") }}</span>{% endif %}
+        <span class="chip">Nisam bio/la</span>
+        {% if own %}
+        <span class="le-actions">
+          <form method="post" action="/karton/log/{{ log.id }}/delete">
+            <button type="submit" class="lnk">Poništi</button>
+          </form>
+        </span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% elif s and s.canceled %}
+    {# the trainer called the whole termin off — nothing to write up #}
+    <div class="log-entry is-absent">
+      <div class="le-head">
+        <span class="when">{{ weekdays_short[row.at.weekday()] }} {{ row.at.strftime("%-d.%-m.%Y.") }}</span>
+        <span class="what" style="text-decoration:line-through;">{{ s.title }} · {{ s.starts_at.astimezone(tz).strftime("%H:%M") }}</span>
+        <span class="chip off">Otkazano</span>
+      </div>
+    </div>
+
+    {% elif s %}
+    {# happened, nothing written yet: fill it in, or say you weren't there.
+       A just-finished termin opens its form straight away. #}
+    {% set fresh = s.id in pending_ids %}
+    <div class="log-entry {% if fresh %}fresh{% endif %}{% if fresh and own %} editing{% endif %}" id="s-{{ s.id }}">
+      <div class="le-head">
+        <span class="when">{{ weekdays_short[row.at.weekday()] }} {{ row.at.strftime("%-d.%-m.%Y.") }}</span>
+        <span class="what">{{ s.title }} · {{ s.starts_at.astimezone(tz).strftime("%H:%M") }}</span>
+        {% if own %}
+        <span class="le-actions">
+          {% if not fresh %}
+          <button type="button" class="lnk" onclick="qmtToggleForm('s-{{ s.id }}')">Ispuni osvrt</button>
+          {% endif %}
+          <form method="post" action="/karton/absent/{{ s.id }}">
+            <button type="submit" class="lnk">Nisam bio/la</button>
+          </form>
+        </span>
+        {% else %}<span class="chip">bez osvrta</span>{% endif %}
+      </div>
+      {% if own %}
+      <form class="le-edit" method="post" action="/karton/feedback/{{ s.id }}">
+        {% if fresh %}<p style="margin:2px 0 8px;"><strong>Kako je bilo?</strong></p>{% endif %}
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div class="field"><label for="fb-effort-{{ s.id }}">Napor (1 lagano – 10 maksimalno)</label>
             <select id="fb-effort-{{ s.id }}" name="effort" required>
@@ -191,71 +303,44 @@
         <div class="field"><label for="fb-note-{{ s.id }}">Komentar (neobavezno)</label>
           <textarea id="fb-note-{{ s.id }}" name="note" rows="2"
                     placeholder="npr. kilaže, što je išlo dobro/loše"></textarea></div>
-        <button type="submit" class="btn-sm btn-signal">Spremi osvrt</button>
-      </form>
-      {% else %}
-      <p class="hint" style="margin-bottom:14px;">Nakon svakog odrađenog termina ovdje te čeka kratki osvrt (napor, osjećaj, komentar).</p>
-      {% endfor %}
-    {% endif %}
-    {% for entry in logs %}
-    <div class="log-entry">
-      <span class="when">{{ weekdays_short[entry.date.weekday()] }} {{ entry.date.strftime("%-d.%-m.%Y.") }}</span>
-      {% if entry.effort %}<span class="rpe">napor {{ entry.effort }}/10</span>{% endif %}
-      {% if entry.feeling %}<span class="rpe" style="color:var(--good); background:color-mix(in srgb, var(--good) 12%, transparent);">{{ feelings.get(entry.feeling, entry.feeling) }}</span>{% endif %}
-      {% if own %}
-      <form method="post" action="/karton/log/{{ entry.id }}/delete" style="display:inline; float:right; margin:0;">
-        <button type="submit" class="btn-sm btn-ghost" style="padding:3px 9px; font-size:.72rem;">Obriši</button>
+        <div style="display:flex; gap:9px;">
+          <button type="submit" class="btn-sm btn-signal">Spremi osvrt</button>
+          {% if not fresh %}
+          <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('s-{{ s.id }}')">Odustani</button>
+          {% endif %}
+        </div>
       </form>
       {% endif %}
-      {% if entry.session %}<div class="hint" style="font-size:.8rem; margin-top:2px;">{{ entry.session.title }} · {{ entry.session.starts_at.astimezone(tz).strftime("%H:%M") }}</div>{% endif %}
-      {% if entry.note %}<p>{{ entry.note }}</p>{% endif %}
     </div>
+    {% endif %}
+
     {% else %}
-    {% if not own %}<p class="hint">Još nema zapisa — nastaju iz osvrta nakon odrađenih termina.</p>{% endif %}
+    <p class="hint">Još nema odrađenih termina{% if own %} — <a href="/raspored">rezerviraj prvi</a>{% endif %}.</p>
     {% endfor %}
   </div>
 
-  {# two peer lists, one card, one visible at a time — upcoming first #}
-  {% set logged = logs | map(attribute="session_id") | select | list %}
+  {# the rail keeps one job: what is still ahead #}
   <aside class="k-sec termini">
-    <div class="seg" role="tablist" aria-label="Termini">
-      <button type="button" role="tab" id="tab-up" aria-controls="pane-up" aria-selected="true"
-              onclick="qmtTermini('up')">Nadolazeći <span class="n">{{ upcoming|length }}</span></button>
-      <button type="button" role="tab" id="tab-past" aria-controls="pane-past" aria-selected="false"
-              onclick="qmtTermini('past')">Odrađeni <span class="n">{{ history|length }}</span></button>
+    <h2>Nadolazeći termini</h2>
+    {% for s in upcoming %}
+    <div class="cal-row" {% if s.canceled %}style="opacity:.55;"{% endif %}>
+      <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
+      <span class="what"{% if s.canceled %} style="text-decoration:line-through;"{% endif %}>{{ s.title }}</span>
+      {% if s.canceled %}<strong style="margin-left:auto; color:var(--danger); font-size:.72rem;">OTKAZANO</strong>{% endif %}
     </div>
-
-    <div id="pane-up" role="tabpanel" aria-labelledby="tab-up">
-      {% for s in upcoming %}
-      <div class="cal-row" {% if s.canceled %}style="opacity:.55;"{% endif %}>
-        <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
-        <span class="what"{% if s.canceled %} style="text-decoration:line-through;"{% endif %}>{{ s.title }}</span>
-        {% if s.canceled %}<strong style="margin-left:auto; color:var(--danger); font-size:.72rem;">OTKAZANO</strong>{% endif %}
-      </div>
-      {% else %}<p class="empty">Nema rezervacija.</p>{% endfor %}
-      {% if own %}<a class="more" href="/raspored">Otvori raspored →</a>{% endif %}
-    </div>
-
-    <div id="pane-past" role="tabpanel" aria-labelledby="tab-past" hidden>
-      {% for s in history %}
-      <div class="cal-row" {% if s.canceled %}style="opacity:.55;"{% endif %}>
-        <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
-        <span class="what">{{ s.title }}</span>
-        {% if s.id in logged %}<span class="tick" title="Osvrt je spremljen">✓ osvrt</span>{% endif %}
-      </div>
-      {% else %}<p class="empty">Još nema prošlih termina.</p>{% endfor %}
-    </div>
+    {% else %}<p class="empty">Nema rezervacija.</p>{% endfor %}
+    {% if own %}<a class="more" href="/raspored">Otvori raspored →</a>{% endif %}
   </aside>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
-  // segmented control: peers, so exactly one pane is ever on screen
-  function qmtTermini(which) {
-    ["up", "past"].forEach(function (k) {
-      document.getElementById("pane-" + k).hidden = k !== which;
-      document.getElementById("tab-" + k).setAttribute("aria-selected", k === which);
-    });
+  // rows read first, write on demand: one toggle drives both the osvrt form on
+  // an open termin and the edit form on a written one
+  function qmtToggleForm(id) {
+    var row = document.getElementById(id);
+    if (!row) return;
+    if (row.classList.toggle("editing")) row.querySelector("select, textarea").focus();
   }
 </script>
 {% endblock %}

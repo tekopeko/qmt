@@ -617,6 +617,33 @@ def profil_save(request: Request, name: str = Form(...), last_name: str = Form(.
 
 # ---------- karton (personal file: upitnik + diary + calendar) ----------
 
+def _diary_rows(subject_id: int) -> list[dict]:
+    """The dnevnik, newest first: every past termin this client booked, each
+    carrying what was written about it — an osvrt, a "nisam bio/la", or nothing
+    yet. Session-less legacy rows keep their place by date. Nothing is dropped:
+    an osvrt whose termin falls outside booking_history's window still shows."""
+    from datetime import datetime, time
+
+    sessions = db.booking_history(subject_id)
+    logs = db.training_logs(subject_id)
+    by_session = {x.session_id: x for x in logs if x.session_id}
+
+    rows, attached = [], set()
+    for s in sessions:
+        log = by_session.get(s.id)
+        if log is not None:
+            attached.add(log.id)
+        rows.append({"session": s, "log": log, "at": s.starts_at.astimezone(config.TZ)})
+    for x in logs:
+        if x.id in attached:
+            continue
+        at = (x.session.starts_at.astimezone(config.TZ) if x.session
+              else datetime.combine(x.date, time(0), tzinfo=config.TZ))
+        rows.append({"session": x.session, "log": x, "at": at})
+    rows.sort(key=lambda r: r["at"], reverse=True)
+    return rows
+
+
 def _render_karton(request: Request, viewer, subject, own: bool):
     import json
 
@@ -626,17 +653,19 @@ def _render_karton(request: Request, viewer, subject, own: bool):
     born = subject.birth_date
     age = (today.year - born.year - ((today.month, today.day) < (born.month, born.day))
            if born else None)
+    pending = db.pending_feedback(subject.id) if own else []
     return templates.TemplateResponse(request, "karton.html", _ctx(
         request, viewer, subject=subject, own=own, age=age,
         can_upitnik=own and _has_online(subject),
         onboarding=onboarding, answers=answers,
         questions=upitnik.QUESTIONS, levels=upitnik.LEVELS, goals=upitnik.GOALS,
         max_score=upitnik.MAX_SCORE,
-        logs=db.training_logs(subject.id),
-        pending=db.pending_feedback(subject.id) if own else [],
+        diary=_diary_rows(subject.id),
+        # just-finished termini open their osvrt form straight away; older ones
+        # keep it folded so the diary stays a list, not a wall of forms
+        pending_ids={x.id for x in pending},
         feelings=FEELING_LABELS,
         upcoming=db.my_upcoming(subject.id),
-        history=db.booking_history(subject.id),
         today=config.today(), tz=config.TZ,
     ))
 
@@ -734,6 +763,36 @@ def karton_feedback(request: Request, session_id: int, effort: int = Form(...),
         from urllib.parse import quote
         return RedirectResponse(f"/karton?error={quote(str(e))}", status_code=303)
     return RedirectResponse("/karton?ok=Osvrt+je+spremljen.", status_code=303)
+
+
+@app.post("/karton/absent/{session_id}")
+def karton_absent(request: Request, session_id: int):
+    """"Nisam bio/la" — recorded against this client only; the termin itself is
+    shared and stays as it was."""
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    try:
+        db.mark_session_absent(user.id, session_id)
+    except db.BookingError as e:
+        from urllib.parse import quote
+        return RedirectResponse(f"/karton?error={quote(str(e))}", status_code=303)
+    return RedirectResponse("/karton?ok=Zabilježeno+—+nisi+bio/la+na+terminu.",
+                            status_code=303)
+
+
+@app.post("/karton/log/{log_id}/edit")
+def karton_log_edit(request: Request, log_id: int, effort: int = Form(...),
+                    feeling: str = Form(""), note: str = Form("")):
+    """The client corrects their own osvrt — same fields, same rules as writing it."""
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not 1 <= effort <= 10 or (feeling and feeling not in FEELING_LABELS):
+        return RedirectResponse("/karton?error=Neispravan+osvrt.", status_code=303)
+    if not db.update_training_log(log_id, user.id, effort, feeling or None, note.strip()):
+        return RedirectResponse("/karton?error=Zapis+ne+postoji.", status_code=303)
+    return RedirectResponse(f"/karton?ok=Osvrt+je+spremljen.#log-{log_id}", status_code=303)
 
 
 @app.post("/karton/log/{log_id}/delete")

@@ -243,6 +243,9 @@ class TrainingLog(Base):
     effort: Mapped[int | None] = mapped_column(Integer, nullable=True)   # RPE 1–10
     feeling: Mapped[str | None] = mapped_column(String(10), nullable=True)  # FEELING_LABELS key
     note: Mapped[str] = mapped_column(Text)
+    # "nisam bio/la" — the client's OWN absence, recorded instead of an osvrt.
+    # Never TrainingSession.canceled: that termin belongs to seven other people.
+    absent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("user_id", "session_id", name="uq_training_log_user_session"),)
