@@ -93,7 +93,9 @@
                 background:var(--warn-soft); color:var(--warn);
                 border-color:color-mix(in srgb, var(--warn) 40%, transparent); }
   [data-theme="dark"] .act-absent { --warn:#fbbf24; --warn-soft:rgba(251,191,36,.15); }
-  .act-absent:hover { background:var(--warn); color:#231a02; border-color:var(--warn); }
+  /* deepen the tint like every other action — a full amber fill shouted */
+  .act-absent:hover { background:color-mix(in srgb, var(--warn) 26%, transparent);
+                      color:var(--warn); border-color:var(--warn); }
   .le-edit { display:none; padding-top:10px; }
   .log-entry.editing .le-edit { display:block; }
   .log-entry.editing .le-read p { display:none; }

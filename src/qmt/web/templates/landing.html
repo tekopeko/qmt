@@ -68,10 +68,13 @@
   .svc:hover .svc-cta, .svc:focus-within .svc-cta { opacity: 1; transform: none; }
   @media (hover: none), (max-width: 860px) { .svc .svc-cta { opacity: 1; transform: none; } }
   /* an active plan is a door, so it gets the same bubble as "Odaberi plan" —
-     green because it reports a state you already have, not a purchase */
+     green because it reports a state you already have, not a purchase.
+     --good is tuned for TEXT on a dark page and is far too bright as a fill,
+     hence --good-fill. .btn's own shadow is a red glow, so it goes. */
   .svc .owned { align-self: flex-start; margin-top: 6px;
-                background: var(--good); color: var(--good-ink);
-                box-shadow: 0 2px 10px color-mix(in srgb, var(--good) 32%, transparent); }
+                padding: 7px 12px; font-size: .78rem;
+                background: var(--good-fill); color: var(--good-ink);
+                box-shadow: none; }
   .svc .owned:hover { background: var(--good-strong); color: var(--good-ink); }
 
   /* gallery */
@@ -128,7 +131,8 @@
     <div class="sec-kicker">Usluge</div>
     <h2>Treniraj kako tebi odgovara</h2>
     {% macro plan_cta(key) -%}
-      {% if key in my_plans %}<a class="btn btn-sm owned" href="{{ plan_links[key][0] }}">✓ Aktivna članarina — {{ plan_links[key][1] }} →</a>
+      {% if key in my_plans %}<a class="btn btn-sm owned" href="{{ plan_links[key][0] }}"
+         title="Aktivna članarina">✓ {{ plan_links[key][1] }} →</a>
       {%- else %}<a class="btn btn-sm svc-cta" href="/cjenik#plan-{{ key }}">Odaberi plan →</a>{% endif %}
     {%- endmacro %}
     <div class="svc-grid">
