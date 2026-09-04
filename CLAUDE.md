@@ -4,18 +4,22 @@ Guidance for working in this repo. Read this before making changes.
 
 ## What this is
 
-**QMT** — booking app for Quality Movement Training (a Croatian training/rehab studio,
-run by the owner's friend). Clients reserve spots in the weekly timetable; the trainer
-manages the timetable and sees rosters. Croatian UI throughout. FastAPI + Jinja2 +
-Postgres + Alembic, deployable to Railway — deliberately the **same stack and
-conventions as `../macro_tracker` (mojimakrosi.com)**, its sibling repo.
+**QMT** — booking + membership app for Quality Movement Training (a Croatian
+training/rehab studio, run by the owner's friend). Clients reserve spots in the weekly
+timetable, follow online programmes, and keep a personal karton; the trainer manages the
+timetable, memberships and content. Croatian UI throughout. FastAPI + Jinja2 + Postgres +
+Alembic on Railway — deliberately the **same stack and conventions as `../macro_tracker`
+(mojimakrosi.com)**, its sibling repo.
 
 **Relationship to mojimakrosi:** two separate entities — separate repo, DB, deploy,
 domain — but identical auth shape (email+password, signed-cookie session, allowlist
-sign-up) and conventions, so a future merge stays cheap. The merge path, when wanted:
-link accounts by email (same person = same address in both), then either cross-link the
-two UIs or mount one app under the other. Nothing in this repo may import from
+sign-up) and conventions, so a future merge stays cheap. Nothing here may import from
 macro_tracker or touch its DB.
+
+**Who is who:** `OWNER_EMAIL` (tvrtko.doresic@gmail.com) is the app owner — permanently,
+by env var, never handed over in-app; only the owner manages roles and sees /statistika.
+The studio account (qualitymovementtraining@gmail.com) is granted `is_trainer` on
+/korisnici and runs the gym day to day.
 
 ## Commands
 
@@ -23,125 +27,142 @@ macro_tracker or touch its DB.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 createdb qmt && alembic upgrade head       # schema (Alembic = source of truth)
-python scripts/seed_demo.py                # trainer + 2 clients + timetable (dev only)
+python scripts/seed_demo.py                # dev RESET: users, timetable, plans, content
 python serve.py [--reload] [--port 8100]   # 8100 — 8000 is mojimakrosi's local port
 
 createdb qmt_test                          # once
-pytest -q                                  # tests live in tests/ and must stay green
+pytest -q                                  # 59 tests, must stay green
 ```
 
-Demo logins: `trener@qmt.local/trener123` (admin), `ivan@qmt.local/lozinka123`,
-`ana@qmt.local/lozinka123` (seed marks them verified; real sign-ups must click the
-emailed verify link before login works).
+Demo logins: `trener@qmt.local/trener123` (trainer **and** owner locally, via
+`OWNER_EMAIL` in `.env`), `ivan@qmt.local/lozinka123` (has grupni + individualni +
+online plans, filled upitnik, diary entries, one feedback prompt pending),
+`ana@qmt.local`, `sara@qmt.local` (deliberately **no plan** — demos the booking gate),
+all `lozinka123`.
+
+Prod test aliases already on the allowlist: `tvrtko.doresic+qmt1@gmail.com` (and
+`+qmt2`, `+qmt3`) — Gmail delivers them to the owner's inbox, so the verify-email
+round trip is testable. Prod demo clients: `*.demo@example.com` / `demo12345`.
 
 ### Deployment (Railway)
 
-See **DEPLOY.md** for the full runbook (Railway project, `/app/data` volume for
-media, variables, qmt.mojimakrosi.com DNS, first-boot trainer bootstrap,
-backups). Dockerfile → `start.sh` migrates then serves; `/healthz` is the probe.
+See **DEPLOY.md**. Dockerfile → `start.sh` runs `alembic upgrade head` then uvicorn;
+`/healthz` is the probe. Railway CLI is linked on the owner's machine (`railway
+variables --kv` reads config). Pushing to `master` auto-deploys.
 
 ## Pages
 
-`/` is a **public landing** (hero, services, gallery, contact, "Rezerviraj termin"
-CTA) — the shop window, with a reserved "Uskoro" slot for videos/training content.
-The **Galerija** auto-lists images in `src/qmt/web/static/gallery/` (sorted by
-filename) — adding a photo is a file drop, no code change. Instagram can only be
-scraped ~12 posts deep before the login wall, so new gallery material comes from
-the trainer's originals or an IG post link (its /embed/ page exposes the
-full-size image).
-`/raspored` is the authenticated calendar. `/treninzi` is a **library +
-assignments**: the trainer builds a programme once (ordered exercises: title,
-text, optional image/video upload) and hands it out via `ProgramAssignment`
-(programme, client, day) — same programme to many clients/days, unique per
-(programme, client, day). A client sees a programme (and its media) ONLY through
-an assignment; the library is trainer-only. Media is stored in `data/uploads/`
-(gitignored) and served ONLY via the auth-gated `/media/{name}` route — never a
-public static mount. `/nutricionizam` explains and links the
-sibling app (mojimakrosi.com, `MOJIMAKROSI_URL`): accounts are separate for now,
-clients are told to register with the same email so linking stays possible.
-Trainer tools live under `/admin`; login lands on `/` (or `?next=`).
+| Route | Who | What |
+|---|---|---|
+| `/` | public | Landing: hero, six service cards (hover CTA → `/cjenik`, or "✓ Aktivna članarina" linking into the app), gallery from `static/gallery/`, contact |
+| `/cjenik` | public | Plan pricing — **prices are still "na upit" placeholders**; the future Stripe checkout entry point |
+| `/raspored` | client | Week calendar, booking, "Moja članarina" + "Moje rezervacije" as day columns |
+| `/karton`, `/upitnik` | client | Personal file: upitnik result, training diary, termini. `/karton/{id}` is the trainer's read-only view |
+| `/treninzi` | client/trainer | Online programmes — automatic (see below) |
+| `/prehrana` | public | MojiMakrosi link (`/nutricionizam` 301s here) |
+| `/profil` | any | Basic info form + članarina overview + billing history |
+| `/admin` | trainer | Weekly timetable as an **editable week grid** + one-off termini |
+| `/clanarine` | trainer | Record cash/card uplate per client per plan |
+| `/korisnici`, `/statistika` | owner | Roster + trainer grants; uplate per plan per month |
 
-## Architecture — the one idea
+Media (`data/uploads/`, gitignored) is served ONLY via the auth-gated `/media/{name}`.
 
-**A single booking mechanism covers everything the studio offers.**
-`TrainingSession.capacity = 8` → group class; `capacity = 1` → individual termin
-(personal training, rehab). No separate appointment system. Concrete sessions come from
-`SessionTemplate` rows (the standing weekly timetable) via **lazy materialization**:
-viewing a week upserts that week's sessions (`ON CONFLICT DO NOTHING` on
-`uq_session_template_start`), clamped to the booking window — no cron,
-concurrency-safe. The trainer edits/deletes templates freely in /admin; on edit,
-**future sessions with no bookings are pruned and re-materialize with the new
-values**, while booked sessions are never touched (the trainer cancels those
-explicitly). Semantics locked by tests.
+## Architecture — the three ideas
+
+**1. One booking mechanism covers everything.** `TrainingSession.capacity = 8` → group
+class; `capacity = 1` → individual termin. Concrete sessions come from `SessionTemplate`
+rows via **lazy materialization**: viewing a week upserts that week's sessions
+(`ON CONFLICT DO NOTHING` on `uq_session_template_start`), clamped to the booking window
+— no cron, concurrency-safe. Editing a template prunes future **unbooked** sessions so
+they re-materialize; booked ones are never touched.
+
+**2. Plans gate everything.** Six `PLAN_TYPES` (grupni, individualni, poluindividualni,
+rehabilitacija, online, prehrana). Every session carries a `kind`; `book()` refuses
+unless the client has an active membership of that kind. `Membership` holds only the
+CURRENT cycle: recording an uplata sets `next_payment` a month out and `dospijece` a
+week after that, and the plan admits booking until dospijeće passes. Paying early
+extends from the due date; a lapsed plan restarts from today. Every uplata also appends
+to the immutable **`payments` ledger** (user, plan, method, date, amount-when-known) —
+memberships answer "who is active", the ledger answers "how much traffic". The Stripe
+webhook will write the same rows with `method="stripe"`.
+
+**3. The online side is automated, never hand-assigned.** The upitnik
+(`src/qmt/upitnik.py`, five scored questions + a goal) routes a client into a razina
+(pocetna/srednja/napredna) and a cilj (cijelo/gornji/donji). Programmes are tagged with
+that combo and **matching IS the access** — no per-client hand-outs exist. The nine
+(razina × cilj) slots create themselves with default exercises via
+`db.ensure_online_skeletons()` when the trainer opens /treninzi (fresh deploys
+self-heal); a slot with any trainer-made item is never overwritten. Gates stack:
+active `online` plan → filled upitnik → matched programmes.
 
 | Path | Role |
 |---|---|
-| `src/qmt/config.py` | `.env`, `OWNER_EMAIL`/`ALLOWED_EMAILS` allowlist, booking knobs (`CANCEL_CUTOFF_HOURS`, `BOOKING_HORIZON_DAYS`), prod guards |
-| `src/qmt/models.py` | `User` (`is_trainer`), `SessionTemplate`, `TrainingSession`, `Booking` |
-| `src/qmt/db.py` | Queries + booking rules. **`book()` locks the session row FOR UPDATE** and re-counts inside the lock — capacity must hold under concurrent taps (tested) |
-| `src/qmt/auth.py` | Only bcrypt importer + signed email tokens (verify 24 h; reset 1 h, single-use via `pw_marker`) |
-| `src/qmt/mailer.py` | Only Resend importer (lazy httpx). Senders return `False` without a key → dev shows the link on-page (app.py refuses that path in prod) |
-| `src/qmt/web/app.py` | All routes. Auth = `current_user()` helper per route (promote to middleware if routes multiply) |
-| `src/qmt/web/templates/` | Jinja2. Design tokens in `base.html` |
+| `src/qmt/config.py` | `.env`, `OWNER_EMAIL`/`ALLOWED_EMAILS`, booking knobs, prod guards |
+| `src/qmt/models.py` | `User` (+profile fields), `SessionTemplate`, `TrainingSession`, `Booking`, `Membership`, `Payment`, `OnboardingResponse`, `TrainingLog`, `Program`(level/goal)/`ProgramItem`; `PLAN_*`, `FEELING_LABELS`, `PAYMENT_METHODS` |
+| `src/qmt/db.py` | Queries + rules. **`book()` locks the session row FOR UPDATE** and re-counts inside the lock (tested) |
+| `src/qmt/upitnik.py` | Questions, scoring thresholds, level/goal labels |
+| `src/qmt/auth.py` | bcrypt + signed email tokens (verify 24 h; reset 1 h, single-use) |
+| `src/qmt/mailer.py` | Only Resend importer. Also `send_new_user_notice` → owner hears about each first verification |
+| `src/qmt/web/app.py` | All routes. `current_user()` per route; `PLAN_LINKS` maps an active plan to the page it unlocks |
+| `src/qmt/web/templates/` | Jinja2. Design tokens + topbar/avatar menu in `base.html` |
 
 ## Conventions (follow these)
 
 - **Croatian everywhere** in the UI. Errors are user-facing sentences raised as
   `db.BookingError`.
-- **QMT design tokens come from the LOGO, not the old store theme.** The logo
-  (`src/qmt/web/static/logo.png`, red/grey triangle — sampled `#f80000` red,
-  `#606060` grey) is the identity. Accent `--accent` (#e10600 light / #ff342b
-  dark), neutral surfaces, PT Sans uppercase display + Inter body. The Shopify
-  theme's acid yellow was a false lead — do not reintroduce it.
-- **Modern surface language, light + dark.** Rounded controls (12px) and cards
-  (14–16px), soft shadows, no hard boxy borders. Both themes are first-class:
-  tokens per `[data-theme]` in base.html, toggle top-right, saved as
-  `localStorage['qmt-theme']`, pre-paint script avoids theme flash. Legacy token
-  names (`--ink`, `--signal`…) are aliased in base.html — new code uses the new
-  names. Never style with a raw hex that only works in one theme (the 1:1 chip
-  bug: white-on-white in dark).
-- **Every schema change is an Alembic migration** (`alembic revision --autogenerate`).
-- **Tests must stay green** (`pytest -q`). New booking rules get a test — especially
-  anything that must hold under concurrency (see `test_capacity_race_no_overbooking`).
-- **Trainer-only routes** go through `_require_trainer`. Clients may only ever see
-  their own bookings; rosters (other people's names/emails) are trainer-only.
-- **Jinja + dicts:** never key a template dict `items` — Jinja resolves `d.items` to
-  the builtin method (this bit us on day one; the calendar uses `sessions`).
-- **Every screen works on every device — STANDING GOAL.** Phones are the primary
-  client device. Any UI change must hold at 390 px: no horizontal page pan (wide
-  tables scroll inside their own `overflow-x:auto` container), tap targets stay
-  comfortable, grids collapse to single column. Verify with the phone emulator
-  (Playwright 390×844) before calling UI work done — same discipline as
-  mojimakrosi. `document.documentElement.scrollWidth - clientWidth` must be 0.
-- **QMT is a PWA** (manifest + icons from the logo + root-scoped `/sw.js` with
-  `Service-Worker-Allowed: /`). The SW never caches HTML or `/media` — pages are
-  per-user and time-sensitive; it caches immutable statics only and shows a
-  Croatian offline notice. `start_url` is `/raspored`. Playwright's Chromium
-  registers it, so a stale SW can explain "weird" test behaviour — bump the
-  VERSION string in sw.js when changing cached assets.
+- **Design tokens come from the LOGO** (`static/logo.png`): accent `--accent` (#e10600
+  light / #ff342b dark), neutral surfaces, PT Sans uppercase display + Inter body.
+  Rounded controls (12px) and cards (14–16px), soft shadows. Both themes are
+  first-class (`[data-theme]` tokens, pre-paint script, saved in
+  `localStorage['qmt-theme']`). Never style with a raw hex that only works in one theme.
+- **The topbar is ONE row at every width** (the YouTube header): `flex-wrap: nowrap`,
+  brand left, tabs middle, avatar right. When space runs out the wordmark shortens to
+  "QMT" (≤1200px), then the tabs fold into the ☰ drawer (≤900px, sized for the owner's
+  eight tabs). Tabs never wrap their own label. The avatar opens the account menu
+  (identity header, Profil, theme toggle, Odjava).
+- **Every schema change is an Alembic migration.**
+- **Tests must stay green** (`pytest -q`). New rules get a test — especially anything
+  that must hold under concurrency (`test_capacity_race_no_overbooking`).
+- **Trainer-only routes** go through `_require_trainer`, owner-only through
+  `_require_owner`. Clients only ever see their own data.
+- **Jinja + dicts:** never key a template dict `items` — Jinja resolves `d.items` to the
+  builtin method (the calendar uses `sessions`).
+- **Every screen works on every device — STANDING GOAL.** Phones are the primary client
+  device. Verify at 390px (and 360px) with Playwright before calling UI work done;
+  `document.documentElement.scrollWidth - clientWidth` must be 0.
+- **QMT is a PWA** (manifest + icons + root-scoped `/sw.js`). The SW never caches HTML
+  or `/media`; bump its VERSION when changing cached assets.
 
 ## Gotchas
 
-- `.env` is optional in dev — defaults hit local Postgres DB `qmt`, session key is a
-  dev constant, allowlist is empty (only `OWNER_EMAIL`, if set, may sign up).
-  Set `OWNER_EMAIL=trener@qmt.local` in dev `.env` to make the seeded trainer
-  the OWNER locally — without it nobody is owner and /korisnici is unreachable.
-- Sessions are stored tz-aware (Europe/Zagreb) — compare against
-  `datetime.now(config.TZ)`, never naive `now()`.
-- Cancelled sessions stay in the calendar crossed out on purpose (a vanished session
-  reads as a bug to clients). "Otkaži termin" on the roster page, undoable.
-- The seed script is a dev RESET: it wipes templates/sessions/bookings and
-  re-seeds the timetable (users are upserted). Never point it at prod.
-- Real studio facts (from their Setmore): open pon/sri/čet/pet 07:00–20:00,
-  Virovska 1, Zagreb. Group trainings are hourly, capacity 8 — the old Setmore
-  system faked capacity with 16:05/16:10/16:15 slots, which is exactly what this
-  app replaces. Individual 1:1 seeded Mon–Fri 20:00 as a placeholder until the
-  trainer confirms his real slots.
+- `.env` is optional in dev; set `OWNER_EMAIL=trener@qmt.local` or /korisnici and
+  /statistika are unreachable locally.
+- Sessions are tz-aware (Europe/Zagreb) — compare against `datetime.now(config.TZ)`.
+- Cancelled sessions stay in the calendar crossed out on purpose.
+- `seed_demo.py` is a dev RESET (wipes templates/sessions/bookings/plans/programmes);
+  `seed_prod_demo.py` is additive and refuses non-Railway DBs.
+- Allowlist matching is **exact** — Gmail dot/plus variants are not normalized.
+- Verifying an email is what notifies the owner, and only the first time (row-locked);
+  a Resend failure never blocks verification.
+- Real studio facts: open pon/sri/čet/pet 07:00–20:00, Virovska 1, Zagreb; group
+  trainings hourly, capacity 8.
+- **Screenshots:** oversized images earlier in a session can poison every later image
+  request. Keep them one per message.
 
-## Roadmap (agreed with the owner)
+## Roadmap
 
-1. ✅ Booking MVP
-2. ✅ Treninzi: programme library + dated per-client assignments, media;
-   /nutricionizam sibling link; PWA; standing mobile-first rule
-3. ✅ Email verify + password reset (Resend); deploy runbook in DEPLOY.md
-4. Deeper mojimakrosi link-up (shared identity by email, plan-gated bundles)
+1. ✅ Booking MVP, email verify/reset, deploy, PWA
+2. ✅ Membership plans gating bookings; manual cash/card uplate; payments ledger +
+   owner statistika
+3. ✅ Karton (upitnik routing, per-termin feedback, diary, calendar); automated online
+   programmes by (razina × cilj)
+4. ⏳ **Card payments** — Stripe chosen (see `roadmap/` and memory). Blockers: owner's
+   Stripe account for the d.o.o., real prices for `/cjenik`, and the accountant
+   confirming Fiskalizacija 2.0 (mandatory since 1.1.2026, fiscalized račun per B2C
+   charge). Then: Checkout on /cjenik + `invoice.paid` webhook → `db.record_payment`.
+5. ⏳ Owner's own content: landing/service copy, exercise videos (host on Cloudflare R2
+   ≈ $7.50/mo for 500 GB with free egress — also fixes the ephemeral `data/uploads`)
+6. ⏳ Mini-kuharica (30–50 recipes) + deeper mojimakrosi link-up
+
+See `roadmap/2026-09-03-owner-voice-note.md` for the owner's own wish list and
+`roadmap/STATUS.md` for where the last session left off.
