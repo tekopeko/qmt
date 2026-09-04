@@ -34,8 +34,11 @@
         <td>{% if m.is_active(today) %}<span style="color:var(--good); font-weight:700;">aktivna</span>
             {% else %}<span style="color:var(--danger); font-weight:700;">istekla</span>{% endif %}</td>
         <td style="white-space:nowrap; text-align:right;">
-          <form method="post" action="/clanarine/{{ row.user.id }}/uplata" style="display:inline; margin:0;">
+          <form method="post" action="/clanarine/{{ row.user.id }}/uplata" style="display:inline-flex; gap:5px; margin:0; align-items:center;">
             <input type="hidden" name="plan" value="{{ m.plan }}">
+            <select name="method" style="width:auto; padding:5px 8px; font-size:.78rem;">
+              <option value="gotovina">Gotovina</option><option value="kartica">Kartica</option>
+            </select>
             <button class="btn-sm btn-quiet" type="submit">Evidentiraj uplatu</button>
           </form>
           <form method="post" action="/clanarine/{{ row.user.id }}/ukloni" style="display:inline; margin:0;"
@@ -55,9 +58,12 @@
   {% set missing = plans | reject("in", have) | list %}
   {% if missing %}
   <form method="post" action="/clanarine/{{ row.user.id }}/uplata"
-        style="display:flex; gap:8px; margin-top:12px; align-items:center; max-width:440px;">
+        style="display:flex; gap:8px; margin-top:12px; align-items:center; max-width:560px;">
     <select name="plan" style="flex:1;">
       {% for p in missing %}<option value="{{ p }}">{{ plan_labels[p] }}</option>{% endfor %}
+    </select>
+    <select name="method" style="width:auto;">
+      <option value="gotovina">Gotovina</option><option value="kartica">Kartica</option>
     </select>
     <button class="btn-sm btn-signal" type="submit" style="white-space:nowrap;">Dodaj + evidentiraj uplatu</button>
   </form>

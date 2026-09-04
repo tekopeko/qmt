@@ -35,6 +35,10 @@
   }
   .hero .btn-hero.secondary:hover { background: rgba(255, 255, 255, .15); }
 
+  /* main.full has no padding, so flash messages (e.g. after the profile form
+     sends someone here) need their own gutters or they hit the window edges */
+  main.full > .alert { margin: 16px clamp(20px, 6vw, 72px); }
+
   section.band { padding: clamp(46px, 7vw, 80px) clamp(20px, 6vw, 72px); }
   .band-inner { max-width: 1100px; margin: 0 auto; }
   .sec-kicker {

@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from . import config
 from .models import (PLAN_LABELS, Base, Booking, Membership, OnboardingResponse,
-                     Program, ProgramItem, SessionTemplate, TrainingLog,
+                     Payment, Program, ProgramItem, SessionTemplate, TrainingLog,
                      TrainingSession, User)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
@@ -374,12 +374,15 @@ def memberships_for(user_id: int) -> list[Membership]:
                               .order_by(Membership.plan)))
 
 
-def record_payment(user_id: int, plan: str) -> Membership:
+def record_payment(user_id: int, plan: str, method: str = "gotovina") -> Membership:
     """Cash/card taken at the gym: start the plan or extend it by a month.
 
     Paying early extends from the CURRENT due date, not from today — a payment
     a week ahead must never shorten the cycle. A lapsed plan restarts from
     today (nobody owes "back months" for time the gym wasn't used).
+
+    Every call also appends to the immutable `payments` ledger — memberships
+    hold only the current cycle, the ledger holds the owner's history.
     """
     today = config.today()
     with session_scope() as s:
@@ -392,8 +395,39 @@ def record_payment(user_id: int, plan: str) -> Membership:
             s.add(m)
         else:
             m.paid_on, m.next_payment = today, _add_month(base)
+        s.add(Payment(user_id=user_id, plan=plan, method=method, paid_on=today))
         s.flush()
         return m
+
+
+def payment_stats(months: int = 12) -> dict:
+    """Ledger rollup for the owner: per-month × per-plan counts + method split."""
+    today = config.today()
+    y, mo = today.year, today.month
+    keys = []                                    # newest month first
+    for _ in range(months):
+        keys.append(f"{y:04d}-{mo:02d}")
+        y, mo = (y - 1, 12) if mo == 1 else (y, mo - 1)
+    start = date(int(keys[-1][:4]), int(keys[-1][5:]), 1)
+    with session_scope() as s:
+        rows = s.execute(select(Payment.paid_on, Payment.plan, Payment.method)
+                         .where(Payment.paid_on >= start)).all()
+    per_month: dict[str, dict[str, int]] = {k: {} for k in keys}
+    plan_totals: dict[str, int] = {}
+    method_totals: dict[str, int] = {}
+    for paid_on, plan, method in rows:
+        k = f"{paid_on.year:04d}-{paid_on.month:02d}"
+        if k in per_month:
+            per_month[k][plan] = per_month[k].get(plan, 0) + 1
+        plan_totals[plan] = plan_totals.get(plan, 0) + 1
+        method_totals[method] = method_totals.get(method, 0) + 1
+    return {
+        "months": [{"key": k, "label": f"{int(k[5:])}/{k[:4]}",
+                    "per_plan": per_month[k], "total": sum(per_month[k].values())}
+                   for k in keys],
+        "plan_totals": plan_totals,
+        "method_totals": method_totals,
+    }
 
 
 def remove_membership(user_id: int, plan: str) -> bool:

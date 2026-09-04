@@ -171,13 +171,25 @@ def test_incomplete_profile_bounces_login_then_saves():
                follow_redirects=False)
     assert r.headers["location"] == "/profil?dopuni=1"
 
+    # a half-filled form is still incomplete -> stays on the form
+    r = c.post("/profil", data={"name": "Ivan", "last_name": "Horvat"},
+               follow_redirects=False)
+    assert r.headers["location"].startswith("/profil?ok=")
+
+    # finishing the entry form drops them on the landing page, not back here
     r = c.post("/profil", data={"name": "Ivan", "last_name": "Horvat",
                                 "birth_date": "1992-04-01", "phone": "091 111 222"},
                follow_redirects=False)
-    assert "ok=" in r.headers["location"]
+    assert r.headers["location"].startswith("/?ok=")
     u = db.get_user_by_email("ivan@test.local")
     assert u.full_name == "Ivan Horvat" and u.profile_complete
     assert u.birth_date.isoformat() == "1992-04-01"
+
+    # a LATER edit is not the entry pass — it stays on the profile page
+    r = c.post("/profil", data={"name": "Ivan", "last_name": "Horvat",
+                                "birth_date": "1992-04-01", "phone": "091 222 333"},
+               follow_redirects=False)
+    assert r.headers["location"].startswith("/profil?ok=")
 
     r = c.post("/login", data={"email": "ivan@test.local", "password": "lozinka123"},
                follow_redirects=False)

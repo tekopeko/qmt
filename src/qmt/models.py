@@ -11,7 +11,8 @@ from __future__ import annotations
 from datetime import date as SADate, datetime, timedelta
 
 from sqlalchemy import (
-    Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, text,
+    Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text,
+    UniqueConstraint, func, text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -167,6 +168,34 @@ class Membership(Base):
 
     def is_active(self, today: SADate) -> bool:
         return today <= self.dospijece
+
+
+PAYMENT_METHODS = {"gotovina": "Gotovina", "kartica": "Kartica", "stripe": "Stripe"}
+
+
+class Payment(Base):
+    """Immutable ledger: one row per uplata, nothing ever overwrites it.
+
+    Memberships hold only the CURRENT cycle (paid_on/next_payment get
+    replaced on renewal); the owner's traffic reporting — how many payments,
+    which plan, cash vs card — needs history, and later the Stripe webhook
+    writes here too. `amount_eur` stays NULL until prices exist. The user FK
+    is SET NULL: deleting an account must not delete the accounting trail.
+    """
+
+    __tablename__ = "payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    plan: Mapped[str] = mapped_column(String(20))
+    method: Mapped[str] = mapped_column(String(12), server_default=text("'gotovina'"),
+                                        default="gotovina")   # PAYMENT_METHODS key
+    amount_eur = mapped_column(Numeric(8, 2), nullable=True)
+    paid_on: Mapped[SADate] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User | None] = relationship()
 
 
 class OnboardingResponse(Base):

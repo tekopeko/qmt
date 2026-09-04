@@ -82,13 +82,14 @@ def main() -> None:
 
     print("timetable (dev RESET — replaces all templates/sessions/bookings):")
     from sqlalchemy import delete
-    from qmt.models import (Booking, Membership, OnboardingResponse,
+    from qmt.models import (Booking, Membership, OnboardingResponse, Payment,
                             TrainingLog, TrainingSession)
     with db.session_scope() as s:
         s.execute(delete(Booking))
         s.execute(delete(TrainingSession))
         s.execute(delete(SessionTemplate))
         s.execute(delete(Membership))
+        s.execute(delete(Payment))
         s.execute(delete(OnboardingResponse))
         s.execute(delete(TrainingLog))
         for title, wd, hhmm, dur, cap, note, kind in TIMETABLE:

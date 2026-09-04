@@ -503,3 +503,38 @@ def test_cjenik_public_and_landing_plan_cta_states():
     ci = client_for("ivan@test.local")
     assert "Aktivna članarina" in ci.get("/").text      # owned state on landing
     assert "Aktivna članarina" in ci.get("/cjenik").text
+
+
+def test_payment_ledger_accumulates_and_stats():
+    make_user("trener@test.local", is_trainer=True, plans=())
+    ivan = make_user("ivan@test.local", plans=())
+    ct = client_for("trener@test.local")
+
+    ct.post(f"/clanarine/{ivan}/uplata", data={"plan": "grupni", "method": "kartica"},
+            follow_redirects=False)
+    ct.post(f"/clanarine/{ivan}/uplata", data={"plan": "grupni"},   # renewal, cash
+            follow_redirects=False)
+
+    from qmt.models import Membership, Payment
+    with db.session_scope() as s:
+        from sqlalchemy import select
+        payments = list(s.scalars(select(Payment).where(Payment.user_id == ivan)
+                                  .order_by(Payment.id)))
+        memberships = list(s.scalars(select(Membership).where(Membership.user_id == ivan)))
+    # ledger accumulates; membership stays a single current-cycle row
+    assert [(p.plan, p.method) for p in payments] == [("grupni", "kartica"),
+                                                      ("grupni", "gotovina")]
+    assert len(memberships) == 1
+
+    stats = db.payment_stats()
+    assert stats["months"][0]["per_plan"]["grupni"] == 2   # current month, newest first
+    assert stats["method_totals"] == {"kartica": 1, "gotovina": 1}
+
+    # bogus method refused, nothing written
+    r = ct.post(f"/clanarine/{ivan}/uplata", data={"plan": "grupni", "method": "bitcoin"},
+                follow_redirects=False)
+    assert r.status_code == 400
+
+    # statistika is OWNER-only: trainer-owner passes, a client does not
+    assert ct.get("/statistika").status_code == 200
+    assert client_for("ivan@test.local").get("/statistika").status_code == 403

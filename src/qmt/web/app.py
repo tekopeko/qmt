@@ -553,7 +553,15 @@ def profil_save(request: Request, name: str = Form(...), last_name: str = Form(.
             return RedirectResponse("/profil?error=Neispravan+datum+rođenja.", status_code=303)
     if not name.strip() or not last_name.strip():
         return RedirectResponse("/profil?error=Ime+i+prezime+su+obavezni.", status_code=303)
+    entry_pass = not user.profile_complete       # the after-sign-up completion
     db.update_profile(user.id, name, last_name, born, phone)
+    if entry_pass and born is not None:
+        # done onboarding: drop them on the landing page, not back on the form
+        # (still incomplete -> stay here so they can finish)
+        from urllib.parse import quote
+
+        return RedirectResponse("/?ok=" + quote("Profil je spremljen — dobrodošli!"),
+                                status_code=303)
     return RedirectResponse("/profil?ok=Podaci+su+spremljeni.", status_code=303)
 
 
@@ -957,17 +965,18 @@ def clanarine_page(request: Request):
 
 
 @app.post("/clanarine/{user_id}/uplata")
-def clanarine_uplata(request: Request, user_id: int, plan: str = Form(...)):
+def clanarine_uplata(request: Request, user_id: int, plan: str = Form(...),
+                     method: str = Form("gotovina")):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    if plan not in PLAN_TYPES:
+    if plan not in PLAN_TYPES or method not in ("gotovina", "kartica"):
         raise HTTPException(status_code=400, detail="Nepoznat plan.")
     with db.session_scope() as s:
         target = s.get(db.User, user_id)
     if target is None:
         raise HTTPException(status_code=404)
-    m = db.record_payment(user_id, plan)
+    m = db.record_payment(user_id, plan, method)
     from urllib.parse import quote
     msg = (f"{PLAN_LABELS[plan]}: uplata evidentirana — sljedeća "
            f"{m.next_payment.strftime('%-d.%-m.%Y.')}")
@@ -996,6 +1005,21 @@ async def croatian_http_errors(request: Request, exc: HTTPException):
     from fastapi.exception_handlers import http_exception_handler
 
     return await http_exception_handler(request, exc)
+
+
+@app.get("/statistika", response_class=HTMLResponse)
+def statistika(request: Request):
+    """Owner's traffic view: uplate per plan per month, from the ledger.
+    Card payments will land here too once Stripe writes to the same table."""
+    user, redirect = _require_owner(request)
+    if redirect:
+        return redirect
+    from ..models import PAYMENT_METHODS
+
+    return templates.TemplateResponse(request, "statistika.html", _ctx(
+        request, user, stats=db.payment_stats(),
+        plans=PLAN_TYPES, plan_abbr=PLAN_ABBR, plan_labels=PLAN_LABELS,
+        method_labels=PAYMENT_METHODS))
 
 
 # ---------- korisnici (owner only: roster + trainer grants) ----------

@@ -236,7 +236,8 @@
       <a href="/prehrana" class="{% if request.url.path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
       {% if user.is_trainer or is_owner %}<a href="/admin" class="{% if '/admin' in request.url.path %}on{% endif %}">Admin</a>
       <a href="/clanarine" class="{% if request.url.path.startswith('/clanarine') %}on{% endif %}">Članarine</a>{% endif %}
-      {% if is_owner %}<a href="/korisnici" class="{% if '/korisnici' in request.url.path %}on{% endif %}">Korisnici</a>{% endif %}
+      {% if is_owner %}<a href="/korisnici" class="{% if '/korisnici' in request.url.path %}on{% endif %}">Korisnici</a>
+      <a href="/statistika" class="{% if '/statistika' in request.url.path %}on{% endif %}">Statistika</a>{% endif %}
       <form method="post" action="/logout" style="margin:0"><button type="submit" class="navbtn">Odjava</button></form>
     {% else %}
       <a href="/login" class="{% if '/login' in request.url.path %}on{% endif %}">Prijava</a>

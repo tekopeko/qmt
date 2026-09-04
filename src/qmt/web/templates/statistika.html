@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Statistika — QMT{% endblock %}
+{% block content %}
+<h1 style="font-size:1.8rem; margin-bottom:4px;">Statistika uplata</h1>
+<p class="hint" style="margin-bottom:14px; max-width:72ch;">
+  Svaka evidentirana uplata (gotovina i kartica u dvorani; kasnije i Stripe) ostaje trajno
+  zapisana — ovo je pregled zadnjih 12 mjeseci po planovima.
+</p>
+<p class="hint" style="margin-bottom:20px; font-size:.78rem;">
+  <strong>Planovi:</strong>
+  {% for k, a in plan_abbr.items() %}<strong style="color:var(--text);">{{ a }}</strong> = {{ plan_labels[k] }}{% if not loop.last %} &nbsp;·&nbsp; {% endif %}{% endfor %}
+</p>
+
+<div style="overflow-x:auto; max-width:860px;">
+<table style="width:100%; border-collapse:collapse; font-size:.92rem; font-variant-numeric:tabular-nums;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--line); text-align:right;">
+      <th style="padding:8px 6px; text-align:left;">Mjesec</th>
+      {% for k in plans %}<th style="padding:8px 6px;">{{ plan_abbr[k] }}</th>{% endfor %}
+      <th style="padding:8px 6px;">Ukupno</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for m in stats.months %}
+    <tr style="border-bottom:1px solid var(--line); {% if m.total == 0 %}opacity:.45;{% endif %}">
+      <td style="padding:7px 6px; font-weight:700;">{{ m.label }}</td>
+      {% for k in plans %}<td style="padding:7px 6px; text-align:right;">{{ m.per_plan.get(k, "·") }}</td>{% endfor %}
+      <td style="padding:7px 6px; text-align:right; font-weight:700;">{{ m.total }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td style="padding:9px 6px; font-weight:800;">Ukupno (12 mj.)</td>
+      {% for k in plans %}<td style="padding:9px 6px; text-align:right; font-weight:700; color:var(--good);">{{ stats.plan_totals.get(k, 0) }}</td>{% endfor %}
+      <td style="padding:9px 6px; text-align:right; font-weight:800;">{{ stats.plan_totals.values() | sum }}</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p class="hint" style="margin-top:18px;">
+  <strong>Način plaćanja (12 mj.):</strong>
+  {% for key, n in stats.method_totals.items() %}{{ method_labels.get(key, key) }} — <strong style="color:var(--text);">{{ n }}</strong>{% if not loop.last %} &nbsp;·&nbsp; {% endif %}
+  {% else %}još nema uplata{% endfor %}
+</p>
+{% endblock %}
