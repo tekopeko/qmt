@@ -85,9 +85,10 @@
     }
     /* brand pushes everything else right — nav, then the avatar at the edge */
     .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; margin-right: auto; }
+    .avatar-wrap { position: relative; flex: none; }
     .avatar {
-      width: 34px; height: 34px; border-radius: 50%; flex: none;
-      background: var(--accent); color: #fff;
+      width: 34px; height: 34px; border-radius: 50%; flex: none; padding: 0;
+      background: var(--accent); color: #fff; box-shadow: none; cursor: pointer;
       font: 700 .78rem var(--font-body); letter-spacing: .02em;
       display: flex; align-items: center; justify-content: center;
       text-decoration: none; border: 2px solid transparent;
@@ -95,6 +96,24 @@
     }
     .avatar:hover { transform: translateY(-1px); border-color: rgba(255,255,255,.4); }
     .avatar.on { border-color: #fff; }
+    /* account menu behind the avatar — the Google pattern: identity, then actions */
+    .user-menu {
+      display: none; position: absolute; right: 0; top: calc(100% + 9px); z-index: 60;
+      min-width: 210px; padding: 6px; background: var(--surface); color: var(--text);
+      border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
+    }
+    .user-menu.open { display: block; }
+    .user-menu .who { padding: 8px 12px 10px; border-bottom: 1px solid var(--line); margin-bottom: 5px; }
+    .user-menu .who strong { display: block; font-size: .88rem; }
+    .user-menu .who span { font-size: .78rem; color: var(--muted); word-break: break-all; }
+    .user-menu form { margin: 0; }
+    .user-menu a, .user-menu button {
+      display: flex; width: 100%; justify-content: flex-start; text-align: left;
+      padding: 9px 12px; border-radius: 8px; border: none; box-shadow: none;
+      background: none; color: var(--text); text-decoration: none; cursor: pointer;
+      font: 600 .9rem var(--font-body);
+    }
+    .user-menu a:hover, .user-menu button:hover { background: var(--surface-2); transform: none; }
     .brand .mark { height: 38px; width: 38px; border-radius: 50%; display: block; }
     .brand .full { font-weight: 700; font-size: .8rem; letter-spacing: .15em;
                    text-transform: uppercase; color: #e6e6e3; }
@@ -111,7 +130,6 @@
     .nav a.on { color: #fff; background: rgba(255,255,255,.13); }
     .nav a.cta { background: var(--accent); color: #fff; font-weight: 700; margin-left: 6px; }
     .nav a.cta:hover { background: var(--accent-strong); }
-    .theme-toggle { font-size: 1.05rem; line-height: 1; }
     .nav-burger { display: none; font-size: 1.35rem; padding: 6px 12px; }
 
     /* ===== mobile: seven inline items cannot fit 390px — drawer behind ☰ ===== */
@@ -137,7 +155,6 @@
       }
       .nav form { width: 100%; }
       .nav a.cta { margin-left: 0; justify-content: center; }
-      .theme-toggle { justify-content: center; }
     }
     @media (max-width: 430px) {
       /* the full wordmark at .8rem/.15em overflows a 360px bar */
@@ -238,18 +255,34 @@
       <a href="/clanarine" class="{% if request.url.path.startswith('/clanarine') %}on{% endif %}">Članarine</a>{% endif %}
       {% if is_owner %}<a href="/korisnici" class="{% if '/korisnici' in request.url.path %}on{% endif %}">Korisnici</a>
       <a href="/statistika" class="{% if '/statistika' in request.url.path %}on{% endif %}">Statistika</a>{% endif %}
-      <form method="post" action="/logout" style="margin:0"><button type="submit" class="navbtn">Odjava</button></form>
     {% else %}
       <a href="/login" class="{% if '/login' in request.url.path %}on{% endif %}">Prijava</a>
       <a href="/raspored" class="cta">Rezerviraj termin</a>
     {% endif %}
-    <button type="button" class="navbtn theme-toggle" onclick="qmtToggleTheme()" aria-label="Promijeni temu"><span id="themeIcon">🌙</span></button>
   </nav>
   {% endif %}
   {% if user and not auth_page %}
-  {# the profil "tab" is an initials avatar, the way Google apps do it #}
-  <a href="/profil" class="avatar {% if request.url.path.startswith('/profil') %}on{% endif %}"
-     title="Profil — {{ user.full_name or user.email }}" aria-label="Profil">{{ ((user.name or user.email)[:1] ~ (user.last_name[:1] if user.last_name else "")) | upper }}</a>
+  {# initials avatar opening the account menu, the way Google apps do it #}
+  <div class="avatar-wrap" id="avatarWrap">
+    <button type="button" id="avatarBtn" onclick="qmtToggleUser()"
+            class="avatar {% if request.url.path.startswith('/profil') %}on{% endif %}"
+            aria-haspopup="true" aria-expanded="false" aria-controls="userMenu"
+            title="{{ user.full_name or user.email }}"
+            aria-label="Račun">{{ ((user.name or user.email)[:1] ~ (user.last_name[:1] if user.last_name else "")) | upper }}</button>
+    <div class="user-menu" id="userMenu" role="menu">
+      <div class="who">
+        <strong>{{ user.full_name or "—" }}</strong><span>{{ user.email }}</span>
+      </div>
+      <a href="/profil" role="menuitem">Profil</a>
+      {# stays open after a click: seeing the theme flip is the feedback #}
+      <button type="button" onclick="qmtToggleTheme()" role="menuitem" aria-label="Promijeni temu">
+        <span id="themeIcon" style="margin-right:9px;">🌙</span><span id="themeLabel">Tamna tema</span>
+      </button>
+      <form method="post" action="/logout">
+        <button type="submit" role="menuitem">Odjava</button>
+      </form>
+    </div>
+  </div>
   {% endif %}
 </header>
 <main class="{% block main_class %}{% endblock %}">
@@ -263,9 +296,12 @@
 </main>
 <script>
   function qmtApplyIcon() {
+    // label names the theme you'd switch TO — a menu item should say what it does
     var d = document.documentElement.getAttribute('data-theme') === 'dark';
     var el = document.getElementById('themeIcon');
     if (el) el.textContent = d ? '☀️' : '🌙';
+    var lb = document.getElementById('themeLabel');
+    if (lb) lb.textContent = d ? 'Svijetla tema' : 'Tamna tema';
   }
   function qmtToggleTheme() {
     var d = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -284,6 +320,27 @@
   var _nav = document.getElementById("mainNav");
   if (_nav) _nav.addEventListener("click", function (e) {
     if (e.target.closest("a")) this.classList.remove("open");
+  });
+
+  function qmtCloseUser() {
+    var m = document.getElementById("userMenu");
+    if (!m) return;
+    m.classList.remove("open");
+    document.getElementById("avatarBtn").setAttribute("aria-expanded", "false");
+  }
+  function qmtToggleUser() {
+    var m = document.getElementById("userMenu");
+    var open = m.classList.toggle("open");
+    document.getElementById("avatarBtn").setAttribute("aria-expanded", open ? "true" : "false");
+    if (open && _nav) _nav.classList.remove("open");   // both drawers hang off the topbar
+  }
+  // a click anywhere else, or Escape, dismisses it — a menu you can't close is a trap
+  document.addEventListener("click", function (e) {
+    var w = document.getElementById("avatarWrap");
+    if (w && !w.contains(e.target)) qmtCloseUser();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") qmtCloseUser();
   });
   // PWA: register the root-scoped service worker (no-op where unsupported)
   if ("serviceWorker" in navigator) {
