@@ -538,3 +538,29 @@ def test_payment_ledger_accumulates_and_stats():
     # statistika is OWNER-only: trainer-owner passes, a client does not
     assert ct.get("/statistika").status_code == 200
     assert client_for("ivan@test.local").get("/statistika").status_code == 403
+
+
+def test_profil_shows_membership_overview_and_billing_history():
+    uid = make_user("ivan@test.local", plans=("grupni",))   # 1st uplata: gotovina
+    db.record_payment(uid, "grupni", "kartica")             # renewal
+    from qmt.models import Membership
+    with db.session_scope() as s:
+        from sqlalchemy import select
+        m = s.scalar(select(Membership).where(Membership.user_id == uid))
+        due, expiry = m.next_payment, m.dospijece
+
+    page = client_for("ivan@test.local").get("/profil").text
+    assert "Moja članarina" in page and "Grupni trening" in page
+    assert "aktivna" in page
+    assert due.strftime("%-d.%-m.%Y.") in page              # sljedeća uplata
+    assert expiry.strftime("%-d.%-m.%Y.") in page           # dospijeće
+    # billing history lists BOTH uplate with their methods
+    assert "Povijest plaćanja" in page
+    assert "Gotovina" in page and "Kartica" in page
+
+
+def test_profil_without_plan_points_to_cjenik():
+    make_user("ana@test.local", plans=())
+    page = client_for("ana@test.local").get("/profil").text
+    assert "Nemaš aktivnu članarinu" in page and "/cjenik" in page
+    assert "Još nema evidentiranih uplata" in page

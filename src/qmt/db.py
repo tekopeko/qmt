@@ -400,6 +400,14 @@ def record_payment(user_id: int, plan: str, method: str = "gotovina") -> Members
         return m
 
 
+def payments_for(user_id: int, limit: int = 50) -> list[Payment]:
+    """One client's uplate, newest first — their billing history."""
+    with session_scope() as s:
+        return list(s.scalars(
+            select(Payment).where(Payment.user_id == user_id)
+            .order_by(Payment.paid_on.desc(), Payment.id.desc()).limit(limit)))
+
+
 def payment_stats(months: int = 12) -> dict:
     """Ledger rollup for the owner: per-month × per-plan counts + method split."""
     today = config.today()

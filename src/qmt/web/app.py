@@ -16,8 +16,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from .. import auth, config, db, mailer, upitnik
-from ..models import (FEELING_LABELS, PLAN_ABBR, PLAN_LABELS, PLAN_TYPES,
-                      SESSION_KINDS)
+from ..models import (FEELING_LABELS, PAYMENT_METHODS, PLAN_ABBR, PLAN_LABELS,
+                      PLAN_TYPES, SESSION_KINDS)
 
 app = FastAPI(title="QMT")
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=config.IS_PROD)
@@ -529,13 +529,25 @@ def profil_page(request: Request):
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/profil')}", status_code=303)
+    today = config.today()
+    # "how long am I paid up for": the plan admits booking until dospijeće
+    # (next payment + the grace week), so that date is the honest expiry.
+    memberships = [{"label": PLAN_LABELS.get(m.plan, m.plan),
+                    "paid_on": m.paid_on,
+                    "next_payment": m.next_payment,
+                    "dospijece": m.dospijece,
+                    "active": m.is_active(today),
+                    "days_left": (m.dospijece - today).days}
+                   for m in db.memberships_for(user.id)]
+    payments = [{"paid_on": p.paid_on, "label": PLAN_LABELS.get(p.plan, p.plan),
+                 "method": PAYMENT_METHODS.get(p.method, p.method),
+                 "amount": p.amount_eur}
+                for p in db.payments_for(user.id)]
     return templates.TemplateResponse(request, "profil.html", _ctx(
         request, user,
         first_login="dopuni" in request.query_params,
-        memberships=[{"label": PLAN_LABELS.get(m.plan, m.plan),
-                      "next_payment": m.next_payment,
-                      "active": m.is_active(config.today())}
-                     for m in db.memberships_for(user.id)]))
+        memberships=memberships, payments=payments,
+        show_amounts=any(p["amount"] is not None for p in payments)))
 
 
 @app.post("/profil")
@@ -1014,8 +1026,6 @@ def statistika(request: Request):
     user, redirect = _require_owner(request)
     if redirect:
         return redirect
-    from ..models import PAYMENT_METHODS
-
     return templates.TemplateResponse(request, "statistika.html", _ctx(
         request, user, stats=db.payment_stats(),
         plans=PLAN_TYPES, plan_abbr=PLAN_ABBR, plan_labels=PLAN_LABELS,

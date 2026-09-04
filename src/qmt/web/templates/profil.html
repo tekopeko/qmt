@@ -25,16 +25,70 @@
   <button type="submit" class="btn-signal">Spremi podatke</button>
 </form>
 
+{% if not user.is_trainer %}
+<h2 style="font-size:1.05rem; margin-bottom:10px;">Moja članarina</h2>
+{% if memberships %}
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+            gap:14px; max-width:860px; margin-bottom:30px;">
+  {% for m in memberships %}
+  <div class="card" style="padding:16px 18px; {% if m.active %}box-shadow: inset 3px 0 0 var(--good);{% else %}box-shadow: inset 3px 0 0 var(--danger);{% endif %}">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
+      <strong>{{ m.label }}</strong>
+      {% if m.active %}<span style="color:var(--good); font-weight:700; font-size:.8rem;">aktivna</span>
+      {% else %}<span style="color:var(--danger); font-weight:700; font-size:.8rem;">istekla</span>{% endif %}
+    </div>
+    <p style="font-size:.86rem; margin-top:8px; font-variant-numeric:tabular-nums;">
+      {% if m.active %}
+        Vrijedi do <strong>{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</strong>
+        <span class="hint">({{ m.days_left }} {{ "dan" if m.days_left == 1 else "dana" }})</span>
+      {% else %}
+        Istekla <strong>{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</strong>
+        <span class="hint">(prije {{ -m.days_left }} {{ "dan" if m.days_left == -1 else "dana" }})</span>
+      {% endif %}
+    </p>
+    <table style="font-size:.82rem; margin-top:8px; border-collapse:collapse; font-variant-numeric:tabular-nums;">
+      <tr><td class="hint" style="padding:2px 12px 2px 0;">Zadnja uplata</td><td>{{ m.paid_on.strftime("%-d.%-m.%Y.") }}</td></tr>
+      <tr><td class="hint" style="padding:2px 12px 2px 0;">Sljedeća uplata</td><td>{{ m.next_payment.strftime("%-d.%-m.%Y.") }}</td></tr>
+      <tr><td class="hint" style="padding:2px 12px 2px 0;">Dospijeće plaćanja</td><td><strong>{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</strong></td></tr>
+    </table>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="max-width:560px; padding:18px 20px; margin-bottom:30px;">
+  <p style="margin-bottom:4px;"><strong>Nemaš aktivnu članarinu.</strong></p>
+  <p class="hint">Za rezervacije se javi treneru — plaćanje gotovinom ili karticom u dvorani.
+  <a href="/cjenik" style="color:var(--accent); font-weight:600;">Pogledaj cjenik →</a></p>
+</div>
+{% endif %}
+
+<h2 style="font-size:1.05rem; margin-bottom:10px;">Povijest plaćanja</h2>
+{% if payments %}
+<div style="overflow-x:auto; max-width:640px; margin-bottom:30px;">
+<table style="width:100%; border-collapse:collapse; font-size:.9rem; font-variant-numeric:tabular-nums;">
+  <thead><tr style="border-bottom:2px solid var(--line); text-align:left;">
+    <th style="padding:8px 6px;">Datum</th><th>Plan</th><th>Način</th>{% if show_amounts %}<th style="text-align:right;">Iznos</th>{% endif %}
+  </tr></thead>
+  <tbody>
+    {% for p in payments %}
+    <tr style="border-bottom:1px solid var(--line);">
+      <td style="padding:7px 6px; white-space:nowrap;">{{ p.paid_on.strftime("%-d.%-m.%Y.") }}</td>
+      <td>{{ p.label }}</td>
+      <td class="hint">{{ p.method }}</td>
+      {% if show_amounts %}<td style="text-align:right;">{% if p.amount %}{{ "%.2f"|format(p.amount) }} €{% else %}—{% endif %}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="hint" style="margin-bottom:30px;">Još nema evidentiranih uplata.</p>
+{% endif %}
+{% endif %}
+
 <div class="card" style="max-width:560px; padding:16px 20px;">
   <h2 style="font-size:.95rem; margin-bottom:10px;">Račun</h2>
   <p style="font-size:.9rem; margin-bottom:4px;"><span class="hint">Email:</span> {{ user.email }}</p>
-  <p style="font-size:.9rem; margin-bottom:4px;"><span class="hint">Registriran:</span> {{ user.created_at.strftime("%-d.%-m.%Y.") }}</p>
-  {% if not user.is_trainer %}
-  <p style="font-size:.9rem;"><span class="hint">Članarina:</span>
-    {% for m in memberships %}
-      {{ m.label }}{% if not m.active %} <span style="color:var(--danger); font-weight:700; font-size:.78rem;">(istekla)</span>{% endif %}{% if not loop.last %}, {% endif %}
-    {% else %}<span class="hint">bez plana — javi se treneru</span>{% endfor %}
-  </p>
-  {% endif %}
+  <p style="font-size:.9rem;"><span class="hint">Registriran:</span> {{ user.created_at.strftime("%-d.%-m.%Y.") }}</p>
 </div>
 {% endblock %}
