@@ -51,6 +51,12 @@
       <tr><td class="hint" style="padding:2px 12px 2px 0;">Sljedeća uplata</td><td>{{ m.next_payment.strftime("%-d.%-m.%Y.") }}</td></tr>
       <tr><td class="hint" style="padding:2px 12px 2px 0;">Dospijeće plaćanja</td><td><strong>{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</strong></td></tr>
     </table>
+    {# an active plan is a door: straight to the thing it unlocks #}
+    {% if m.active and m.plan in plan_links %}
+    <a class="btn btn-sm" style="margin-top:12px;" href="{{ plan_links[m.plan][0] }}">{{ plan_links[m.plan][1] }} →</a>
+    {% elif not m.active %}
+    <p class="hint" style="margin-top:12px; font-size:.82rem;">Za nastavak javi se treneru.</p>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

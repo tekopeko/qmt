@@ -27,6 +27,17 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 WEEKDAYS = ["Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota", "Nedjelja"]
 WEEKDAYS_SHORT = ["pon", "uto", "sri", "čet", "pet", "sub", "ned"]
 
+# Where an ACTIVE plan takes you — every "aktivna članarina" state is a door,
+# not a label. (path, button text)
+PLAN_LINKS = {
+    "grupni": ("/raspored", "Rezerviraj termin"),
+    "individualni": ("/raspored", "Rezerviraj termin"),
+    "poluindividualni": ("/raspored", "Rezerviraj termin"),
+    "rehabilitacija": ("/raspored", "Rezerviraj termin"),
+    "online": ("/treninzi", "Otvori online treninge"),
+    "prehrana": ("/prehrana", "Otvori prehranu"),
+}
+
 
 def _safe_next(nxt: str | None) -> str:
     """Only same-app paths — a `next` from the query string must never become
@@ -60,6 +71,7 @@ def _ctx(request: Request, user, **extra):
             "mojimakrosi_url": config.MOJIMAKROSI_URL,
             "max_media_mb": config.MAX_MEDIA_MB,
             "show_online": _has_online(user),
+            "plan_links": PLAN_LINKS,
             "is_owner": _is_owner(user), **extra}
 
 
@@ -533,6 +545,7 @@ def profil_page(request: Request):
     # "how long am I paid up for": the plan admits booking until dospijeće
     # (next payment + the grace week), so that date is the honest expiry.
     memberships = [{"label": PLAN_LABELS.get(m.plan, m.plan),
+                    "plan": m.plan,
                     "paid_on": m.paid_on,
                     "next_payment": m.next_payment,
                     "dospijece": m.dospijece,

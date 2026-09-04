@@ -38,6 +38,9 @@
     <div class="price">na upit <small>/ mjesečno</small></div>
     {% if key in my_plans %}
       <span class="owned">✓ Aktivna članarina</span>
+      {% if key in plan_links %}
+      <a class="btn btn-sm" style="align-self:flex-start;" href="{{ plan_links[key][0] }}">{{ plan_links[key][1] }} →</a>
+      {% endif %}
     {% elif user %}
       <span class="hint" style="font-size:.82rem;">Za upis se javi treneru u dvorani — kartično plaćanje online stiže uskoro.</span>
     {% else %}

@@ -557,6 +557,12 @@ def test_profil_shows_membership_overview_and_billing_history():
     # billing history lists BOTH uplate with their methods
     assert "Povijest plaćanja" in page
     assert "Gotovina" in page and "Kartica" in page
+    # an active plan is a door to what it unlocks
+    assert 'href="/raspored">Rezerviraj termin' in page
+
+    db.record_payment(uid, "online")
+    page = client_for("ivan@test.local").get("/profil").text
+    assert 'href="/treninzi">Otvori online treninge' in page
 
 
 def test_profil_without_plan_points_to_cjenik():

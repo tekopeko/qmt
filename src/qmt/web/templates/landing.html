@@ -68,7 +68,8 @@
   .svc:hover .svc-cta, .svc:focus-within .svc-cta { opacity: 1; transform: none; }
   @media (hover: none), (max-width: 860px) { .svc .svc-cta { opacity: 1; transform: none; } }
   .svc .owned { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
-                font: 700 .8rem var(--font-body); color: var(--good); }
+                font: 700 .8rem var(--font-body); color: var(--good); text-decoration: none; }
+  .svc .owned:hover { text-decoration: underline; }
 
   /* gallery */
   .gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
@@ -124,7 +125,7 @@
     <div class="sec-kicker">Usluge</div>
     <h2>Treniraj kako tebi odgovara</h2>
     {% macro plan_cta(key) -%}
-      {% if key in my_plans %}<span class="owned">✓ Aktivna članarina</span>
+      {% if key in my_plans %}<a class="owned" href="{{ plan_links[key][0] }}">✓ Aktivna članarina — {{ plan_links[key][1] }} →</a>
       {%- else %}<a class="btn btn-sm svc-cta" href="/cjenik#plan-{{ key }}">Odaberi plan →</a>{% endif %}
     {%- endmacro %}
     <div class="svc-grid">
