@@ -66,12 +66,32 @@ def _has_online(user) -> bool:
     return bool(user) and (user.is_trainer or "online" in db.active_plan_kinds(user.id))
 
 
+def _pop_feedback_prompt(request: Request, user):
+    """One-shot after login: termini finished in the last 7 days that still have
+    no osvrt. The flag is popped on the FIRST page rendered, so the prompt asks
+    once per login and never follows the client around the app. Already being on
+    the karton counts as answered — the forms are right there."""
+    if user is None or not request.session.pop("fb_prompt", False):
+        return None
+    if request.url.path.startswith("/karton"):
+        return None
+    pending = db.pending_feedback(user.id)
+    if not pending:
+        return None
+    latest = pending[0].starts_at.astimezone(config.TZ)
+    # formatted here: the prompt renders on whatever page the login landed on,
+    # and those contexts carry no tz
+    return {"count": len(pending), "title": pending[0].title,
+            "when": f"{WEEKDAYS_SHORT[latest.weekday()]} {latest:%-d.%-m. %H:%M}"}
+
+
 def _ctx(request: Request, user, **extra):
     return {"request": request, "user": user, "weekdays_short": WEEKDAYS_SHORT,
             "mojimakrosi_url": config.MOJIMAKROSI_URL,
             "max_media_mb": config.MAX_MEDIA_MB,
             "show_online": _has_online(user),
             "plan_links": PLAN_LINKS,
+            "feedback_prompt": _pop_feedback_prompt(request, user),
             "is_owner": _is_owner(user), **extra}
 
 
@@ -96,6 +116,11 @@ def login(request: Request, email: str = Form(...), password: str = Form(...),
         # correct password but unproven inbox: re-issue the link instead of a dead end
         return _send_verification(request, u.email)
     request.session["user_id"] = u.id
+    # Owed osvrti are asked for once, on the first page this login renders —
+    # the flag only arms the prompt, _pop_feedback_prompt decides if there is
+    # anything to ask about.
+    if not u.is_trainer:
+        request.session["fb_prompt"] = True
     # New clients first complete their basic info (ime, prezime, datum) —
     # the profil page explains itself; trainers are exempt.
     if not u.is_trainer and not u.profile_complete:

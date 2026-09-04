@@ -237,6 +237,37 @@ def test_feedback_prompted_after_attended_session():
     assert len(db.training_logs(ivan)) == 1
 
 
+def test_login_prompts_for_owed_feedback_once():
+    ivan = make_user("ivan@test.local")
+    sid = attended_session(ivan)
+    ci = client_for("ivan@test.local")           # logging in arms the prompt
+
+    first = ci.get("/").text
+    assert 'id="fbPrompt"' in first              # asked on the page the login landed on
+    assert "Grupni trening" in first             # and it names the termin
+    assert "/karton#osvrti" in first             # primary action goes to the forms
+
+    assert 'id="fbPrompt"' not in ci.get("/").text   # exactly once per login
+
+    # nothing owed -> the next login says nothing
+    ci.post(f"/karton/feedback/{sid}", data={"effort": "6"}, follow_redirects=False)
+    assert 'id="fbPrompt"' not in client_for("ivan@test.local").get("/").text
+
+
+def test_login_straight_to_karton_skips_the_prompt():
+    ivan = make_user("ivan@test.local")
+    attended_session(ivan)
+    c = TestClient(app)
+    r = c.post("/login", data={"email": "ivan@test.local", "password": "lozinka123",
+                               "next": "/karton"}, follow_redirects=False)
+    assert r.headers["location"] == "/karton"
+
+    page = c.get("/karton").text
+    assert 'id="fbPrompt"' not in page           # the forms are already on screen
+    assert "Kako je bilo?" in page
+    assert 'id="fbPrompt"' not in c.get("/").text    # and it doesn't ambush the next page
+
+
 def test_feedback_needs_attended_and_finished_session():
     ivan = make_user("ivan@test.local")
     make_user("ana@test.local")

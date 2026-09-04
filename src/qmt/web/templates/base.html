@@ -236,6 +236,37 @@
       border-radius: 16px; box-shadow: var(--shadow);
     }
 
+    /* ===== the post-login osvrt prompt ===== */
+    .fb-modal {
+      padding: 0; border: 1px solid var(--line); border-radius: 16px;
+      background: var(--surface); color: var(--text); box-shadow: var(--shadow);
+      width: min(420px, calc(100vw - 32px)); max-width: none;
+      /* the global `* { margin: 0 }` reset wipes the UA's `margin: auto` on
+         <dialog>, which is what centres a modal — put it back */
+      margin: auto;
+    }
+    .fb-modal::backdrop { background: rgba(0, 0, 0, .55); }
+    .fb-box { padding: 22px 24px 20px; position: relative; }
+    .fb-x { position: absolute; top: 10px; right: 10px; margin: 0; }
+    .fb-x button {
+      background: none; color: var(--muted); box-shadow: none; padding: 6px 9px;
+      border-radius: 9px; font-size: .95rem; line-height: 1;
+    }
+    .fb-x button:hover { background: var(--surface-2); color: var(--text); transform: none; }
+    .fb-modal h2 { font-size: 1.2rem; padding-right: 28px; }
+    .fb-lead { margin-top: 7px; color: var(--muted); font-size: .92rem; }
+    .fb-last {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+      margin-top: 14px; padding: 11px 14px; border-radius: 12px;
+      background: var(--accent-dim); font-size: .88rem;
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .fb-last span { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .fb-note { margin-top: 12px; font-size: .82rem; color: var(--muted); }
+    .fb-actions { display: flex; gap: 10px; justify-content: flex-end;
+                  align-items: center; margin-top: 18px; }
+    .fb-actions form { margin: 0; }
+
     .alert {
       border-radius: 12px; background: var(--accent-dim); color: var(--text);
       border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
@@ -346,6 +377,33 @@
   {% endif %}
   {% block content %}{% endblock %}
 </main>
+{% if feedback_prompt %}
+{# asked once per login: finished termini from the last 7 days with no osvrt.
+   One primary action, an obvious way out — Escape and the backdrop both close it. #}
+{% set fbc = feedback_prompt.count %}
+<dialog id="fbPrompt" class="fb-modal" aria-labelledby="fbTitle">
+  <div class="fb-box">
+    <form method="dialog" class="fb-x"><button type="submit" aria-label="Zatvori">✕</button></form>
+    <h2 id="fbTitle">Kako je bilo?</h2>
+    <p class="fb-lead">
+      {% if fbc == 1 %}Jedan odrađen termin još čeka tvoj osvrt.
+      {% elif fbc < 5 %}{{ fbc }} odrađena termina još čekaju tvoj osvrt.
+      {% else %}{{ fbc }} odrađenih termina još čeka tvoj osvrt.{% endif %}
+    </p>
+    <div class="fb-last">
+      <strong>{{ feedback_prompt.title }}</strong>
+      <span>{{ feedback_prompt.when }}</span>
+    </div>
+    <p class="fb-note">Kratko: napor, osjećaj i komentar — pomaže treneru posložiti sljedeći trening.</p>
+    <div class="fb-actions">
+      <form method="dialog"><button type="submit" class="btn-ghost btn-sm">Kasnije</button></form>
+      {# showModal() focuses the first focusable node — send it to the primary
+         action, not to the ✕ in the corner #}
+      <a class="btn btn-sm" href="/karton#osvrti" autofocus>Ispuni osvrt</a>
+    </div>
+  </div>
+</dialog>
+{% endif %}
 <script>
   function qmtApplyIcon() {
     // label names the theme you'd switch TO — a menu item should say what it does
@@ -393,6 +451,13 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") qmtCloseUser();
   });
+  // the osvrt prompt: native <dialog> gives Escape + focus trapping for free,
+  // the backdrop click is the one thing it doesn't
+  var _fb = document.getElementById("fbPrompt");
+  if (_fb && _fb.showModal) {
+    _fb.showModal();
+    _fb.addEventListener("click", function (e) { if (e.target === _fb) _fb.close(); });
+  }
   // PWA: register the root-scoped service worker (no-op where unsupported)
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {

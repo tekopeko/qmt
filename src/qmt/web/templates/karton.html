@@ -2,16 +2,101 @@
 {% block title %}Karton — QMT{% endblock %}
 {% block head %}
 <style>
-  .karton-grid { display:grid; grid-template-columns: 1.2fr .8fr; gap:26px; align-items:start; }
-  @media (max-width: 900px) { .karton-grid { grid-template-columns: 1fr; } }
-  .k-sec h2 { font-size:1.05rem; margin-bottom:12px; }
+  /* ===== razina: one colour ramp, defined for BOTH themes =====
+     Intensity reading (zelena → jantar → crvena), with the top tier landing on
+     the logo red. Colour never carries the meaning alone — the razina is always
+     spelled out and the ramp says "Razina N od 3" underneath. */
+  .upitnik { --lvl: var(--muted); --lvl-soft: transparent; }
+  .lvl-pocetna  { --lvl:#16a34a; --lvl-soft:rgba(22,163,74,.10); }
+  .lvl-srednja  { --lvl:#b45309; --lvl-soft:rgba(180,83,9,.10); }
+  .lvl-napredna { --lvl:var(--accent); --lvl-soft:var(--accent-dim); }
+  [data-theme="dark"] .lvl-pocetna  { --lvl:#4ade80; --lvl-soft:rgba(74,222,128,.13); }
+  [data-theme="dark"] .lvl-srednja  { --lvl:#fbbf24; --lvl-soft:rgba(251,191,36,.13); }
+
+  /* ===== the upitnik block: its own group, first thing on the page ===== */
+  .upitnik {
+    background: linear-gradient(180deg, var(--lvl-soft), transparent 62%), var(--surface);
+    border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px 22px 20px; margin-bottom: 26px; max-width: 720px;
+    box-shadow: var(--shadow);
+  }
+  .upitnik .u-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .upitnik .eyebrow { font:700 .7rem var(--font-display); text-transform:uppercase;
+                      letter-spacing:.1em; color:var(--muted); }
+  .upitnik .u-level { font-size:1.45rem; color:var(--lvl); margin-top:6px; }
+  .upitnik .u-meta { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-top:7px; }
+  .upitnik .u-pill { font:600 .78rem var(--font-body); color:var(--lvl);
+                     background:var(--lvl-soft); border:1px solid var(--lvl);
+                     border-radius:999px; padding:2px 11px; }
+  .upitnik .u-score { font-size:.82rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+  /* three rungs — how far along the ladder this razina sits */
+  .ramp { display:flex; gap:5px; max-width:260px; margin-top:15px; }
+  .ramp span { height:5px; flex:1; border-radius:3px; background:var(--line); }
+  .ramp span.on { background:var(--lvl); }
+  .ramp-note { font-size:.75rem; color:var(--muted); margin-top:6px; }
+  .upitnik details { margin-top:14px; }
+  .upitnik summary { cursor:pointer; font-size:.85rem; color:var(--muted); width:max-content; }
+  .upitnik summary:hover { color:var(--text); }
+  .upitnik details ul { padding:9px 0 0 18px; font-size:.88rem; }
+  .upitnik details li { margin-bottom:4px; }
+
+  /* "Ispuni ponovno": a quiet pill that only surfaces on hover — and ONLY where
+     hovering exists. On a phone there is no hover, so it stays visible there. */
+  .redo {
+    display:inline-flex; align-items:center; gap:7px; white-space:nowrap;
+    font:600 .78rem var(--font-body); text-decoration:none; color:var(--muted);
+    background:var(--surface); border:1px solid var(--line); border-radius:999px;
+    padding:6px 13px; transition:opacity .18s, transform .18s, color .15s,
+                                 border-color .15s, background .15s;
+  }
+  .redo svg { width:14px; height:14px; fill:none; stroke:currentColor;
+              stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .redo:hover, .redo:focus-visible { color:var(--lvl); border-color:var(--lvl); background:var(--lvl-soft); }
+  @media (hover: hover) {
+    .redo { opacity:0; transform:translateY(-3px); pointer-events:none; }
+    .upitnik:hover .redo, .upitnik:focus-within .redo { opacity:1; transform:none; pointer-events:auto; }
+  }
+
+  /* ===== page body: diary carries the weight, termini sit in the rail ===== */
+  .karton-grid { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,.85fr);
+                 gap:26px; align-items:start; }
+  @media (max-width: 900px) { .karton-grid { grid-template-columns:1fr; } }
+  /* the modal deep-links to #osvrti — clear the sticky topbar when it lands */
+  .k-sec h2 { font-size:1.05rem; margin-bottom:12px; scroll-margin-top: 84px; }
   .log-entry { border-bottom:1px solid var(--line); padding:10px 2px; }
   .log-entry .when { font-weight:700; font-variant-numeric:tabular-nums; }
   .log-entry .rpe { font:700 .72rem var(--font-body); color:var(--accent);
                     background:var(--accent-dim); border-radius:6px; padding:2px 7px; margin-left:8px; }
   .log-entry p { white-space:pre-line; font-size:.92rem; margin-top:4px; }
-  .cal-row { display:flex; gap:10px; font-size:.9rem; padding:6px 0; border-bottom:1px solid var(--line); }
-  .cal-row .when { font-weight:700; font-variant-numeric:tabular-nums; min-width:130px; }
+
+  /* one card, two peer lists, one on screen at a time */
+  .termini { background:var(--surface); border:1px solid var(--line);
+             border-radius:16px; padding:14px; }
+  .seg { display:flex; gap:3px; background:var(--surface-2); border-radius:11px;
+         padding:3px; margin-bottom:12px; }
+  .seg button {
+    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:7px 8px; border:none; border-radius:9px; background:none; cursor:pointer;
+    box-shadow:none; color:var(--muted); font:600 .8rem var(--font-body);
+    transition:background .15s, color .15s;
+  }
+  .seg button:hover { color:var(--text); transform:none; }
+  /* the selected chip carries the accent tint — "lighter than the track" flips
+     meaning between the two themes, a tint does not */
+  .seg button[aria-selected="true"] { background:var(--accent-dim); color:var(--accent); }
+  .seg .n { font-size:.72rem; font-variant-numeric:tabular-nums; color:var(--muted);
+            background:var(--bg); border-radius:999px; padding:1px 7px; }
+  .seg button[aria-selected="true"] .n { color:var(--accent); background:var(--surface); }
+  .cal-row { display:flex; align-items:baseline; gap:10px; font-size:.88rem;
+             padding:8px 4px; border-bottom:1px solid var(--line); }
+  .cal-row:last-child { border-bottom:none; }
+  .cal-row .when { font-weight:700; font-variant-numeric:tabular-nums;
+                   white-space:nowrap; min-width:118px; }
+  .cal-row .what { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cal-row .tick { margin-left:auto; color:var(--good); font-size:.78rem; }
+  .termini .empty { font-size:.85rem; color:var(--muted); padding:6px 4px; }
+  .termini .more { display:inline-block; margin-top:10px; font-size:.8rem; color:var(--muted); }
+  .termini .more:hover { color:var(--accent); }
 </style>
 {% endblock %}
 {% block content %}
@@ -19,48 +104,69 @@
 <nav class="crumbs" aria-label="Putanja"><a href="/clanarine">Članarine</a><span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
 {% endif %}
 <h1 style="font-size:1.7rem; margin-bottom:4px;">{% if own %}Moj karton{% else %}Karton — {{ subject.full_name or subject.email }}{% endif %}</h1>
-<p class="hint" style="margin-bottom:26px;">
+<p class="hint" style="margin-bottom:22px;">
   {% if own %}Dnevnik treninga, upitnik i termini na jednom mjestu.
   {% else %}{{ subject.email }}{% if age %} · {{ age }} god.{% endif %}{% if subject.phone %} · {{ subject.phone }}{% endif %}{% endif %}
 </p>
 
-<div class="card" style="padding:16px 20px; margin-bottom:26px; max-width:720px;">
-  {% if onboarding %}
-  <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;">
-    <div>
-      <div style="font:700 .72rem var(--font-display); text-transform:uppercase; letter-spacing:.08em; color:var(--muted);">Online trening — upitnik</div>
-      <div style="font:700 1.25rem var(--font-display); text-transform:uppercase; margin-top:4px;">
-        {{ levels[onboarding.level] }} <span style="color:var(--muted); font-family:var(--font-body); font-size:.85rem; font-weight:600; text-transform:none;">· {{ goals[onboarding.goal] }} · {{ onboarding.score }}/{{ max_score }} bodova</span>
-      </div>
-    </div>
-    {% if own %}<a class="btn-sm btn-ghost" href="/upitnik">Ispuni ponovno</a>{% endif %}
+{% set order = ["pocetna", "srednja", "napredna"] %}
+{% if onboarding %}
+<section class="upitnik lvl-{{ onboarding.level }}" aria-labelledby="u-level">
+  <div class="u-head">
+    <span class="eyebrow">Online trening — upitnik</span>
+    {% if own %}
+    <a class="redo" href="/upitnik">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.5h-4.5"/>
+      </svg>Ispuni ponovno
+    </a>
+    {% endif %}
   </div>
-  <details style="margin-top:12px;">
-    <summary class="hint" style="cursor:pointer;">Odgovori</summary>
-    <ul style="padding:8px 0 0 18px; font-size:.88rem;">
+  <h2 class="u-level" id="u-level">{{ levels[onboarding.level] }}</h2>
+  <div class="u-meta">
+    <span class="u-pill">{{ goals[onboarding.goal] }}</span>
+    <span class="u-score">{{ onboarding.score }}/{{ max_score }} bodova</span>
+  </div>
+  {% set rung = order.index(onboarding.level) + 1 %}
+  <div class="ramp" aria-hidden="true">
+    {% for i in range(3) %}<span class="{% if i < rung %}on{% endif %}"></span>{% endfor %}
+  </div>
+  <p class="ramp-note">Razina {{ rung }} od 3 — programi na /treninzi prate ovu razinu i cilj.</p>
+  <details>
+    <summary>Odgovori</summary>
+    <ul>
       {% for q in questions %}
-      <li style="margin-bottom:4px;">{{ q.text }} — <strong>{{ q.options[answers[q.key]][0] }}</strong></li>
+      <li>{{ q.text }} — <strong>{{ q.options[answers[q.key]][0] }}</strong></li>
       {% endfor %}
     </ul>
   </details>
-  {% elif can_upitnik %}
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+</section>
+{% elif can_upitnik %}
+<section class="upitnik">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
     <div>
-      <strong>Upitnik za online trening još nije ispunjen.</strong>
-      <p class="hint" style="margin-top:2px;">Prema odgovorima te svrstavamo u razinu i biramo programe za tvoj cilj.</p>
+      <span class="eyebrow">Online trening — upitnik</span>
+      <h2 style="font-size:1.15rem; margin-top:6px;">Upitnik još nije ispunjen</h2>
+      <p class="hint" style="margin-top:4px;">Prema odgovorima te svrstavamo u razinu i biramo programe za tvoj cilj.</p>
     </div>
     <a class="btn-sm btn-signal" href="/upitnik">Ispuni upitnik</a>
   </div>
-  {% elif own %}
-  <p class="hint">Online treninzi su dio zasebne članarine — javi se treneru za pristup.</p>
-  {% else %}
-  <p class="hint">Upitnik još nije ispunjen.</p>
-  {% endif %}
-</div>
+</section>
+{% elif own %}
+<section class="upitnik">
+  <span class="eyebrow">Online trening — upitnik</span>
+  <p class="hint" style="margin-top:6px;">Online treninzi su dio zasebne članarine — javi se treneru za pristup.</p>
+</section>
+{% else %}
+<section class="upitnik">
+  <span class="eyebrow">Online trening — upitnik</span>
+  <p class="hint" style="margin-top:6px;">Upitnik još nije ispunjen.</p>
+</section>
+{% endif %}
 
 <div class="karton-grid">
   <div class="k-sec">
-    <h2>Dnevnik treninga</h2>
+    <h2 id="osvrti">Dnevnik treninga</h2>
     {% if own %}
       {% for s in pending %}
       {# a finished booked termin without feedback — the app asks, Strava-style #}
@@ -109,23 +215,47 @@
     {% endfor %}
   </div>
 
-  <div class="k-sec">
-    <h2>Nadolazeći termini</h2>
-    {% for s in upcoming %}
-    <div class="cal-row {% if s.canceled %}canceled{% endif %}" {% if s.canceled %}style="opacity:.55;"{% endif %}>
-      <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
-      <span{% if s.canceled %} style="text-decoration:line-through;"{% endif %}>{{ s.title }}</span>
-      {% if s.canceled %}<strong style="color:var(--danger); font-size:.75rem;">OTKAZANO</strong>{% endif %}
+  {# two peer lists, one card, one visible at a time — upcoming first #}
+  {% set logged = logs | map(attribute="session_id") | select | list %}
+  <aside class="k-sec termini">
+    <div class="seg" role="tablist" aria-label="Termini">
+      <button type="button" role="tab" id="tab-up" aria-controls="pane-up" aria-selected="true"
+              onclick="qmtTermini('up')">Nadolazeći <span class="n">{{ upcoming|length }}</span></button>
+      <button type="button" role="tab" id="tab-past" aria-controls="pane-past" aria-selected="false"
+              onclick="qmtTermini('past')">Odrađeni <span class="n">{{ history|length }}</span></button>
     </div>
-    {% else %}<p class="hint">Nema rezervacija — <a href="/raspored">otvori raspored</a>.</p>{% endfor %}
 
-    <h2 style="margin-top:28px;">Odrađeni termini</h2>
-    {% for s in history %}
-    <div class="cal-row" {% if s.canceled %}style="opacity:.55;"{% endif %}>
-      <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
-      <span>{{ s.title }}</span>
+    <div id="pane-up" role="tabpanel" aria-labelledby="tab-up">
+      {% for s in upcoming %}
+      <div class="cal-row" {% if s.canceled %}style="opacity:.55;"{% endif %}>
+        <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
+        <span class="what"{% if s.canceled %} style="text-decoration:line-through;"{% endif %}>{{ s.title }}</span>
+        {% if s.canceled %}<strong style="margin-left:auto; color:var(--danger); font-size:.72rem;">OTKAZANO</strong>{% endif %}
+      </div>
+      {% else %}<p class="empty">Nema rezervacija.</p>{% endfor %}
+      {% if own %}<a class="more" href="/raspored">Otvori raspored →</a>{% endif %}
     </div>
-    {% else %}<p class="hint">Još nema prošlih termina.</p>{% endfor %}
-  </div>
+
+    <div id="pane-past" role="tabpanel" aria-labelledby="tab-past" hidden>
+      {% for s in history %}
+      <div class="cal-row" {% if s.canceled %}style="opacity:.55;"{% endif %}>
+        <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
+        <span class="what">{{ s.title }}</span>
+        {% if s.id in logged %}<span class="tick" title="Osvrt je spremljen">✓ osvrt</span>{% endif %}
+      </div>
+      {% else %}<p class="empty">Još nema prošlih termina.</p>{% endfor %}
+    </div>
+  </aside>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // segmented control: peers, so exactly one pane is ever on screen
+  function qmtTermini(which) {
+    ["up", "past"].forEach(function (k) {
+      document.getElementById("pane-" + k).hidden = k !== which;
+      document.getElementById("tab-" + k).setAttribute("aria-selected", k === which);
+    });
+  }
+</script>
 {% endblock %}
