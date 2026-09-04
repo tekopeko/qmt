@@ -237,8 +237,10 @@
     .act-quiet { background: none; color: var(--muted); }
     /* Links that live INSIDE a sentence stay links — a pill mid-sentence reads
        worse. They carry the accent instead of a resting underline. */
-    .tlink { color: var(--accent); font-weight: 600; text-decoration: none; }
-    .tlink:hover { text-decoration: underline; }
+    .tlink { color: var(--accent); font-weight: 600; text-decoration: none;
+             transition: color .15s; }
+    /* hover shifts the colour — no underline at any point */
+    .tlink:hover { color: var(--accent-strong); }
     button:focus-visible, .btn:focus-visible, a:focus-visible {
       outline: 2px solid var(--accent); outline-offset: 2px;
     }
