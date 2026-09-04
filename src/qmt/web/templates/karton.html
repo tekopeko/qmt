@@ -77,8 +77,10 @@
   .chip { font:600 .72rem var(--font-body); color:var(--muted);
           background:var(--surface-2); border-radius:6px; padding:2px 8px; }
   .chip.off { text-transform:uppercase; letter-spacing:.04em; }
-  .log-entry .rpe { font:700 .72rem var(--font-body); color:var(--accent);
-                    background:var(--accent-dim); border-radius:6px; padding:2px 7px; }
+  /* napor is a number, not an alarm — the red was doing no work here */
+  .log-entry .rpe { font:700 .72rem var(--font-body); color:var(--muted);
+                    background:var(--surface-2); border-radius:6px; padding:2px 7px;
+                    font-variant-numeric:tabular-nums; }
   .log-entry .rpe.feel { color:var(--good);
                          background:color-mix(in srgb, var(--good) 12%, transparent); }
   /* "Slabo" in success-green read as a contradiction */
@@ -86,22 +88,12 @@
   .log-entry p { white-space:pre-line; font-size:.92rem; margin-top:4px; }
   .le-actions { display:flex; align-items:center; gap:4px; margin-left:auto; }
   .le-actions form { margin:0; }
-  /* text actions, not buttons — they must not compete with "Spremi osvrt" */
-  .lnk { background:none; box-shadow:none; color:var(--muted); padding:3px 7px;
-         border-radius:8px; font:600 .74rem var(--font-body); }
-  .lnk:hover { background:var(--surface-2); color:var(--text); transform:none; }
-  /* an open termin asks a question, so both answers are real buttons */
-  .act { box-shadow:none; border-radius:999px; padding:5px 13px; white-space:nowrap;
-         font:600 .77rem var(--font-body); }
-  .act:hover { transform:none; }
-  .act-fill { background:var(--accent-dim); color:var(--accent); }
-  .act-fill:hover { background:var(--accent); color:var(--accent-ink); }
-  /* absence is not the red path — amber, and it says so in both themes */
+  /* .act / .act-quiet are global (base.html) — absence is the one coloured action — amber, and never the red primary */
   .act-absent { --warn:#b45309; --warn-soft:rgba(180,83,9,.13);
                 background:var(--warn-soft); color:var(--warn);
-                border:1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
+                border-color:color-mix(in srgb, var(--warn) 40%, transparent); }
   [data-theme="dark"] .act-absent { --warn:#fbbf24; --warn-soft:rgba(251,191,36,.15); }
-  .act-absent:hover { background:var(--warn); color:#231a02; }
+  .act-absent:hover { background:var(--warn); color:#231a02; border-color:var(--warn); }
   .le-edit { display:none; padding-top:10px; }
   .log-entry.editing .le-edit { display:block; }
   .log-entry.editing .le-read p { display:none; }
@@ -118,8 +110,7 @@
   .cal-row .what { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
                    color:var(--text); font-size:.88rem; }
   .termini .empty { font-size:.85rem; color:var(--muted); padding:6px 4px; }
-  .termini .more { display:inline-block; margin-top:10px; font-size:.8rem; color:var(--muted); }
-  .termini .more:hover { color:var(--accent); }
+  .termini .more { margin-top:12px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -212,12 +203,12 @@
           {% if log.feeling %}<span class="rpe feel {% if log.feeling == 'slabo' %}low{% endif %}">{{ feelings.get(log.feeling, log.feeling) }}</span>{% endif %}
           {% if own %}
           <span class="le-actions">
-            <button type="button" class="lnk" onclick="qmtToggleForm('log-{{ log.id }}')">Uredi</button>
+            <button type="button" class="act act-quiet" onclick="qmtToggleForm('log-{{ log.id }}')">Uredi</button>
             <form method="post" action="/karton/log/{{ log.id }}/delete"
                   data-confirm-title="Obrisati osvrt?"
                   data-confirm="Napor, osjećaj i komentar bit će trajno obrisani. Termin ostaje u dnevniku i osvrt možeš ispuniti ponovno."
                   data-confirm-cta="Obriši osvrt">
-              <button type="submit" class="lnk">Obriši</button>
+              <button type="submit" class="act act-quiet">Obriši</button>
             </form>
           </span>
           {% endif %}
@@ -264,7 +255,7 @@
         {% if own %}
         <span class="le-actions">
           <form method="post" action="/karton/log/{{ log.id }}/delete">
-            <button type="submit" class="lnk">Poništi</button>
+            <button type="submit" class="act act-quiet">Poništi</button>
           </form>
         </span>
         {% endif %}
@@ -291,7 +282,7 @@
         <span class="what">{{ s.title }} · {{ s.starts_at.astimezone(tz).strftime("%H:%M") }}</span>
         {% if own %}
         <span class="le-actions">
-          <button type="button" class="act act-fill"
+          <button type="button" class="act"
                   onclick="qmtToggleForm('s-{{ s.id }}')">Ispuni osvrt</button>
           <form method="post" action="/karton/absent/{{ s.id }}"
                 data-confirm-title="Nisi bio/la na terminu?"
@@ -330,7 +321,7 @@
     {% endif %}
 
     {% else %}
-    <p class="hint">Još nema odrađenih termina{% if own %} — <a href="/raspored">rezerviraj prvi</a>{% endif %}.</p>
+    <p class="hint">Još nema odrađenih termina{% if own %} — <a class="tlink" href="/raspored">rezerviraj prvi</a>{% endif %}.</p>
     {% endfor %}
   </div>
 
@@ -344,7 +335,7 @@
       {% if s.canceled %}<strong style="margin-left:auto; color:var(--danger); font-size:.72rem;">OTKAZANO</strong>{% endif %}
     </div>
     {% else %}<p class="empty">Nema rezervacija.</p>{% endfor %}
-    {% if own %}<a class="more" href="/raspored">Otvori raspored →</a>{% endif %}
+    {% if own %}<a class="act act-quiet more" href="/raspored">Otvori raspored →</a>{% endif %}
   </aside>
 </div>
 {% endblock %}

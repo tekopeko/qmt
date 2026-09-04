@@ -14,9 +14,9 @@
   {% if dev_link %}
     <div class="card" style="padding:14px 16px; margin-top:16px; word-break:break-all;">
       <span class="hint">Email nije konfiguriran (dev) — evo linka:</span><br>
-      <a href="{{ dev_link }}" style="color:var(--accent);">{{ dev_link }}</a>
+      <a class="tlink" href="{{ dev_link }}" style="word-break:break-all;">{{ dev_link }}</a>
     </div>
   {% endif %}
-  <p class="hint" style="margin-top:18px;"><a href="/login">← natrag na prijavu</a></p>
+  <p class="hint" style="margin-top:18px;"><a class="act act-quiet" href="/login">← natrag na prijavu</a></p>
 </div>
 {% endblock %}

@@ -217,6 +217,28 @@
     .btn-quiet, button.btn-quiet { background: var(--accent-dim); color: var(--accent); box-shadow: none; }
     .btn-quiet:hover { background: var(--accent); color: var(--accent-ink); }
     .btn-sm { padding: 7px 13px; font-size: .8rem; border-radius: 10px; }
+    /* An <a> carrying only .btn-sm/.btn-ghost/.btn-quiet misses the `button, .btn`
+       base above, so it kept the browser's underline while looking like a button. */
+    a.btn, a.btn-sm, a.btn-ghost, a.btn-quiet, a.act {
+      text-decoration: none; display: inline-flex;
+      align-items: center; justify-content: center; gap: 8px;
+    }
+    /* ===== the app's small discrete action, on <a> and <button> alike =====
+       One pill shape, so a row of them shares a footprint and lines up. */
+    .act {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 5px 13px; border-radius: 999px; white-space: nowrap; cursor: pointer;
+      font: 600 .77rem var(--font-body); text-decoration: none; box-shadow: none;
+      background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
+      transition: color .15s, border-color .15s, background .15s;
+    }
+    .act:hover { transform: none; color: var(--text);
+                 border-color: color-mix(in srgb, var(--text) 40%, transparent); }
+    .act-quiet { background: none; color: var(--muted); }
+    /* Links that live INSIDE a sentence stay links — a pill mid-sentence reads
+       worse. They carry the accent instead of a resting underline. */
+    .tlink { color: var(--accent); font-weight: 600; text-decoration: none; }
+    .tlink:hover { text-decoration: underline; }
     button:focus-visible, .btn:focus-visible, a:focus-visible {
       outline: 2px solid var(--accent); outline-offset: 2px;
     }
