@@ -47,7 +47,9 @@
                 aria-label="Pomakni dolje">↓</button>
       </form>
       <form method="post" action="/treninzi/{{ p.id }}/items/{{ it.id }}/delete" style="margin:0; display:inline;"
-            onsubmit="return confirm('Obrisati vježbu &quot;{{ it.title }}&quot;?')">
+            data-confirm-title="Obrisati vježbu?"
+            data-confirm="&quot;{{ it.title }}&quot; i njezini mediji bit će trajno obrisani."
+            data-confirm-cta="Obriši vježbu">
         <button class="btn-ghost btn-sm" style="color:var(--accent);">Obriši</button>
       </form>
     </div>
@@ -82,7 +84,9 @@
 </form>
 
 <form method="post" action="/treninzi/{{ p.id }}/delete" style="margin-top:34px;"
-      onsubmit="return confirm('Obrisati cijeli trening &quot;{{ p.title }}&quot;? Ovo briše i sve vježbe i medije.')">
+      data-confirm-title="Obrisati cijeli trening?"
+      data-confirm="&quot;{{ p.title }}&quot; — briše se trening sa svim vježbama i medijima. Prazan slot se pri sljedećem otvaranju popuni osnovnim vježbama."
+      data-confirm-cta="Obriši trening">
   <button class="btn-ghost" style="color:var(--accent); border-color:var(--accent);">Obriši cijeli trening</button>
 </form>
 {% endblock %}

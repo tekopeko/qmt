@@ -33,7 +33,9 @@
 </form>
 
 <form method="post" action="/admin/templates/{{ t.id }}/delete" style="margin-top:26px;"
-      onsubmit="return confirm('Obrisati &quot;{{ t.title }}&quot; iz tjednog rasporeda? Budući termini bez rezervacija nestaju; rezervirani ostaju.')">
+      data-confirm-title="Obrisati iz rasporeda?"
+      data-confirm="&quot;{{ t.title }}&quot; — budući termini bez rezervacija nestaju; rezervirani ostaju dok ih ne otkažeš."
+      data-confirm-cta="Obriši stavku">
   <button type="submit" class="btn-ghost" style="border-color:var(--danger); color:var(--danger);">Obriši stavku</button>
 </form>
 {% endblock %}

@@ -57,13 +57,17 @@
         {% if not u_is_owner %}
           {% if u.is_trainer %}
           <form method="post" action="/korisnici/{{ u.id }}/trainer" style="margin:0; display:inline;"
-                onsubmit="return confirm('Ukinuti ulogu trenera za {{ u.name or u.email }}?')">
+                data-confirm-title="Ukinuti trenera?"
+                data-confirm="{{ u.name or u.email }} gubi pristup rasporedu, članarinama i kartonima polaznika."
+                data-confirm-cta="Ukini ulogu">
             <input type="hidden" name="revoke" value="1">
             <button class="btn-sm btn-ghost" type="submit">Ukini trenera</button>
           </form>
           {% else %}
           <form method="post" action="/korisnici/{{ u.id }}/trainer" style="margin:0; display:inline;"
-                onsubmit="return confirm('Promovirati {{ u.name or u.email }} u trenera? Vidjet će sve polaznike, rasporede i treninge.')">
+                data-confirm-title="Promovirati u trenera?"
+                data-confirm="{{ u.name or u.email }} će vidjeti sve polaznike, rasporede, članarine i treninge."
+                data-confirm-cta="Promoviraj">
             <button class="btn-sm btn-quiet" type="submit">Promoviraj u trenera</button>
           </form>
           {% endif %}

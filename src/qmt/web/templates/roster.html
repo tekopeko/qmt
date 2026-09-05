@@ -19,13 +19,17 @@
   {% endfor %}
 </ul>
 
-<form method="post" action="/admin/session/{{ sess.id }}/cancel" style="margin-top:22px;">
+<form method="post" action="/admin/session/{{ sess.id }}/cancel" style="margin-top:22px;"
+      {% if not sess.canceled %}
+      data-confirm-title="Otkazati termin?"
+      data-confirm="Polaznici ga vide prekriženog u rasporedu; rezervacije ostaju zabilježene. Možeš ga kasnije vratiti."
+      data-confirm-cta="Otkaži termin"
+      {% endif %}>
   {% if sess.canceled %}
     <input type="hidden" name="undo" value="1">
     <button type="submit" class="btn-ghost">Vrati termin</button>
   {% else %}
-    <button type="submit" style="border-color:var(--danger); background:var(--danger);"
-            onclick="return confirm('Otkazati ovaj termin? Polaznici će ga vidjeti prekriženog.')">Otkaži termin</button>
+    <button type="submit" style="border-color:var(--danger); background:var(--danger);">Otkaži termin</button>
   {% endif %}
 </form>
 {% endblock %}

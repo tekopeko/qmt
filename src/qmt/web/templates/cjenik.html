@@ -2,6 +2,7 @@
 {% block title %}Cjenik — QMT{% endblock %}
 {% block head %}
 <style>
+  .plan-h { font-size:1.02rem; }
   .plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
                gap: 18px; max-width: 1000px; }
   .plan { padding: 22px 24px; display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 90px; }
@@ -33,7 +34,7 @@
 <div class="plan-grid">
   {% for key in plans %}
   <div class="card plan {% if key in my_plans %}mine{% endif %}" id="plan-{{ key }}">
-    <h3>{{ plan_labels[key] }}</h3>
+    <h2 class="plan-h">{{ plan_labels[key] }}</h2>
     <p>{{ desc[key] }}</p>
     <div class="price">na upit <small>/ mjesečno</small></div>
     {% if key in my_plans %}

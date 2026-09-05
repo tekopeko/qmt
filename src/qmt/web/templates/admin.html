@@ -19,7 +19,7 @@
   .sess .cap { font-size: .76rem; color: var(--muted); }
   .sess.paused { opacity: .5; }
   .sess.paused .name { text-decoration: line-through; }
-  .tag-11 { font-size: .64rem; font-weight: 800; letter-spacing: .05em;
+  .tag-11 { font-size: .72rem; font-weight: 800; letter-spacing: .05em;
             background: var(--accent-dim); color: var(--accent); border-radius: 6px;
             padding: 1px 6px; margin-left: 4px; vertical-align: 1px; }
   .none { color: var(--muted); font-size: .8rem; padding: 12px 11px; }
@@ -59,20 +59,20 @@
 
 <h2 style="font-size:1.1rem; margin-bottom:12px;">Nova stavka rasporeda</h2>
 <form method="post" action="/admin/templates" style="max-width:560px;">
-  <div class="field"><label>Naziv</label>
-    <input type="text" name="title" placeholder="npr. Grupni trening / Individualni trening / Rehabilitacija" required></div>
-  <div class="field"><label>Tip termina (određuje koja članarina vrijedi)</label>
-    <select name="kind">
+  <div class="field"><label for="t-title">Naziv</label>
+    <input id="t-title" type="text" name="title" placeholder="npr. Grupni trening / Individualni trening / Rehabilitacija" required></div>
+  <div class="field"><label for="t-kind">Tip termina (određuje koja članarina vrijedi)</label>
+    <select id="t-kind" name="kind">
       {% for k in kinds %}<option value="{{ k }}">{{ kind_labels[k] }}</option>{% endfor %}
     </select></div>
   <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px;">
-    <div class="field"><label>Dan</label>
-      <select name="weekday">{% for w in weekdays %}<option value="{{ loop.index0 }}">{{ w }}</option>{% endfor %}</select></div>
-    <div class="field"><label>Početak</label><input type="time" name="time" value="18:00" required></div>
-    <div class="field"><label>Trajanje (min)</label><input type="number" name="duration_min" value="60" min="15" step="5"></div>
-    <div class="field"><label>Mjesta (1 = individualno)</label><input type="number" name="capacity" value="8" min="1" max="40"></div>
+    <div class="field"><label for="t-day">Dan</label>
+      <select id="t-day" name="weekday">{% for w in weekdays %}<option value="{{ loop.index0 }}">{{ w }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="t-time">Početak</label><input id="t-time" type="time" name="time" value="18:00" required></div>
+    <div class="field"><label for="t-dur">Trajanje (min)</label><input id="t-dur" type="number" name="duration_min" value="60" min="15" step="5"></div>
+    <div class="field"><label for="t-cap">Mjesta (1 = individualno)</label><input id="t-cap" type="number" name="capacity" value="8" min="1" max="40"></div>
   </div>
-  <div class="field"><label>Napomena (opcionalno)</label><input type="text" name="note"></div>
+  <div class="field"><label for="t-note">Napomena (opcionalno)</label><input id="t-note" type="text" name="note"></div>
   <button type="submit" class="btn-signal">Dodaj u raspored</button>
 </form>
 
