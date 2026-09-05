@@ -91,6 +91,17 @@ MOJIMAKROSI_URL = os.environ.get("MOJIMAKROSI_URL", "https://mojimakrosi.com").s
 MEDIA_DIR = PROJECT_ROOT / "data" / "uploads"
 MAX_MEDIA_MB = int(os.environ.get("MAX_MEDIA_MB", "60"))
 
+# How many days before dospijeće the članarina reminder goes out.
+REMINDER_DAYS_BEFORE = int(os.environ.get("REMINDER_DAYS_BEFORE", "3"))
+
+# Cloudflare R2 (S3-compatible) media storage. All four set => uploads go to
+# the bucket and /media redirects to presigned URLs; any missing => local disk
+# (data/uploads — fine in dev, EPHEMERAL on Railway).
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "").strip()
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "").strip()
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "").strip()
+R2_BUCKET = os.environ.get("R2_BUCKET", "").strip()
+
 # Email (Resend) — verification + password reset. Unset in dev: the links are
 # shown on-page instead of sent (never in prod — there they would be public).
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()

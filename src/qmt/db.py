@@ -19,8 +19,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from . import config
 from .models import (PLAN_LABELS, Base, Booking, Membership, OnboardingResponse,
-                     Payment, Program, ProgramItem, SessionTemplate, TrainingLog,
-                     TrainingSession, User)
+                     Payment, Program, ProgramItem, ReminderLog, SessionTemplate,
+                     TrainingLog, TrainingSession, User)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -382,6 +382,60 @@ def memberships_for(user_id: int) -> list[Membership]:
     with session_scope() as s:
         return list(s.scalars(select(Membership).where(Membership.user_id == user_id)
                               .order_by(Membership.plan)))
+
+
+def memberships_expiring(within_days: int) -> list[tuple[User, Membership]]:
+    """Members whose dospijeće falls inside the next `within_days` days —
+    the window in which a reminder is useful. Already-lapsed plans are not
+    nagged: past dospijeće the calendar itself says no."""
+    today = config.today()
+    # dospijeće = next_payment + grace, so shift the window onto next_payment
+    lo = today - timedelta(days=Membership.GRACE_DAYS)
+    hi = today + timedelta(days=within_days) - timedelta(days=Membership.GRACE_DAYS)
+    with session_scope() as s:
+        rows = s.execute(
+            select(User, Membership).join(Membership, Membership.user_id == User.id)
+            .where(Membership.next_payment >= lo, Membership.next_payment <= hi,
+                   User.email_verified)
+            .order_by(User.id)).all()
+        return [(u, m) for u, m in rows]
+
+
+def bookings_on(day: date) -> list[tuple[User, TrainingSession]]:
+    """Everyone booked into a live termin on `day` (local dates) — the
+    day-before training reminder reads from this."""
+    start = datetime.combine(day, datetime.min.time(), tzinfo=config.TZ)
+    end = start + timedelta(days=1)
+    with session_scope() as s:
+        rows = s.execute(
+            select(User, TrainingSession)
+            .join(Booking, Booking.user_id == User.id)
+            .join(TrainingSession, TrainingSession.id == Booking.session_id)
+            .where(TrainingSession.starts_at >= start, TrainingSession.starts_at < end,
+                   ~TrainingSession.canceled, User.email_verified)
+            .order_by(User.id, TrainingSession.starts_at)).all()
+        return [(u, sess) for u, sess in rows]
+
+
+def claim_reminder(user_id: int, kind: str, ref: str) -> bool:
+    """True exactly once per (user, kind, ref) — the send happens only on a
+    successful claim, so concurrent runs and restarts cannot double-mail."""
+    with session_scope() as s:
+        # RETURNING, not rowcount: psycopg3 reports rowcount -1 ("unknown") for
+        # this construct, which reads as truthy and let every duplicate through
+        row = s.execute(pg_insert(ReminderLog).values(
+            user_id=user_id, kind=kind, ref=ref)
+            .on_conflict_do_nothing(constraint="uq_reminder_once")
+            .returning(ReminderLog.id)).first()
+        return row is not None
+
+
+def release_reminder(user_id: int, kind: str, ref: str) -> None:
+    """A claim whose email failed to send is handed back for the next run."""
+    with session_scope() as s:
+        s.execute(sa_delete(ReminderLog).where(
+            ReminderLog.user_id == user_id, ReminderLog.kind == kind,
+            ReminderLog.ref == ref))
 
 
 def record_payment(user_id: int, plan: str, method: str = "gotovina") -> Membership:

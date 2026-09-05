@@ -13,13 +13,38 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from contextlib import asynccontextmanager
+
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import auth, config, db, mailer, upitnik
+from .. import auth, config, db, mailer, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, PAYMENT_METHODS, PLAN_ABBR, PLAN_LABELS,
                       PLAN_TYPES, SESSION_KINDS)
 
-app = FastAPI(title="QMT")
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """A daily job without cron infra: a background loop ticks every 6 hours.
+    run_once() is claim-idempotent, so extra ticks and restarts are free, and a
+    second replica racing this one is harmless."""
+    import asyncio
+
+    async def _tick():
+        await asyncio.sleep(30)                    # let migrations/boot settle
+        while True:
+            try:
+                sent = await asyncio.to_thread(reminders.run_once)
+                if any(sent.values()):
+                    print(f"[reminders] {sent}")
+            except Exception as e:                 # never kill the app over email
+                print(f"[reminders] failed: {e}")
+            await asyncio.sleep(6 * 3600)
+
+    task = asyncio.create_task(_tick())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="QMT", lifespan=_lifespan)
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=config.IS_PROD)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
@@ -844,28 +869,31 @@ def _save_media(upload: UploadFile | None) -> tuple[str | None, str | None]:
     suffix = Path(upload.filename).suffix.lower()
     if suffix not in _MEDIA_KINDS:
         raise ValueError("Nepodržan format — dozvoljeno: jpg, png, webp, gif, mp4, mov, webm.")
-    config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    import tempfile
+
     name = f"{secrets.token_hex(8)}{suffix}"
-    dest = config.MEDIA_DIR / name
     limit = config.MAX_MEDIA_MB * 1024 * 1024
     total = 0
-    with open(dest, "wb") as f:
+    # spool locally first — the size cap must trip BEFORE any bytes reach R2
+    tmp = Path(tempfile.mkstemp(suffix=suffix)[1])
+    with open(tmp, "wb") as f:
         while chunk := upload.file.read(1 << 20):
             total += len(chunk)
             if total > limit:
                 f.close()
-                dest.unlink(missing_ok=True)
+                tmp.unlink(missing_ok=True)
                 raise ValueError(f"Datoteka je veća od {config.MAX_MEDIA_MB} MB.")
             f.write(chunk)
     if total == 0:
-        dest.unlink(missing_ok=True)
+        tmp.unlink(missing_ok=True)
         return None, None
+    storage.save(name, tmp, _MEDIA_TYPES.get(suffix))
     return name, _MEDIA_KINDS[suffix]
 
 
 def _unlink_media(name: str | None) -> None:
     if name:
-        (config.MEDIA_DIR / name).unlink(missing_ok=True)
+        storage.delete(name)
 
 
 def _program_or_403(request: Request, program_id: int):
@@ -1056,7 +1084,11 @@ def media(request: Request, name: str):
     if not user.is_trainer and (not _has_online(user)
                                 or not db.client_can_view(p, user.id)):
         raise HTTPException(status_code=403, detail="Ovo nije tvoj sadržaj.")
-    path = config.MEDIA_DIR / name
+    if storage.r2_enabled():
+        # auth just passed — hand out a short-lived direct link; the bytes
+        # come from Cloudflare, the bucket itself stays private
+        return RedirectResponse(storage.presigned_url(name), status_code=307)
+    path = storage.local_path(name)
     if not path.is_file():
         raise HTTPException(status_code=404)
     return FileResponse(path, media_type=_MEDIA_TYPES.get(path.suffix.lower()))

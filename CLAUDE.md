@@ -31,7 +31,7 @@ python scripts/seed_demo.py                # dev RESET: users, timetable, plans,
 python serve.py [--reload] [--port 8100]   # 8100 — 8000 is mojimakrosi's local port
 
 createdb qmt_test                          # once
-pytest -q                                  # 63 tests, must stay green
+pytest -q                                  # 74 tests, must stay green
 ```
 
 Demo logins: `trener@qmt.local/trener123` (trainer **and** owner locally, via
@@ -103,6 +103,8 @@ active `online` plan → filled upitnik → matched programmes.
 | `src/qmt/upitnik.py` | Questions, scoring thresholds, level/goal labels |
 | `src/qmt/auth.py` | bcrypt + signed email tokens (verify 24 h; reset 1 h, single-use) |
 | `src/qmt/mailer.py` | Only Resend importer. Also `send_new_user_notice` → owner hears about each first verification |
+| `src/qmt/reminders.py` | Email podsjetnici (pre-dospijeće + day-before termin), claim-idempotent via the `reminders` table; app lifespan ticks every 6 h, `scripts/send_reminders.py` forces a pass |
+| `src/qmt/storage.py` | Media backend: local disk, or Cloudflare R2 when the four `R2_*` vars are set (then `/media` 307s to presigned URLs) |
 | `src/qmt/web/app.py` | All routes. `current_user()` per route; `PLAN_LINKS` maps an active plan to the page it unlocks |
 | `src/qmt/web/templates/` | Jinja2. Design tokens + topbar/avatar menu in `base.html` |
 
@@ -160,8 +162,9 @@ active `online` plan → filled upitnik → matched programmes.
    Stripe account for the d.o.o., real prices for `/cjenik`, and the accountant
    confirming Fiskalizacija 2.0 (mandatory since 1.1.2026, fiscalized račun per B2C
    charge). Then: Checkout on /cjenik + `invoice.paid` webhook → `db.record_payment`.
-5. ⏳ Owner's own content: landing/service copy, exercise videos (host on Cloudflare R2
-   ≈ $7.50/mo for 500 GB with free egress — also fixes the ephemeral `data/uploads`)
+5. ⏳ Owner's own content: landing/service copy, exercise videos. The R2 storage
+   layer is BUILT (`storage.py` + `scripts/migrate_media_to_r2.py`) — activating it
+   is just the four `R2_*` vars on Railway; until then `data/uploads` stays ephemeral
 6. ⏳ Mini-kuharica (30–50 recipes) + deeper mojimakrosi link-up
 
 See `roadmap/2026-09-03-owner-voice-note.md` for the owner's own wish list and

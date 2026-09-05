@@ -173,6 +173,26 @@ class Membership(Base):
 PAYMENT_METHODS = {"gotovina": "Gotovina", "kartica": "Kartica", "stripe": "Stripe"}
 
 
+class ReminderLog(Base):
+    """One row per reminder actually sent — the idempotency ledger.
+
+    `ref` pins the reminder to its occasion (plan + cycle date, or a session
+    id), so a client is nagged once per dospijeće and once per termin, never
+    once per daily run. Claim-then-send: the unique constraint is what makes
+    a concurrent double-run harmless.
+    """
+
+    __tablename__ = "reminders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(12))          # 'clanarina' | 'termin'
+    ref: Mapped[str] = mapped_column(String(60))
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("user_id", "kind", "ref", name="uq_reminder_once"),)
+
+
 class Payment(Base):
     """Immutable ledger: one row per uplata, nothing ever overwrites it.
 

@@ -65,3 +65,36 @@ def send_password_reset_email(to: str, link: str) -> bool:
         <p style="color:#777;font-size:13px">Link vrijedi 1 sat i može se iskoristiti
         jednom. Ako nisi ti tražio/la promjenu, ignoriraj poruku — lozinka ostaje ista.</p>
       </div>""")
+
+
+def send_membership_reminder(to: str, plan_label: str, dospijece) -> bool:
+    """Dospijeće is close: say when, and what stops working after it."""
+    when = dospijece.strftime("%-d.%-m.%Y.")
+    return _send(to, f"Članarina uskoro ističe — {plan_label}", f"""
+      <div style="font-family:sans-serif;max-width:480px">
+        <h2>Quality Movement Training</h2>
+        <p>Tvoja članarina <strong>{plan_label}</strong> vrijedi do
+        <strong>{when}</strong> — nakon toga rezervacije za taj tip termina
+        više ne prolaze.</p>
+        <p>{_button(config.PUBLIC_BASE_URL + "/cjenik", "Pogledaj cjenik")}</p>
+        <p style="color:#777;font-size:13px">Uplata gotovinom ili karticom u
+        dvorani produžuje članarinu za mjesec dana od dospijeća.</p>
+      </div>""")
+
+
+def send_termin_reminder(to: str, termini: list[tuple[str, str]]) -> bool:
+    """Day-before nudge: (title, "pon 8.9. 18:00") pairs, one mail per client."""
+    rows = "".join(
+        f'<tr><td style="padding:4px 14px 4px 0;font-weight:700;white-space:nowrap">{when}</td>'
+        f"<td style=\"padding:4px 0\">{title}</td></tr>"
+        for title, when in termini)
+    plural = "termin" if len(termini) == 1 else "termine"
+    return _send(to, "Podsjetnik — sutra imaš trening", f"""
+      <div style="font-family:sans-serif;max-width:480px">
+        <h2>Quality Movement Training</h2>
+        <p>Sutra imaš rezerviran {plural}:</p>
+        <table style="border-collapse:collapse;font-size:15px">{rows}</table>
+        <p style="margin-top:14px">{_button(config.PUBLIC_BASE_URL + "/raspored", "Otvori raspored")}</p>
+        <p style="color:#777;font-size:13px">Ne stigneš? Otkaži u rasporedu
+        najkasnije 3 sata prije termina.</p>
+      </div>""")

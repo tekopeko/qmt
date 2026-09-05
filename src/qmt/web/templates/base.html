@@ -228,7 +228,9 @@
     .btn-ghost:hover { background: var(--surface-2); transform: none; }
     .btn-quiet, button.btn-quiet { background: var(--accent-dim); color: var(--accent); box-shadow: none; }
     .btn-quiet:hover { background: var(--accent-fill); color: var(--accent-ink); }
-    .btn-sm { padding: 7px 13px; font-size: .8rem; border-radius: 10px; }
+    /* the red glow is the HERO's voice — a small button inside a card or
+       table row speaks at normal volume */
+    .btn-sm { padding: 7px 13px; font-size: .8rem; border-radius: 10px; box-shadow: none; }
     /* fingers need more than 31px — grow the small controls only where the
        pointer is coarse, so desktop density is untouched */
     @media (pointer: coarse) {

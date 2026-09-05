@@ -7,7 +7,11 @@
                gap: 18px; max-width: 1000px; }
   .plan { padding: 22px 24px; display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 90px; }
   .plan h3 { font-size: 1.02rem; }
-  .plan p { color: var(--muted); font-size: .9rem; flex: 1; }
+  /* the description reserves its block, so every card's price sits on the
+     same line and the footer (status/CTA/hint) shares the bottom edge */
+  .plan p { color: var(--muted); font-size: .9rem; min-height: 3.9em; flex: none; }
+  .plan .foot { margin-top: auto; display: flex; flex-direction: column;
+                gap: 8px; align-items: flex-start; padding-top: 4px; }
   .plan .price { font: 800 1.3rem var(--font-body); }
   .plan .price small { font: 600 .8rem var(--font-body); color: var(--muted); }
   .plan.mine { box-shadow: inset 3px 0 0 var(--good); }
@@ -37,16 +41,18 @@
     <h2 class="plan-h">{{ plan_labels[key] }}</h2>
     <p>{{ desc[key] }}</p>
     <div class="price">na upit <small>/ mjesečno</small></div>
+    <div class="foot">
     {% if key in my_plans %}
       <span class="owned">✓ Aktivna članarina</span>
       {% if key in plan_links %}
-      <a class="btn btn-sm" style="align-self:flex-start;" href="{{ plan_links[key][0] }}">{{ plan_links[key][1] }} →</a>
+      <a class="btn btn-sm" href="{{ plan_links[key][0] }}">{{ plan_links[key][1] }} →</a>
       {% endif %}
     {% elif user %}
       <span class="hint" style="font-size:.82rem;">Za upis se javi treneru u dvorani — kartično plaćanje online stiže uskoro.</span>
     {% else %}
-      <a class="btn btn-sm" style="align-self:flex-start;" href="/login?next=/cjenik">Prijavi se ili se registriraj</a>
+      <a class="btn btn-sm" href="/login?next=/cjenik">Prijavi se ili se registriraj</a>
     {% endif %}
+    </div>
   </div>
   {% endfor %}
 </div>
