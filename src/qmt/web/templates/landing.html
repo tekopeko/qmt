@@ -69,9 +69,16 @@
      card's bottom edge and they line up across a row despite uneven copy */
   .svc .svc-cta, .svc .owned { align-self: flex-start; margin-top: auto;
                                padding: 7px 12px; font-size: .78rem; }
-  .svc .svc-cta { background: var(--accent-dim); color: var(--accent); box-shadow: none; }
-  .svc .svc-cta:hover { background: color-mix(in srgb, var(--accent) 22%, transparent);
-                        color: var(--accent); }
+  /* Neutral, not red. Red is the app's primary and the card already spends it
+     on the icon tile and the meta line — a red button turned the whole card
+     into one wash. Neutral keeps the hierarchy: green = yours, grey = open to
+     you, red reserved for actions that actually do something. Same colours and
+     hover as .act, the app's standard secondary. */
+  .svc .svc-cta { background: var(--surface-2); color: var(--text);
+                  border: 1px solid var(--line); box-shadow: none; }
+  .svc .svc-cta:hover { background: color-mix(in srgb, var(--text) 10%, var(--surface-2));
+                        border-color: color-mix(in srgb, var(--text) 40%, transparent);
+                        color: var(--text); }
   /* an active plan is a door, so it gets the same bubble as "Odaberi plan" —
      green because it reports a state you already have, not a purchase.
      --good is tuned for TEXT on a dark page and is far too bright as a fill,
