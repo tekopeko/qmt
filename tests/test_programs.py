@@ -27,8 +27,10 @@ PNG = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)  # enough to be a non-empty "image"
 def clean_db(tmp_path, monkeypatch):
     Base.metadata.drop_all(db.engine)
     Base.metadata.create_all(db.engine)
-    # media lands in a throwaway dir, never the real data/uploads
+    # media lands in a throwaway dir, never the real data/uploads — and never
+    # the real R2 bucket: a developer's .env may carry live R2_* credentials
     monkeypatch.setattr(config, "MEDIA_DIR", tmp_path / "uploads")
+    monkeypatch.setattr(config, "R2_ACCOUNT_ID", "")
     yield
 
 
