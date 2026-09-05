@@ -174,7 +174,9 @@ def _send_verification(request: Request, email: str):
 @app.post("/logout")
 def logout(request: Request):
     request.session.clear()
-    return RedirectResponse("/login", status_code=303)
+    # the shop window, not the door back in — logging out is not a prelude to
+    # logging in again
+    return RedirectResponse("/", status_code=303)
 
 
 # ---------- calendar ----------

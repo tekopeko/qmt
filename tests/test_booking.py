@@ -106,6 +106,16 @@ def test_signup_stays_closed_unless_explicitly_opened(monkeypatch):
     assert "samo pozvani" not in c.get("/signup").text   # the copy follows the flag
 
 
+def test_logout_lands_on_the_landing_page():
+    make_user("ivan@test.local")
+    c = client_for("ivan@test.local")
+    r = c.post("/logout", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/"
+    # and the session really is gone
+    assert c.get("/raspored", follow_redirects=False).headers["location"] == "/login?next=/raspored"
+
+
 def test_wrong_password_rejected():
     make_user("ivan@test.local")
     c = TestClient(app)
