@@ -60,7 +60,11 @@
     display: flex; align-items: center; justify-content: center; color: var(--accent);
   }
   .svc h3 { font-size: 1.02rem; }
-  .svc p { color: var(--muted); font-size: .92rem; }
+  /* three lines of copy reserved in every card: with the blocks equal, the
+     gap above the CTA is the flex gap and nothing else, so it is identical
+     everywhere AND the buttons still line up across a row */
+  .svc p { color: var(--muted); font-size: .92rem; min-height: 4.65em; }
+  .hero-note { margin-top: 14px; font-size: .9rem; color: var(--muted); }
   .svc .meta { font: 600 .78rem var(--font-body); color: var(--accent); letter-spacing: .04em; }
   /* Every card shows its CTA, always. Phones already did — the hover-reveal was
      desktop-only — and presence should not be what tells you whether a plan is
@@ -83,7 +87,10 @@
      green because it reports a state you already have, not a purchase.
      --good is tuned for TEXT on a dark page and is far too bright as a fill,
      hence --good-fill. .btn's own shadow is a red glow, so it goes. */
-  .svc .owned { background: var(--good-fill); color: var(--good-ink); box-shadow: none; }
+  /* transparent 1px border so the filled button is exactly as tall as the
+     bordered neutral one — without it the two sit 2px apart in a row */
+  .svc .owned { background: var(--good-fill); color: var(--good-ink);
+                border: 1px solid transparent; box-shadow: none; }
   .svc .owned:hover { background: var(--good-strong); color: var(--good-ink); }
 
   /* gallery */
@@ -128,10 +135,23 @@
       Individualan pristup treningu, rehabilitaciji i prehrani. Male grupe do 8 polaznika,
       individualni rad 1:1 i programi povratka nakon ozljede — vođeni znanjem, ne trendovima.
     </p>
+    {# The hero offers only what this visitor can actually do. Booking needs an
+       active plan, so it is the primary CTA only for someone who has one;
+       everyone else is sent to the prices, and a guest also needs an account. #}
     <div class="cta-row">
+      {% if can_book %}
       <a class="btn btn-hero" href="/raspored">Rezerviraj termin</a>
+      {% else %}
+      <a class="btn btn-hero" href="/cjenik">Pogledaj cjenik</a>
+      {% endif %}
       <a class="btn btn-hero secondary" href="#usluge">Što nudimo</a>
     </div>
+    {% if not user %}
+    <p class="hero-note">Nemaš račun? <a class="tlink" href="/signup">Registriraj se</a> —
+      ili se <a class="tlink" href="/login">prijavi</a> ako ga već imaš.</p>
+    {% elif not can_book %}
+    <p class="hero-note">Nemaš aktivnu članarinu za treninge — cjenik ti pokazuje sve opcije.</p>
+    {% endif %}
   </div>
 </section>
 

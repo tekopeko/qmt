@@ -148,7 +148,10 @@
     </tbody>
   </table>
   {% else %}
-  <p class="hint">Nemaš aktivnu članarinu — za rezervacije javi se treneru (plaćanje gotovinom ili karticom u dvorani).</p>
+  {# the moment they most want to know what a plan costs — so say it here #}
+  <p class="hint" style="margin-bottom:10px;">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.</p>
+  <a class="btn btn-sm" href="/cjenik">Pogledaj cjenik →</a>
+  <p class="hint" style="margin-top:10px; font-size:.84rem;">Za upis se javi treneru u dvorani — plaćanje gotovinom ili karticom.</p>
   {% endif %}
 </div>
 {% endif %}

@@ -293,6 +293,16 @@ class BookingError(Exception):
     """Refusal with a Croatian, user-facing message."""
 
 
+class MembershipRequired(BookingError):
+    """The one refusal the client can fix themselves — so it carries the plan
+    kind, and the UI answers it with a link to that plan's price instead of a
+    dead end."""
+
+    def __init__(self, message: str, kind: str):
+        super().__init__(message)
+        self.kind = kind
+
+
 def book(user_id: int, session_id: int) -> None:
     now = datetime.now(config.TZ)
     with session_scope() as s:
@@ -306,9 +316,9 @@ def book(user_id: int, session_id: int) -> None:
         if sess.starts_at > now + timedelta(days=config.BOOKING_HORIZON_DAYS):
             raise BookingError(f"Rezervacije se otvaraju {config.BOOKING_HORIZON_DAYS} dana unaprijed.")
         if sess.kind not in active_plan_kinds(user_id, s):
-            raise BookingError(
-                f"Za termin \"{PLAN_LABELS.get(sess.kind, sess.kind)}\" treba "
-                "aktivna članarina — javi se treneru.")
+            raise MembershipRequired(
+                f"Za termin \"{PLAN_LABELS.get(sess.kind, sess.kind)}\" treba ti "
+                "aktivna članarina.", sess.kind)
         taken = s.scalar(select(func.count()).select_from(Booking).where(Booking.session_id == session_id))
         if taken >= sess.capacity:
             raise BookingError("Termin je popunjen.")

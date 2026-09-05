@@ -195,9 +195,12 @@ def landing(request: Request):
         if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
     ) if gallery_dir.is_dir() else []
     user = current_user(request)
+    plans = db.active_plan_kinds(user.id) if user else set()
     return templates.TemplateResponse(request, "landing.html", _ctx(
-        request, user, gallery=gallery,
-        my_plans=db.active_plan_kinds(user.id) if user else set()))
+        request, user, gallery=gallery, my_plans=plans,
+        # the hero only offers booking to someone who can actually book
+        can_book=bool(plans & {"grupni", "individualni", "poluindividualni",
+                               "rehabilitacija"})))
 
 
 @app.get("/cjenik", response_class=HTMLResponse)
@@ -289,14 +292,18 @@ def calendar(request: Request, week: str | None = None):
     ))
 
 
-def _redirect_back(week: str, error: str | None = None, ok: str | None = None) -> RedirectResponse:
+def _redirect_back(week: str, error: str | None = None, ok: str | None = None,
+                   cta: str | None = None) -> RedirectResponse:
     """Back to the calendar, on the right week, with feedback visible.
     The separator depends on whether `back` already has a query string —
-    "/&error=..." is not a query string and the message silently vanishes."""
+    "/&error=..." is not a query string and the message silently vanishes.
+    `cta` turns a refusal into an offer: it carries a PLAN KIND, never a URL —
+    the alert builds the link itself, so a crafted ?cta= cannot become an
+    off-site href."""
     from urllib.parse import quote
 
     back = f"/raspored?week={week}" if week else "/raspored"
-    for key, val in (("error", error), ("ok", ok)):
+    for key, val in (("error", error), ("ok", ok), ("cta", cta)):
         if val:
             back += ("&" if "?" in back else "?") + f"{key}=" + quote(val)
     return RedirectResponse(back, status_code=303)
@@ -309,6 +316,9 @@ def book(request: Request, session_id: int, week: str = Form("")):
         return RedirectResponse("/login", status_code=303)
     try:
         db.book(user.id, session_id)
+    except db.MembershipRequired as e:
+        # the one refusal with a fix: send the price of the plan they just tried
+        return _redirect_back(week, str(e), cta=e.kind)
     except db.BookingError as e:
         return _redirect_back(week, str(e))
     return _redirect_back(week, ok="Rezervirano ✓")

@@ -330,16 +330,59 @@ def test_template_delete_prunes_unbooked_keeps_booked():
     assert rows[0].template_id is None   # orphaned but alive, bookings intact
 
 
-def test_landing_is_public_and_links_to_booking():
+def test_landing_offers_only_what_the_visitor_can_actually_do():
+    """A guest can neither book nor register without an account, so the hero
+    sells the prices and the account — never a booking they'd be refused."""
     c = TestClient(app)
     r = c.get("/")                               # no login required
     assert r.status_code == 200
-    assert "Rezerviraj termin" in r.text
-    assert "/raspored" in r.text
+    assert "Pogledaj cjenik" in r.text
+    assert "/signup" in r.text                   # the account they need first
+    assert "Rezerviraj termin" not in r.text     # would dead-end at the plan gate
+
     # calendar itself still requires auth
     r = c.get("/raspored", follow_redirects=False)
     assert r.status_code == 303
     assert r.headers["location"] == "/login?next=/raspored"
+
+
+def test_landing_hero_follows_the_membership():
+    make_user("ivan@test.local", plans=("grupni",))
+    make_user("ana@test.local", plans=())
+    make_user("sara@test.local", plans=("online",))      # not a bookable kind
+
+    page = client_for("ivan@test.local").get("/").text
+    assert "Rezerviraj termin" in page                   # can book, so it is offered
+
+    for email in ("ana@test.local", "sara@test.local"):
+        page = client_for(email).get("/").text
+        assert "Pogledaj cjenik" in page
+        assert "Rezerviraj termin" not in page, email    # no bookable plan
+
+
+def test_cjenik_is_reachable_without_hunting_for_it():
+    make_user("ana@test.local", plans=())
+    ca = client_for("ana@test.local")
+    assert '/cjenik"' in ca.get("/raspored").text        # nav tab + the empty state
+    assert "Pogledaj cjenik" in ca.get("/raspored").text
+    assert '/cjenik"' in TestClient(app).get("/").text   # and for a logged-out guest
+
+    # the trainer's nav is already full and they do not buy plans
+    make_user("trener@test.local", is_trainer=True, plans=())
+    assert '/cjenik"' not in client_for("trener@test.local").get("/raspored").text
+
+
+def test_plan_gate_offers_the_price_instead_of_a_dead_end():
+    make_user("ana@test.local", plans=())                # no membership at all
+    sid = future_session()
+    ca = client_for("ana@test.local")
+    r = ca.post(f"/book/{sid}", data={"week": ""}, follow_redirects=False)
+    loc = r.headers["location"]
+    assert "error=" in loc
+    assert "cta=grupni" in loc                          # straight at that plan
+    assert "javi+se+treneru" not in loc                  # the old dead end is gone
+    # and the alert renders it as a button
+    assert "Pogledaj cjenik" in ca.get(loc).text
 
 
 def test_login_returns_to_the_page_that_bounced_you():

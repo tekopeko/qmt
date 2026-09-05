@@ -306,6 +306,7 @@
       border-radius: 12px; background: var(--accent-dim); color: var(--text);
       border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
       padding: 11px 15px; margin-bottom: 18px; font-size: .92rem;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     }
     .alert.ok { color: var(--good); font-weight: 600;
                 background: color-mix(in srgb, var(--good) 10%, var(--surface));
@@ -346,6 +347,7 @@
       <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if request.url.path.startswith('/raspored') %}on{% endif %}">Raspored</a>
       {% if not user.is_trainer %}<a href="/karton" class="{% if request.url.path.startswith('/karton') or request.url.path.startswith('/upitnik') %}on{% endif %}">Karton</a>{% endif %}
+      {% if not user.is_trainer %}<a href="/cjenik" class="{% if request.url.path.startswith('/cjenik') %}on{% endif %}">Cjenik</a>{% endif %}
       {# a paid product: without an active online plan the tab doesn't exist #}
       {% if show_online %}<a href="/treninzi" class="{% if request.url.path.startswith('/treninzi') %}on{% endif %}">Online treninzi</a>{% endif %}
       <a href="/prehrana" class="{% if request.url.path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
@@ -354,8 +356,9 @@
       {% if is_owner %}<a href="/korisnici" class="{% if '/korisnici' in request.url.path %}on{% endif %}">Korisnici</a>
       <a href="/statistika" class="{% if '/statistika' in request.url.path %}on{% endif %}">Statistika</a>{% endif %}
     {% else %}
+      <a href="/cjenik" class="{% if request.url.path.startswith('/cjenik') %}on{% endif %}">Cjenik</a>
       <a href="/login" class="{% if '/login' in request.url.path %}on{% endif %}">Prijava</a>
-      <a href="/raspored" class="cta">Rezerviraj termin</a>
+      <a href="/signup" class="cta">Registriraj se</a>
     {% endif %}
   </nav>
   {% endif %}
@@ -405,7 +408,13 @@
 </header>
 <main class="{% block main_class %}{% endblock %}">
   {% if request.query_params.get("error") %}
-    <div class="alert" role="alert">{{ request.query_params.get("error") }}</div>
+    <div class="alert" role="alert">
+      <span>{{ request.query_params.get("error") }}</span>
+      {# the param is a plan kind, so the href is always our own /cjenik #}
+      {% if request.query_params.get("cta") %}
+      <a class="act" href="/cjenik#plan-{{ request.query_params.get('cta') }}">Pogledaj cjenik →</a>
+      {% endif %}
+    </div>
   {% endif %}
   {% if request.query_params.get("ok") %}
     <div class="alert ok" role="status">{{ request.query_params.get("ok") }}</div>
