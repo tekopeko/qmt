@@ -84,6 +84,28 @@ def test_signup_allowlist_and_login():
     assert db.get_user_by_email("trener@test.local").is_trainer
 
 
+def test_signup_stays_closed_unless_explicitly_opened(monkeypatch):
+    """Registration must fail CLOSED. An empty or missing ALLOWED_EMAILS is not
+    an invitation to the whole internet — only SIGNUP_OPEN is."""
+    monkeypatch.delenv("SIGNUP_OPEN", raising=False)
+    monkeypatch.setenv("ALLOWED_EMAILS", "")          # nothing configured at all
+    assert not config.email_allowed("stranac@example.com")
+    c = TestClient(app)
+    r = c.post("/signup", data={"name": "X", "email": "stranac@example.com",
+                                "password": "lozinka123"}, follow_redirects=False)
+    assert "samo+uz+poziv" in r.headers["location"]
+    assert db.get_user_by_email("stranac@example.com") is None
+    assert "samo pozvani" in c.get("/signup").text
+
+    monkeypatch.setenv("SIGNUP_OPEN", "true")         # the explicit switch
+    assert config.email_allowed("stranac@example.com")
+    r = c.post("/signup", data={"name": "X", "email": "stranac@example.com",
+                                "password": "lozinka123"}, follow_redirects=False)
+    assert r.status_code == 200                       # verify-email page
+    assert db.get_user_by_email("stranac@example.com") is not None
+    assert "samo pozvani" not in c.get("/signup").text   # the copy follows the flag
+
+
 def test_wrong_password_rejected():
     make_user("ivan@test.local")
     c = TestClient(app)

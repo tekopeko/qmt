@@ -20,6 +20,7 @@ is: new project → paste variables → repoint DNS. Nothing else is account-bou
    | `DATABASE_URL` | reference the Railway Postgres (internal URL) — note driver: `postgresql+psycopg://` |
    | `OWNER_EMAIL` | the app owner's address (Tvrtko) — controls roles and /korisnici |
    | `ALLOWED_EMAILS` | first clients, comma-separated (owner's address too, for testing) |
+   | `SIGNUP_OPEN` | unset while invite-only. `true` opens registration to anyone — clearing `ALLOWED_EMAILS` does **not**, it closes signup completely |
    | `PUBLIC_BASE_URL` | `https://qmt.mojimakrosi.com` |
    | `RESEND_API_KEY` | existing Resend account |
    | `EMAIL_FROM` | `QMT <qmt@mojimakrosi.com>` (mojimakrosi.com is already a verified Resend domain) |
@@ -42,7 +43,9 @@ Railway shows a target → add **CNAME `qmt` → that target** in Cloudflare
    DATABASE_URL="<railway PUBLIC postgres url, +psycopg>" python scripts/make_trainer.py <trainer email>
    ```
 4. Trainer builds the real timetable in `/admin` (seed is dev-only and refuses prod).
-5. Add client emails to `ALLOWED_EMAILS` as they join.
+5. Add client emails to `ALLOWED_EMAILS` as they join. When the studio is ready
+   to take anyone, set `SIGNUP_OPEN=true` — the signup and login copy drop the
+   "samo uz poziv" line on their own.
 
 ## 4. Backups (from the laptop, like mojimakrosi's)
 

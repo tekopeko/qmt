@@ -3,7 +3,11 @@
 {% block content %}
 <div style="max-width:400px; margin: 8vh auto 0;">
   <h1 style="font-size:2rem; margin-bottom:4px;">Registracija</h1>
-  <p class="hint" style="margin-bottom:22px;">Račun mogu otvoriti samo pozvani članovi.</p>
+  {# the copy follows the switch, so it stops being a lie the day it flips #}
+  <p class="hint" style="margin-bottom:22px;">
+    {% if signup_open %}Otvori račun, odaberi članarinu i rezerviraj prvi termin.
+    {% else %}Račun zasad mogu otvoriti samo pozvani članovi — javi se treneru za pozivnicu.{% endif %}
+  </p>
   <form method="post" action="/signup">
     <div class="field"><label for="name">Ime (neobavezno)</label><input id="name" type="text" name="name" autocomplete="name" placeholder="npr. Ivan Horvat"></div>
     <div class="field"><label for="email">Email</label><input id="email" type="email" name="email" autocomplete="email" required></div>

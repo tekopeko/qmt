@@ -91,6 +91,7 @@ def _ctx(request: Request, user, **extra):
             "max_media_mb": config.MAX_MEDIA_MB,
             "show_online": _has_online(user),
             "plan_links": PLAN_LINKS,
+            "signup_open": config.signup_open(),
             "feedback_prompt": _pop_feedback_prompt(request, user),
             "is_owner": _is_owner(user), **extra}
 

@@ -60,8 +60,21 @@ def _allowlist() -> set[str]:
     return {e.strip().strip("\"'").lower() for e in raw.split(",") if e.strip()}
 
 
+def signup_open() -> bool:
+    """Is registration open to anyone, or still invite-only?
+
+    Deliberately its OWN switch rather than "an empty ALLOWED_EMAILS means
+    open": that reading would turn a lost or mistyped env var into an open door
+    for the whole internet. Missing config must fail CLOSED — the studio stays
+    invite-only until somebody explicitly sets SIGNUP_OPEN=true.
+    """
+    return os.environ.get("SIGNUP_OPEN", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def email_allowed(email: str) -> bool:
     e = email.strip().lower()
+    if signup_open():
+        return True
     if OWNER_EMAIL and e == OWNER_EMAIL:
         return True
     return e in _allowlist()
