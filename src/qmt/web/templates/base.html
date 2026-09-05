@@ -357,7 +357,9 @@
       <a href="/statistika" class="{% if '/statistika' in request.url.path %}on{% endif %}">Statistika</a>{% endif %}
     {% else %}
       <a href="/cjenik" class="{% if request.url.path.startswith('/cjenik') %}on{% endif %}">Cjenik</a>
-      <a href="/login" class="{% if '/login' in request.url.path %}on{% endif %}">Prijava</a>
+      {# equal weight: having an account and getting one are the same priority
+         here, so neither gets to be the loud one #}
+      <a href="/login" class="cta">Prijava</a>
       <a href="/signup" class="cta">Registriraj se</a>
     {% endif %}
   </nav>
