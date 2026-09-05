@@ -62,19 +62,21 @@
   .svc h3 { font-size: 1.02rem; }
   .svc p { color: var(--muted); font-size: .92rem; }
   .svc .meta { font: 600 .78rem var(--font-body); color: var(--accent); letter-spacing: .04em; }
-  /* the CTA fades in on hover/focus; on touch screens (no hover) it's always there */
-  .svc .svc-cta { align-self: flex-start; margin-top: 6px; opacity: 0;
-                  transform: translateY(4px); transition: opacity .18s, transform .18s; }
-  .svc:hover .svc-cta, .svc:focus-within .svc-cta { opacity: 1; transform: none; }
-  @media (hover: none), (max-width: 860px) { .svc .svc-cta { opacity: 1; transform: none; } }
+  /* Every card shows its CTA, always. Phones already did — the hover-reveal was
+     desktop-only — and presence should not be what tells you whether a plan is
+     yours. Style carries that instead: filled green = owned, quiet tint = open. */
+  /* margin-top:auto — .svc is a flex column, so this drops every CTA to the
+     card's bottom edge and they line up across a row despite uneven copy */
+  .svc .svc-cta, .svc .owned { align-self: flex-start; margin-top: auto;
+                               padding: 7px 12px; font-size: .78rem; }
+  .svc .svc-cta { background: var(--accent-dim); color: var(--accent); box-shadow: none; }
+  .svc .svc-cta:hover { background: color-mix(in srgb, var(--accent) 22%, transparent);
+                        color: var(--accent); }
   /* an active plan is a door, so it gets the same bubble as "Odaberi plan" —
      green because it reports a state you already have, not a purchase.
      --good is tuned for TEXT on a dark page and is far too bright as a fill,
      hence --good-fill. .btn's own shadow is a red glow, so it goes. */
-  .svc .owned { align-self: flex-start; margin-top: 6px;
-                padding: 7px 12px; font-size: .78rem;
-                background: var(--good-fill); color: var(--good-ink);
-                box-shadow: none; }
+  .svc .owned { background: var(--good-fill); color: var(--good-ink); box-shadow: none; }
   .svc .owned:hover { background: var(--good-strong); color: var(--good-ink); }
 
   /* gallery */
