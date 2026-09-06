@@ -119,16 +119,21 @@ def checkout_url(user, plan: str, sessions: int | None = None) -> str:
     key = None if None in ids else sessions
     if key not in ids:
         raise ValueError("Odaberi broj treninga.")
+    from urllib.parse import quote
+
     st = _stripe()
     base = config.PUBLIC_BASE_URL
     meta = {"qmt_user_id": str(user.id), "qmt_plan": plan,
             "qmt_sessions": str(key or "")}
+    # Stripe validates these URLs and rejects any non-ASCII byte — the
+    # Croatian message must be percent-encoded, not pasted in
+    ok = quote("Pretplata je aktivirana — članarina se obnavlja automatski.")
     session = st.checkout.Session.create(
         mode="subscription",
         customer=ensure_customer(user),
         line_items=[{"price": ids[key], "quantity": 1}],
-        success_url=f"{base}/profil?ok=Pretplata+je+aktivirana+—+članarina+se+obnavlja+automatski.",
-        cancel_url=f"{base}/cjenik",
+        success_url=f"{base}/profil?ok={ok}",
+        cancel_url=f"{base}/cjenik#plan-{plan}",
         locale="hr",
         metadata=meta,
         subscription_data={"metadata": meta},

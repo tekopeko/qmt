@@ -225,6 +225,11 @@ def test_checkout_creates_one_customer_and_hands_off(stripe_on):
                                                    "qmt_sessions": "12"}
     assert kw["line_items"] == [{"price": "price_g12", "quantity": 1}]
     assert db.get_user(ivan).stripe_customer_id == "cus_1"
+    # Stripe rejects any non-ASCII byte in these URLs — the Croatian success
+    # message once went in raw and every checkout failed
+    for key in ("success_url", "cancel_url"):
+        assert kw[key].isascii(), kw[key]
+        assert kw[key].startswith("http"), kw[key]
 
     c.post("/placanje/online", follow_redirects=False)   # flat plan: no tier needed
     assert stripe_on["calls"]["customers"] == 1         # second plan reuses the customer

@@ -268,7 +268,8 @@ def placanje_portal(request: Request):
         return RedirectResponse("/profil?error=Nemaš+aktivnu+pretplatu+karticom.", status_code=303)
     try:
         return RedirectResponse(payments.portal_url(user), status_code=303)
-    except Exception:
+    except Exception as e:
+        print(f"[stripe] portal failed for user {user.id}: {e}")
         return RedirectResponse("/profil?error=Portal+trenutno+nije+dostupan.", status_code=303)
 
 
@@ -291,7 +292,8 @@ def placanje(request: Request, plan: str, sessions: int | None = Form(None)):
     except ValueError as e:                      # no tier picked on a tiered plan
         from urllib.parse import quote
         return RedirectResponse(f"/cjenik?error={quote(str(e))}#plan-{plan}", status_code=303)
-    except Exception:
+    except Exception as e:
+        print(f"[stripe] checkout failed for user {user.id}/{plan}: {e}")   # never silent again
         return RedirectResponse("/cjenik?error=Plaćanje+trenutno+nije+dostupno+—+pokušaj+kasnije.",
                                 status_code=303)
 
