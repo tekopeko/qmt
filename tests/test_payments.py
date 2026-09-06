@@ -44,8 +44,10 @@ def stripe_on(monkeypatch):
     subs: dict[str, dict] = {}
     calls = {"customers": 0, "checkouts": [], "portals": 0}
 
+    # real StripeObjects, not dicts: stripe-python 15 objects are not mappings,
+    # and the handler once crashed on exactly that difference
     monkeypatch.setattr(stripe.Subscription, "retrieve",
-                        staticmethod(lambda sid, **kw: subs[sid]))
+                        staticmethod(lambda sid, **kw: stripe.Subscription.construct_from(subs[sid], "sk_test_x")))
     amounts = {"price_online": 5500, "price_g8": 6000, "price_g12": 7000, "price_g16": 8000}
     monkeypatch.setattr(stripe.Price, "retrieve", staticmethod(
         lambda pid, **kw: {"unit_amount": amounts[pid], "currency": "eur", "recurring": {"interval": "month"}}))

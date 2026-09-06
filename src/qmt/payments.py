@@ -151,6 +151,19 @@ def parse_event(payload: bytes, sig_header: str):
     return _stripe().Webhook.construct_event(payload, sig_header, config.STRIPE_WEBHOOK_SECRET)
 
 
+def _as_dict(obj) -> dict:
+    """Plain dict from a StripeObject, a dict, or nothing. stripe-python 15
+    made StripeObject NOT a mapping — dict(obj) raises — so metadata must go
+    through to_dict()."""
+    if obj is None:
+        return {}
+    if hasattr(obj, "to_dict"):
+        return dict(obj.to_dict())
+    if isinstance(obj, dict):
+        return dict(obj)
+    return {}
+
+
 def _get(obj, *path, default=None):
     """Tolerant nested read across dicts / StripeObjects."""
     cur = obj
@@ -204,7 +217,7 @@ def handle_event(event) -> str:
         if not sub_id:
             return "ignored: no subscription on invoice"
         sub = _stripe().Subscription.retrieve(sub_id)
-        meta = dict(_get(sub, "metadata", default={}) or {})
+        meta = _as_dict(_get(sub, "metadata"))
         try:
             user_id = int(meta.get("qmt_user_id", ""))
         except ValueError:
