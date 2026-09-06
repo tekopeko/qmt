@@ -41,11 +41,15 @@
   <div class="card plan {% if key in my_plans %}mine{% endif %}" id="plan-{{ key }}">
     <h2 class="plan-h">{{ plan_labels[key] }}</h2>
     <p>{{ desc[key] }}</p>
-    {% set pr = prices.get(key) %}
+    {% set pr = prices.get(key) %}{% set ref = reference[key] %}
+    {# Stripe's Price when one exists (that is what the button charges);
+       otherwise the shop's reference price in the shop's own unit #}
     <div class="price">
-      {% if pr %}{{ "%.2f"|format(pr.amount)|replace(".", ",") }} {{ "€" if pr.currency == "EUR" else pr.currency }}{% else %}na upit{% endif %}
-      <small>/ mjesečno</small>
+      {% if pr %}{{ "%.2f"|format(pr.amount)|replace(".", ",") }} {{ "€" if pr.currency == "EUR" else pr.currency }} <small>/ mjesečno</small>
+      {% elif ref[0] %}{{ ref[0] }} € <small>{{ ref[1] }}</small>
+      {% else %}na upit <small>{{ ref[1] }}</small>{% endif %}
     </div>
+    {% if not pr and ref[2] %}<div class="hint" style="font-size:.78rem; margin-top:-4px;">{{ ref[2] }}</div>{% endif %}
     <div class="foot">
     {% if key in subs %}
       {% if subs[key].cancel_at_period_end %}

@@ -45,7 +45,7 @@ def stripe_on(monkeypatch):
     monkeypatch.setattr(stripe.Subscription, "retrieve",
                         staticmethod(lambda sid, **kw: subs[sid]))
     monkeypatch.setattr(stripe.Price, "retrieve", staticmethod(
-        lambda pid, **kw: {"unit_amount": 5000, "currency": "eur", "recurring": {"interval": "month"}}))
+        lambda pid, **kw: {"unit_amount": 5500, "currency": "eur", "recurring": {"interval": "month"}}))
 
     def customer_create(**kw):
         calls["customers"] += 1
@@ -230,15 +230,17 @@ def test_cjenik_shows_stripe_prices_or_na_upit(stripe_on, monkeypatch):
     r = client_for("ivan@test.local").get("/cjenik")
     assert r.status_code == 200
     page = r.text
-    assert "50,00 €" in page and "Pretplati se karticom" in page
-    assert "na upit" in page                               # plans without a price
+    assert "55,00 €" in page and "Pretplati se karticom" in page   # Stripe's price, per month
+    assert "35 €" in page and "/ trening" in page          # reference price where no Stripe price
+    assert "na upit" in page                               # prehrana: no price anywhere
 
-    monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "")   # unconfigured: exactly today's page
+    monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "")   # unconfigured: reference prices only
     payments._price_cache = (0.0, {})
     r = client_for("ivan@test.local").get("/cjenik")
     assert r.status_code == 200, r.text[-400:]
     page = r.text
-    assert "50,00 €" not in page and "Pretplati se" not in page
+    assert "55,00 €" not in page and "Pretplati se" not in page
+    assert "50 €" in page and "60–80 €" in page            # the shop's numbers
     assert "Za upis se javi treneru" in page              # the cash-only copy
 
 

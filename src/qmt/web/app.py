@@ -63,6 +63,19 @@ PLAN_LINKS = {
     "prehrana": ("/prehrana", "Otvori prehranu"),
 }
 
+# Reference prices from the owner's Shopify shop (read 6.9.2026) — shown on
+# /cjenik until a Stripe Price exists for the plan; Stripe always wins. Units
+# are the shop's own: most of the business is per trening / per paket, only
+# Online is a monthly plan. (amount text, unit, note) — None amount = "na upit".
+REFERENCE_PRICES = {
+    "grupni": ("60–80", "/ paket", "8, 12 ili 16 treninga"),
+    "individualni": ("35", "/ trening", None),
+    "poluindividualni": ("25", "/ trening", None),
+    "rehabilitacija": ("od 30", "/ tretman", "paketi od 5 i 10 tretmana"),
+    "online": ("50", "/ mjesečno", None),
+    "prehrana": (None, "/ mjesečno", None),
+}
+
 
 def _safe_next(nxt: str | None) -> str:
     """Only same-app paths — a `next` from the query string must never become
@@ -242,7 +255,7 @@ def cjenik(request: Request):
         request, user, plans=PLAN_TYPES, plan_labels=PLAN_LABELS,
         my_plans=db.active_plan_kinds(user.id) if user else set(),
         prices=payments.price_table(), sellable=payments.sellable_plans(),
-        subs=subs))
+        reference=REFERENCE_PRICES, subs=subs))
 
 
 @app.post("/placanje/portal")
