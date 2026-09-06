@@ -151,7 +151,7 @@ active `online` plan → filled upitnik → matched programmes.
 - Allowlist matching is **exact** — Gmail dot/plus variants are not normalized.
 - Verifying an email is what notifies the owner, and only the first time (row-locked);
   a Resend failure never blocks verification.
-- Real studio facts: open pon/sri/čet/pet 07:00–20:00, Virovska 1, Zagreb; group
+- Real studio facts: open pon/sri/čet/pet 07:00–20:00, Virovska ulica 1, 10040 Zagreb; group
   trainings hourly, capacity 8.
 - **Screenshots:** oversized images earlier in a session can poison every later image
   request. Keep them one per message.
