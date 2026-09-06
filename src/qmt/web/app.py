@@ -706,7 +706,10 @@ def profil_page(request: Request):
         first_login="dopuni" in request.query_params,
         memberships=memberships, payments=payment_rows,
         show_amounts=any(p["amount"] is not None for p in payment_rows),
-        has_portal=payments.enabled() and bool(user.stripe_customer_id)))
+        # the portal manages a subscription — a customer record alone (a
+        # checkout that was abandoned) has nothing to show there
+        has_portal=payments.enabled() and bool(user.stripe_customer_id)
+                   and any(m["auto_renew"] or m["cancelling"] for m in memberships)))
 
 
 @app.post("/profil")

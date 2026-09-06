@@ -13,6 +13,8 @@
   .plan .foot { margin-top: auto; display: flex; flex-direction: column;
                 gap: 8px; align-items: flex-start; padding-top: 4px; }
   .plan .foot form { margin: 0; }
+  .plan .foot form.switch { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line);
+                            display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
   .tiers { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   /* base.html styles every <label> as an uppercase form caption — these are
      pills, so undo that: normal case, no tracking, one line each */
@@ -34,8 +36,9 @@
 <h1 style="font-size:1.8rem; margin-bottom:4px;">Cjenik</h1>
 <p class="hint" style="margin-bottom:26px; max-width:70ch;">
   Svaka usluga je zasebna članarina — plaća se mjesečno, sljedeća uplata dospijeva mjesec
-  dana nakon zadnje. Plaćanje karticom kroz aplikaciju stiže uskoro; do tada gotovinom ili
-  karticom u dvorani.
+  dana nakon zadnje.
+  {% if sellable %}Karticom kroz aplikaciju (pretplata, otkaziva se bilo kad) ili gotovinom u dvorani.
+  {% else %}Plaćanje karticom kroz aplikaciju stiže uskoro; do tada gotovinom ili karticom u dvorani.{% endif %}
 </p>
 
 {% set desc = {
@@ -83,7 +86,8 @@
       {% endif %}
       {% if key in sellable %}
       {# paid in cash so far — a subscription can take over from the due date #}
-      <form method="post" action="/placanje/{{ key }}">
+      <form method="post" action="/placanje/{{ key }}" class="switch">
+        <div class="hint" style="font-size:.78rem;">Prebaci na karticu — obnavlja se automatski od datuma dospijeća:</div>
         {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
         <button type="submit" class="act">Prebaci na karticu</button>
       </form>
