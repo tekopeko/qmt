@@ -123,8 +123,13 @@ STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
 STRIPE_PRICES = {
     plan: os.environ.get(f"STRIPE_PRICE_{plan.upper()}", "").strip()
-    for plan in ("grupni", "individualni", "poluindividualni",
-                 "rehabilitacija", "online", "prehrana")
+    for plan in ("individualni", "poluindividualni", "rehabilitacija", "online", "prehrana")
+}
+# Grupni is sold in tiers — the shop's 8 / 12 / 16 treninga a month — so it
+# carries one Price per tier (STRIPE_PRICE_GRUPNI_8 / _12 / _16) instead.
+GRUPNI_TIERS = (8, 12, 16)
+STRIPE_TIER_PRICES = {
+    "grupni": {n: os.environ.get(f"STRIPE_PRICE_GRUPNI_{n}", "").strip() for n in GRUPNI_TIERS}
 }
 
 

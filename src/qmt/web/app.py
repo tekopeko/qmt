@@ -273,7 +273,7 @@ def placanje_portal(request: Request):
 
 
 @app.post("/placanje/{plan}")
-def placanje(request: Request, plan: str):
+def placanje(request: Request, plan: str, sessions: int | None = Form(None)):
     """Start a monthly card subscription for one plan — hands off to Stripe
     Checkout. Access is NOT granted here; the signed webhook does that."""
     user = current_user(request)
@@ -287,7 +287,10 @@ def placanje(request: Request, plan: str):
         return RedirectResponse("/cjenik?error=Pretplata+za+ovaj+plan+već+postoji.",
                                 status_code=303)
     try:
-        return RedirectResponse(payments.checkout_url(user, plan), status_code=303)
+        return RedirectResponse(payments.checkout_url(user, plan, sessions), status_code=303)
+    except ValueError as e:                      # no tier picked on a tiered plan
+        from urllib.parse import quote
+        return RedirectResponse(f"/cjenik?error={quote(str(e))}#plan-{plan}", status_code=303)
     except Exception:
         return RedirectResponse("/cjenik?error=Plaćanje+trenutno+nije+dostupno+—+pokušaj+kasnije.",
                                 status_code=303)
@@ -387,6 +390,7 @@ def calendar(request: Request, week: str | None = None):
         next_week=(monday + timedelta(days=7)).isoformat(),
         mine_days=mine_days,
         memberships=[{"label": PLAN_LABELS.get(m.plan, m.plan),
+                      "usage": db.cycle_usage(user.id, m.plan),
                       "next_payment": m.next_payment, "dospijece": m.dospijece,
                       "active": m.is_active(today)}
                      for m in db.memberships_for(user.id)],
@@ -681,6 +685,7 @@ def profil_page(request: Request):
     # "how long am I paid up for": the plan admits booking until dospijeće
     # (next payment + the grace week), so that date is the honest expiry.
     memberships = [{"label": PLAN_LABELS.get(m.plan, m.plan),
+                    "usage": db.cycle_usage(user.id, m.plan),
                     "plan": m.plan,
                     "paid_on": m.paid_on,
                     "next_payment": m.next_payment,
@@ -1196,7 +1201,7 @@ def clanarine_page(request: Request):
 
 @app.post("/clanarine/{user_id}/uplata")
 def clanarine_uplata(request: Request, user_id: int, plan: str = Form(...),
-                     method: str = Form("gotovina")):
+                     method: str = Form("gotovina"), sessions: int | None = Form(None)):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -1206,10 +1211,12 @@ def clanarine_uplata(request: Request, user_id: int, plan: str = Form(...),
         target = s.get(db.User, user_id)
     if target is None:
         raise HTTPException(status_code=404)
-    m = db.record_payment(user_id, plan, method)
+    # the tier only means something for grupni; anything else is unlimited
+    tier = sessions if (plan in config.STRIPE_TIER_PRICES and sessions in config.GRUPNI_TIERS) else None
+    m = db.record_payment(user_id, plan, method, sessions_per_cycle=tier)
     from urllib.parse import quote
-    msg = (f"{PLAN_LABELS[plan]}: uplata evidentirana — sljedeća "
-           f"{m.next_payment.strftime('%-d.%-m.%Y.')}")
+    msg = (f"{PLAN_LABELS[plan]}{f' ({tier} treninga/mj)' if tier else ''}: uplata evidentirana — "
+           f"sljedeća {m.next_payment.strftime('%-d.%-m.%Y.')}")
     return RedirectResponse(f"/clanarine?ok={quote(msg)}", status_code=303)
 
 

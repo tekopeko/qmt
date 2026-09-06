@@ -1,0 +1,7 @@
+{# tier picker for a plan sold in N treninga a month — used inside the /placanje form #}
+<div class="tiers" role="radiogroup" aria-label="Broj treninga mjesečno">
+  {% for t in pr.tiers %}
+  <label><input type="radio" name="sessions" value="{{ t.sessions }}" {% if loop.index == 2 %}checked{% endif %}>
+    {{ t.sessions }} treninga · {{ "%.0f"|format(t.amount) }} {{ cur }}</label>
+  {% endfor %}
+</div>

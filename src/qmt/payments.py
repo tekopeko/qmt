@@ -43,19 +43,31 @@ def _stripe():
     return stripe
 
 
+def price_ids(plan: str) -> dict[int | None, str]:
+    """{sessions: price_id} for a plan — {None: id} for a flat monthly plan,
+    {8: id, 12: id, 16: id} for a tiered one (only tiers that have a Price)."""
+    if plan in config.STRIPE_TIER_PRICES:
+        return {n: pid for n, pid in config.STRIPE_TIER_PRICES[plan].items() if pid}
+    pid = config.STRIPE_PRICES.get(plan, "")
+    return {None: pid} if pid else {}
+
+
 def sellable_plans() -> set[str]:
-    """Plans with a configured Stripe Price — the only ones that get a button."""
+    """Plans with at least one configured Stripe Price — the only ones that
+    get a button."""
     if not enabled():
         return set()
-    return {p for p, pid in config.STRIPE_PRICES.items() if pid}
+    return {p for p in PLAN_TYPES if price_ids(p)}
 
 
 # ---------- prices for /cjenik ----------
 
 def price_table() -> dict[str, dict]:
-    """{plan: {"amount": Decimal, "currency": "EUR", "interval": "month"}} for
-    every sellable plan, from Stripe, cached for PRICE_TTL_S. Any failure
-    yields {} — the page then shows "na upit", never an error."""
+    """Per sellable plan, from Stripe, cached for PRICE_TTL_S:
+      flat:   {"amount": Decimal, "currency": "EUR"}
+      tiered: {"currency": "EUR", "tiers": [{"sessions": 8, "amount": Decimal}, ...]}
+    Any failure yields the last good table (or {}) — the page then shows the
+    reference price, never an error."""
     global _price_cache
     if not enabled():
         return {}
@@ -66,12 +78,18 @@ def price_table() -> dict[str, dict]:
         st = _stripe()
         table = {}
         for plan in sellable_plans():
-            pr = st.Price.retrieve(config.STRIPE_PRICES[plan])
-            table[plan] = {
-                "amount": Decimal(pr["unit_amount"]) / 100,
-                "currency": str(pr["currency"]).upper(),
-                "interval": (pr.get("recurring") or {}).get("interval", "month"),
-            }
+            ids = price_ids(plan)
+            if None in ids:
+                pr = st.Price.retrieve(ids[None])
+                table[plan] = {"amount": Decimal(pr["unit_amount"]) / 100,
+                               "currency": str(pr["currency"]).upper()}
+            else:
+                tiers, cur = [], "EUR"
+                for n in sorted(ids):
+                    pr = st.Price.retrieve(ids[n])
+                    cur = str(pr["currency"]).upper()
+                    tiers.append({"sessions": n, "amount": Decimal(pr["unit_amount"]) / 100})
+                table[plan] = {"currency": cur, "tiers": tiers}
         _price_cache = (time.time(), table)
         return table
     except Exception:
@@ -92,17 +110,23 @@ def ensure_customer(user) -> str:
     return c["id"]
 
 
-def checkout_url(user, plan: str) -> str:
-    """A Checkout Session URL for one plan's monthly subscription."""
-    if plan not in sellable_plans():
+def checkout_url(user, plan: str, sessions: int | None = None) -> str:
+    """A Checkout Session URL for one plan's monthly subscription; `sessions`
+    picks the tier (8/12/16) for a tiered plan and is ignored for flat ones."""
+    ids = price_ids(plan)
+    if not enabled() or not ids:
         raise ValueError("Ovaj plan se ne može platiti karticom.")
+    key = None if None in ids else sessions
+    if key not in ids:
+        raise ValueError("Odaberi broj treninga.")
     st = _stripe()
     base = config.PUBLIC_BASE_URL
-    meta = {"qmt_user_id": str(user.id), "qmt_plan": plan}
+    meta = {"qmt_user_id": str(user.id), "qmt_plan": plan,
+            "qmt_sessions": str(key or "")}
     session = st.checkout.Session.create(
         mode="subscription",
         customer=ensure_customer(user),
-        line_items=[{"price": config.STRIPE_PRICES[plan], "quantity": 1}],
+        line_items=[{"price": ids[key], "quantity": 1}],
         success_url=f"{base}/profil?ok=Pretplata+je+aktivirana+—+članarina+se+obnavlja+automatski.",
         cancel_url=f"{base}/cjenik",
         locale="hr",
@@ -151,14 +175,22 @@ def _invoice_subscription_id(inv) -> str | None:
     return _get(sub, "id")
 
 
-def _plan_from(meta: dict | None, price_id: str | None) -> str | None:
-    plan = (meta or {}).get("qmt_plan")
+def _plan_from(meta: dict | None, price_id: str | None) -> tuple[str | None, int | None]:
+    """(plan, sessions) from subscription metadata, falling back to the price
+    id — so a subscription created by hand in the dashboard still resolves."""
+    meta = meta or {}
+    plan = meta.get("qmt_plan")
     if plan in PLAN_TYPES:
-        return plan
-    for p, pid in config.STRIPE_PRICES.items():      # fallback: map by price
-        if pid and pid == price_id:
-            return p
-    return None
+        try:
+            n = int(meta.get("qmt_sessions") or 0)
+        except ValueError:
+            n = 0
+        return plan, (n or None)
+    for p in PLAN_TYPES:
+        for n, pid in price_ids(p).items():
+            if pid == price_id:
+                return p, n
+    return None, None
 
 
 def handle_event(event) -> str:
@@ -179,7 +211,7 @@ def handle_event(event) -> str:
             return "ignored: no qmt_user_id"
         price_id = _get(obj, "lines", "data", 0, "price", "id") or \
             _get(obj, "lines", "data", 0, "pricing", "price_details", "price")
-        plan = _plan_from(meta, price_id)
+        plan, sessions = _plan_from(meta, price_id)
         if plan is None:
             return "ignored: unknown plan"
         if db.get_user(user_id) is None:
@@ -188,7 +220,8 @@ def handle_event(event) -> str:
         db.record_payment(user_id, plan, method="stripe",
                           amount_eur=Decimal(cents) / 100,
                           stripe_invoice_id=_get(obj, "id"),
-                          stripe_subscription_id=sub_id)
+                          stripe_subscription_id=sub_id,
+                          sessions_per_cycle=sessions)
         return f"paid: {PLAN_LABELS.get(plan, plan)} for user {user_id}"
 
     if kind == "customer.subscription.updated":

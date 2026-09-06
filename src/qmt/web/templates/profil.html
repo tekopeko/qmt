@@ -48,6 +48,13 @@
         <span class="hint">(prije {{ -m.days_left }} {{ "dan" if m.days_left == -1 else "dana" }})</span>
       {% endif %}
     </p>
+    {% if m.usage %}
+    {# a tiered plan: how much of this month's allowance is spoken for #}
+    <p style="font-size:.86rem; margin-top:6px; font-variant-numeric:tabular-nums;">
+      <strong>{{ m.usage.used }} od {{ m.usage.quota }}</strong> treninga u ovom ciklusu
+      <span class="hint">({{ m.usage.start.strftime("%-d.%-m.") }} – {{ (m.usage.end - m.usage.end.resolution).strftime("%-d.%-m.") }})</span>
+    </p>
+    {% endif %}
     <table style="font-size:.82rem; margin-top:8px; border-collapse:collapse; font-variant-numeric:tabular-nums;">
       <tr><td class="hint" style="padding:2px 12px 2px 0;">Zadnja uplata</td><td>{{ m.paid_on.strftime("%-d.%-m.%Y.") }}</td></tr>
       <tr><td class="hint" style="padding:2px 12px 2px 0;">Sljedeća uplata</td><td>{{ m.next_payment.strftime("%-d.%-m.%Y.") }}</td></tr>

@@ -42,6 +42,20 @@ PLAN_ABBR = {
 }
 
 
+def add_month(d: SADate) -> SADate:
+    """Same day next month, clamped to month length (31.1. → 28.2.)."""
+    import calendar
+    y, m = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
+    return SADate(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
+def sub_month(d: SADate) -> SADate:
+    """Same day previous month, clamped (31.3. → 28.2.)."""
+    import calendar
+    y, m = (d.year - 1, 12) if d.month == 1 else (d.year, d.month - 1)
+    return SADate(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -164,6 +178,9 @@ class Membership(Base):
     # subscription just stops extending them, and the plan lapses on its own.
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # The shop sells grupni as 8/12/16 treninga a month; NULL means unlimited
+    # (every other plan, and cash uplate recorded without a tier).
+    sessions_per_cycle: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("user_id", "plan", name="uq_membership_user_plan"),)
@@ -171,6 +188,22 @@ class Membership(Base):
     @property
     def auto_renew(self) -> bool:
         return bool(self.stripe_subscription_id) and not self.cancel_at_period_end
+
+    def cycle_bounds(self, on: SADate) -> tuple[SADate, SADate]:
+        """[start, end) of the monthly cycle containing `on`.
+
+        Anchored on `next_payment`, not `paid_on`: paying early moves paid_on
+        but keeps the cycle grid, so the paid month is always exactly
+        [next_payment − 1 mj, next_payment) and quotas never smear across an
+        early renewal. Dates beyond next_payment fall into the following
+        window — booking ahead spends next month's quota, not this month's.
+        """
+        start, end = sub_month(self.next_payment), self.next_payment
+        while on >= end:
+            start, end = end, add_month(end)
+        while on < start:
+            start, end = sub_month(start), start
+        return start, end
 
     user: Mapped[User] = relationship()
 

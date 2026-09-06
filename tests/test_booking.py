@@ -645,3 +645,48 @@ def test_profil_without_plan_points_to_cjenik():
     page = client_for("ana@test.local").get("/profil").text
     assert "Nemaš aktivnu članarinu" in page and "/cjenik" in page
     assert "Još nema evidentiranih uplata" in page
+
+
+# ---------- session quota (8/12/16 treninga a month) ----------
+
+def test_tiered_plan_caps_bookings_per_cycle():
+    uid = make_user("ivan@test.local", plans=())
+    db.record_payment(uid, "grupni", sessions_per_cycle=2)       # a 2-tier keeps the test small
+    s1, s2, s3 = (future_session(hours_from_now=24 * d) for d in (1, 2, 3))
+    db.book(uid, s1)
+    db.book(uid, s2)
+    with pytest.raises(db.BookingError, match="Iskoristio"):
+        db.book(uid, s3)
+    u = db.cycle_usage(uid, "grupni")
+    assert (u["used"], u["quota"]) == (2, 2)
+
+    db.cancel_booking(uid, s1)                                   # a cancelled booking frees the slot
+    db.book(uid, s3)
+    assert db.cycle_usage(uid, "grupni")["used"] == 2
+
+    db.set_session_canceled(s2, True)                            # a termin the trainer cancels does not count
+    assert db.cycle_usage(uid, "grupni")["used"] == 1
+
+    # the next uplata restates the tier; unlimited is NULL
+    db.record_payment(uid, "grupni")
+    assert db.cycle_usage(uid, "grupni") is None
+    db.book(uid, future_session(hours_from_now=24 * 4))         # no cap any more
+
+
+def test_unlimited_plans_are_untouched_by_quota():
+    uid = make_user("ivan@test.local")                           # plain grupni, no tier
+    for d in range(1, 6):
+        db.book(uid, future_session(hours_from_now=24 * d))
+    assert db.cycle_usage(uid, "grupni") is None
+    page = client_for("ivan@test.local").get("/raspored").text
+    assert "u ovom ciklusu" not in page
+
+
+def test_cycle_is_anchored_on_the_due_date_not_the_payment():
+    from qmt.models import Membership, add_month, sub_month
+    m = Membership(user_id=1, plan="grupni", paid_on=date(2026, 9, 26),   # paid 10 days early
+                   next_payment=date(2026, 11, 6), sessions_per_cycle=8)
+    assert m.cycle_bounds(date(2026, 9, 28)) == (date(2026, 9, 6), date(2026, 10, 6))   # still the old month
+    assert m.cycle_bounds(date(2026, 10, 20)) == (date(2026, 10, 6), date(2026, 11, 6))  # the month just paid
+    assert m.cycle_bounds(date(2026, 11, 6)) == (date(2026, 11, 6), date(2026, 12, 6))   # booking ahead
+    assert add_month(date(2026, 1, 31)) == date(2026, 2, 28) and sub_month(date(2026, 3, 31)) == date(2026, 2, 28)

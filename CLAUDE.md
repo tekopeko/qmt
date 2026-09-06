@@ -31,7 +31,7 @@ python scripts/seed_demo.py                # dev RESET: users, timetable, plans,
 python serve.py [--reload] [--port 8100]   # 8100 — 8000 is mojimakrosi's local port
 
 createdb qmt_test                          # once
-pytest -q                                  # 83 tests, must stay green
+pytest -q                                  # 87 tests, must stay green
 ```
 
 Demo logins: `trener@qmt.local/trener123` (trainer **and** owner locally, via
@@ -84,7 +84,11 @@ week after that, and the plan admits booking until dospijeće passes. Paying ear
 extends from the due date; a lapsed plan restarts from today. Every uplata also appends
 to the immutable **`payments` ledger** (user, plan, method, date, amount-when-known) —
 memberships answer "who is active", the ledger answers "how much traffic". The Stripe
-webhook will write the same rows with `method="stripe"`.
+webhook writes the same rows with `method="stripe"`. **Grupni is tiered** like the
+owner's shop — 8 / 12 / 16 treninga a month (`Membership.sessions_per_cycle`, NULL =
+unlimited); `book()` counts the cycle's live bookings of that kind and refuses past the
+quota. Cycles are anchored on `next_payment` (`Membership.cycle_bounds`), so an early
+renewal never smears two months' quotas together.
 
 **3. The online side is automated, never hand-assigned.** The upitnik
 (`src/qmt/upitnik.py`, five scored questions + a goal) routes a client into a razina

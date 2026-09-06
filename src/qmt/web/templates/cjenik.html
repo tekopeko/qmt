@@ -13,6 +13,17 @@
   .plan .foot { margin-top: auto; display: flex; flex-direction: column;
                 gap: 8px; align-items: flex-start; padding-top: 4px; }
   .plan .foot form { margin: 0; }
+  .tiers { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  /* base.html styles every <label> as an uppercase form caption — these are
+     pills, so undo that: normal case, no tracking, one line each */
+  .tiers label { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px;
+                 margin: 0; border: 1px solid var(--line); border-radius: 999px;
+                 font: 600 .8rem var(--font-body); text-transform: none; letter-spacing: 0;
+                 white-space: nowrap; color: var(--text); cursor: pointer;
+                 background: var(--surface-2); }
+  .tiers label:has(input:checked) { border-color: var(--accent); color: var(--accent);
+                                    background: var(--accent-dim); }
+  .tiers input { accent-color: var(--accent); margin: 0; }
   .plan .price { font: 800 1.3rem var(--font-body); }
   .plan .price small { font: 600 .8rem var(--font-body); color: var(--muted); }
   .plan.mine { box-shadow: inset 3px 0 0 var(--good); }
@@ -44,18 +55,22 @@
     {% set pr = prices.get(key) %}{% set ref = reference[key] %}
     {# Stripe's Price when one exists (that is what the button charges);
        otherwise the shop's reference price in the shop's own unit #}
+    {% set cur = ("€" if pr and pr.currency == "EUR" else (pr.currency if pr else "€")) %}
     <div class="price">
-      {% if pr %}{{ "%.2f"|format(pr.amount)|replace(".", ",") }} {{ "€" if pr.currency == "EUR" else pr.currency }} <small>/ mjesečno</small>
+      {% if pr and pr.tiers %}{{ "%.0f"|format(pr.tiers[0].amount) }}–{{ "%.0f"|format(pr.tiers[-1].amount) }} {{ cur }} <small>/ mjesečno</small>
+      {% elif pr %}{{ "%.2f"|format(pr.amount)|replace(".", ",") }} {{ cur }} <small>/ mjesečno</small>
       {% elif ref[0] %}{{ ref[0] }} € <small>{{ ref[1] }}</small>
       {% else %}na upit <small>{{ ref[1] }}</small>{% endif %}
     </div>
-    {% if not pr and ref[2] %}<div class="hint" style="font-size:.78rem; margin-top:-4px;">{{ ref[2] }}</div>{% endif %}
+    {% if pr and pr.tiers %}<div class="hint" style="font-size:.78rem; margin-top:-4px;">{{ pr.tiers|map(attribute="sessions")|join(", ") }} treninga mjesečno</div>
+    {% elif not pr and ref[2] %}<div class="hint" style="font-size:.78rem; margin-top:-4px;">{{ ref[2] }}</div>{% endif %}
     <div class="foot">
     {% if key in subs %}
+      {% set tier = (" · " ~ subs[key].sessions_per_cycle ~ " treninga/mj") if subs[key].sessions_per_cycle else "" %}
       {% if subs[key].cancel_at_period_end %}
-      <span class="owned" style="color:var(--muted);">Pretplata otkazana — vrijedi do {{ subs[key].dospijece.strftime("%-d.%-m.%Y.") }}</span>
+      <span class="owned" style="color:var(--muted);">Pretplata otkazana{{ tier }} — vrijedi do {{ subs[key].dospijece.strftime("%-d.%-m.%Y.") }}</span>
       {% else %}
-      <span class="owned">✓ Pretplata aktivna — obnavlja se automatski</span>
+      <span class="owned">✓ Pretplata aktivna{{ tier }} — obnavlja se automatski</span>
       {% endif %}
       {% if key in plan_links %}
       <a class="btn btn-sm" href="{{ plan_links[key][0] }}">{{ plan_links[key][1] }} →</a>
@@ -68,10 +83,16 @@
       {% endif %}
       {% if key in sellable %}
       {# paid in cash so far — a subscription can take over from the due date #}
-      <form method="post" action="/placanje/{{ key }}"><button type="submit" class="act">Prebaci na karticu</button></form>
+      <form method="post" action="/placanje/{{ key }}">
+        {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
+        <button type="submit" class="act">Prebaci na karticu</button>
+      </form>
       {% endif %}
     {% elif user and key in sellable %}
-      <form method="post" action="/placanje/{{ key }}"><button type="submit" class="btn btn-sm">Pretplati se karticom</button></form>
+      <form method="post" action="/placanje/{{ key }}">
+        {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
+        <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
+      </form>
       <span class="hint" style="font-size:.78rem;">Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.</span>
     {% elif user %}
       <span class="hint" style="font-size:.82rem;">Za upis se javi treneru u dvorani.</span>

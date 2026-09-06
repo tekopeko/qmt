@@ -138,7 +138,8 @@
     <tbody>
     {% for m in memberships %}
       <tr style="border-bottom:1px solid var(--line);">
-        <td style="padding:7px 18px 7px 0;"><strong>{{ m.label }}</strong></td>
+        <td style="padding:7px 18px 7px 0;"><strong>{{ m.label }}</strong>
+          {% if m.usage %}<div class="hint" style="font-size:.78rem;">{{ m.usage.used }} od {{ m.usage.quota }} treninga u ovom ciklusu</div>{% endif %}</td>
         <td style="font-variant-numeric:tabular-nums; padding-right:18px;">{{ m.next_payment.strftime("%-d.%-m.%Y.") }}</td>
         <td style="font-variant-numeric:tabular-nums; padding-right:18px;">{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</td>
         <td>{% if m.active %}<span style="color:var(--good); font-weight:700;">aktivna</span>

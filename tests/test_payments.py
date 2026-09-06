@@ -38,14 +38,17 @@ def stripe_on(monkeypatch):
     monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "sk_test_x")
     monkeypatch.setattr(config, "STRIPE_WEBHOOK_SECRET", SECRET)
     monkeypatch.setattr(config, "STRIPE_PRICES", {**{p: "" for p in config.STRIPE_PRICES},
-                                                  "grupni": "price_grupni", "online": "price_online"})
+                                                  "online": "price_online"})
+    monkeypatch.setattr(config, "STRIPE_TIER_PRICES",
+                        {"grupni": {8: "price_g8", 12: "price_g12", 16: "price_g16"}})
     subs: dict[str, dict] = {}
     calls = {"customers": 0, "checkouts": [], "portals": 0}
 
     monkeypatch.setattr(stripe.Subscription, "retrieve",
                         staticmethod(lambda sid, **kw: subs[sid]))
+    amounts = {"price_online": 5500, "price_g8": 6000, "price_g12": 7000, "price_g16": 8000}
     monkeypatch.setattr(stripe.Price, "retrieve", staticmethod(
-        lambda pid, **kw: {"unit_amount": 5500, "currency": "eur", "recurring": {"interval": "month"}}))
+        lambda pid, **kw: {"unit_amount": amounts[pid], "currency": "eur", "recurring": {"interval": "month"}}))
 
     def customer_create(**kw):
         calls["customers"] += 1
@@ -89,7 +92,7 @@ def signed(event: dict, secret: str = SECRET) -> tuple[bytes, str]:
 
 def invoice_paid(inv_id: str, sub_id: str, cents: int = 5000, new_shape: bool = True) -> dict:
     inv = {"id": inv_id, "amount_paid": cents,
-           "lines": {"data": [{"price": {"id": "price_grupni"}}]}}
+           "lines": {"data": [{"price": {"id": "price_g12"}}]}}
     if new_shape:      # 2025+ API: subscription under parent.subscription_details
         inv["parent"] = {"subscription_details": {"subscription": sub_id}}
     else:              # classic shape
@@ -144,6 +147,19 @@ def test_invoice_paid_grants_a_month_exactly_once(stripe_on):
     assert m.next_payment == db._add_month(first_due)
 
 
+def test_invoice_sets_the_tier_from_metadata_or_price(stripe_on):
+    ivan = make_user("ivan@test.local")
+    stripe_on["subs"]["sub_t"] = {"id": "sub_t", "metadata": {"qmt_user_id": str(ivan), "qmt_plan": "grupni",
+                                                            "qmt_sessions": "8"}}
+    post_event(invoice_paid("in_t", "sub_t", cents=6000))
+    assert db.memberships_for(ivan)[0].sessions_per_cycle == 8
+
+    # no plan in metadata (subscription made by hand in the dashboard): the price says 12
+    stripe_on["subs"]["sub_h"] = {"id": "sub_h", "metadata": {"qmt_user_id": str(ivan)}}
+    post_event(invoice_paid("in_h", "sub_h", cents=7000))
+    assert db.memberships_for(ivan)[0].sessions_per_cycle == 12
+
+
 def test_cash_plan_taken_over_by_subscription_extends_from_due_date(stripe_on):
     ivan = make_user("ivan@test.local")
     db.record_payment(ivan, "grupni")                    # cash today
@@ -194,17 +210,24 @@ def test_unknown_user_or_plan_is_ignored(stripe_on):
 def test_checkout_creates_one_customer_and_hands_off(stripe_on):
     ivan = make_user("ivan@test.local")
     c = client_for("ivan@test.local")
+    # tiered plan without a tier: refused, nothing created
     r = c.post("/placanje/grupni", follow_redirects=False)
+    assert r.status_code == 303 and "Odaberi" in r.headers["location"]
+    assert stripe_on["calls"]["checkouts"] == []
+
+    r = c.post("/placanje/grupni", data={"sessions": "12"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"].startswith("https://checkout.stripe.com/")
     kw = stripe_on["calls"]["checkouts"][0]
     assert kw["mode"] == "subscription"
-    assert kw["subscription_data"]["metadata"] == {"qmt_user_id": str(ivan), "qmt_plan": "grupni"}
-    assert kw["line_items"] == [{"price": "price_grupni", "quantity": 1}]
+    assert kw["subscription_data"]["metadata"] == {"qmt_user_id": str(ivan), "qmt_plan": "grupni",
+                                                   "qmt_sessions": "12"}
+    assert kw["line_items"] == [{"price": "price_g12", "quantity": 1}]
     assert db.get_user(ivan).stripe_customer_id == "cus_1"
 
-    c.post("/placanje/online", follow_redirects=False)   # second plan reuses the customer
-    assert stripe_on["calls"]["customers"] == 1
+    c.post("/placanje/online", follow_redirects=False)   # flat plan: no tier needed
+    assert stripe_on["calls"]["customers"] == 1         # second plan reuses the customer
     assert stripe_on["calls"]["checkouts"][1]["customer"] == "cus_1"
+    assert stripe_on["calls"]["checkouts"][1]["subscription_data"]["metadata"]["qmt_sessions"] == ""
 
     # a plan without a price is not sellable; a stranger is sent to login
     assert "platiti+karticom" in c.post("/placanje/prehrana", follow_redirects=False).headers["location"]
@@ -231,6 +254,7 @@ def test_cjenik_shows_stripe_prices_or_na_upit(stripe_on, monkeypatch):
     assert r.status_code == 200
     page = r.text
     assert "55,00 €" in page and "Pretplati se karticom" in page   # Stripe's price, per month
+    assert "60–80 €" in page and 'name="sessions" value="12"' in page   # tiered: range + picker
     assert "35 €" in page and "/ trening" in page          # reference price where no Stripe price
     assert "na upit" in page                               # prehrana: no price anywhere
 

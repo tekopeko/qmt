@@ -319,6 +319,17 @@ def book(user_id: int, session_id: int) -> None:
             raise MembershipRequired(
                 f"Za termin \"{PLAN_LABELS.get(sess.kind, sess.kind)}\" treba ti "
                 "aktivna članarina.", sess.kind)
+        # tiered plan: this termin's cycle must still have a trening left
+        m = s.scalar(select(Membership).where(Membership.user_id == user_id,
+                                              Membership.plan == sess.kind))
+        if m is not None and m.sessions_per_cycle:
+            day = sess.starts_at.astimezone(config.TZ).date()
+            start, end = m.cycle_bounds(day)
+            if _cycle_used(s, user_id, sess.kind, start, end) >= m.sessions_per_cycle:
+                raise BookingError(
+                    f"Iskoristio/la si svih {m.sessions_per_cycle} treninga u ciklusu "
+                    f"{start:%-d.%-m.}–{(end - timedelta(days=1)):%-d.%-m.} — "
+                    "otkaži neki termin ili pričekaj sljedeći ciklus.")
         taken = s.scalar(select(func.count()).select_from(Booking).where(Booking.session_id == session_id))
         if taken >= sess.capacity:
             raise BookingError("Termin je popunjen.")
@@ -327,6 +338,32 @@ def book(user_id: int, session_id: int) -> None:
         if already:
             raise BookingError("Već si rezervirao/la ovaj termin.")
         s.add(Booking(user_id=user_id, session_id=session_id))
+
+
+def _cycle_used(s, user_id: int, kind: str, start: date, end: date) -> int:
+    """Live bookings of `kind` whose termin falls inside [start, end) local."""
+    lo = datetime.combine(start, datetime.min.time(), tzinfo=config.TZ)
+    hi = datetime.combine(end, datetime.min.time(), tzinfo=config.TZ)
+    return s.scalar(
+        select(func.count()).select_from(Booking)
+        .join(TrainingSession, TrainingSession.id == Booking.session_id)
+        .where(Booking.user_id == user_id, TrainingSession.kind == kind,
+               ~TrainingSession.canceled,
+               TrainingSession.starts_at >= lo, TrainingSession.starts_at < hi)) or 0
+
+
+def cycle_usage(user_id: int, plan: str, on: date | None = None) -> dict | None:
+    """{"used", "quota", "start", "end"} for a tiered plan's cycle containing
+    `on` (today by default); None when the plan is unlimited or absent."""
+    on = on or config.today()
+    with session_scope() as s:
+        m = s.scalar(select(Membership).where(Membership.user_id == user_id,
+                                              Membership.plan == plan))
+        if m is None or not m.sessions_per_cycle:
+            return None
+        start, end = m.cycle_bounds(on)
+        return {"used": _cycle_used(s, user_id, plan, start, end),
+                "quota": m.sessions_per_cycle, "start": start, "end": end}
 
 
 def cancel_booking(user_id: int, session_id: int) -> None:
@@ -361,10 +398,7 @@ def my_upcoming(user_id: int) -> list[TrainingSession]:
 
 # ---------- memberships (članarine) ----------
 
-def _add_month(d: date) -> date:
-    """Same day next month, clamped to month length (31.1. → 28.2.)."""
-    y, m = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
-    return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+from .models import add_month as _add_month  # noqa: E402  (one definition, shared with models)
 
 
 def active_plan_kinds(user_id: int, s: Session | None = None) -> set[str]:
@@ -440,7 +474,8 @@ def release_reminder(user_id: int, kind: str, ref: str) -> None:
 
 def record_payment(user_id: int, plan: str, method: str = "gotovina",
                    amount_eur=None, stripe_invoice_id: str | None = None,
-                   stripe_subscription_id: str | None = None) -> Membership:
+                   stripe_subscription_id: str | None = None,
+                   sessions_per_cycle: int | None = None) -> Membership:
     """An uplata — cash/card at the gym, or a paid Stripe invoice: start the
     plan or extend it by a month.
 
@@ -471,6 +506,7 @@ def record_payment(user_id: int, plan: str, method: str = "gotovina",
             # a paid invoice is proof the subscription is live again
             m.stripe_subscription_id = stripe_subscription_id
             m.cancel_at_period_end = False
+        m.sessions_per_cycle = sessions_per_cycle        # each uplata (re)states the tier
         s.add(Payment(user_id=user_id, plan=plan, method=method, paid_on=today,
                       amount_eur=amount_eur, stripe_invoice_id=stripe_invoice_id))
         s.flush()

@@ -36,6 +36,12 @@
         <td style="white-space:nowrap; text-align:right;">
           <form method="post" action="/clanarine/{{ row.user.id }}/uplata" style="display:inline-flex; gap:5px; margin:0; align-items:center;">
             <input type="hidden" name="plan" value="{{ m.plan }}">
+            {% if m.plan == "grupni" %}
+            <select name="sessions" aria-label="Treninga mjesečno" style="width:auto; padding:5px 8px; font-size:.78rem;">
+              <option value="">neograničeno</option>
+              {% for n in (8, 12, 16) %}<option value="{{ n }}" {% if m.sessions_per_cycle == n %}selected{% endif %}>{{ n }} treninga</option>{% endfor %}
+            </select>
+            {% endif %}
             <select name="method" aria-label="Način plaćanja" style="width:auto; padding:5px 8px; font-size:.78rem;">
               <option value="gotovina">Gotovina</option><option value="kartica">Kartica</option>
             </select>
@@ -63,6 +69,10 @@
         style="display:flex; gap:8px; margin-top:12px; align-items:center; max-width:560px; flex-wrap:wrap;">
     <select name="plan" aria-label="Plan" style="flex:1; min-width:150px;">
       {% for p in missing %}<option value="{{ p }}">{{ plan_labels[p] }}</option>{% endfor %}
+    </select>
+    <select name="sessions" aria-label="Treninga mjesečno (samo grupni)" style="width:auto;">
+      <option value="">neograničeno</option>
+      {% for n in (8, 12, 16) %}<option value="{{ n }}">{{ n }} treninga/mj</option>{% endfor %}
     </select>
     <select name="method" aria-label="Način plaćanja" style="width:auto;">
       <option value="gotovina">Gotovina</option><option value="kartica">Kartica</option>
