@@ -65,6 +65,9 @@ class User(Base):
     # Sign-up proves nothing about inbox ownership until this is true; login
     # refuses unverified accounts (same contract as mojimakrosi).
     email_verified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # One Stripe Customer per account, created on the first checkout and reused
+    # for every subscription and the billing portal after that.
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     @property
@@ -156,9 +159,18 @@ class Membership(Base):
     plan: Mapped[str] = mapped_column(String(20))          # one of PLAN_TYPES
     paid_on: Mapped[SADate] = mapped_column(Date)
     next_payment: Mapped[SADate] = mapped_column(Date)
+    # Set while a Stripe subscription renews this plan; cleared when Stripe
+    # reports it deleted. The DATES still gate access — a cancelled
+    # subscription just stops extending them, and the plan lapses on its own.
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("user_id", "plan", name="uq_membership_user_plan"),)
+
+    @property
+    def auto_renew(self) -> bool:
+        return bool(self.stripe_subscription_id) and not self.cancel_at_period_end
 
     user: Mapped[User] = relationship()
 
@@ -213,6 +225,9 @@ class Payment(Base):
                                         default="gotovina")   # PAYMENT_METHODS key
     amount_eur = mapped_column(Numeric(8, 2), nullable=True)
     paid_on: Mapped[SADate] = mapped_column(Date, index=True)
+    # Stripe delivers webhooks at-least-once; the invoice id's uniqueness is
+    # what turns a redelivery into a no-op instead of a second month.
+    stripe_invoice_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User | None] = relationship()

@@ -12,6 +12,7 @@
   .plan p { color: var(--muted); font-size: .9rem; min-height: 3.9em; flex: none; }
   .plan .foot { margin-top: auto; display: flex; flex-direction: column;
                 gap: 8px; align-items: flex-start; padding-top: 4px; }
+  .plan .foot form { margin: 0; }
   .plan .price { font: 800 1.3rem var(--font-body); }
   .plan .price small { font: 600 .8rem var(--font-body); color: var(--muted); }
   .plan.mine { box-shadow: inset 3px 0 0 var(--good); }
@@ -40,15 +41,36 @@
   <div class="card plan {% if key in my_plans %}mine{% endif %}" id="plan-{{ key }}">
     <h2 class="plan-h">{{ plan_labels[key] }}</h2>
     <p>{{ desc[key] }}</p>
-    <div class="price">na upit <small>/ mjesečno</small></div>
+    {% set pr = prices.get(key) %}
+    <div class="price">
+      {% if pr %}{{ "%.2f"|format(pr.amount)|replace(".", ",") }} {{ "€" if pr.currency == "EUR" else pr.currency }}{% else %}na upit{% endif %}
+      <small>/ mjesečno</small>
+    </div>
     <div class="foot">
-    {% if key in my_plans %}
+    {% if key in subs %}
+      {% if subs[key].cancel_at_period_end %}
+      <span class="owned" style="color:var(--muted);">Pretplata otkazana — vrijedi do {{ subs[key].dospijece.strftime("%-d.%-m.%Y.") }}</span>
+      {% else %}
+      <span class="owned">✓ Pretplata aktivna — obnavlja se automatski</span>
+      {% endif %}
+      {% if key in plan_links %}
+      <a class="btn btn-sm" href="{{ plan_links[key][0] }}">{{ plan_links[key][1] }} →</a>
+      {% endif %}
+      <form method="post" action="/placanje/portal"><button type="submit" class="act act-quiet">Upravljaj pretplatom</button></form>
+    {% elif key in my_plans %}
       <span class="owned">✓ Aktivna članarina</span>
       {% if key in plan_links %}
       <a class="btn btn-sm" href="{{ plan_links[key][0] }}">{{ plan_links[key][1] }} →</a>
       {% endif %}
+      {% if key in sellable %}
+      {# paid in cash so far — a subscription can take over from the due date #}
+      <form method="post" action="/placanje/{{ key }}"><button type="submit" class="act">Prebaci na karticu</button></form>
+      {% endif %}
+    {% elif user and key in sellable %}
+      <form method="post" action="/placanje/{{ key }}"><button type="submit" class="btn btn-sm">Pretplati se karticom</button></form>
+      <span class="hint" style="font-size:.78rem;">Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.</span>
     {% elif user %}
-      <span class="hint" style="font-size:.82rem;">Za upis se javi treneru u dvorani — kartično plaćanje online stiže uskoro.</span>
+      <span class="hint" style="font-size:.82rem;">Za upis se javi treneru u dvorani.</span>
     {% else %}
       <a class="btn btn-sm" href="/login?next=/cjenik">Prijavi se ili se registriraj</a>
     {% endif %}

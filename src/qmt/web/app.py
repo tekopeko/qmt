@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import auth, config, db, mailer, reminders, storage, upitnik
+from .. import auth, config, db, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, PAYMENT_METHODS, PLAN_ABBR, PLAN_LABELS,
                       PLAN_TYPES, SESSION_KINDS)
 
@@ -236,9 +236,69 @@ def cjenik(request: Request):
     """Plan pricing — public; the future card-payment entry point. Prices are
     placeholders until the owner supplies real ones."""
     user = current_user(request)
+    subs = ({m.plan: m for m in db.memberships_for(user.id) if m.stripe_subscription_id}
+            if user else {})
     return templates.TemplateResponse(request, "cjenik.html", _ctx(
         request, user, plans=PLAN_TYPES, plan_labels=PLAN_LABELS,
-        my_plans=db.active_plan_kinds(user.id) if user else set()))
+        my_plans=db.active_plan_kinds(user.id) if user else set(),
+        prices=payments.price_table(), sellable=payments.sellable_plans(),
+        subs=subs))
+
+
+@app.post("/placanje/portal")
+def placanje_portal(request: Request):
+    """Stripe's hosted portal: change card, cancel, download invoices."""
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not payments.enabled() or not user.stripe_customer_id:
+        return RedirectResponse("/profil?error=Nemaš+aktivnu+pretplatu+karticom.", status_code=303)
+    try:
+        return RedirectResponse(payments.portal_url(user), status_code=303)
+    except Exception:
+        return RedirectResponse("/profil?error=Portal+trenutno+nije+dostupan.", status_code=303)
+
+
+@app.post("/placanje/{plan}")
+def placanje(request: Request, plan: str):
+    """Start a monthly card subscription for one plan — hands off to Stripe
+    Checkout. Access is NOT granted here; the signed webhook does that."""
+    user = current_user(request)
+    if user is None:
+        from urllib.parse import quote
+        return RedirectResponse(f"/login?next={quote('/cjenik')}", status_code=303)
+    if plan not in PLAN_TYPES or plan not in payments.sellable_plans():
+        return RedirectResponse("/cjenik?error=Ovaj+plan+se+ne+može+platiti+karticom.",
+                                status_code=303)
+    if any(m.plan == plan and m.stripe_subscription_id for m in db.memberships_for(user.id)):
+        return RedirectResponse("/cjenik?error=Pretplata+za+ovaj+plan+već+postoji.",
+                                status_code=303)
+    try:
+        return RedirectResponse(payments.checkout_url(user, plan), status_code=303)
+    except Exception:
+        return RedirectResponse("/cjenik?error=Plaćanje+trenutno+nije+dostupno+—+pokušaj+kasnije.",
+                                status_code=303)
+
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Stripe → us. The signature is the entire auth; a bad one is a 400 and a
+    good one is applied idempotently (invoice ids are unique in the ledger)."""
+    from fastapi.responses import PlainTextResponse
+
+    if not payments.enabled():
+        return PlainTextResponse("stripe not configured", status_code=503)
+    payload = await request.body()
+    try:
+        event = payments.parse_event(payload, request.headers.get("stripe-signature", ""))
+    except Exception:
+        return PlainTextResponse("bad signature", status_code=400)
+    try:
+        outcome = payments.handle_event(event)
+    except Exception as e:                       # a 5xx makes Stripe retry later
+        print(f"[stripe] {e}")
+        return PlainTextResponse("error", status_code=500)
+    return PlainTextResponse(outcome, status_code=200)
 
 
 @app.get("/raspored", response_class=HTMLResponse)
@@ -613,17 +673,20 @@ def profil_page(request: Request):
                     "next_payment": m.next_payment,
                     "dospijece": m.dospijece,
                     "active": m.is_active(today),
-                    "days_left": (m.dospijece - today).days}
+                    "days_left": (m.dospijece - today).days,
+                    "auto_renew": m.auto_renew,
+                    "cancelling": bool(m.stripe_subscription_id) and m.cancel_at_period_end}
                    for m in db.memberships_for(user.id)]
-    payments = [{"paid_on": p.paid_on, "label": PLAN_LABELS.get(p.plan, p.plan),
-                 "method": PAYMENT_METHODS.get(p.method, p.method),
-                 "amount": p.amount_eur}
-                for p in db.payments_for(user.id)]
+    payment_rows = [{"paid_on": p.paid_on, "label": PLAN_LABELS.get(p.plan, p.plan),
+                     "method": PAYMENT_METHODS.get(p.method, p.method),
+                     "amount": p.amount_eur}
+                    for p in db.payments_for(user.id)]
     return templates.TemplateResponse(request, "profil.html", _ctx(
         request, user,
         first_login="dopuni" in request.query_params,
-        memberships=memberships, payments=payments,
-        show_amounts=any(p["amount"] is not None for p in payments)))
+        memberships=memberships, payments=payment_rows,
+        show_amounts=any(p["amount"] is not None for p in payment_rows),
+        has_portal=payments.enabled() and bool(user.stripe_customer_id)))
 
 
 @app.post("/profil")

@@ -16,6 +16,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "httpx>=0.27",
     "boto3>=1.34",           # R2 media storage (lazy import; unused without R2_* vars)
+    "stripe>=12",            # card subscriptions (lazy import; unused without STRIPE_* vars)
 ]
 
 [project.optional-dependencies]

@@ -31,7 +31,7 @@ python scripts/seed_demo.py                # dev RESET: users, timetable, plans,
 python serve.py [--reload] [--port 8100]   # 8100 — 8000 is mojimakrosi's local port
 
 createdb qmt_test                          # once
-pytest -q                                  # 74 tests, must stay green
+pytest -q                                  # 83 tests, must stay green
 ```
 
 Demo logins: `trener@qmt.local/trener123` (trainer **and** owner locally, via
@@ -55,7 +55,7 @@ variables --kv` reads config). Pushing to `master` auto-deploys.
 | Route | Who | What |
 |---|---|---|
 | `/` | public | Landing: hero, six service cards (hover CTA → `/cjenik`, or "✓ Aktivna članarina" linking into the app), gallery from `static/gallery/`, contact |
-| `/cjenik` | public | Plan pricing — **prices are still "na upit" placeholders**; the future Stripe checkout entry point |
+| `/cjenik` | public | Plan pricing from Stripe ("na upit" until Price ids exist) + "Pretplati se karticom" → Stripe Checkout; `/placanje/portal` for card/cancel/invoices |
 | `/raspored` | client | Week calendar, booking, "Moja članarina" + "Moje rezervacije" as day columns |
 | `/karton`, `/upitnik` | client | Personal file: upitnik result, training diary, termini. `/karton/{id}` is the trainer's read-only view |
 | `/treninzi` | client/trainer | Online programmes — automatic (see below) |
@@ -105,6 +105,7 @@ active `online` plan → filled upitnik → matched programmes.
 | `src/qmt/mailer.py` | Only Resend importer. Also `send_new_user_notice` → owner hears about each first verification |
 | `src/qmt/reminders.py` | Email podsjetnici (pre-dospijeće + day-before termin), claim-idempotent via the `reminders` table; app lifespan ticks every 6 h, `scripts/send_reminders.py` forces a pass |
 | `src/qmt/storage.py` | Media backend: local disk, or Cloudflare R2 when the four `R2_*` vars are set (then `/media` 307s to presigned URLs) |
+| `src/qmt/payments.py` | Stripe: prices for /cjenik (cached), Checkout + portal sessions, signed webhook → `record_payment`. Tolerates both invoice shapes (pre/post 2025 API) |
 | `src/qmt/web/app.py` | All routes. `current_user()` per route; `PLAN_LINKS` maps an active plan to the page it unlocks |
 | `src/qmt/web/templates/` | Jinja2. Design tokens + topbar/avatar menu in `base.html` |
 
@@ -158,10 +159,13 @@ active `online` plan → filled upitnik → matched programmes.
    owner statistika
 3. ✅ Karton (upitnik routing, per-termin feedback, diary, calendar); automated online
    programmes by (razina × cilj)
-4. ⏳ **Card payments** — Stripe chosen (see `roadmap/` and memory). Blockers: owner's
-   Stripe account for the d.o.o., real prices for `/cjenik`, and the accountant
-   confirming Fiskalizacija 2.0 (mandatory since 1.1.2026, fiscalized račun per B2C
-   charge). Then: Checkout on /cjenik + `invoice.paid` webhook → `db.record_payment`.
+4. ✅ **Card payments — built, dormant until keys exist.** Stripe **subscriptions**
+   (auto-renew monthly): `/cjenik` → `POST /placanje/{plan}` → Checkout; signed
+   `invoice.paid` webhook → `db.record_payment(method="stripe")`; portal at
+   `/placanje/portal`. Everything is in `src/qmt/payments.py`, switched on by
+   `STRIPE_*` vars (see DEPLOY.md). Still owed by the owner before LIVE keys: the
+   d.o.o.'s Stripe account, real prices, and the accountant's Fiskalizacija 2.0 flow
+   (mandatory since 1.1.2026, fiscalized račun per B2C charge).
 5. ⏳ Owner's own content: landing/service copy, exercise videos. The R2 storage
    layer is BUILT (`storage.py` + `scripts/migrate_media_to_r2.py`) — activating it
    is just the four `R2_*` vars on Railway; until then `data/uploads` stays ephemeral

@@ -1,12 +1,12 @@
-# Where the last session left off — 5.9.2026.
+# Where the last session left off — 6.9.2026.
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
 ## Deploy state
 
 Everything is committed and pushed to `master` (auto-deploys to Railway).
-74 tests green. Migrations apply automatically on deploy; the newest two are
-`a1d4f80c37b2` (training_logs.absent) and `b7e2c94d15a8` (reminders ledger).
+83 tests green. Migrations apply automatically on deploy; the newest are
+`b7e2c94d15a8` (reminders ledger) and `c9f3a1d7e2b4` (Stripe links).
 
 The 4.9. header complaint is resolved: the avatar menu was rebuilt on the
 YouTube pattern (icon gutter, ellipsized email, CSS-swapped theme icon) and the
@@ -31,20 +31,37 @@ owner has since moved on to reviewing other screens.
 - **R2 media storage** (`src/qmt/storage.py`): set the four `R2_*` vars and
   uploads go to Cloudflare R2, `/media` redirects to presigned URLs. Local
   disk stays the default. `scripts/migrate_media_to_r2.py` copies existing
-  files. **Not yet activated in prod — the owner's R2 credentials are needed.**
+  files. (Activated in prod on 6.9. — see below.)
 - **Design pass** (measured, Playwright): WCAG-AA button fill (`--accent-fill`),
   0 unlabelled controls, 0 overflow, touch-size small buttons, no underlined
   links, no small-button glow, aligned card internals on landing + cjenik.
 
+## 6.9. — R2 live, Stripe built
+
+- **R2 is ACTIVE in prod** (owner's bucket `qmt-media`, scoped token). Verified
+  end to end: upload → bucket, `/media` → 307 presigned, delete → gone. The
+  test fixture blanks `R2_ACCOUNT_ID` so the suite never touches the bucket.
+- **Stripe subscriptions are built and dormant** (`src/qmt/payments.py`,
+  migration `c9f3a1d7e2b4`): `/cjenik` → `POST /placanje/{plan}` → Checkout
+  (subscription mode, user+plan in subscription metadata) → signed
+  `invoice.paid` webhook → `db.record_payment(method="stripe")`;
+  `subscription.updated/deleted` track cancellation; `/placanje/portal` opens
+  Stripe's portal. Access is granted ONLY by the webhook; invoice ids are
+  unique in the ledger so redeliveries are no-ops. Nine tests, real signed
+  payloads. Both invoice shapes (pre/post 2025 API) are read.
+
 ## Next up (agreed with the owner)
 
-1. **Activate R2**: owner creates a bucket + API token in his Cloudflare
-   account, sets `R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET`
-   on Railway, then `python scripts/migrate_media_to_r2.py`. Until then
-   uploaded media still dies on redeploy.
-2. **Stripe (roadmap step 4)** — still blocked on the owner: Stripe account for
-   the d.o.o., real prices for /cjenik, accountant's Fiskalizacija 2.0 flow.
-   The `payments` ledger and `db.record_payment` are ready for the webhook.
+1. **Stripe test-mode run**: the owner (or Tvrtko, for now) creates a free
+   Stripe account, makes six Products with monthly EUR Prices, a webhook
+   endpoint (`invoice.paid`, `customer.subscription.updated`,
+   `customer.subscription.deleted`) and enables the Customer portal; sets
+   `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*` on Railway
+   (see DEPLOY.md). Then a full run with card 4242… on prod.
+2. **Go-live blockers (owner)**: the d.o.o.'s Stripe account, real prices, and
+   the accountant's Fiskalizacija 2.0 flow (fiscalized račun per B2C charge —
+   the ledger has amount, date and invoice id for it). Nothing in code waits
+   on these; live keys replace test keys.
 3. Owner writes landing/service copy and records videos (his explicit wish —
    don't draft copy for him beyond placeholders).
 

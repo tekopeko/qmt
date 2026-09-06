@@ -115,6 +115,23 @@ def email_enabled() -> bool:
     return bool(RESEND_API_KEY)
 
 
+# Stripe — card payments as monthly subscriptions. Secret key + webhook secret
+# switch the feature on; one Price id per plan (created in the Stripe
+# dashboard, pasted here). Any plan without a price simply keeps the manual
+# "javi se treneru" path, so a half-configured Stripe never breaks /cjenik.
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
+STRIPE_PRICES = {
+    plan: os.environ.get(f"STRIPE_PRICE_{plan.upper()}", "").strip()
+    for plan in ("grupni", "individualni", "poluindividualni",
+                 "rehabilitacija", "online", "prehrana")
+}
+
+
+def stripe_enabled() -> bool:
+    return bool(STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET)
+
+
 # Booking rules.
 CANCEL_CUTOFF_HOURS = int(os.environ.get("CANCEL_CUTOFF_HOURS", "3"))
 BOOKING_HORIZON_DAYS = int(os.environ.get("BOOKING_HORIZON_DAYS", "28"))

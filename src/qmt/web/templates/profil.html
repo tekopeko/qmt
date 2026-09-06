@@ -34,7 +34,9 @@
   <div class="card" style="padding:16px 18px; {% if m.active %}box-shadow: inset 3px 0 0 var(--good);{% else %}box-shadow: inset 3px 0 0 var(--danger);{% endif %}">
     <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
       <strong>{{ m.label }}</strong>
-      {% if m.active %}<span style="color:var(--good); font-weight:700; font-size:.8rem;">aktivna</span>
+      {% if m.cancelling %}<span style="color:var(--muted); font-weight:700; font-size:.8rem;">otkazana · vrijedi do kraja</span>
+      {% elif m.auto_renew %}<span style="color:var(--good); font-weight:700; font-size:.8rem;">aktivna · obnavlja se</span>
+      {% elif m.active %}<span style="color:var(--good); font-weight:700; font-size:.8rem;">aktivna</span>
       {% else %}<span style="color:var(--danger); font-weight:700; font-size:.8rem;">istekla</span>{% endif %}
     </div>
     <p style="font-size:.86rem; margin-top:8px; font-variant-numeric:tabular-nums;">
@@ -60,6 +62,12 @@
   </div>
   {% endfor %}
 </div>
+{% if has_portal %}
+{# card, cancellation and invoices live in Stripe's portal — one door for all of it #}
+<form method="post" action="/placanje/portal" style="margin:-14px 0 30px;">
+  <button type="submit" class="act">Upravljaj pretplatom — kartica, otkazivanje, računi</button>
+</form>
+{% endif %}
 {% else %}
 <div class="card" style="max-width:560px; padding:18px 20px; margin-bottom:30px;">
   <p style="margin-bottom:4px;"><strong>Nemaš aktivnu članarinu.</strong></p>

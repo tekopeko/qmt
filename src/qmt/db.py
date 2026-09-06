@@ -438,20 +438,28 @@ def release_reminder(user_id: int, kind: str, ref: str) -> None:
             ReminderLog.ref == ref))
 
 
-def record_payment(user_id: int, plan: str, method: str = "gotovina") -> Membership:
-    """Cash/card taken at the gym: start the plan or extend it by a month.
+def record_payment(user_id: int, plan: str, method: str = "gotovina",
+                   amount_eur=None, stripe_invoice_id: str | None = None,
+                   stripe_subscription_id: str | None = None) -> Membership:
+    """An uplata — cash/card at the gym, or a paid Stripe invoice: start the
+    plan or extend it by a month.
 
     Paying early extends from the CURRENT due date, not from today — a payment
     a week ahead must never shorten the cycle. A lapsed plan restarts from
     today (nobody owes "back months" for time the gym wasn't used).
 
     Every call also appends to the immutable `payments` ledger — memberships
-    hold only the current cycle, the ledger holds the owner's history.
+    hold only the current cycle, the ledger holds the owner's history. A Stripe
+    invoice id already in the ledger means a redelivered webhook: the current
+    membership is returned untouched, no second month is granted.
     """
     today = config.today()
     with session_scope() as s:
         m = s.scalar(select(Membership).where(Membership.user_id == user_id,
                                               Membership.plan == plan).with_for_update())
+        if stripe_invoice_id and s.scalar(select(Payment.id).where(
+                Payment.stripe_invoice_id == stripe_invoice_id)):
+            return m
         base = m.next_payment if m is not None and m.next_payment > today else today
         if m is None:
             m = Membership(user_id=user_id, plan=plan, paid_on=today,
@@ -459,9 +467,52 @@ def record_payment(user_id: int, plan: str, method: str = "gotovina") -> Members
             s.add(m)
         else:
             m.paid_on, m.next_payment = today, _add_month(base)
-        s.add(Payment(user_id=user_id, plan=plan, method=method, paid_on=today))
+        if stripe_subscription_id:
+            # a paid invoice is proof the subscription is live again
+            m.stripe_subscription_id = stripe_subscription_id
+            m.cancel_at_period_end = False
+        s.add(Payment(user_id=user_id, plan=plan, method=method, paid_on=today,
+                      amount_eur=amount_eur, stripe_invoice_id=stripe_invoice_id))
         s.flush()
         return m
+
+
+def set_stripe_customer(user_id: int, customer_id: str) -> None:
+    with session_scope() as s:
+        u = s.get(User, user_id)
+        if u is not None and not u.stripe_customer_id:
+            u.stripe_customer_id = customer_id
+
+
+def subscription_membership(subscription_id: str) -> Membership | None:
+    with session_scope() as s:
+        return s.scalar(select(Membership).where(
+            Membership.stripe_subscription_id == subscription_id))
+
+
+def set_subscription_cancelling(subscription_id: str, cancel_at_period_end: bool) -> bool:
+    """Stripe says the client cancelled (or un-cancelled) in the portal — the
+    plan keeps its dates and simply will (not) be extended again."""
+    with session_scope() as s:
+        m = s.scalar(select(Membership).where(
+            Membership.stripe_subscription_id == subscription_id))
+        if m is None:
+            return False
+        m.cancel_at_period_end = cancel_at_period_end
+        return True
+
+
+def clear_subscription(subscription_id: str) -> bool:
+    """The subscription is gone at Stripe. Access is NOT revoked here: the
+    dates already paid for stay valid, and the plan lapses on dospijeće."""
+    with session_scope() as s:
+        m = s.scalar(select(Membership).where(
+            Membership.stripe_subscription_id == subscription_id))
+        if m is None:
+            return False
+        m.stripe_subscription_id = None
+        m.cancel_at_period_end = False
+        return True
 
 
 def payments_for(user_id: int, limit: int = 50) -> list[Payment]:
