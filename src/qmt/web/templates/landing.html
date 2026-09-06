@@ -141,14 +141,18 @@
     <div class="cta-row">
       {% if can_book %}
       <a class="btn btn-hero" href="/raspored">Rezerviraj termin</a>
-      {% else %}
+      {% elif user %}
       <a class="btn btn-hero" href="/cjenik">Pogledaj cjenik</a>
+      {% else %}
+      {# a guest's first job is getting an account — the register CTA leads,
+         full size, not a footnote under the buttons #}
+      <a class="btn btn-hero" href="/signup">Registriraj se</a>
+      <a class="btn btn-hero secondary" href="/cjenik">Pogledaj cjenik</a>
       {% endif %}
       <a class="btn btn-hero secondary" href="#usluge">Što nudimo</a>
     </div>
     {% if not user %}
-    <p class="hero-note">Nemaš račun? <a class="tlink" href="/signup">Registriraj se</a> —
-      ili se <a class="tlink" href="/login">prijavi</a> ako ga već imaš.</p>
+    <p class="hero-note">Već imaš račun? <a class="tlink" href="/login">Prijavi se</a>.</p>
     {% elif not can_book %}
     <p class="hero-note">Nemaš aktivnu članarinu za treninge — cjenik ti pokazuje sve opcije.</p>
     {% endif %}
