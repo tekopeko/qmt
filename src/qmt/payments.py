@@ -194,8 +194,14 @@ def _invoice_subscription_id(inv) -> str | None:
 
 
 def _plan_from(meta: dict | None, price_id: str | None) -> tuple[str | None, int | None]:
-    """(plan, sessions) from subscription metadata, falling back to the price
-    id — so a subscription created by hand in the dashboard still resolves."""
+    """(plan, sessions). The PRICE decides when it maps to one of ours — a tier
+    switch (our button or Stripe's portal) changes the price, and metadata
+    written at checkout would be stale. Metadata is the fallback for a price
+    we do not recognise."""
+    for p in PLAN_TYPES:
+        for n, pid in price_ids(p).items():
+            if pid == price_id:
+                return p, n
     meta = meta or {}
     plan = meta.get("qmt_plan")
     if plan in PLAN_TYPES:
@@ -204,11 +210,32 @@ def _plan_from(meta: dict | None, price_id: str | None) -> tuple[str | None, int
         except ValueError:
             n = 0
         return plan, (n or None)
-    for p in PLAN_TYPES:
-        for n, pid in price_ids(p).items():
-            if pid == price_id:
-                return p, n
     return None, None
+
+
+def change_tier(user, plan: str, sessions: int) -> None:
+    """Move an existing subscription to another tier of the same plan. Stripe
+    prorates the difference on the next invoice; the quota changes right away
+    (here, and again when subscription.updated confirms it)."""
+    ids = price_ids(plan)
+    if sessions not in ids or None in ids:
+        raise ValueError("Odaberi broj treninga.")
+    m = next((m for m in db.memberships_for(user.id)
+              if m.plan == plan and m.stripe_subscription_id), None)
+    if m is None:
+        raise ValueError("Nemaš pretplatu za ovaj plan.")
+    if m.sessions_per_cycle == sessions:
+        raise ValueError("To je već tvoj paket.")
+    st = _stripe()
+    sub = st.Subscription.retrieve(m.stripe_subscription_id)
+    item_id = _get(sub, "items", "data", 0, "id")
+    st.Subscription.modify(
+        m.stripe_subscription_id,
+        items=[{"id": item_id, "price": ids[sessions]}],
+        proration_behavior="create_prorations",
+        metadata={"qmt_user_id": str(user.id), "qmt_plan": plan, "qmt_sessions": str(sessions)},
+    )
+    db.set_subscription_tier(m.stripe_subscription_id, sessions)
 
 
 def handle_event(event) -> str:
@@ -245,7 +272,14 @@ def handle_event(event) -> str:
     if kind == "customer.subscription.updated":
         sub_id = _get(obj, "id")
         flag = bool(_get(obj, "cancel_at_period_end", default=False))
-        return "updated" if db.set_subscription_cancelling(sub_id, flag) else "ignored: unknown subscription"
+        if not db.set_subscription_cancelling(sub_id, flag):
+            return "ignored: unknown subscription"
+        # the price on the subscription IS the tier — ours or the portal's doing
+        plan, sessions = _plan_from(_as_dict(_get(obj, "metadata")),
+                                    _get(obj, "items", "data", 0, "price", "id"))
+        if plan is not None:
+            db.set_subscription_tier(sub_id, sessions)
+        return "updated"
 
     if kind == "customer.subscription.deleted":
         return "deleted" if db.clear_subscription(_get(obj, "id")) else "ignored: unknown subscription"

@@ -13,8 +13,8 @@
   .plan .foot { margin-top: auto; display: flex; flex-direction: column;
                 gap: 8px; align-items: flex-start; padding-top: 4px; }
   .plan .foot form { margin: 0; }
-  .plan .foot form.switch { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line);
-                            display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .plan .foot .switch { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line);
+                       display: flex; flex-direction: column; gap: 8px; align-items: flex-start; align-self: stretch; }
   .tiers { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   /* base.html styles every <label> as an uppercase form caption — these are
      pills, so undo that: normal case, no tracking, one line each */
@@ -59,28 +59,49 @@
     {# Stripe's Price when one exists (that is what the button charges);
        otherwise the shop's reference price in the shop's own unit #}
     {% set cur = ("€" if pr and pr.currency == "EUR" else (pr.currency if pr else "€")) %}
+    {% set sub = subs.get(key) %}
+    {# a subscribed tier shows ITS price, not the range — the range is for shoppers #}
+    {% set mine = (pr.tiers|selectattr("sessions", "equalto", sub.sessions_per_cycle)|first) if (pr and pr.tiers and sub) else none %}
     <div class="price">
-      {% if pr and pr.tiers %}{{ "%.0f"|format(pr.tiers[0].amount) }}–{{ "%.0f"|format(pr.tiers[-1].amount) }} {{ cur }} <small>/ mjesečno</small>
+      {% if mine %}{{ "%.0f"|format(mine.amount) }} {{ cur }} <small>/ mjesečno · {{ mine.sessions }} treninga</small>
+      {% elif pr and pr.tiers %}{{ "%.0f"|format(pr.tiers[0].amount) }}–{{ "%.0f"|format(pr.tiers[-1].amount) }} {{ cur }} <small>/ mjesečno</small>
       {% elif pr %}{{ "%.2f"|format(pr.amount)|replace(".", ",") }} {{ cur }} <small>/ mjesečno</small>
       {% elif ref[0] %}{{ ref[0] }} € <small>{{ ref[1] }}</small>
       {% else %}na upit <small>{{ ref[1] }}</small>{% endif %}
     </div>
-    {% if pr and pr.tiers %}<div class="hint" style="font-size:.78rem; margin-top:-4px;">{{ pr.tiers|map(attribute="sessions")|join(", ") }} treninga mjesečno</div>
+    {% if mine %}
+    {% elif pr and pr.tiers %}<div class="hint" style="font-size:.78rem; margin-top:-4px;">{{ pr.tiers|map(attribute="sessions")|join(", ") }} treninga mjesečno</div>
     {% elif not pr and ref[2] %}<div class="hint" style="font-size:.78rem; margin-top:-4px;">{{ ref[2] }}</div>{% endif %}
     <div class="foot">
     {% if key in subs %}
-      {% set tier = (" · " ~ subs[key].sessions_per_cycle ~ " treninga/mj") if subs[key].sessions_per_cycle else "" %}
-      {% if subs[key].cancel_at_period_end %}
-      <span class="owned" style="color:var(--muted);">Pretplata otkazana{{ tier }} — vrijedi do {{ subs[key].dospijece.strftime("%-d.%-m.%Y.") }}</span>
+      {% if sub.cancel_at_period_end %}
+      <span class="owned" style="color:var(--muted);">Pretplata otkazana — vrijedi do {{ sub.dospijece.strftime("%-d.%-m.%Y.") }}</span>
       {% else %}
-      <span class="owned">✓ Pretplata aktivna{{ tier }} — obnavlja se automatski</span>
+      <span class="owned">✓ Tvoja pretplata — obnavlja se {{ sub.next_payment.strftime("%-d.%-m.") }}</span>
       {% endif %}
       {% if key in plan_links %}
       <a class="btn btn-sm" href="{{ plan_links[key][0] }}">{{ plan_links[key][1] }} →</a>
       {% endif %}
-      <form method="post" action="/placanje/portal"><button type="submit" class="act act-quiet">Upravljaj pretplatom</button></form>
+      {% if mine and pr.tiers|length > 1 %}
+      {# the other tiers, one click each — Stripe prorates the difference #}
+      <div class="switch">
+        <div class="hint" style="font-size:.78rem;">Promijeni paket:</div>
+        <div class="tiers">
+          {% for t in pr.tiers if t.sessions != mine.sessions %}
+          <form method="post" action="/placanje/{{ key }}/promjena"
+                data-confirm-title="Promijeniti na {{ t.sessions }} treninga?"
+                data-confirm="Novi paket vrijedi odmah — {{ "%.0f"|format(t.amount) }} {{ cur }} mjesečno. Razliku za ostatak ovog ciklusa Stripe obračuna na sljedećem računu."
+                data-confirm-cta="Promijeni">
+            <input type="hidden" name="sessions" value="{{ t.sessions }}">
+            <button type="submit" class="act">{{ t.sessions }} treninga · {{ "%.0f"|format(t.amount) }} {{ cur }}</button>
+          </form>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      <form method="post" action="/placanje/portal"><button type="submit" class="act act-quiet">Kartica, računi, otkazivanje</button></form>
     {% elif key in my_plans %}
-      <span class="owned">✓ Aktivna članarina</span>
+      <span class="owned">✓ Aktivna članarina (gotovina)</span>
       {% if key in plan_links %}
       <a class="btn btn-sm" href="{{ plan_links[key][0] }}">{{ plan_links[key][1] }} →</a>
       {% endif %}
@@ -93,12 +114,14 @@
       </form>
       {% endif %}
     {% elif user and key in sellable %}
+      <span class="owned" style="color:var(--muted);">Nemaš ovu članarinu</span>
       <form method="post" action="/placanje/{{ key }}">
         {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
         <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
       </form>
       <span class="hint" style="font-size:.78rem;">Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.</span>
     {% elif user %}
+      <span class="owned" style="color:var(--muted);">Nemaš ovu članarinu</span>
       <span class="hint" style="font-size:.82rem;">Za upis se javi treneru u dvorani.</span>
     {% else %}
       <a class="btn btn-sm" href="/login?next=/cjenik">Prijavi se ili se registriraj</a>

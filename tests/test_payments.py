@@ -48,6 +48,12 @@ def stripe_on(monkeypatch):
     # and the handler once crashed on exactly that difference
     monkeypatch.setattr(stripe.Subscription, "retrieve",
                         staticmethod(lambda sid, **kw: stripe.Subscription.construct_from(subs[sid], "sk_test_x")))
+
+    def sub_modify(sid, **kw):
+        calls.setdefault("modify", []).append((sid, kw))
+        subs[sid]["metadata"] = kw.get("metadata", subs[sid].get("metadata"))
+        return stripe.Subscription.construct_from(subs[sid], "sk_test_x")
+    monkeypatch.setattr(stripe.Subscription, "modify", staticmethod(sub_modify))
     amounts = {"price_online": 5500, "price_g8": 6000, "price_g12": 7000, "price_g16": 8000}
     monkeypatch.setattr(stripe.Price, "retrieve", staticmethod(
         lambda pid, **kw: {"unit_amount": amounts[pid], "currency": "eur", "recurring": {"interval": "month"}}))
@@ -149,17 +155,28 @@ def test_invoice_paid_grants_a_month_exactly_once(stripe_on):
     assert m.next_payment == db._add_month(first_due)
 
 
-def test_invoice_sets_the_tier_from_metadata_or_price(stripe_on):
+def test_invoice_tier_comes_from_the_price_metadata_only_as_fallback(stripe_on):
     ivan = make_user("ivan@test.local")
+
+    def paid(inv, sub, price, cents):
+        ev = invoice_paid(inv, sub, cents=cents)
+        ev["data"]["object"]["lines"]["data"][0]["price"]["id"] = price
+        post_event(ev)
+        return db.memberships_for(ivan)[0].sessions_per_cycle
+
+    # price and metadata agree
     stripe_on["subs"]["sub_t"] = {"id": "sub_t", "metadata": {"qmt_user_id": str(ivan), "qmt_plan": "grupni",
                                                             "qmt_sessions": "8"}}
-    post_event(invoice_paid("in_t", "sub_t", cents=6000))
-    assert db.memberships_for(ivan)[0].sessions_per_cycle == 8
-
-    # no plan in metadata (subscription made by hand in the dashboard): the price says 12
+    assert paid("in_t", "sub_t", "price_g8", 6000) == 8
+    # metadata is stale (a switch happened) — the price wins
+    assert paid("in_t2", "sub_t", "price_g16", 8000) == 16
+    # hand-made in the dashboard, no plan in metadata — the price alone resolves it
     stripe_on["subs"]["sub_h"] = {"id": "sub_h", "metadata": {"qmt_user_id": str(ivan)}}
-    post_event(invoice_paid("in_h", "sub_h", cents=7000))
-    assert db.memberships_for(ivan)[0].sessions_per_cycle == 12
+    assert paid("in_h", "sub_h", "price_g12", 7000) == 12
+    # a price we do not know, but metadata does: metadata is the fallback
+    stripe_on["subs"]["sub_m"] = {"id": "sub_m", "metadata": {"qmt_user_id": str(ivan), "qmt_plan": "grupni",
+                                                            "qmt_sessions": "8"}}
+    assert paid("in_m", "sub_m", "price_unknown", 6000) == 8
 
 
 def test_cash_plan_taken_over_by_subscription_extends_from_due_date(stripe_on):
@@ -279,3 +296,54 @@ def test_disabled_stripe_touches_nothing(monkeypatch):
     monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "")
     assert not payments.enabled()
     assert payments.sellable_plans() == set() and payments.price_table() == {}
+
+
+# ---------- tier changes ----------
+
+def test_tier_change_goes_through_stripe_and_updates_the_quota(stripe_on):
+    ivan = make_user("ivan@test.local")
+    stripe_on["subs"]["sub_1"] = {"id": "sub_1", "items": {"data": [{"id": "si_1", "price": {"id": "price_g12"}}]},
+                                  "metadata": {"qmt_user_id": str(ivan), "qmt_plan": "grupni", "qmt_sessions": "12"}}
+    post_event(invoice_paid("in_1", "sub_1", cents=7000))
+    assert db.memberships_for(ivan)[0].sessions_per_cycle == 12
+    c = client_for("ivan@test.local")
+
+    page = c.get("/cjenik").text
+    assert "70 €" in page and "12 treninga" in page            # its OWN price, not the range
+    assert "60–80 €" not in page
+    assert 'action="/placanje/grupni/promjena"' in page
+    assert "16 treninga · 80 €" in page and "8 treninga · 60 €" in page
+
+    r = c.post("/placanje/grupni/promjena", data={"sessions": "16"}, follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    sid, kw = stripe_on["calls"]["modify"][0]
+    assert sid == "sub_1"
+    assert kw["items"] == [{"id": "si_1", "price": "price_g16"}]
+    assert kw["proration_behavior"] == "create_prorations"
+    assert kw["metadata"]["qmt_sessions"] == "16"
+    assert db.memberships_for(ivan)[0].sessions_per_cycle == 16     # immediately
+
+    # same tier again, or a tier that isn't priced: refused before Stripe
+    assert "error" in c.post("/placanje/grupni/promjena", data={"sessions": "16"}, follow_redirects=False).headers["location"]
+    assert "error" in c.post("/placanje/grupni/promjena", data={"sessions": "99"}, follow_redirects=False).headers["location"]
+    assert len(stripe_on["calls"]["modify"]) == 1
+
+
+def test_portal_tier_switch_arrives_by_webhook_and_price_wins_over_stale_metadata(stripe_on):
+    ivan = make_user("ivan@test.local")
+    stripe_on["subs"]["sub_1"] = {"id": "sub_1", "metadata": {"qmt_user_id": str(ivan), "qmt_plan": "grupni", "qmt_sessions": "12"}}
+    post_event(invoice_paid("in_1", "sub_1", cents=7000))
+
+    # the client switched to 8 in Stripe's portal: metadata still says 12, the price says 8
+    r = post_event({"type": "customer.subscription.updated",
+                    "data": {"object": {"id": "sub_1", "cancel_at_period_end": False,
+                                        "metadata": {"qmt_user_id": str(ivan), "qmt_plan": "grupni", "qmt_sessions": "12"},
+                                        "items": {"data": [{"price": {"id": "price_g8"}}]}}}})
+    assert r.text == "updated"
+    assert db.memberships_for(ivan)[0].sessions_per_cycle == 8
+
+    # and next month's invoice on the new price restates 8, not the stale 12
+    ev = invoice_paid("in_2", "sub_1", cents=6000)
+    ev["data"]["object"]["lines"]["data"][0]["price"]["id"] = "price_g8"
+    post_event(ev)
+    assert db.memberships_for(ivan)[0].sessions_per_cycle == 8

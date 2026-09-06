@@ -538,6 +538,18 @@ def set_subscription_cancelling(subscription_id: str, cancel_at_period_end: bool
         return True
 
 
+def set_subscription_tier(subscription_id: str, sessions: int | None) -> bool:
+    """The subscription's price changed (our button or Stripe's portal) — the
+    quota follows it immediately; the dates are untouched."""
+    with session_scope() as s:
+        m = s.scalar(select(Membership).where(
+            Membership.stripe_subscription_id == subscription_id))
+        if m is None:
+            return False
+        m.sessions_per_cycle = sessions
+        return True
+
+
 def clear_subscription(subscription_id: str) -> bool:
     """The subscription is gone at Stripe. Access is NOT revoked here: the
     dates already paid for stay valid, and the plan lapses on dospijeće."""

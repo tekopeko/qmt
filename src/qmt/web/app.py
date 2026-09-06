@@ -273,6 +273,26 @@ def placanje_portal(request: Request):
         return RedirectResponse("/profil?error=Portal+trenutno+nije+dostupan.", status_code=303)
 
 
+@app.post("/placanje/{plan}/promjena")
+def placanje_promjena(request: Request, plan: str, sessions: int = Form(...)):
+    """Switch an existing subscription to another tier of the same plan."""
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    from urllib.parse import quote
+    try:
+        payments.change_tier(user, plan, sessions)
+    except ValueError as e:
+        return RedirectResponse(f"/cjenik?error={quote(str(e))}#plan-{plan}", status_code=303)
+    except Exception as e:
+        print(f"[stripe] tier change failed for user {user.id}/{plan}: {e}")
+        return RedirectResponse("/cjenik?error=Promjena+trenutno+nije+moguća+—+pokušaj+kasnije.",
+                                status_code=303)
+    return RedirectResponse(
+        f"/cjenik?ok={quote(f'Paket promijenjen na {sessions} treninga mjesečno.')}#plan-{plan}",
+        status_code=303)
+
+
 @app.post("/placanje/{plan}")
 def placanje(request: Request, plan: str, sessions: int | None = Form(None)):
     """Start a monthly card subscription for one plan — hands off to Stripe
