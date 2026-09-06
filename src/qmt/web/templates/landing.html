@@ -110,6 +110,10 @@
   .info td { padding: 3px 14px 3px 0; color: var(--muted); }
   .info td.d { color: var(--text); font-weight: 600; }
   .info a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  /* contact rows: icon + text, one per line, the icon sized to the x-height */
+  .crow { display: flex; align-items: center; gap: 7px; font-size: .92rem; width: max-content;
+          max-width: 100%; line-height: 1.5; margin-bottom: 4px; }
+  .crow svg { flex: none; opacity: .85; }
   /* socials: quiet grey glyphs that take the accent on hover; 32px hit area */
   .socials { display: flex; gap: 6px; margin-top: 10px; }
   .socials a { display: inline-flex; padding: 6px; border-radius: 8px; color: var(--muted);
@@ -261,21 +265,26 @@
     </div>
     <div>
       <h3>Gdje smo</h3>
-      <p class="hint" style="font-size:.92rem; margin-bottom:6px;">Virovska 1, Zagreb</p>
-      {# query_place_id pins the exact building — the text query alone is ambiguous
+      {# the address IS the link — one line, the pin says where it goes.
+         query_place_id pins the exact building — the text query alone is ambiguous
          (Maps offers "Virovska ul." vs "Virovska ul. 1" and opens a picker). The
          id comes from the place's own Maps URL; the text stays as fallback. #}
-      <a href="https://www.google.com/maps/search/?api=1&query=Virovska+ul.+1%2C+Zagreb&query_place_id=ChIJtSVeRefXZUcRM03Say70HFo"
-         target="_blank" rel="noopener"
-         style="display:inline-flex; align-items:center; gap:6px;">
+      <a class="crow" href="https://www.google.com/maps/search/?api=1&query=Virovska+ul.+1%2C+Zagreb&query_place_id=ChIJtSVeRefXZUcRM03Say70HFo"
+         target="_blank" rel="noopener" title="Otvori u Google kartama">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
-        Otvori u Google kartama
+        Virovska 1, Zagreb
       </a>
     </div>
     <div>
       <h3>Kontakt</h3>
-      <p style="font-size:.92rem;"><a href="tel:+385914424418">091 442 4418</a><br>
-      <a href="mailto:qualitymovementtraining@gmail.com">qualitymovementtraining@gmail.com</a></p>
+      <a class="crow" href="tel:+385914424418">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        +385 91 442 4418
+      </a>
+      <a class="crow" href="mailto:qualitymovementtraining@gmail.com">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        qualitymovementtraining@gmail.com
+      </a>
       {# social profiles: icons only, muted until hovered — a contact detail, not a banner #}
       <div class="socials" aria-label="Društvene mreže">
         <a href="https://www.instagram.com/quality_movement_training/" target="_blank" rel="noopener" aria-label="Instagram" title="Instagram">
