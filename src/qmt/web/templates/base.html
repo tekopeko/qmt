@@ -214,7 +214,9 @@
     /* ===== controls: rounded, soft, no boxes ===== */
     button, .btn {
       font: 600 .92rem var(--font-body);
-      border: none; border-radius: 12px; cursor: pointer;
+      /* a transparent hairline, so a filled button is exactly as tall as a
+         .btn-ghost beside it — the confirm modal's Odustani/Potvrdi were 31/29 */
+      border: 1px solid transparent; border-radius: 12px; cursor: pointer;
       padding: 11px 20px; text-decoration: none; display: inline-flex;
       align-items: center; justify-content: center; gap: 8px;
       background: var(--accent-fill); color: var(--accent-ink);

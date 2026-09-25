@@ -127,8 +127,11 @@ Before calling any UI work done:
    `python .claude/skills/qmt-design/scripts/audit.py`. It walks every page as
    anon / client / owner, both themes, 1280px and 390px, and reports overflow,
    WCAG-AA contrast, tap targets under 32px, unlabelled controls, missing alt,
-   heading order. Overflow must be **0**; new contrast or tap findings must be
-   fixed or explained (tinted elements produce "ratio 1" false positives).
+   heading order. It compares against `references/audit-baseline.json` — the
+   findings already reviewed (mostly the contrast checker's "ratio 1" on tinted
+   elements) — and reports only what is **new**. Overflow must be 0 and new
+   findings must be 0: fix them, or, after a deliberate review, re-record with
+   `--save-baseline` and say why in the commit.
 2. Take **one** Playwright screenshot per message (several large images in one
    session make later images unreadable) at the width that matters — usually
    390px — and look at it. Measure alignment with `getBoundingClientRect`, not by

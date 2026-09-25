@@ -15,7 +15,12 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
-BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8100"
+import pathlib
+
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+BASE = ARGS[0] if ARGS else "http://127.0.0.1:8100"
+SAVE_BASELINE = "--save-baseline" in sys.argv
+BASELINE = pathlib.Path(__file__).resolve().parent.parent / "references" / "audit-baseline.json"
 ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana"]
 CLIENT = ["/", "/raspored", "/karton", "/cjenik", "/prehrana", "/profil", "/treninzi", "/upitnik"]
 OWNER = ["/", "/raspored", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi", "/profil"]
@@ -141,25 +146,36 @@ def main():
                     ctx.close()
         b.close()
 
+    # A baseline holds the signatures of findings already judged (mostly the
+    # contrast checker's "ratio 1" on tinted elements). Runs report what is
+    # NEW relative to it; --save-baseline re-records the current state after a
+    # deliberate review. Without it, ~240 known items drown one real one.
+    known = set(json.loads(BASELINE.read_text())) if BASELINE.exists() and not SAVE_BASELINE else set()
+    sigs_now = set()
     print("=" * 72)
-    total = 0
+    total_new = 0
     for k, label in (("overflow", "PAGE OVERFLOW"), ("inner", "ELEMENT OVERFLOW"),
                      ("contrast", "CONTRAST BELOW WCAG AA"), ("tap", "TAP TARGET < 32px"),
                      ("alt", "IMG WITHOUT ALT"), ("label", "UNLABELLED FORM CONTROL"),
                      ("head", "HEADINGS")):
-        items = findings[k]
-        total += len(items)
-        print(f"\n### {label}: {len(items)}")
         seen = {}
-        for where, item in items:
-            sig = json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
+        for where, item in findings[k]:
+            sig = k + "|" + (json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item))
+            sigs_now.add(sig)
             seen.setdefault(sig, [0, where])
             seen[sig][0] += 1
-        for sig, (n, where) in sorted(seen.items(), key=lambda x: -x[1][0])[:14]:
-            print(f"  ×{n:<3} {sig[:100]}")
+        new = {s_: v for s_, v in seen.items() if s_ not in known}
+        total_new += sum(v[0] for v in new.values())
+        base_n = sum(v[0] for s_, v in seen.items() if s_ in known)
+        print(f"\n### {label}: {sum(v[0] for v in new.values())} new" + (f"  (+{base_n} in baseline)" if base_n else ""))
+        for sig, (n, where) in sorted(new.items(), key=lambda x: -x[1][0])[:14]:
+            print(f"  ×{n:<3} {sig.split('|',1)[1][:100]}")
             print(f"       e.g. {where}")
-    print(f"\nfindings: {total}")
-    sys.exit(1 if findings["overflow"] or findings["inner"] else 0)
+    if SAVE_BASELINE:
+        BASELINE.write_text(json.dumps(sorted(sigs_now), indent=0, ensure_ascii=False))
+        print(f"\nbaseline saved: {len(sigs_now)} signatures → {BASELINE.name}")
+    print(f"\nnew findings: {total_new}")
+    sys.exit(1 if findings["overflow"] or findings["inner"] or total_new else 0)
 
 
 if __name__ == "__main__":

@@ -36,6 +36,16 @@ first; a new class is a last resort and needs a comment explaining the gap.
 display: inline-flex` — an anchor with only `.btn-sm` otherwise keeps the
 browser underline while looking like a button.
 
+**Footprint parity.** Every button carries a 1px border — transparent on filled
+ones, `--line` on ghosts — so a filled `.btn-sm` and a `.btn-ghost.btn-sm` in the
+same row are the same height (the confirm modal's Odustani/Potvrdi were 31/29
+until this rule). If you add a button variant, keep the border box.
+
+**Legacy aliases still in templates** (`base.html` compat block): `--ink`,
+`--ink-2`, `--ground`, `--ground-2`, `--signal`, `--signal-ink` → the modern
+tokens; `--danger` → `--accent`; `.btn-signal` → plain `.btn`. Read them as their
+targets; do not introduce new uses.
+
 ## Forms
 
 | element | rule |
