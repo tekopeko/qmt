@@ -3,163 +3,149 @@
 {% block main_class %}full{% endblock %}
 {% block head %}
 <style>
-  /* ===== hero: dark stage for the logo, angular red energy ===== */
+  /* ===== the Shape language, in QMT's colours =====
+     Small centred copy, one enormous photo card carrying the drama, contained
+     rounded cards on a near-black page, generous air between sections. Red is
+     spent on actions and one soft glow behind the hero, nowhere else. */
   .hero {
-    position: relative; overflow: hidden;
-    background: #141416; color: #fff;
-    padding: clamp(64px, 11vw, 130px) clamp(20px, 6vw, 72px) clamp(72px, 10vw, 120px);
+    position: relative;
+    padding: clamp(28px, 5vw, 56px) clamp(16px, 4vw, 40px) 0;
+    background: radial-gradient(60% 45% at 50% -8%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 65%);
   }
-  .hero-tri {
-    position: absolute; inset: 0; pointer-events: none; opacity: .9;
-  }
-  .hero-inner { position: relative; max-width: 1100px; margin: 0 auto; }
+  .hero-inner { max-width: 1100px; margin: 0 auto; text-align: center; }
   .hero .kicker {
-    display: inline-flex; align-items: center; gap: 10px;
-    font: 700 .78rem var(--font-body); letter-spacing: .18em; text-transform: uppercase;
-    color: #bdbdb9; margin-bottom: 22px;
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px;
+    border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+    font: 600 .74rem var(--font-body); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 22px;
   }
-  .hero .kicker::before { content: ""; width: 26px; height: 3px; background: var(--accent); border-radius: 2px; }
-  .hero h1 {
-    font-size: clamp(2.4rem, 6.5vw, 4.6rem); max-width: 13ch; color: #fff;
-  }
-  .hero h1 .red { color: #ff342b; }
+  .hero .kicker::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .hero h1 { font-size: clamp(2rem, 5vw, 3.4rem); color: var(--text); margin: 0 auto; max-width: 22ch; }
+  .hero h1 .red { color: var(--accent); }
   .hero p.lead {
-    max-width: 54ch; margin: 22px 0 34px; font-size: clamp(1rem, 1.6vw, 1.15rem);
-    color: #d4d4d0;
+    max-width: 52ch; margin: 16px auto 26px; font-size: clamp(1rem, 1.5vw, 1.15rem);
+    color: var(--muted);
   }
-  .hero .cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
-  .hero .btn-hero { padding: 15px 28px; font-size: 1rem; border-radius: 14px; }
+  .hero .cta-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .hero .btn-hero { padding: 14px 26px; font-size: .98rem; border-radius: 999px; }
   .hero .btn-hero.secondary {
-    background: rgba(255, 255, 255, .08); color: #fff; box-shadow: none;
-    border: 1px solid rgba(255, 255, 255, .18);
+    background: var(--surface); color: var(--text); box-shadow: none; border: 1px solid var(--line);
   }
-  .hero .btn-hero.secondary:hover { background: rgba(255, 255, 255, .15); }
+  .hero .btn-hero.secondary:hover { background: var(--surface-2); transform: none; }
+  .hero-note { margin-top: 14px; font-size: .9rem; color: var(--muted); }
 
-  /* main.full has no padding, so flash messages (e.g. after the profile form
-     sends someone here) need their own gutters or they hit the window edges */
-  main.full > .alert { margin: 16px clamp(20px, 6vw, 72px); }
+  /* ---- the photo card: one image, chips in the corners, title over a gradient ---- */
+  .stage {
+    position: relative; max-width: 1100px; margin: clamp(30px, 5vw, 52px) auto 0;
+    border-radius: var(--r-xl); overflow: hidden; background: #141416;
+    aspect-ratio: 16 / 8.2; box-shadow: var(--shadow);
+  }
+  .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 78%; }
+  .stage::after {                     /* the gradient that makes white type readable on any photo */
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,.18) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,.82) 100%);
+  }
+  .stage .tags { position: absolute; z-index: 1; top: 18px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .stage .tags.l { left: 18px; } .stage .tags.r { right: 18px; justify-content: flex-end; }
+  .stage .copy { position: absolute; z-index: 1; left: clamp(18px, 3vw, 36px); right: clamp(18px, 3vw, 36px); bottom: clamp(18px, 3vw, 34px); color: #fff; text-align: left; }
+  .stage .copy h2 { font-size: clamp(1.4rem, 3.4vw, 2.4rem); color: #fff; margin-bottom: 8px; }
+  .stage .copy p { max-width: 48ch; color: rgba(255,255,255,.82); font-size: clamp(.92rem, 1.3vw, 1.05rem); }
+  @media (max-width: 720px) { .stage { aspect-ratio: 4 / 5; } .stage .tags.r { display: none; } }
 
-  section.band { padding: clamp(46px, 7vw, 80px) clamp(20px, 6vw, 72px); }
+  /* chips that sit ON a photo: translucent glass, always light-on-dark because the
+     photo underneath is what they sit on, not the theme */
+  .tag { display: inline-flex; align-items: center; padding: 5px 11px; border-radius: 999px;
+         font: 600 .74rem var(--font-body); letter-spacing: .02em; white-space: nowrap;
+         background: rgba(255,255,255,.16); color: #fff; border: 1px solid rgba(255,255,255,.18);
+         backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .tag.solid { background: var(--surface-2); color: var(--text); border-color: var(--line);
+               backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .tag.accent { background: var(--accent-dim); color: var(--accent); border-color: transparent; }
+
+  /* ---- sections ---- */
+  main.full > .alert { margin: 16px clamp(16px, 4vw, 40px); }
+  section.band { padding: clamp(56px, 8vw, 104px) clamp(16px, 4vw, 40px); }
   .band-inner { max-width: 1100px; margin: 0 auto; }
-  .sec-kicker {
-    font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase;
-    color: var(--accent); margin-bottom: 8px;
-  }
-  section.band h2 { font-size: clamp(1.5rem, 3vw, 2.1rem); margin-bottom: 26px; }
+  .sec-head { text-align: center; max-width: 60ch; margin: 0 auto clamp(26px, 4vw, 40px); }
+  .sec-kicker { font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase;
+                color: var(--accent); margin-bottom: 10px; }
+  section.band h2 { font-size: clamp(1.6rem, 3.2vw, 2.3rem); }
+  .sec-head p { color: var(--muted); margin-top: 10px; font-size: 1rem; }
 
-  /* services */
-  /* min 300px caps the row at 3 cards — six services read as a clean 3×2 */
-  .svc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 18px; }
+  /* services: contained rounded cards, italic display titles, chip for the meta */
+  .svc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
   .svc {
-    padding: 26px 24px; display: flex; flex-direction: column; gap: 10px;
-    transition: transform .15s ease, box-shadow .15s ease;
+    padding: 26px 26px 24px; display: flex; flex-direction: column; gap: 12px;
+    border-radius: var(--r-xl); transition: transform .15s ease, border-color .15s ease;
   }
-  .svc:hover { transform: translateY(-3px); }
+  .svc:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--text) 18%, var(--line)); }
   .svc .ico {
-    width: 46px; height: 46px; border-radius: 13px; background: var(--accent-dim);
+    width: 46px; height: 46px; border-radius: 14px; background: var(--accent-dim);
     display: flex; align-items: center; justify-content: center; color: var(--accent);
   }
-  .svc h3 { font-size: 1.02rem; }
-  /* three lines of copy reserved in every card: with the blocks equal, the
-     gap above the CTA is the flex gap and nothing else, so it is identical
-     everywhere AND the buttons still line up across a row */
+  .svc h3 { font: 700 italic 1.15rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
+  /* three lines reserved so every card's chip and CTA sit on the same lines */
   .svc p { color: var(--muted); font-size: .92rem; min-height: 4.65em; }
-  .hero-note { margin-top: 14px; font-size: .9rem; color: var(--muted); }
-  .svc .meta { font: 600 .78rem var(--font-body); color: var(--accent); letter-spacing: .04em; }
-  /* Every card shows its CTA, always. Phones already did — the hover-reveal was
-     desktop-only — and presence should not be what tells you whether a plan is
-     yours. Style carries that instead: filled green = owned, quiet tint = open. */
-  /* margin-top:auto — .svc is a flex column, so this drops every CTA to the
-     card's bottom edge and they line up across a row despite uneven copy */
-  .svc .svc-cta, .svc .owned { align-self: flex-start; margin-top: auto;
-                               padding: 7px 12px; font-size: .78rem; }
-  /* the padding above outranks base.html's coarse-pointer growth of .btn-sm,
-     so on phones these stayed 31px — the audit caught it. Grow them here too. */
-  @media (pointer: coarse) { .svc .svc-cta, .svc .owned { padding: 10px 15px; } }
-  /* Neutral, not red. Red is the app's primary and the card already spends it
-     on the icon tile and the meta line — a red button turned the whole card
-     into one wash. Neutral keeps the hierarchy: green = yours, grey = open to
-     you, red reserved for actions that actually do something. Same colours and
-     hover as .act, the app's standard secondary. */
+  /* chip above, CTA below, in every card — a long chip made two cards wrap
+     differently and their buttons drifted apart across the row */
+  .svc .foot { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .svc .svc-cta, .svc .owned { padding: 8px 14px; font-size: .8rem; border-radius: 999px; }
+  @media (pointer: coarse) { .svc .svc-cta, .svc .owned { padding: 10px 16px; } }
+  /* neutral for "open to you", green for "yours" — red stays reserved for actions */
   .svc .svc-cta { background: var(--surface-2); color: var(--text);
                   border: 1px solid var(--line); box-shadow: none; }
   .svc .svc-cta:hover { background: color-mix(in srgb, var(--text) 10%, var(--surface-2));
-                        border-color: color-mix(in srgb, var(--text) 40%, transparent);
-                        color: var(--text); }
-  /* an active plan is a door, so it gets the same bubble as "Odaberi plan" —
-     green because it reports a state you already have, not a purchase.
-     --good is tuned for TEXT on a dark page and is far too bright as a fill,
-     hence --good-fill. .btn's own shadow is a red glow, so it goes. */
-  /* transparent 1px border so the filled button is exactly as tall as the
-     bordered neutral one — without it the two sit 2px apart in a row */
+                        border-color: color-mix(in srgb, var(--text) 40%, transparent); color: var(--text); }
   .svc .owned { background: var(--good-fill); color: var(--good-ink);
                 border: 1px solid transparent; box-shadow: none; }
   .svc .owned:hover { background: var(--good-strong); color: var(--good-ink); }
 
-  /* gallery */
-  .gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
-  .gal-item { overflow: hidden; display: block; aspect-ratio: 3 / 4; text-decoration: none; }
-  .gal-item img {
-    width: 100%; height: 100%; object-fit: cover; display: block;
-    transition: transform .25s ease;
-  }
+  /* gallery: the same photo-card shape as the stage */
+  .gal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+  .gal-item { overflow: hidden; display: block; aspect-ratio: 4 / 3; text-decoration: none;
+              border-radius: var(--r-xl); background: #141416; }
+  .gal-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s ease; }
   .gal-item:hover img { transform: scale(1.04); }
 
-  /* info band */
-  .info { background: var(--surface); border-block: 1px solid var(--line); }
-  .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 26px; }
-  .info h3 { font-size: .95rem; margin-bottom: 10px; }
+  /* info: one contained card, three columns inside */
+  .info-card { padding: clamp(24px, 4vw, 40px); border-radius: var(--r-xl); }
+  .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 30px; }
+  .info h3 { font-size: .95rem; margin-bottom: 12px; }
   .info table { border-collapse: collapse; font-size: .92rem; }
   .info td { padding: 3px 14px 3px 0; color: var(--muted); }
   .info td.d { color: var(--text); font-weight: 600; }
   .info a { color: var(--accent); text-decoration: none; font-weight: 600; }
-  /* contact rows: icon + text, one per line, the icon sized to the x-height */
+  .info a:hover { color: var(--accent-strong); }
   .crow { display: flex; align-items: center; gap: 7px; font-size: .92rem; width: max-content;
           max-width: 100%; line-height: 1.5; margin-bottom: 4px; }
   .crow svg { flex: none; opacity: .85; }
-  @media (pointer: coarse) { .crow { padding: 5px 0; margin-bottom: 2px; } }   /* 32px thumb targets */
-  /* socials: quiet grey glyphs that take the accent on hover; 32px hit area */
+  @media (pointer: coarse) { .crow { padding: 5px 0; margin-bottom: 2px; } }
   .socials { display: flex; gap: 6px; margin-top: 10px; }
   .socials a { display: inline-flex; padding: 6px; border-radius: 8px; color: var(--muted);
                transition: color .15s, background .15s; }
   .socials a:hover, .socials a:focus-visible { color: var(--accent); background: var(--accent-dim); }
   .socials svg { width: 20px; height: 20px; fill: currentColor; display: block; }
-  .info a:hover { color: var(--accent-strong); }
 
-  footer {
-    padding: 26px clamp(20px, 6vw, 72px); border-top: 1px solid var(--line);
-    color: var(--muted); font-size: .84rem;
-    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  }
+  footer { padding: 26px clamp(16px, 4vw, 40px) 40px; color: var(--muted); font-size: .84rem; text-align: center; }
 </style>
 {% endblock %}
 {% block content %}
 
 <section class="hero">
-  {# angular backdrop echoing the logo's triangle — pure SVG, no external assets #}
-  <svg class="hero-tri" viewBox="0 0 1200 640" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
-    <polygon points="760,640 1060,90 1360,640" fill="none" stroke="#e10600" stroke-width="3" opacity=".5"/>
-    <polygon points="860,640 1110,190 1360,640" fill="none" stroke="#6a6a6e" stroke-width="2" opacity=".45"/>
-    <polygon points="960,640 1160,290 1360,640" fill="#e10600" opacity=".08"/>
-  </svg>
   <div class="hero-inner">
-    <span class="kicker">Zagreb · Trening & rehabilitacija</span>
+    <span class="kicker">Zagreb · Dubrava</span>
     <h1>Kvaliteta pokreta <span class="red">prije svega</span></h1>
     <p class="lead">
-      Individualan pristup treningu, rehabilitaciji i prehrani. Male grupe do 8 polaznika,
-      individualni rad 1:1 i programi povratka nakon ozljede — vođeni znanjem, ne trendovima.
+      Male grupe do 8 polaznika, individualni rad 1:1 i programi povratka nakon ozljede —
+      vođeni znanjem, ne trendovima.
     </p>
-    {# The hero offers only what this visitor can actually do. Booking needs an
-       active plan, so it is the primary CTA only for someone who has one;
-       everyone else is sent to the prices, and a guest also needs an account. #}
+    {# The hero offers only what this visitor can actually do. #}
     <div class="cta-row">
       {% if can_book %}
       <a class="btn btn-hero" href="/raspored">Rezerviraj termin</a>
       {% elif user %}
       <a class="btn btn-hero" href="/cjenik">Pogledaj cjenik</a>
       {% else %}
-      {# a guest's first job is getting an account — the register CTA leads,
-         full size, not a footnote under the buttons #}
       <a class="btn btn-hero" href="/signup" data-auth="signup">Registriraj se</a>
       <a class="btn btn-hero secondary" href="/cjenik">Pogledaj cjenik</a>
       {% endif %}
@@ -170,85 +156,79 @@
     {% elif not can_book %}
     <p class="hero-note">Nemaš aktivnu članarinu za treninge — cjenik ti pokazuje sve opcije.</p>
     {% endif %}
-  </div>
-</section>
 
-<section class="band" id="usluge">
-  <div class="band-inner">
-    <div class="sec-kicker">Usluge</div>
-    <h2>Treniraj kako tebi odgovara</h2>
-    {% macro plan_cta(key) -%}
-      {% if key in my_plans %}<a class="btn btn-sm owned" href="{{ plan_links[key][0] }}"
-         title="Aktivna članarina">✓ {{ plan_links[key][1] }} →</a>
-      {%- else %}<a class="btn btn-sm svc-cta" href="/cjenik#plan-{{ key }}">Odaberi plan →</a>{% endif %}
-    {%- endmacro %}
-    <div class="svc-grid">
-      <div class="card svc">
-        <div class="ico">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M3 20c0-3.2 2.7-5 6-5s6 1.8 6 5"/><path d="M15.5 15.4c2.6.3 4.5 1.8 4.5 4.6"/></svg>
-        </div>
-        <h3>Grupni trening</h3>
-        <p>Satni termini u malim grupama — dovoljno malo za individualnu korekciju, dovoljno veliko za atmosferu.</p>
-        <span class="meta">do 8 polaznika · 60 min</span>
-        {{ plan_cta("grupni") }}
-      </div>
-      <div class="card svc">
-        <div class="ico">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 6.5 h2 v11 h-2 z M15.5 6.5 h2 v11 h-2 z"/><path d="M8.5 12 h7"/><path d="M4 9.5 v5 M20 9.5 v5"/></svg>
-        </div>
-        <h3>Individualni trening</h3>
-        <p>Rad 1:1 prilagođen tvojim ciljevima, mogućnostima i rasporedu — od tehnike do specifične pripreme.</p>
-        <span class="meta">1:1 · po dogovoru</span>
-        {{ plan_cta("individualni") }}
-      </div>
-      <div class="card svc">
-        <div class="ico">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21s-7-4.6-9.5-9C.9 8.7 2.7 5 6.2 5c2.2 0 3.6 1.2 4.3 2.4h3c.7-1.2 2.1-2.4 4.3-2.4 3.5 0 5.3 3.7 3.7 7-2.5 4.4-9.5 9-9.5 9z" transform="scale(.9) translate(1.3 1.3)"/></svg>
-        </div>
-        <h3>Rehabilitacija</h3>
-        <p>Programi povratka treningu nakon ozljede, sa specijalnošću za lumbalnu kralježnicu.</p>
-        <span class="meta">1:1 · stručno vođeno</span>
-        {{ plan_cta("rehabilitacija") }}
-      </div>
-      <div class="card svc">
-        <div class="ico">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="7.5" r="3"/><circle cx="16" cy="7.5" r="3"/><path d="M2.5 20c0-3 2.4-4.8 5.5-4.8s5.5 1.8 5.5 4.8"/><path d="M13 15.6c.9-.3 1.9-.4 3-.4 3.1 0 5.5 1.8 5.5 4.8"/></svg>
-        </div>
-        <h3>Poluindividualni trening</h3>
-        <p>Trening u dvoje ili troje — pola puta između grupe i rada 1:1, s istim fokusom na tehniku i napredak.</p>
-        <span class="meta">2–3 polaznika · 60 min</span>
-        {{ plan_cta("poluindividualni") }}
-      </div>
-      <div class="card svc">
-        <div class="ico">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="12.5" rx="2"/><path d="M10 8.5l4.5 2.75L10 14z"/><path d="M8.5 20.5h7"/></svg>
-        </div>
-        <h3>Online trening</h3>
-        <p>Programi po razinama i ciljevima s video uputama — treniraj gdje god jesi, uz nadzor trenera.</p>
-        <span class="meta">po razinama · video upute</span>
-        {{ plan_cta("online") }}
-      </div>
-      <div class="card svc">
-        <div class="ico">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8c1-1.7 2.6-2.5 4.2-2.3 2.9.4 4.3 3.4 3.3 6.4-1 3.1-3.2 6.4-5.3 6.4-.8 0-1.5-.4-2.2-.4s-1.4.4-2.2.4c-2.1 0-4.3-3.3-5.3-6.4-1-3 .4-6 3.3-6.4C9.4 5.5 11 6.3 12 8z"/><path d="M12 8c0-2 1-3.4 2.6-4"/></svg>
-        </div>
-        <h3>Prehrana</h3>
-        <p>Vođenje prehrane uz aplikaciju MojiMakrosi — opišeš što jedeš, ona računa kalorije i makrose prema tvom cilju.</p>
-        <span class="meta">uz MojiMakrose · zdravi recepti</span>
-        {{ plan_cta("prehrana") }}
+    {# the stage: the studio itself, with the facts as chips #}
+    <div class="stage" role="img" aria-label="Dvorana Quality Movement Training">
+      <img src="/static/gallery/{{ gallery[0] if gallery else 'dvorana-1.jpg' }}" alt="" loading="eager">
+      <div class="tags l"><span class="tag">Grupni</span><span class="tag">1:1</span><span class="tag">Rehabilitacija</span></div>
+      <div class="tags r"><span class="tag">do 8 polaznika</span><span class="tag">07–20 h</span></div>
+      <div class="copy">
+        <h2>Dvorana u Dubravi</h2>
+        <p>Jedan prostor za sve — grupni treninzi, individualni rad i rehabilitacija, s trenerom koji te poznaje.</p>
       </div>
     </div>
   </div>
 </section>
 
-{% if gallery %}
-<section class="band" id="galerija">
+<section class="band" id="usluge">
   <div class="band-inner">
-    <div class="sec-kicker">Galerija</div>
-    <h2>Iz dvorane</h2>
+    <div class="sec-head">
+      <div class="sec-kicker">Usluge</div>
+      <h2>Treniraj kako tebi odgovara</h2>
+      <p>Šest načina — svaki je zasebna članarina, biraš ono što ti treba.</p>
+    </div>
+    {% macro plan_cta(key) -%}
+      {% if key in my_plans %}<a class="btn btn-sm owned" href="{{ plan_links[key][0] }}"
+         title="Aktivna članarina">✓ {{ plan_links[key][1] }} →</a>
+      {%- else %}<a class="btn btn-sm svc-cta" href="/cjenik#plan-{{ key }}">Odaberi plan →</a>{% endif %}
+    {%- endmacro %}
+    {% macro svc(key, title, copy, meta, icon) -%}
+      <div class="card svc">
+        <div class="ico">{{ icon | safe }}</div>
+        <h3>{{ title }}</h3>
+        <p>{{ copy }}</p>
+        <div class="foot"><span class="tag solid">{{ meta }}</span>{{ plan_cta(key) }}</div>
+      </div>
+    {%- endmacro %}
+    <div class="svc-grid">
+      {{ svc("grupni", "Grupni trening",
+             "Satni termini u malim grupama — dovoljno malo za individualnu korekciju, dovoljno veliko za atmosferu.",
+             "do 8 polaznika · 60 min",
+             '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M3 20c0-3.2 2.7-5 6-5s6 1.8 6 5"/><path d="M15.5 15.4c2.6.3 4.5 1.8 4.5 4.6"/></svg>') }}
+      {{ svc("individualni", "Individualni trening",
+             "Rad 1:1 prilagođen tvojim ciljevima, mogućnostima i rasporedu — od tehnike do specifične pripreme.",
+             "1:1 · po dogovoru",
+             '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 6.5 h2 v11 h-2 z M15.5 6.5 h2 v11 h-2 z"/><path d="M8.5 12 h7"/><path d="M4 9.5 v5 M20 9.5 v5"/></svg>') }}
+      {{ svc("rehabilitacija", "Rehabilitacija",
+             "Programi povratka treningu nakon ozljede, sa specijalnošću za lumbalnu kralježnicu.",
+             "1:1 · stručno vođeno",
+             '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21s-7-4.6-9.5-9C.9 8.7 2.7 5 6.2 5c2.2 0 3.6 1.2 4.3 2.4h3c.7-1.2 2.1-2.4 4.3-2.4 3.5 0 5.3 3.7 3.7 7-2.5 4.4-9.5 9-9.5 9z" transform="scale(.9) translate(1.3 1.3)"/></svg>') }}
+      {{ svc("poluindividualni", "Poluindividualni trening",
+             "Trening u dvoje ili troje — pola puta između grupe i rada 1:1, s istim fokusom na tehniku i napredak.",
+             "2–3 polaznika · 60 min",
+             '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="7.5" r="3"/><circle cx="16" cy="7.5" r="3"/><path d="M2.5 20c0-3 2.4-4.8 5.5-4.8s5.5 1.8 5.5 4.8"/><path d="M13 15.6c.9-.3 1.9-.4 3-.4 3.1 0 5.5 1.8 5.5 4.8"/></svg>') }}
+      {{ svc("online", "Online trening",
+             "Programi po razinama i ciljevima s video uputama — treniraj gdje god jesi, uz nadzor trenera.",
+             "po razinama · video upute",
+             '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="12.5" rx="2"/><path d="M10 8.5l4.5 2.75L10 14z"/><path d="M8.5 20.5h7"/></svg>') }}
+      {{ svc("prehrana", "Prehrana",
+             "Vođenje prehrane uz aplikaciju MojiMakrosi — opišeš što jedeš, ona računa kalorije i makrose prema tvom cilju.",
+             "uz MojiMakrose · zdravi recepti",
+             '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8c1-1.7 2.6-2.5 4.2-2.3 2.9.4 4.3 3.4 3.3 6.4-1 3.1-3.2 6.4-5.3 6.4-.8 0-1.5-.4-2.2-.4s-1.4.4-2.2.4c-2.1 0-4.3-3.3-5.3-6.4-1-3 .4-6 3.3-6.4C9.4 5.5 11 6.3 12 8z"/><path d="M12 8c0-2 1-3.4 2.6-4"/></svg>') }}
+    </div>
+  </div>
+</section>
+
+{% if gallery | length > 1 %}
+<section class="band" id="galerija" style="padding-top:0;">
+  <div class="band-inner">
+    <div class="sec-head">
+      <div class="sec-kicker">Galerija</div>
+      <h2>Iz dvorane</h2>
+    </div>
     <div class="gal-grid">
-      {% for img in gallery %}
-      <a class="gal-item card" href="/static/gallery/{{ img }}" target="_blank" rel="noopener">
+      {% for img in gallery[1:] %}
+      <a class="gal-item" href="/static/gallery/{{ img }}" target="_blank" rel="noopener">
         <img src="/static/gallery/{{ img }}" alt="Quality Movement Training — dvorana" loading="lazy">
       </a>
       {% endfor %}
@@ -257,52 +237,52 @@
 </section>
 {% endif %}
 
-<section class="band info">
-  <div class="band-inner info-grid">
-    <div>
-      <h3>Radno vrijeme</h3>
-      <table>
-        <tr><td class="d">pon · sri · čet · pet</td><td>07:00 – 20:00</td></tr>
-        <tr><td class="d">uto</td><td>individualni termini</td></tr>
-        <tr><td class="d">sub · ned</td><td>zatvoreno</td></tr>
-      </table>
-    </div>
-    <div>
-      <h3>Gdje smo</h3>
-      {# the address IS the link — one line, the pin says where it goes.
-         query_place_id pins the exact building — the text query alone is ambiguous
-         (Maps offers "Virovska ul." vs "Virovska ul. 1" and opens a picker). The
-         id comes from the place's own Maps URL; the text stays as fallback. #}
-      <a class="crow" href="https://www.google.com/maps/search/?api=1&query=Virovska+ul.+1%2C+Zagreb&query_place_id=ChIJtSVeRefXZUcRM03Say70HFo"
-         target="_blank" rel="noopener" title="Otvori u Google kartama">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
-        Virovska ulica 1, 10040 Zagreb
-      </a>
-    </div>
-    <div>
-      <h3>Kontakt</h3>
-      <a class="crow" href="tel:+385914424418">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        +385 91 442 4418
-      </a>
-      <a class="crow" href="mailto:qualitymovementtraining@gmail.com">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        qualitymovementtraining@gmail.com
-      </a>
-      {# social profiles: icons only, muted until hovered — a contact detail, not a banner #}
-      <div class="socials" aria-label="Društvene mreže">
-        <a href="https://www.instagram.com/quality_movement_training/" target="_blank" rel="noopener" aria-label="Instagram" title="Instagram">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C8.74 0 8.333.015 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.012 8.333 0 8.74 0 12s.015 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.015 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.015-3.667-.072-4.947c-.06-1.277-.262-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.012 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zm0 3.678c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z"/></svg>
-        </a>
-        <a href="https://www.facebook.com/groups/808770740891116/" target="_blank" rel="noopener" aria-label="Facebook grupa" title="Facebook grupa">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-        </a>
-        <a href="https://www.tiktok.com/@qualitymovementtraining" target="_blank" rel="noopener" aria-label="TikTok" title="TikTok">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-1.99 6.15-1.58.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
-        </a>
-        <a href="https://www.youtube.com/channel/UC2VMYxaFxncZ3MSJsPf9Qhw" target="_blank" rel="noopener" aria-label="YouTube" title="YouTube">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-        </a>
+<section class="band info" style="padding-top:0;">
+  <div class="band-inner">
+    <div class="card info-card">
+      <div class="info-grid">
+        <div>
+          <h3>Radno vrijeme</h3>
+          <table>
+            <tr><td class="d">pon · sri · čet · pet</td><td>07:00 – 20:00</td></tr>
+            <tr><td class="d">uto</td><td>individualni termini</td></tr>
+            <tr><td class="d">sub · ned</td><td>zatvoreno</td></tr>
+          </table>
+        </div>
+        <div>
+          <h3>Gdje smo</h3>
+          {# query_place_id pins the exact building — the text query alone is ambiguous #}
+          <a class="crow" href="https://www.google.com/maps/search/?api=1&query=Virovska+ul.+1%2C+Zagreb&query_place_id=ChIJtSVeRefXZUcRM03Say70HFo"
+             target="_blank" rel="noopener" title="Otvori u Google kartama">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
+            Virovska ulica 1, 10040 Zagreb
+          </a>
+        </div>
+        <div>
+          <h3>Kontakt</h3>
+          <a class="crow" href="tel:+385914424418">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            +385 91 442 4418
+          </a>
+          <a class="crow" href="mailto:qualitymovementtraining@gmail.com">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            qualitymovementtraining@gmail.com
+          </a>
+          <div class="socials" aria-label="Društvene mreže">
+            <a href="https://www.instagram.com/quality_movement_training/" target="_blank" rel="noopener" aria-label="Instagram" title="Instagram">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C8.74 0 8.333.015 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.012 8.333 0 8.74 0 12s.015 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.015 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.015-3.667-.072-4.947c-.06-1.277-.262-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.012 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zm0 3.678c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z"/></svg>
+            </a>
+            <a href="https://www.facebook.com/groups/808770740891116/" target="_blank" rel="noopener" aria-label="Facebook grupa" title="Facebook grupa">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            </a>
+            <a href="https://www.tiktok.com/@qualitymovementtraining" target="_blank" rel="noopener" aria-label="TikTok" title="TikTok">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-1.99 6.15-1.58.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+            </a>
+            <a href="https://www.youtube.com/channel/UC2VMYxaFxncZ3MSJsPf9Qhw" target="_blank" rel="noopener" aria-label="YouTube" title="YouTube">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
