@@ -231,13 +231,6 @@
     /* the red glow is the HERO's voice — a small button inside a card or
        table row speaks at normal volume */
     .btn-sm { padding: 7px 13px; font-size: .8rem; border-radius: 10px; box-shadow: none; }
-    /* fingers need more than 31px — grow the small controls only where the
-       pointer is coarse, so desktop density is untouched */
-    @media (pointer: coarse) {
-      .btn-sm { padding: 10px 15px; }
-      .act { padding: 8px 15px; }
-      select { min-height: 36px; }           /* inline selects in table rows too */
-    }
     /* An <a> carrying only .btn-sm/.btn-ghost/.btn-quiet misses the `button, .btn`
        base above, so it kept the browser's underline while looking like a button. */
     a.btn, a.btn-sm, a.btn-ghost, a.btn-quiet, a.act {
@@ -261,6 +254,15 @@
                  border-color: color-mix(in srgb, var(--text) 40%, transparent); }
     .act-quiet { background: none; color: var(--muted); }
     .act-quiet:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+    /* fingers need more than 31px — grow the small controls only where the
+       pointer is coarse, so desktop density is untouched. This block must sit
+       BELOW .btn-sm/.act: same specificity, so source order decides, and above
+       them it silently lost to the base rules (the audit caught 27px pills). */
+    @media (pointer: coarse) {
+      .btn-sm { padding: 10px 15px; }
+      .act { padding: 8px 15px; }
+      select { min-height: 36px; }           /* inline selects in table rows too */
+    }
     /* Links that live INSIDE a sentence stay links — a pill mid-sentence reads
        worse. They carry the accent instead of a resting underline. */
     .tlink { color: var(--accent); font-weight: 600; text-decoration: none;

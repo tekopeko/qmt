@@ -67,6 +67,7 @@ CHECKS = r"""
 
   for (const el of document.querySelectorAll('a,button,input[type=submit],select,summary')) {
     if (!vis(el)) continue;
+    if (el.classList.contains('tlink')) continue;   // a link inside prose is text, not a control
     const r = el.getBoundingClientRect();
     if (r.height < 32 || r.width < 32) out.tap.push({t: (el.textContent || el.value || el.type || '').trim().slice(0, 26),
       w: Math.round(r.width), h: Math.round(r.height), cls: (el.className||'').toString().slice(0,28)});
