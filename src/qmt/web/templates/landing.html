@@ -73,6 +73,9 @@
      card's bottom edge and they line up across a row despite uneven copy */
   .svc .svc-cta, .svc .owned { align-self: flex-start; margin-top: auto;
                                padding: 7px 12px; font-size: .78rem; }
+  /* the padding above outranks base.html's coarse-pointer growth of .btn-sm,
+     so on phones these stayed 31px — the audit caught it. Grow them here too. */
+  @media (pointer: coarse) { .svc .svc-cta, .svc .owned { padding: 10px 15px; } }
   /* Neutral, not red. Red is the app's primary and the card already spends it
      on the icon tile and the meta line — a red button turned the whole card
      into one wash. Neutral keeps the hierarchy: green = yours, grey = open to
