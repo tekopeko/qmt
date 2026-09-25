@@ -50,7 +50,10 @@
   .stage .copy { position: absolute; z-index: 1; left: clamp(18px, 3vw, 36px); right: clamp(18px, 3vw, 36px); bottom: clamp(18px, 3vw, 34px); color: #fff; text-align: left; }
   .stage .copy h2 { font-size: clamp(1.4rem, 3.4vw, 2.4rem); color: #fff; margin-bottom: 8px; }
   .stage .copy p { max-width: 48ch; color: rgba(255,255,255,.82); font-size: clamp(.92rem, 1.3vw, 1.05rem); }
-  @media (max-width: 720px) { .stage { aspect-ratio: 4 / 5; } .stage .tags.r { display: none; } }
+  /* phones: a wide band, not a tall one — a 4:5 window on a landscape photo
+     shows its whole height, wall print included; 16:11 keeps the equipment */
+  @media (max-width: 720px) { .stage { aspect-ratio: 16 / 11; } .stage .tags.r { display: none; }
+                              .stage .copy p { display: none; } }
 
   /* chips that sit ON a photo: translucent glass, always light-on-dark because the
      photo underneath is what they sit on, not the theme */
@@ -158,7 +161,7 @@
     {% endif %}
 
     {# the stage: the studio itself, with the facts as chips #}
-    <div class="stage" role="img" aria-label="Dvorana Quality Movement Training">
+    <div class="stage" data-photo role="img" aria-label="Dvorana Quality Movement Training">
       <img src="/static/gallery/{{ gallery[0] if gallery else 'dvorana-1.jpg' }}" alt="" loading="eager">
       <div class="tags l"><span class="tag">Grupni</span><span class="tag">1:1</span><span class="tag">Rehabilitacija</span></div>
       <div class="tags r"><span class="tag">do 8 polaznika</span><span class="tag">07–20 h</span></div>

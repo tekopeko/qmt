@@ -139,6 +139,10 @@ Before calling any UI work done:
 3. Touch targets: `@media (pointer: coarse)` grows `.btn-sm`/`.act`; keep new
    controls ≥32px on a coarse pointer.
 4. Both themes. If a colour only exists in one `[data-theme]` block, it is a bug.
+5. Text that sits on a photograph (chips, captions over an image) gets a
+   `data-photo` attribute on its container: the audit counts it instead of
+   scoring it, because no colour math can see the image. Keep such text white
+   over a dark gradient (`.stage::after`) so it reads on any photo.
 
 ## How to make a change
 

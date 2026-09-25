@@ -54,8 +54,12 @@ CHECKS = r"""
   };
 
   const TEXT = 'p,span,a,button,h1,h2,h3,h4,li,td,th,label,strong,em,div.hint,summary';
+  out.onPhoto = 0;
   for (const el of document.querySelectorAll(TEXT)) {
     if (!vis(el)) continue;
+    // text a template declares to sit on a photograph: the background is the
+    // image, which no colour math can see — counted, never scored
+    if (el.closest('[data-photo]')) { out.onPhoto++; continue; }
     const direct = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length > 1);
     if (!direct) continue;
     const cs = getComputedStyle(el);
@@ -107,6 +111,7 @@ def run(pg, routes, who, theme, width, findings):
             pg.keyboard.press("Escape")
         res = pg.evaluate(CHECKS)
         key = f"{who}/{theme}/{width}px{r}"
+        findings["_onphoto"].append(res.get("onPhoto", 0))
         for k in ("overflow", "contrast", "tap", "alt", "label", "inner"):
             if k == "tap" and width >= 500:
                 continue                      # tap size is a touch concern only
@@ -174,6 +179,8 @@ def main():
     if SAVE_BASELINE:
         BASELINE.write_text(json.dumps(sorted(sigs_now), indent=0, ensure_ascii=False))
         print(f"\nbaseline saved: {len(sigs_now)} signatures → {BASELINE.name}")
+    if sum(findings["_onphoto"]):
+        print(f"\n(text on photographs, unmeasured by design: {sum(findings['_onphoto'])} elements across runs)")
     print(f"\nnew findings: {total_new}")
     sys.exit(1 if findings["overflow"] or findings["inner"] or total_new else 0)
 
