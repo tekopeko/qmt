@@ -20,15 +20,15 @@
   .sess.paused { opacity: .5; }
   .sess.paused .name { text-decoration: line-through; }
   .tag-11 { font-size: .72rem; font-weight: 800; letter-spacing: .05em;
-            background: var(--accent-dim); color: var(--accent); border-radius: 6px;
+            background: var(--accent-dim); color: var(--accent-tint-ink); border-radius: 6px;
             padding: 1px 6px; margin-left: 4px; vertical-align: 1px; }
   .none { color: var(--muted); font-size: .8rem; padding: 12px 11px; }
   @media (max-width: 860px) { .week { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 {% block content %}
-<h1 style="font-size:1.8rem; margin-bottom:4px;">Tjedni raspored</h1>
-<p class="hint" style="margin-bottom:24px;">
+<h1>Tjedni raspored</h1>
+<p class="hint">
   Stavke se automatski pretvaraju u termine za svaki tjedan koji netko otvori.
   Kapacitet <strong>1</strong> = individualni termin (1:1).
 </p>

@@ -7,17 +7,19 @@
      the logo red. Colour never carries the meaning alone — the razina is always
      spelled out and the ramp says "Razina N od 3" underneath. */
   .upitnik { --lvl: var(--muted); --lvl-soft: transparent; }
-  .lvl-pocetna  { --lvl:#16a34a; --lvl-soft:rgba(22,163,74,.10); }
-  .lvl-srednja  { --lvl:#b45309; --lvl-soft:rgba(180,83,9,.10); }
-  .lvl-napredna { --lvl:var(--accent); --lvl-soft:var(--accent-dim); }
+  /* light values are deeper than the dark ones on purpose: each sits on its own
+     10-13% tint and has to clear 4.5:1 there (measured by the audit) */
+  .lvl-pocetna  { --lvl:var(--good-strong); --lvl-soft:rgba(22,163,74,.10); }
+  .lvl-srednja  { --lvl:#a34a08; --lvl-soft:rgba(163,74,8,.10); }
+  .lvl-napredna { --lvl:var(--accent-tint-ink); --lvl-soft:var(--accent-dim); }
   [data-theme="dark"] .lvl-pocetna  { --lvl:#4ade80; --lvl-soft:rgba(74,222,128,.13); }
   [data-theme="dark"] .lvl-srednja  { --lvl:#fbbf24; --lvl-soft:rgba(251,191,36,.13); }
 
   /* ===== the upitnik block: its own group, first thing on the page ===== */
   .upitnik {
     background: linear-gradient(180deg, var(--lvl-soft), transparent 62%), var(--surface);
-    border: 1px solid var(--line); border-radius: 16px;
-    padding: 18px 22px 20px; margin-bottom: 26px; max-width: 720px;
+    border: 1px solid var(--line); border-radius: var(--r-xl);
+    padding: 22px 26px 24px; margin-bottom: 26px; max-width: 720px;
     box-shadow: var(--shadow);
   }
   .upitnik .u-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -65,8 +67,8 @@
   /* the modal deep-links to #osvrti — clear the sticky topbar when it lands */
   .k-sec h2 { font-size:1.05rem; margin-bottom:12px; scroll-margin-top: 84px; }
   /* every past termin is a row here: written up, marked absent, or still open */
-  .log-entry { border-bottom:1px solid var(--line); padding:11px 10px;
-               border-radius:10px; scroll-margin-top:96px; transition:background .4s; }
+  .log-entry { border-bottom:1px solid var(--line); padding:12px 12px;
+               border-radius:var(--r-md); scroll-margin-top:96px; transition:background .4s; }
   .log-entry:target { background:var(--accent-dim); }
   /* just finished, nothing written yet — the one row that asks for something */
   .log-entry.fresh { box-shadow:inset 3px 0 0 var(--accent); background:var(--surface); }
@@ -82,15 +84,16 @@
   .log-entry .rpe { font:700 .72rem var(--font-body); color:var(--muted);
                     background:var(--surface-2); border-radius:6px; padding:2px 7px;
                     font-variant-numeric:tabular-nums; }
-  .log-entry .rpe.feel { color:var(--good);
+  .log-entry .rpe.feel { color:var(--good-strong);
                          background:color-mix(in srgb, var(--good) 12%, transparent); }
+  [data-theme="dark"] .log-entry .rpe.feel { color:var(--good); }   /* the dark --good-strong is the darker one */
   /* "Slabo" in success-green read as a contradiction */
   .log-entry .rpe.feel.low { color:var(--muted); background:var(--surface-2); }
   .log-entry p { white-space:pre-line; font-size:.92rem; margin-top:4px; }
   .le-actions { display:flex; align-items:center; gap:4px; margin-left:auto; }
   .le-actions form { margin:0; }
   /* .act / .act-quiet are global (base.html) — absence is the one coloured action — amber, and never the red primary */
-  .act-absent { --warn:#b45309; --warn-soft:rgba(180,83,9,.13);
+  .act-absent { --warn:#a34a08; --warn-soft:rgba(163,74,8,.13);
                 background:var(--warn-soft); color:var(--warn);
                 border-color:color-mix(in srgb, var(--warn) 40%, transparent); }
   [data-theme="dark"] .act-absent { --warn:#fbbf24; --warn-soft:rgba(251,191,36,.15); }
@@ -103,7 +106,7 @@
 
   /* the rail keeps one job: what's still ahead */
   .termini { background:var(--surface); border:1px solid var(--line);
-             border-radius:16px; padding:16px; }
+             border-radius:var(--r-xl); padding:18px; }
   .termini h2 { font-size:.95rem; margin-bottom:8px; }
   .cal-row { display:flex; align-items:baseline; gap:10px; font-size:.88rem;
              padding:8px 4px; border-bottom:1px solid var(--line); }
@@ -120,8 +123,8 @@
 {% if not own %}
 <nav class="crumbs" aria-label="Putanja"><a href="/clanarine">Članarine</a><span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
 {% endif %}
-<h1 style="font-size:1.7rem; margin-bottom:4px;">{% if own %}Moj karton{% else %}Karton — {{ subject.full_name or subject.email }}{% endif %}</h1>
-<p class="hint" style="margin-bottom:22px;">
+<h1>{% if own %}Moj karton{% else %}Karton — {{ subject.full_name or subject.email }}{% endif %}</h1>
+<p class="hint">
   {% if own %}Dnevnik treninga, upitnik i termini na jednom mjestu.
   {% else %}{{ subject.email }}{% if age %} · {{ age }} god.{% endif %}{% if subject.phone %} · {{ subject.phone }}{% endif %}{% endif %}
 </p>

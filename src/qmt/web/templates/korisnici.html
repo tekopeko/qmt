@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Korisnici — QMT{% endblock %}
 {% block content %}
-<h1 style="font-size:1.8rem; margin-bottom:4px;">Korisnici</h1>
-<p class="hint" style="margin-bottom:14px;">
+<h1>Korisnici</h1>
+<p class="hint">
   Svi registrirani računi. Trener upravlja rasporedom, treninzima i vidi polaznike —
   uloge dodjeljuje samo vlasnik aplikacije.
 </p>
@@ -44,7 +44,7 @@
                 style="display:inline-block; font:700 .74rem var(--font-body); letter-spacing:.04em;
                        padding:2px 8px; border-radius:7px; margin-right:3px;
                        {% if m.is_active(today) %}background:var(--surface-2); border:1px solid var(--line);
-                       {% else %}color:var(--danger); text-decoration:line-through;
+                       {% else %}color:var(--accent-tint-ink); text-decoration:line-through;
                        background:var(--accent-dim); border:1px solid transparent;{% endif %}">{{ plan_abbr[m.plan] }}</span>
           {% else %}<span class="hint">bez plana</span>{% endfor %}
         {% endif %}

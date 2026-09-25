@@ -1,8 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Profil — QMT{% endblock %}
+{% block head %}<style>
+  /* membership state as a tinted border: an inset bar curved with the card
+     radius and read as a rendering artefact */
+  .mcard.active { border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+  .mcard.lapsed { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+</style>{% endblock %}
 {% block content %}
-<h1 style="font-size:1.7rem; margin-bottom:4px;">Profil</h1>
-<p class="hint" style="margin-bottom:26px;">Tvoji osnovni podaci — vidi ih samo trener.</p>
+<h1>Profil</h1>
+<p class="hint">Tvoji osnovni podaci — vidi ih samo trener.</p>
 
 {% if first_login and not user.profile_complete %}
 <div class="alert" role="status" style="max-width:560px;">
@@ -31,7 +37,7 @@
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 260px), 1fr));
             gap:14px; max-width:860px; margin-bottom:30px;">
   {% for m in memberships %}
-  <div class="card" style="padding:16px 18px; {% if m.active %}box-shadow: inset 3px 0 0 var(--good);{% else %}box-shadow: inset 3px 0 0 var(--danger);{% endif %}">
+  <div class="card mcard {{ 'active' if m.active else 'lapsed' }}" style="padding:16px 18px;">
     <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
       <strong>{{ m.label }}</strong>
       {% if m.cancelling %}<span style="color:var(--muted); font-weight:700; font-size:.8rem;">otkazana · vrijedi do kraja</span>

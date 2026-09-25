@@ -36,6 +36,7 @@
       --accent-fill: #e10600;                              /* solid fill under white ink (AA) */
       --accent-fill-hover: #c00500;
       --accent-strong: #c00500;
+      --accent-tint-ink: #c00500;                          /* accent-coloured text ON --accent-dim: plain --accent is 4.0-4.3:1 there, under AA */
       --accent-ink: #ffffff;
       --accent-dim: rgba(225, 6, 0, .08);
       --good: #15803d;                                     /* filled-spots green, readable on light */
@@ -58,6 +59,7 @@
       --accent-fill: #e10600;
       --accent-fill-hover: #ff342b;
       --accent-strong: #ff5049;
+      --accent-tint-ink: #ff5049;
       --accent-ink: #ffffff;
       --accent-dim: rgba(255, 52, 43, .12);
       --good: #4ade80;                                     /* brighter green for dark contrast */
@@ -218,7 +220,10 @@
       .nav a.cta { margin-left: 0; justify-content: center; }
     }
 
-    main { max-width: 1100px; margin: 0 auto; padding: clamp(18px, 3vw, 34px) clamp(14px, 4vw, 40px) 70px; }
+    main { max-width: 1100px; margin: 0 auto; padding: clamp(22px, 3.5vw, 40px) clamp(14px, 4vw, 40px) 70px; }
+    /* one page header for every app screen: title, then a one-line lead */
+    main > h1 { font-size: clamp(1.6rem, 3vw, 2rem); margin-bottom: 4px; }
+    main > h1 + .hint { font-size: .95rem; max-width: 70ch; margin-bottom: clamp(20px, 3vw, 28px); }
     main.full { max-width: none; padding: 0; }
 
     /* ===== controls: rounded, soft, no boxes ===== */
@@ -226,7 +231,7 @@
       font: 600 .92rem var(--font-body);
       /* a transparent hairline, so a filled button is exactly as tall as a
          .btn-ghost beside it — the confirm modal's Odustani/Potvrdi were 31/29 */
-      border: 1px solid transparent; border-radius: 12px; cursor: pointer;
+      border: 1px solid transparent; border-radius: 999px; cursor: pointer;   /* pills, like the nav and chips */
       padding: 11px 20px; text-decoration: none; display: inline-flex;
       align-items: center; justify-content: center; gap: 8px;
       background: var(--accent-fill); color: var(--accent-ink);
@@ -241,11 +246,11 @@
       border: 1px solid var(--line); box-shadow: none;
     }
     .btn-ghost:hover { background: var(--surface-2); transform: none; }
-    .btn-quiet, button.btn-quiet { background: var(--accent-dim); color: var(--accent); box-shadow: none; }
+    .btn-quiet, button.btn-quiet { background: var(--accent-dim); color: var(--accent-tint-ink); box-shadow: none; }
     .btn-quiet:hover { background: var(--accent-fill); color: var(--accent-ink); }
     /* the red glow is the HERO's voice — a small button inside a card or
        table row speaks at normal volume */
-    .btn-sm { padding: 7px 13px; font-size: .8rem; border-radius: 10px; box-shadow: none; }
+    .btn-sm { padding: 7px 14px; font-size: .8rem; border-radius: 999px; box-shadow: none; }
     /* An <a> carrying only .btn-sm/.btn-ghost/.btn-quiet misses the `button, .btn`
        base above, so it kept the browser's underline while looking like a button. */
     a.btn, a.btn-sm, a.btn-ghost, a.btn-quiet, a.act {
@@ -320,16 +325,16 @@
     /* ===== login + registration: ONE modal, two tabs (patterns.md §2) =====
        /login and /signup stay as the no-JS and deep-link fallback. */
     .fb-modal.auth { width: min(440px, calc(100vw - 32px)); }
-    .auth-tabs { display: flex; gap: 3px; background: var(--surface-2); border-radius: 12px;
+    .auth-tabs { display: flex; gap: 3px; background: var(--surface-2); border-radius: 999px;
                  padding: 3px; margin: 14px 0 16px; }
-    .auth-tabs button { flex: 1; padding: 8px; border: none; border-radius: 9px; background: none;
+    .auth-tabs button { flex: 1; padding: 8px; border: none; border-radius: 999px; background: none;
                         box-shadow: none; color: var(--muted); font: 600 .85rem var(--font-body);
                         transition: background .15s, color .15s; }
     .auth-tabs button:hover { transform: none; color: var(--text);
                               background: color-mix(in srgb, var(--text) 8%, transparent); }
     /* the selected tab carries the accent tint — "lighter than the track" flips
        meaning between the two themes, a tint does not (same call as the karton) */
-    .auth-tabs button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent); }
+    .auth-tabs button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent-tint-ink); }
     .auth input { padding: 13px 14px; }              /* ~48px: on this form the fields ARE the content */
     .pw { position: relative; }
     .pw input { padding-right: 46px; }
