@@ -6,8 +6,8 @@ Walks every page as anon / client / owner, dark + light, 1280px + 390px, and
 reports: page + element horizontal overflow, WCAG-AA contrast failures, tap
 targets under 32px, images without alt, unlabelled form controls, heading
 order. Needs the dev server up and the demo seed loaded (scripts/seed_demo.py).
-Contrast "ratio 1" on tinted elements is a known false positive (semi-
-transparent backgrounds read as solid) — judge those by eye.
+Backgrounds are alpha-composited down to the page, so text on a tinted chip is
+measured against what it really sits on; the reported ratio is the real one.
 """
 import collections
 import json
@@ -32,20 +32,25 @@ CHECKS = r"""
   const de = document.documentElement;
   if (de.scrollWidth - de.clientWidth > 0) out.overflow.push(de.scrollWidth - de.clientWidth);
 
-  const lum = c => {
-    const m = c.match(/[\d.]+/g); if (!m) return null;
-    if (m.length > 3 && parseFloat(m[3]) === 0) return null;
-    const [r,g,b] = m.slice(0,3).map(x => { x = x/255; return x <= .03928 ? x/12.92 : Math.pow((x+.055)/1.055, 2.4); });
-    return .2126*r + .7152*g + .0722*b;
-  };
+  // colour math that respects alpha: a tinted chip (rgba(255,52,43,.12)) is
+  // NOT solid red — it is 12% red over whatever sits behind it. Composite the
+  // ancestor chain from the body outward, then measure. This is what turned the
+  // old "ratio 1" false positives into real numbers.
+  const parse = c => { const m = c.match(/[\d.]+/g); if (!m) return null;
+    return {r:+m[0], g:+m[1], b:+m[2], a: m.length > 3 ? parseFloat(m[3]) : 1}; };
+  const lumRGB = ({r,g,b}) => { const f = x => { x = x/255; return x <= .03928 ? x/12.92 : Math.pow((x+.055)/1.055, 2.4); };
+    return .2126*f(r) + .7152*f(g) + .0722*f(b); };
+  const lum = c => { const p = parse(c); return (!p || p.a === 0) ? null : lumRGB(p); };
   const bgOf = el => {
-    let n = el;
-    while (n && n !== document.documentElement) {
-      const l = lum(getComputedStyle(n).backgroundColor);
-      if (l !== null) return l;
-      n = n.parentElement;
+    const chain = []; let n = el;
+    while (n && n !== document.documentElement) { chain.push(getComputedStyle(n).backgroundColor); n = n.parentElement; }
+    chain.push(getComputedStyle(document.body).backgroundColor);
+    let acc = {r:255, g:255, b:255};                 // the page canvas, if nothing paints
+    for (let i = chain.length - 1; i >= 0; i--) {   // outermost first
+      const p = parse(chain[i]); if (!p || p.a === 0) continue;
+      acc = {r: p.r*p.a + acc.r*(1-p.a), g: p.g*p.a + acc.g*(1-p.a), b: p.b*p.a + acc.b*(1-p.a)};
     }
-    return lum(getComputedStyle(document.body).backgroundColor) ?? 1;
+    return lumRGB(acc);
   };
   const vis = el => {
     const r = el.getBoundingClientRect();
@@ -151,10 +156,9 @@ def main():
                     ctx.close()
         b.close()
 
-    # A baseline holds the signatures of findings already judged (mostly the
-    # contrast checker's "ratio 1" on tinted elements). Runs report what is
-    # NEW relative to it; --save-baseline re-records the current state after a
-    # deliberate review. Without it, ~240 known items drown one real one.
+    # A baseline holds the signatures of findings already judged. Runs report
+    # what is NEW relative to it; --save-baseline re-records the current state
+    # after a deliberate review (say why in the commit).
     known = set(json.loads(BASELINE.read_text())) if BASELINE.exists() and not SAVE_BASELINE else set()
     sigs_now = set()
     print("=" * 72)

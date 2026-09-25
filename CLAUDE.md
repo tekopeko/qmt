@@ -119,10 +119,11 @@ active `online` plan → filled upitnik → matched programmes.
   `db.BookingError`.
 - **Design tokens come from the LOGO** (`static/logo.png`): accent `--accent` (#e10600
   light / #ff342b dark), neutral surfaces, PT Sans uppercase display + Inter body.
-  Rounded controls (12px) and cards (14–16px), soft shadows. Both themes are
+  Three radius tokens (`--r-xl` 28 / `--r-lg` 20 / `--r-md` 12), every button a
+  pill, soft shadows — the Shape-club language in QMT's colours. Both themes are
   first-class (`[data-theme]` tokens, pre-paint script, saved in
   `localStorage['qmt-theme']`). Never style with a raw hex that only works in one theme.
-- **The topbar is ONE row at every width** (the YouTube header): `flex-wrap: nowrap`,
+- **The topbar is a floating dark pill, ONE row at every width**: `flex-wrap: nowrap`,
   brand left, tabs middle, avatar right. When space runs out the wordmark shortens to
   "QMT" (≤1200px), then the tabs fold into the ☰ drawer (≤900px, sized for the owner's
   eight tabs). Tabs never wrap their own label. The avatar opens the account menu

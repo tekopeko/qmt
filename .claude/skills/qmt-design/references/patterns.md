@@ -6,16 +6,22 @@ light-gradient + navy + purple-grey; ours is red on near-black), but several of
 their *structures* are stronger than ours and translate directly into QMT tokens.
 Each entry says what they do, why it works, and how it maps to QMT.
 
-## 1. Floating nav pill
+## 1. Floating nav pill — BUILT 25.9.2026 (`.topbar` in base.html)
 
 **Theirs:** the header is not a bar — it's a white pill (`999px`, soft shadow)
 floating over the page, ~440px wide, holding exactly three things: wordmark,
 one text link ("Česta pitanja"), one filled CTA ("Prijava"). Not sticky.
 
 **Why it works:** nothing competes with the content; the single CTA is
-unmissable. **Map to QMT:** our topbar carries up to eight tabs for the owner, so
-the pill is wrong for logged-in screens — but the *guest* landing could use it:
-wordmark · Cjenik · [Prijava] [Registriraj se]. Keep the one-row rule.
+unmissable. **Built for QMT** on every screen, not only the guest landing: the bar
+became a dark-glass pill (`rgba(22,22,24,.86)` + `blur(14px)`, 999px, sticky
+10px below the top, max 1100px) that still carries the owner's eight tabs. The
+one-row rule and the ≤900px ☰ drawer are unchanged; the drawer is a 22px card
+hanging off the pill. With it came the rest of the Shape shape language: pill
+buttons everywhere, a 28 / 20 / 12px radius scale (`--r-xl` / `--r-lg` /
+`--r-md`), italic uppercase card titles, the raised "Najpopularnije" plan, the
+photo stage on the landing, and state as a tinted border instead of an inset
+bar on any large-radius card.
 
 ## 2. Login as a modal, not a page — BUILT 25.9.2026 (`#authDlg` in base.html)
 

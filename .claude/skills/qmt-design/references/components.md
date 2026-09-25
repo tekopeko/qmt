@@ -8,11 +8,12 @@ first; a new class is a last resort and needs a comment explaining the gap.
 
 | class | where | what |
 |---|---|---|
-| `.topbar` | base | ONE row at every width: brand left, tabs middle, avatar right. Wordmark shortens to "QMT" ≤1200px, tabs fold into ☰ ≤900px. Tabs never wrap. |
+| `.topbar` | base | a floating dark-glass pill (999px, blur, sticky 10px below the top, max 1100px) on every screen and both themes; ONE row at every width: brand left, tabs middle, avatar right. Wordmark shortens to "QMT" ≤1200px, tabs fold into ☰ ≤900px. Tabs never wrap. |
 | `.nav a` / `.nav a.cta` / `.on` | base | tab, red pill tab (guest: Prijava + Registriraj se, both red — equal weight), current page |
 | `.avatar` / `.user-menu` | base | initials circle → account menu on the YouTube pattern: identity header (ellipsized email), icon gutter rows (Profil, theme, Odjava), full-bleed hover |
 | `main` | base | max-width 1100px, `clamp(14px,4vw,40px)` side padding; `main.full` for the landing |
-| `.card` | base | `--surface`, hairline, 16px radius, `--shadow` |
+| `main > h1`, `main > h1 + .hint` | base | the page header: title `clamp(1.6rem,3vw,2rem)` + one lead sentence, 70ch max — templates write bare `<h1>` / `<p class="hint">` with no inline style |
+| `.card` | base | `--surface`, hairline, `--r-lg` (20px), `--shadow`; hero-grade cards (`.svc`, `.plan`, `.upitnik`, `.termini`) take `--r-xl` (28px) with 26px padding |
 | `.crumbs` | base | breadcrumb: muted links, `/` separators, `.here` current |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal, `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
@@ -22,10 +23,10 @@ first; a new class is a last resort and needs a comment explaining the gap.
 
 | class | look | hover | use |
 |---|---|---|---|
-| `.btn` | filled `--accent-fill`, 12px, `--shadow-btn` | fill → `--accent-fill-hover`, lifts 1px | the page's ONE primary |
-| `.btn-sm` (with `.btn`) | 10px, no glow; grows under `pointer: coarse` | as `.btn` | primary inside a card |
+| `.btn` | filled `--accent-fill` pill (999px), `--shadow-btn` | fill → `--accent-fill-hover`, lifts 1px | the page's ONE primary |
+| `.btn-sm` (with `.btn`) | pill, 7px/14px, no glow; grows under `pointer: coarse` | as `.btn` | primary inside a card |
 | `.btn-ghost` | surface + hairline | `--surface-2` | secondary beside a primary |
-| `.btn-quiet` | `--accent-dim` tint, accent text | fills accent | accent action in dense rows |
+| `.btn-quiet` | `--accent-dim` tint, `--accent-tint-ink` text | fills accent | accent action in dense rows |
 | `.act` | grey pill 999px, 5px/13px | tint deepens via `color-mix`, border darkens | row action |
 | `.act-quiet` | transparent pill, muted text | faint wash | least important row action |
 | `.act-absent` (karton) | amber tint + amber border | deeper tint, **not** a flood | "Nisam bio/la" — the only non-brand hue |
@@ -80,17 +81,25 @@ icon tile, title, copy with `min-height: 4.65em`, accent meta line, CTA pinned w
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
 
-**Cjenik (`cjenik.html`).** `.plan` cards, copy `min-height: 3.9em`, `.price` with
-`<small>` unit, `.foot` pinned bottom. Price source order: Stripe Price → shop
+**Cjenik (`cjenik.html`).** `.plan` cards (`--r-xl`, italic uppercase `.plan-h`), copy
+`min-height: 3.9em`, `.price` with `<small>` unit, `.foot` pinned bottom. Grupni is
+`.featured`: accent-tinted border, raised 8px on desktop, `.featured-tag`
+"Najpopularnije" chip top-right. Price source order: Stripe Price → shop
 reference (`REFERENCE_PRICES`, in the shop's own unit) → "na upit". Subscribed
 tier shows ITS price ("70 € / mjesečno · 12 treninga"), other tiers as `.act`
-switch buttons under a hairline `.switch`; `.plan.mine` gets a green inset bar.
+switch buttons under a hairline `.switch`; `.plan.mine` gets a green-tinted border
+(the same move as `.featured`; `.mine` is declared later so it wins on grupni).
+
+**Profil (`profil.html`).** Membership cards `.mcard.active` / `.mcard.lapsed`:
+green- or accent-tinted border, state word top-right, plan CTA pinned bottom.
 
 **Karton (`karton.html`).** Upitnik block `.upitnik.lvl-*` tinted by razina
 (`--lvl`/`--lvl-soft` per theme), diary `.log-entry` rows in four states
 (written / `.is-absent` / cancelled / open — `.fresh` gets the accent inset bar),
 `.le-actions` right-aligned pills, `.le-edit` inline form toggled by
-`qmtToggleForm`. Rail `.termini` holds only Nadolazeći.
+`qmtToggleForm`. Rail `.termini` holds only Nadolazeći. `.upitnik` and `.termini`
+are `--r-xl`; `.log-entry` rows are `--r-md` and keep the accent inset bar for
+`.fresh` — at 12px the bar still reads as a bar.
 
 **Calendar (`calendar.html`).** Seven `.day-col` on desktop → single agenda on
 phones (`.empty-day` hidden). `.sess.mine` = accent tint + inset bar,

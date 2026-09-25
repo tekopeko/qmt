@@ -14,6 +14,7 @@ _Regenerated 2026-09-25 by scripts/extract_tokens.py_
 | `--accent-fill` | `#e10600` | `#e10600` | solid fill under white ink (AA) |
 | `--accent-fill-hover` | `#c00500` | `#ff342b` |  |
 | `--accent-strong` | `#c00500` | `#ff5049` |  |
+| `--accent-tint-ink` | `#c00500` | `#ff5049` | accent-coloured text ON --accent-dim: plain --accent is 4.0-4.3:1 there, under AA |
 | `--accent-ink` | `#ffffff` | `#ffffff` |  |
 | `--accent-dim` | `rgba(225, 6, 0, .08)` | `rgba(255, 52, 43, .12)` |  |
 | `--good` | `#15803d` | `#4ade80` | filled-spots green, readable on light |

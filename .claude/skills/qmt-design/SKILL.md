@@ -50,19 +50,33 @@ is deliberately small:
 | hairline | `--line` | every border and divider |
 | text / secondary | `--text` / `--muted` | there is no third text colour |
 | brand | `--accent` (text) · `--accent-fill` (button fill) · `--accent-dim` (tint) | **the one loud colour — spend it on actions and the current state, never on decoration** |
+| brand, on its own tint | `--accent-tint-ink` | accent-coloured text sitting ON `--accent-dim` (`.btn-quiet`, `.tag-11`, the featured chip): plain `--accent` measures 4.0–4.3:1 there, under AA |
 | positive state | `--good` (text) · `--good-fill` / `--good-ink` (button) | "you have this", success |
 | absence / caution | `--warn` (karton only, amber) | the one non-brand hue, defined per theme in `karton.html` |
 
 Both themes are first-class: every token has a dark and a light value, the page
 pre-paints the saved theme, and a design that only looks right in one is wrong.
 
-**Shape.** Rounded, soft, no boxes: cards 16px, controls 12px, small buttons 10px,
-pills 999px. Hairline borders (`1px var(--line)`) instead of heavy edges. One soft
-shadow (`--shadow`) on cards; the red glow (`--shadow-btn`) is the **hero's
-voice only** — a small button inside a card or table row carries no glow.
+**Shape** (the Shape-club language, adopted 25.9.2026). Three radius tokens and
+nothing in between: `--r-xl` 28px for hero-grade cards (service cards, pricing
+plans, the upitnik block, the photo stage), `--r-lg` 20px for ordinary cards,
+modals and the calendar's day columns, `--r-md` 12px for inputs and small rows.
+**Every button is a pill** (999px) — `.btn`, `.btn-sm`, `.act`, the auth tabs. The
+topbar is a floating dark-glass pill on every screen. Hairline borders
+(`1px var(--line)`) instead of heavy edges. One soft shadow (`--shadow`) on cards;
+the red glow (`--shadow-btn`) is the **hero's voice only** — a small button inside
+a card or table row carries no glow. State on a large-radius card is a **tinted
+border** (`color-mix(in srgb, var(--good) 45%, var(--line))` — cjenik `.plan.mine`,
+profil `.mcard.active`, `.plan.featured` with the accent), never an inset bar: a
+bar curves along a 28px corner and reads as a glitch. The 12px karton rows and the
+calendar's `.sess.mine` keep their inset bar; the accent is never a decoration on
+a card that carries no state.
 
 **Rhythm.** Page padding `clamp(14px, 4vw, 40px)`, content max-width 1100px,
-cards padded 16–24px, 8/10/12/14/18/26px gaps. Related rows share one baseline:
+cards padded 16–24px (hero-grade cards 26px), 8/10/12/14/18/26px gaps. Every page
+opens with a bare `<h1>` and one `.hint` sentence; `main > h1` and
+`main > h1 + .hint` in `base.html` size them, so a page title never carries an
+inline `style`. Related rows share one baseline:
 when cards sit in a grid, reserve equal heights for variable text (`min-height`
 on the copy block) and pin the footer with `margin-top: auto` so CTAs align across
 the row — measured, not eyeballed.
@@ -71,8 +85,8 @@ the row — measured, not eyeballed.
 
 | class | shape | when |
 |---|---|---|
-| `.btn` | filled `--accent-fill`, 12px, glow | **the** primary action of a page or hero — one per screen |
-| `.btn.btn-sm` | filled, 10px, **no glow** | the primary action inside a card ("Rezerviraj termin →", "Spremi") |
+| `.btn` | filled `--accent-fill` pill, glow | **the** primary action of a page or hero — one per screen |
+| `.btn.btn-sm` | filled pill, smaller, **no glow** | the primary action inside a card ("Rezerviraj termin →", "Spremi") |
 | `.btn-ghost` | surface + hairline | secondary action beside a primary |
 | `.btn-quiet` | `--accent-dim` tint + accent text | a quiet accent action in a table row |
 | `.act` | grey pill, 999px | the app's discrete row action — Uredi, Ispuni osvrt, Otvori raspored |
@@ -113,7 +127,7 @@ tier's price rather than the range.
 
 ## Modals and prompts
 
-One styled `<dialog>` idiom (`.fb-modal`): hairline card, 16px radius, backdrop
+One styled `<dialog>` idiom (`.fb-modal`): hairline card, `--r-lg` radius, backdrop
 `rgba(0,0,0,.55)`, `margin: auto` restored (the global reset kills it), close ✕
 top-right, `autofocus` on the **primary** action so the first thing the user sees
 is not a focus ring on the ✕. Two buttons max, primary on the right. Used for the
@@ -127,9 +141,10 @@ Before calling any UI work done:
    `python .claude/skills/qmt-design/scripts/audit.py`. It walks every page as
    anon / client / owner, both themes, 1280px and 390px, and reports overflow,
    WCAG-AA contrast, tap targets under 32px, unlabelled controls, missing alt,
-   heading order. It compares against `references/audit-baseline.json` — the
-   findings already reviewed (mostly the contrast checker's "ratio 1" on tinted
-   elements) — and reports only what is **new**. Overflow must be 0 and new
+   order. Backgrounds are alpha-composited down to the page, so a chip on a 12%
+   tint is measured against what it really sits on. It compares against
+   `references/audit-baseline.json` — the findings already reviewed — and
+   reports only what is **new**. Overflow must be 0 and new
    findings must be 0: fix them, or, after a deliberate review, re-record with
    `--save-baseline` and say why in the commit.
 2. Take **one** Playwright screenshot per message (several large images in one
