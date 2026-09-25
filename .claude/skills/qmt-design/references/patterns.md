@@ -17,7 +17,7 @@ unmissable. **Map to QMT:** our topbar carries up to eight tabs for the owner, s
 the pill is wrong for logged-in screens — but the *guest* landing could use it:
 wordmark · Cjenik · [Prijava] [Registriraj se]. Keep the one-row rule.
 
-## 2. Login as a modal, not a page (the owner asked for this)
+## 2. Login as a modal, not a page — BUILT 25.9.2026 (`#authDlg` in base.html)
 
 **Theirs:** "Prijava" opens a centred modal over a blurred, dimmed page:
 overlay `rgba(6,8,54,.45)` + `backdrop-filter: blur(6px)`; panel 412px, white,
@@ -48,7 +48,7 @@ than a page.
   and a pill row. "Zaboravljena lozinka?" as `.tlink`, right-aligned.
 - No Google/Turnstile in v1 — sign-up is invite-only; revisit with `SIGNUP_OPEN`.
 
-## 3. "Dodaj na početni zaslon" install banner (the owner asked for this)
+## 3. "Dodaj na početni zaslon" install banner — BUILT 25.9.2026 (`#a2hs` in base.html)
 
 **Theirs:** a fixed card at the bottom of the phone viewport (16px inset each
 side and from the bottom, ~358px wide), dark, holding: app icon, app name,

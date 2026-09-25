@@ -31,7 +31,7 @@ python scripts/seed_demo.py                # dev RESET: users, timetable, plans,
 python serve.py [--reload] [--port 8100]   # 8100 — 8000 is mojimakrosi's local port
 
 createdb qmt_test                          # once
-pytest -q                                  # 89 tests, must stay green
+pytest -q                                  # 90 tests, must stay green
 ```
 
 Demo logins: `trener@qmt.local/trener123` (trainer **and** owner locally, via
@@ -127,6 +127,12 @@ active `online` plan → filled upitnik → matched programmes.
   "QMT" (≤1200px), then the tabs fold into the ☰ drawer (≤900px, sized for the owner's
   eight tabs). Tabs never wrap their own label. The avatar opens the account menu
   (identity header, Profil, theme toggle, Odjava).
+- **Guests log in through a modal** (`#authDlg`, opened by `data-auth` links; `/login`
+  and `/signup` remain the no-JS fallback). **Clients on phones get an install
+  banner** (`#a2hs`) once, never on desktop. Both live in `base.html`.
+- **Design changes go through the `qmt-design` skill** (`.claude/skills/qmt-design`):
+  tokens, components, patterns, and the measured audit that must pass before UI
+  work is called done.
 - **Every schema change is an Alembic migration.**
 - **Tests must stay green** (`pytest -q`). New rules get a test — especially anything
   that must hold under concurrency (`test_capacity_race_no_overbooking`).

@@ -76,6 +76,9 @@
       --font-body: "Inter", system-ui, sans-serif;
     }
     * { box-sizing: border-box; margin: 0; }
+    /* author `display:` rules (flex pills, inline-flex buttons) outrank the UA's
+       [hidden] — without this, hidden="" still renders anything with a display rule */
+    [hidden] { display: none !important; }
     html { scroll-behavior: smooth; }
     body {
       font-family: var(--font-body); color: var(--text); background: var(--bg);
@@ -298,7 +301,55 @@
          <dialog>, which is what centres a modal — put it back */
       margin: auto;
     }
-    .fb-modal::backdrop { background: rgba(0, 0, 0, .55); }
+    /* the blur is what makes a modal feel lighter than a page (patterns.md §2) */
+    .fb-modal::backdrop { background: rgba(0, 0, 0, .55);
+                          backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+
+    /* ===== login + registration: ONE modal, two tabs (patterns.md §2) =====
+       /login and /signup stay as the no-JS and deep-link fallback. */
+    .fb-modal.auth { width: min(440px, calc(100vw - 32px)); }
+    .auth-tabs { display: flex; gap: 3px; background: var(--surface-2); border-radius: 12px;
+                 padding: 3px; margin: 14px 0 16px; }
+    .auth-tabs button { flex: 1; padding: 8px; border: none; border-radius: 9px; background: none;
+                        box-shadow: none; color: var(--muted); font: 600 .85rem var(--font-body);
+                        transition: background .15s, color .15s; }
+    .auth-tabs button:hover { transform: none; color: var(--text);
+                              background: color-mix(in srgb, var(--text) 8%, transparent); }
+    /* the selected tab carries the accent tint — "lighter than the track" flips
+       meaning between the two themes, a tint does not (same call as the karton) */
+    .auth-tabs button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent); }
+    .auth input { padding: 13px 14px; }              /* ~48px: on this form the fields ARE the content */
+    .pw { position: relative; }
+    .pw input { padding-right: 46px; }
+    .pw-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+              background: none; box-shadow: none; color: var(--muted); padding: 7px; border-radius: 8px; }
+    .pw-eye:hover { background: var(--surface-2); color: var(--text); transform: translateY(-50%); }
+    .pw-eye svg { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor;
+                  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .auth-row { display: flex; justify-content: flex-end; margin: -4px 0 14px; font-size: .85rem; }
+    .auth-note { margin-bottom: 12px; font-size: .85rem; }
+    .auth .btn { width: 100%; }
+
+    /* ===== "Dodaj na početni zaslon" (patterns.md §3): phones, browser tab,
+       logged-in clients, not on the very first page, dismissed once. ===== */
+    .a2hs { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 70;
+            max-width: 420px; margin: 0 auto; padding: 16px 16px 14px; }
+    @media (pointer: fine) { .a2hs { display: none !important; } }   /* belt and braces: never on desktop */
+    .a2hs-x { position: absolute; top: 6px; right: 6px; background: none; box-shadow: none;
+              color: var(--muted); padding: 10px 11px; border-radius: 8px; font-size: .95rem; line-height: 1; }
+    .a2hs-x:hover { background: var(--surface-2); color: var(--text); transform: none; }
+    .a2hs-head { display: flex; align-items: center; gap: 12px; padding-right: 32px; }
+    .a2hs-head img { width: 44px; height: 44px; border-radius: 10px; flex: none; }
+    .a2hs-head strong { display: block; font-size: 1rem; }
+    .a2hs-lead { margin-top: 10px; font-size: .88rem; }
+    .a2hs-steps { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 8px; font-size: .88rem; }
+    .a2hs-steps li { display: flex; align-items: center; gap: 10px; }
+    .a2hs-steps .n { flex: none; width: 24px; height: 24px; border-radius: 7px; background: var(--surface-2);
+                     display: inline-flex; align-items: center; justify-content: center;
+                     font: 700 .78rem var(--font-body); font-variant-numeric: tabular-nums; }
+    .a2hs-steps svg { width: 16px; height: 16px; vertical-align: -3px; fill: none; stroke: currentColor;
+                      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .a2hs-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 12px; }
     .fb-box { padding: 22px 24px 20px; position: relative; }
     .fb-x { position: absolute; top: 10px; right: 10px; margin: 0; }
     .fb-x button {
@@ -377,8 +428,8 @@
       <a href="/cjenik" class="{% if request.url.path.startswith('/cjenik') %}on{% endif %}">Cjenik</a>
       {# equal weight: having an account and getting one are the same priority
          here, so neither gets to be the loud one #}
-      <a href="/login" class="cta">Prijava</a>
-      <a href="/signup" class="cta">Registriraj se</a>
+      <a href="/login" class="cta" data-auth="login">Prijava</a>
+      <a href="/signup" class="cta" data-auth="signup">Registriraj se</a>
     {% endif %}
   </nav>
   {% endif %}
@@ -441,6 +492,73 @@
   {% endif %}
   {% block content %}{% endblock %}
 </main>
+{% if not user %}
+{# login + registration as ONE modal over whatever page the guest is on. Opened
+   by any <a data-auth="login|signup">; those links keep their hrefs, so without
+   JS (or a <dialog>) they simply go to /login and /signup. #}
+{% set _nxt = request.url.path if not request.url.path.startswith(("/login", "/signup", "/forgot", "/reset", "/auth")) else "/" %}
+<dialog id="authDlg" class="fb-modal auth" aria-labelledby="authTitle">
+  <div class="fb-box">
+    <form method="dialog" class="fb-x"><button type="submit" aria-label="Zatvori">✕</button></form>
+    <h2 id="authTitle">Dobrodošli natrag</h2>
+    <div class="auth-tabs" role="tablist" aria-label="Prijava ili registracija">
+      <button type="button" role="tab" id="authTabLogin" aria-selected="true" aria-controls="authLogin" onclick="qmtAuthTab('login')">Prijava</button>
+      <button type="button" role="tab" id="authTabSignup" aria-selected="false" aria-controls="authSignup" onclick="qmtAuthTab('signup')">Registracija</button>
+    </div>
+    <form id="authLogin" role="tabpanel" aria-labelledby="authTabLogin" method="post" action="/login">
+      <input type="hidden" name="next" value="{{ _nxt }}">
+      <div class="field"><label for="al-email">Email</label>
+        <input id="al-email" type="email" name="email" autocomplete="email" required></div>
+      <div class="field"><label for="al-pass">Lozinka</label>
+        <div class="pw"><input id="al-pass" type="password" name="password" autocomplete="current-password" required>
+          <button type="button" class="pw-eye" aria-label="Prikaži lozinku" onclick="qmtEye(this)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button></div></div>
+      <div class="auth-row"><a class="tlink" href="/forgot">Zaboravljena lozinka?</a></div>
+      <button type="submit" class="btn">Prijavi se</button>
+    </form>
+    <form id="authSignup" role="tabpanel" aria-labelledby="authTabSignup" method="post" action="/signup" hidden>
+      {% if not signup_open %}<p class="hint auth-note">Račun zasad mogu otvoriti samo pozvani članovi — javi se treneru za pozivnicu.</p>{% endif %}
+      <div class="field"><label for="as-name">Ime (neobavezno)</label>
+        <input id="as-name" type="text" name="name" autocomplete="name" placeholder="npr. Ivan Horvat"></div>
+      <div class="field"><label for="as-email">Email</label>
+        <input id="as-email" type="email" name="email" autocomplete="email" required></div>
+      <div class="field"><label for="as-pass">Lozinka (barem 8 znakova)</label>
+        <div class="pw"><input id="as-pass" type="password" name="password" autocomplete="new-password" minlength="8" required>
+          <button type="button" class="pw-eye" aria-label="Prikaži lozinku" onclick="qmtEye(this)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button></div></div>
+      <button type="submit" class="btn">Otvori račun</button>
+    </form>
+  </div>
+</dialog>
+{% endif %}
+{% if user and not user.is_trainer %}
+{# the install banner — a PWA nobody installs is a website. JS decides whether
+   to show it (phone, browser tab, not the first page, not dismissed). #}
+<div id="a2hs" class="card a2hs" hidden role="dialog" aria-labelledby="a2hsTitle">
+  <button type="button" class="a2hs-x" aria-label="Zatvori" onclick="qmtA2hsDismiss()">✕</button>
+  <div class="a2hs-head">
+    <img src="/static/icons/icon-192.png" alt="" width="44" height="44">
+    <div><strong>QMT</strong><div id="a2hsTitle" class="hint">Dodaj na početni zaslon</div></div>
+  </div>
+  <p class="hint a2hs-lead">Raspored i karton jednim dodirom, kao aplikacija.</p>
+  <ol class="a2hs-steps" id="a2hsIos" hidden>
+    <li><span class="n">1</span><span>Pritisni <b>Podijeli</b>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
+      u pregledniku</span></li>
+    <li><span class="n">2</span><span>Odaberi <b>„Dodaj na početni zaslon”</b></span></li>
+  </ol>
+  <ol class="a2hs-steps" id="a2hsAndroid" hidden>
+    <li><span class="n">1</span><span>Otvori izbornik preglednika <b>⋮</b></span></li>
+    <li><span class="n">2</span><span>Odaberi <b>„Dodaj na početni zaslon”</b></span></li>
+  </ol>
+  <div class="a2hs-actions">
+    <button type="button" class="act act-quiet" onclick="qmtA2hsDismiss()">U redu</button>
+    <button type="button" id="a2hsInstall" class="btn btn-sm" hidden onclick="qmtA2hsInstall()">Instaliraj</button>
+  </div>
+</div>
+{% endif %}
 {# any form carrying data-confirm asks first — see qmtAskConfirm below #}
 <dialog id="confirmDlg" class="fb-modal" aria-labelledby="confirmTitle">
   <div class="fb-box">
@@ -561,6 +679,76 @@
     });
     d.addEventListener("click", function (e) { if (e.target === d) qmtConfirmClose(); });
     d.addEventListener("close", function () { _cf = null; });
+  })();
+
+  // ---- auth modal ----
+  function qmtAuthTab(which) {
+    var login = which !== "signup";
+    var l = document.getElementById("authLogin"), s = document.getElementById("authSignup");
+    if (!l || !s) return;
+    l.hidden = !login; s.hidden = login;
+    document.getElementById("authTabLogin").setAttribute("aria-selected", login);
+    document.getElementById("authTabSignup").setAttribute("aria-selected", !login);
+    document.getElementById("authTitle").textContent = login ? "Dobrodošli natrag" : "Otvori račun";
+    var first = document.getElementById(login ? "al-email" : "as-name");
+    if (first) first.focus();
+  }
+  function qmtAuthOpen(which) {
+    var d = document.getElementById("authDlg");
+    if (!d || !d.showModal) return false;      // no dialog support → the href takes over
+    d.showModal(); qmtAuthTab(which);
+    return true;
+  }
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest("a[data-auth]");
+    if (a && qmtAuthOpen(a.dataset.auth)) e.preventDefault();
+  });
+  (function () {
+    var d = document.getElementById("authDlg");
+    if (d) d.addEventListener("click", function (e) { if (e.target === d) d.close(); });
+  })();
+  function qmtEye(btn) {
+    var i = btn.parentElement.querySelector("input");
+    var show = i.type === "password";
+    i.type = show ? "text" : "password";
+    btn.setAttribute("aria-label", show ? "Sakrij lozinku" : "Prikaži lozinku");
+  }
+
+  // ---- install banner ----
+  var _a2hsDeferred = null;
+  function qmtA2hsDismiss() {
+    var box = document.getElementById("a2hs");
+    if (box) box.hidden = true;
+    try { localStorage.setItem("qmt-a2hs", "no"); } catch (e) {}
+  }
+  function qmtA2hsInstall() {
+    if (!_a2hsDeferred) return;
+    _a2hsDeferred.prompt();
+    _a2hsDeferred.userChoice.then(function () { qmtA2hsDismiss(); });
+  }
+  (function () {
+    var box = document.getElementById("a2hs");
+    if (!box) return;
+    var coarse = matchMedia("(pointer: coarse)").matches;
+    var standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    var dismissed = false, loads = 1;
+    try {
+      dismissed = localStorage.getItem("qmt-a2hs") === "no";
+      loads = (parseInt(localStorage.getItem("qmt-loads") || "0", 10) || 0) + 1;
+      localStorage.setItem("qmt-loads", String(loads));
+    } catch (e) {}
+    if (!coarse || standalone || dismissed || loads < 2) return;
+    var ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault(); _a2hsDeferred = e;              // Chrome/Android: a real install button
+      document.getElementById("a2hsInstall").hidden = false;
+      document.getElementById("a2hsAndroid").hidden = true;
+      box.hidden = false;
+    });
+    if (ios) { document.getElementById("a2hsIos").hidden = false; box.hidden = false; }
+    else setTimeout(function () {                         // no native prompt arrived: show the manual steps
+      if (!_a2hsDeferred) { document.getElementById("a2hsAndroid").hidden = false; box.hidden = false; }
+    }, 2500);
   })();
 
   // the osvrt prompt: native <dialog> gives Escape + focus trapping for free,

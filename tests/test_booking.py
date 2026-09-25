@@ -690,3 +690,27 @@ def test_cycle_is_anchored_on_the_due_date_not_the_payment():
     assert m.cycle_bounds(date(2026, 10, 20)) == (date(2026, 10, 6), date(2026, 11, 6))  # the month just paid
     assert m.cycle_bounds(date(2026, 11, 6)) == (date(2026, 11, 6), date(2026, 12, 6))   # booking ahead
     assert add_month(date(2026, 1, 31)) == date(2026, 2, 28) and sub_month(date(2026, 3, 31)) == date(2026, 2, 28)
+
+
+# ---------- auth modal + install banner (patterns.md §2, §3) ----------
+
+def test_guest_pages_carry_the_auth_modal_and_clients_the_install_banner():
+    c = TestClient(app)
+    page = c.get("/cjenik").text
+    assert 'id="authDlg"' in page                          # one modal, two tabs
+    assert 'id="authLogin"' in page and 'id="authSignup"' in page
+    assert 'data-auth="login"' in page and 'data-auth="signup"' in page
+    assert 'name="next" value="/cjenik"' in page           # login returns you where you were
+    assert 'id="a2hs"' not in page                         # guests are never asked to install
+    assert "samo pozvani" in page                          # invite-only note while SIGNUP_OPEN is unset
+    # auth pages themselves send you home, never back to /login
+    assert 'name="next" value="/"' in c.get("/login").text
+
+    make_user("ivan@test.local")
+    ci = client_for("ivan@test.local")
+    page = ci.get("/raspored").text
+    assert 'id="authDlg"' not in page                      # logged in: no modal
+    assert 'id="a2hs"' in page and 'id="a2hsIos"' in page and 'id="a2hsAndroid"' in page
+
+    make_user("trener@test.local", is_trainer=True)
+    assert 'id="a2hs"' not in client_for("trener@test.local").get("/raspored").text

@@ -15,6 +15,8 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.card` | base | `--surface`, hairline, 16px radius, `--shadow` |
 | `.crumbs` | base | breadcrumb: muted links, `/` separators, `.here` current |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
+| `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal, `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
+| `#a2hs` `.card.a2hs` | base (clients) | install banner: phones only (`pointer: coarse`, plus a `pointer: fine` CSS kill-switch), not in standalone mode, not on the first page load, dismissed once (`localStorage qmt-a2hs`); iOS gets share-sheet steps, Chrome gets a real "Instaliraj" via `beforeinstallprompt` |
 
 ## Buttons and links
 
