@@ -46,7 +46,7 @@ than a page.
   they are the whole content. Password field gets an eye toggle.
 - Primary `.btn` full-width **or** left-aligned — not both a full-width button
   and a pill row. "Zaboravljena lozinka?" as `.tlink`, right-aligned.
-- No Google/Turnstile in v1 — sign-up is invite-only; revisit with `SIGNUP_OPEN`.
+- No Google/Turnstile in v1 — sign-up is invite-only; revisit with `SIGNUP_MODE=open`.
 
 ## 3. "Dodaj na početni zaslon" install banner — BUILT 25.9.2026 (`#a2hs` in base.html)
 

@@ -9,13 +9,13 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | class | where | what |
 |---|---|---|
 | `.topbar` | base | ONE row at every width: brand left, tabs middle, avatar right. Wordmark shortens to "QMT" ≤1200px, tabs fold into ☰ ≤900px. Tabs never wrap. |
-| `.nav a` / `.nav a.cta` / `.on` | base | tab, red pill tab (guest: Prijava + Registriraj se, both red — equal weight), current page |
+| `.nav a` / `.nav a.cta` / `.on` | base | tab, red pill tab (guest: Prijava, plus Registriraj se at equal weight while `SIGNUP_MODE` is not closed; never a Cjenik tab), current page |
 | `.avatar` / `.user-menu` | base | initials circle → account menu on the YouTube pattern: identity header (ellipsized email), icon gutter rows (Profil, theme, Odjava), full-bleed hover |
 | `main` | base | max-width 1100px, `clamp(14px,4vw,40px)` side padding; `main.full` for the landing |
 | `.card` | base | `--surface`, hairline, 16px radius, `--shadow` |
 | `.crumbs` | base | breadcrumb: muted links, `/` separators, `.here` current |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
-| `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal, `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
+| `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
 | `#a2hs` `.card.a2hs` | base (clients) | install banner: phones only (`pointer: coarse`, plus a `pointer: fine` CSS kill-switch), not in standalone mode, not on the first page load, dismissed once (`localStorage qmt-a2hs`); iOS gets share-sheet steps, Chrome gets a real "Instaliraj" via `beforeinstallprompt` |
 
 ## Buttons and links
@@ -70,13 +70,14 @@ targets; do not introduce new uses.
 
 **Landing (`landing.html`).** Hero: kicker with a red dash, uppercase PT Sans h1
 with `.red` on the last line, lead paragraph, `.cta-row` of `.btn-hero` (15px/28px,
-14px radius; `.secondary` = translucent white). Hero CTAs follow membership: guest →
-Registriraj se (primary) + Pogledaj cjenik + Što nudimo; plan-less client → Pogledaj
-cjenik; member → Rezerviraj termin. Service cards `.svc` in a 3×2 `.svc-grid`:
+14px radius; `.secondary` = translucent white). Hero CTAs follow membership: member →
+Rezerviraj termin; plan-less client → Pogledaj cjenik; guest → Registriraj se while
+signup is open, else Što nudimo + Kontakt. **Guests never get a price or a
+`/cjenik` link** (members only since 28.9.2026). Service cards `.svc` in a 3×2 `.svc-grid`:
 icon tile, title, copy with `min-height: 4.65em`, accent meta line, CTA pinned with
 `margin-top: auto` — owned plan = green filled `.owned` (`--good-fill`, transparent
 1px border so it matches the neutral button's height), open plan = neutral
-`.svc-cta`. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
+`.svc-cta` ("Odaberi plan" for members, "Javi nam se" → `#kontakt` for guests). Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
 

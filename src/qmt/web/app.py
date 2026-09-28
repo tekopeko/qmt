@@ -130,6 +130,7 @@ def _ctx(request: Request, user, **extra):
             "show_online": _has_online(user),
             "plan_links": PLAN_LINKS,
             "signup_open": config.signup_open(),
+            "signup_mode": config.signup_mode(),
             "feedback_prompt": _pop_feedback_prompt(request, user),
             "is_owner": _is_owner(user), **extra}
 
@@ -178,6 +179,9 @@ def signup_page(request: Request):
 @app.post("/signup")
 def signup(request: Request, name: str = Form(""), email: str = Form(...),
            password: str = Form(...)):
+    if config.signup_mode() == "closed":
+        # the page itself says registration is closed; nothing is created
+        return RedirectResponse("/signup", status_code=303)
     email = email.strip().lower()
     if not auth.email_ok(email):
         return RedirectResponse("/signup?error=Neispravna+email+adresa.", status_code=303)
@@ -203,8 +207,10 @@ def _send_verification(request: Request, email: str):
     link = f"{config.PUBLIC_BASE_URL}/auth/verify?token={auth.make_verify_token(email)}"
     sent = mailer.send_verification_email(email, link)
     if not sent and config.IS_PROD:
+        # /login, not /signup: an unverified member logging in lands here too,
+        # and with registration closed the signup page would only confuse them
         return RedirectResponse(
-            "/signup?error=Slanje+emaila+nije+uspjelo+—+javi+se+treneru.", status_code=303)
+            "/login?error=Slanje+emaila+nije+uspjelo+—+javi+se+treneru.", status_code=303)
     return templates.TemplateResponse(request, "verify_sent.html", _ctx(
         request, None, email=email, dev_link=None if sent else link))
 
@@ -246,9 +252,13 @@ def landing(request: Request):
 
 @app.get("/cjenik", response_class=HTMLResponse)
 def cjenik(request: Request):
-    """Plan pricing — public; the future card-payment entry point. Prices are
-    placeholders until the owner supplies real ones."""
+    """Plan pricing — MEMBERS ONLY since 28.9.2026 (see config.signup_mode):
+    prices may be shown only to people with an account, so a guest is sent to
+    log in, like every other members' page. Also the card-payment entry point."""
     user = current_user(request)
+    if user is None:
+        from urllib.parse import quote
+        return RedirectResponse(f"/login?next={quote('/cjenik')}", status_code=303)
     subs = ({m.plan: m for m in db.memberships_for(user.id) if m.stripe_subscription_id}
             if user else {})
     return templates.TemplateResponse(request, "cjenik.html", _ctx(
@@ -471,7 +481,7 @@ def auth_verify(request: Request, token: str = ""):
             "/login?error=Link+nije+valjan+ili+je+istekao+—+prijavi+se+za+novi.", status_code=303)
     newly = db.mark_email_verified(email)
     if newly is None:
-        return RedirectResponse("/login?error=Račun+ne+postoji+—+registriraj+se.", status_code=303)
+        return RedirectResponse("/login?error=Račun+ne+postoji.", status_code=303)
     # Owner hears about REAL arrivals only: first verification, never a
     # re-clicked link, never the owner verifying their own account.
     if newly and config.OWNER_EMAIL and email.strip().lower() != config.OWNER_EMAIL:

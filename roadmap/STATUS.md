@@ -2,6 +2,17 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
+## 28.9.2026 — prices members-only, registration closed (deployed)
+
+On legal advice the owner received (public prices would need the prior price
+shown beside them, the way shop shelves do), `/cjenik` became members-only and
+registration closed. Guests see no price, no Cjenik tab and no "Registriraj
+se"; service cards say "Javi nam se" → `#kontakt`. Existing accounts log in as
+always. The switch is `SIGNUP_MODE` (unset = closed); it replaced `SIGNUP_OPEN`.
+To show prices publicly again the cjenik needs the prior-price display first.
+The owner's Shopify shop, where the reference prices came from, is outside
+this app and still shows them publicly.
+
 ## Deploy state
 
 Everything is committed and pushed to `master` (auto-deploys to Railway).
@@ -22,8 +33,8 @@ owner has since moved on to reviewing other screens.
 - **Flow rework**: hero CTAs follow membership (no "Rezerviraj termin" for
   people who can't book), Cjenik in the nav for clients/guests, plan-gate
   booking error links to that plan's price, logout lands on `/`.
-- **`SIGNUP_OPEN` env switch**: registration opens ONLY via this flag —
-  clearing `ALLOWED_EMAILS` closes signup, it never opens it. Unset in prod.
+- **Signup switch** (then `SIGNUP_OPEN`, since 28.9. `SIGNUP_MODE`): missing
+  config fails closed; clearing `ALLOWED_EMAILS` never opens signup.
 - **Email reminders** (`src/qmt/reminders.py`): članarina pre-dospijeće +
   day-before termin emails; claim-idempotent via the `reminders` table; runs
   in-process every 6 h (app lifespan) and via `scripts/send_reminders.py`.
