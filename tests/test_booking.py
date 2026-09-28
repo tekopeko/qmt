@@ -86,8 +86,8 @@ def test_signup_allowlist_and_login():
 
 def test_signup_stays_closed_unless_explicitly_opened(monkeypatch):
     """Registration must fail CLOSED. An empty or missing ALLOWED_EMAILS is not
-    an invitation to the whole internet — only SIGNUP_OPEN is."""
-    monkeypatch.delenv("SIGNUP_OPEN", raising=False)
+    an invitation to the whole internet — only SIGNUP_MODE=open is."""
+    monkeypatch.setenv("SIGNUP_MODE", "invite")
     monkeypatch.setenv("ALLOWED_EMAILS", "")          # nothing configured at all
     assert not config.email_allowed("stranac@example.com")
     c = TestClient(app)
@@ -97,13 +97,47 @@ def test_signup_stays_closed_unless_explicitly_opened(monkeypatch):
     assert db.get_user_by_email("stranac@example.com") is None
     assert "samo pozvani" in c.get("/signup").text
 
-    monkeypatch.setenv("SIGNUP_OPEN", "true")         # the explicit switch
+    monkeypatch.setenv("SIGNUP_MODE", "open")         # the explicit switch
     assert config.email_allowed("stranac@example.com")
     r = c.post("/signup", data={"name": "X", "email": "stranac@example.com",
                                 "password": "lozinka123"}, follow_redirects=False)
     assert r.status_code == 200                       # verify-email page
     assert db.get_user_by_email("stranac@example.com") is not None
     assert "samo pozvani" not in c.get("/signup").text   # the copy follows the flag
+
+
+def test_signup_is_closed_by_default_and_members_still_log_in(monkeypatch):
+    """Production runs with SIGNUP_MODE unset, i.e. closed (28.9.2026): nobody
+    opens an account, not even an invited email, and no page offers to. Everyone
+    who already has an account logs in exactly as before."""
+    for unset_or_junk in (None, "", "true", "otvoreno"):   # anything unknown = closed
+        if unset_or_junk is None:
+            monkeypatch.delenv("SIGNUP_MODE", raising=False)
+        else:
+            monkeypatch.setenv("SIGNUP_MODE", unset_or_junk)
+        assert config.signup_mode() == "closed"
+        assert not config.email_allowed("ivan@test.local")   # invited, still no
+    monkeypatch.delenv("SIGNUP_MODE", raising=False)
+
+    c = TestClient(app)
+    r = c.post("/signup", data={"name": "Ivan", "email": "ivan@test.local",
+                                "password": "lozinka123"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/signup"
+    assert db.get_user_by_email("ivan@test.local") is None
+    page = c.get("/signup").text
+    assert "trenutno zatvorena" in page and 'action="/signup"' not in page
+
+    for path in ("/", "/login", "/prehrana", "/forgot"):
+        page = c.get(path).text
+        assert 'href="/signup"' not in page and 'data-auth="signup"' not in page, path
+        assert 'id="authSignup"' not in page and 'class="auth-tabs"' not in page, path
+    assert "trenutno zatvorena" in c.get("/login").text
+    page = c.get("/").text
+    assert 'data-auth="login"' in page                  # Prijava stays
+    assert 'href="#kontakt">Kontakt' in page            # the hero points at the studio
+
+    make_user("ana@test.local")                         # an existing member...
+    client_for("ana@test.local")                        # ...logs in as always
 
 
 def test_logout_lands_on_the_landing_page():
@@ -363,12 +397,14 @@ def test_template_delete_prunes_unbooked_keeps_booked():
 
 
 def test_landing_offers_only_what_the_visitor_can_actually_do():
-    """A guest can neither book nor register without an account, so the hero
-    sells the prices and the account — never a booking they'd be refused."""
+    """A guest can neither book nor see prices without an account (prices are
+    members-only), so while registration is open (the suite runs
+    SIGNUP_MODE=invite) the hero offers the account, never a booking they'd be
+    refused and never the cjenik."""
     c = TestClient(app)
     r = c.get("/")                               # no login required
     assert r.status_code == 200
-    assert "Pogledaj cjenik" in r.text
+    assert "Pogledaj cjenik" not in r.text and 'href="/cjenik' not in r.text
     assert "/signup" in r.text                   # the account they need first
     assert "Rezerviraj termin" not in r.text     # would dead-end at the plan gate
 
@@ -397,7 +433,7 @@ def test_cjenik_is_reachable_without_hunting_for_it():
     ca = client_for("ana@test.local")
     assert '/cjenik"' in ca.get("/raspored").text        # nav tab + the empty state
     assert "Pogledaj cjenik" in ca.get("/raspored").text
-    assert '/cjenik"' in TestClient(app).get("/").text   # and for a logged-out guest
+    assert 'href="/cjenik' not in TestClient(app).get("/").text   # never for a guest: members only
 
     # the trainer's nav is already full and they do not buy plans
     make_user("trener@test.local", is_trainer=True, plans=())
@@ -569,10 +605,22 @@ def test_calendar_shows_membership_gate():
     assert "Nemaš aktivnu članarinu" in page
 
 
-def test_cjenik_public_and_landing_plan_cta_states():
-    page = TestClient(app).get("/").text
-    assert "Odaberi plan" in page                       # hover CTA on service cards
-    assert TestClient(app).get("/cjenik").status_code == 200
+def test_cjenik_is_members_only_and_landing_plan_cta_states():
+    """Prices are shown only to people with an account (28.9.2026): a guest who
+    opens /cjenik is sent to log in, and no public page carries a price or a
+    path to one."""
+    guest = TestClient(app)
+    r = guest.get("/cjenik", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login?next=/cjenik"
+    for path in ("/", "/login", "/signup", "/prehrana", "/forgot"):
+        page = guest.get(path).text
+        assert "€" not in page and 'href="/cjenik' not in page, path
+    page = guest.get("/").text
+    assert "Javi nam se" in page and 'id="kontakt"' in page   # cards point at the studio
+    assert "Odaberi plan →</a>" not in page             # the button, not the CSS comment naming it
+
+    make_user("ana@test.local", plans=())
+    assert "Odaberi plan →</a>" in client_for("ana@test.local").get("/").text   # members pick plans
 
     make_user("ivan@test.local")                        # default plan: grupni
     ci = client_for("ivan@test.local")
@@ -696,13 +744,13 @@ def test_cycle_is_anchored_on_the_due_date_not_the_payment():
 
 def test_guest_pages_carry_the_auth_modal_and_clients_the_install_banner():
     c = TestClient(app)
-    page = c.get("/cjenik").text
+    page = c.get("/prehrana").text
     assert 'id="authDlg"' in page                          # one modal, two tabs
     assert 'id="authLogin"' in page and 'id="authSignup"' in page
     assert 'data-auth="login"' in page and 'data-auth="signup"' in page
-    assert 'name="next" value="/cjenik"' in page           # login returns you where you were
+    assert 'name="next" value="/prehrana"' in page         # login returns you where you were
     assert 'id="a2hs"' not in page                         # guests are never asked to install
-    assert "samo pozvani" in page                          # invite-only note while SIGNUP_OPEN is unset
+    assert "samo pozvani" in page                          # invite-only note under SIGNUP_MODE=invite
     # auth pages themselves send you home, never back to /login
     assert 'name="next" value="/"' in c.get("/login").text
 

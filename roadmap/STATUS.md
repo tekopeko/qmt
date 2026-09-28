@@ -1,15 +1,27 @@
-# Where the last session left off — 25.9.2026.
+# Where the last session left off — 28.9.2026.
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
+
+## 28.9.2026 — prices members-only, registration closed (deployed)
+
+On legal advice the owner received (public prices would need the prior price
+shown beside them, the way shop shelves do), `/cjenik` became members-only and
+registration closed. Guests see no price, no Cjenik tab and no "Registriraj
+se"; service cards say "Javi nam se" → `#kontakt`. Existing accounts log in as
+always. The switch is `SIGNUP_MODE` (unset = closed); it replaced `SIGNUP_OPEN`.
+To show prices publicly again the cjenik needs the prior-price display first.
+The owner's Shopify shop, where the reference prices came from, is outside
+this app and still shows them publicly.
 
 ## Deploy state
 
 `master` is deployed (Railway auto-deploys on push) and carries everything up to
-the login modal + install banner. 90 tests green.
+the 28.9. hotfix above. 91 tests green.
 
 **Branch `redesign` holds the Shape-club-style redesign and is NOT merged.** The
 owner decides whether it goes to prod; merging `redesign` into `master` deploys
-it. It is two commits of landing work plus one of app-screen work (see below).
+it. It is two commits of landing work plus one of app-screen work (see below),
+and it has the 28.9. hotfix merged in, so merging it keeps prices members-only.
 
 ## What this session shipped (25.9.)
 
@@ -50,8 +62,10 @@ it. It is two commits of landing work plus one of app-screen work (see below).
 ## Testing the whole pipeline on prod
 
 1. As owner, open **Online treninzi** once — creates the nine programme slots.
-2. Sign up with an unused allowlist alias (`tvrtko.doresic+qmt1/2/3@gmail.com`),
-   verify by email (owner gets the "Novi korisnik" notice).
+2. Registration is closed while `SIGNUP_MODE` is unset. To test it, set
+   `SIGNUP_MODE=invite` on Railway, sign up with an unused allowlist alias
+   (`tvrtko.doresic+qmt1/2/3@gmail.com`), verify by email (owner gets the "Novi
+   korisnik" notice), then unset it again.
 3. Login → profile form → landing. Online tab appears only after an Online
    uplata on /clanarine; upitnik then routes to the matched programme.
 4. Reminders: `python scripts/send_reminders.py` on Railway forces a pass;

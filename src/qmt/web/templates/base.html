@@ -442,11 +442,12 @@
       {% if is_owner %}<a href="/korisnici" class="{% if '/korisnici' in request.url.path %}on{% endif %}">Korisnici</a>
       <a href="/statistika" class="{% if '/statistika' in request.url.path %}on{% endif %}">Statistika</a>{% endif %}
     {% else %}
-      <a href="/cjenik" class="{% if request.url.path.startswith('/cjenik') %}on{% endif %}">Cjenik</a>
-      {# equal weight: having an account and getting one are the same priority
-         here, so neither gets to be the loud one #}
+      {# no Cjenik tab: prices are for members only (config.signup_mode).
+         Prijava and Registriraj se carry equal weight, since having an account
+         and getting one are the same priority; the second exists only while
+         registration is open. Written so a missing signup_mode hides it. #}
       <a href="/login" class="cta" data-auth="login">Prijava</a>
-      <a href="/signup" class="cta" data-auth="signup">Registriraj se</a>
+      {% if signup_mode in ('invite', 'open') %}<a href="/signup" class="cta" data-auth="signup">Registriraj se</a>{% endif %}
     {% endif %}
   </nav>
   {% endif %}
@@ -512,17 +513,21 @@
 {% if not user %}
 {# login + registration as ONE modal over whatever page the guest is on. Opened
    by any <a data-auth="login|signup">; those links keep their hrefs, so without
-   JS (or a <dialog>) they simply go to /login and /signup. #}
+   JS (or a <dialog>) they simply go to /login and /signup. While registration
+   is closed the modal is login only: no tabs, no signup pane. #}
+{% set _reg = signup_mode in ('invite', 'open') %}
 {% set _nxt = request.url.path if not request.url.path.startswith(("/login", "/signup", "/forgot", "/reset", "/auth")) else "/" %}
 <dialog id="authDlg" class="fb-modal auth" aria-labelledby="authTitle">
   <div class="fb-box">
     <form method="dialog" class="fb-x"><button type="submit" aria-label="Zatvori">✕</button></form>
     <h2 id="authTitle">Dobrodošli natrag</h2>
+    {% if _reg %}
     <div class="auth-tabs" role="tablist" aria-label="Prijava ili registracija">
       <button type="button" role="tab" id="authTabLogin" aria-selected="true" aria-controls="authLogin" onclick="qmtAuthTab('login')">Prijava</button>
       <button type="button" role="tab" id="authTabSignup" aria-selected="false" aria-controls="authSignup" onclick="qmtAuthTab('signup')">Registracija</button>
     </div>
-    <form id="authLogin" role="tabpanel" aria-labelledby="authTabLogin" method="post" action="/login">
+    {% endif %}
+    <form id="authLogin" {% if _reg %}role="tabpanel" aria-labelledby="authTabLogin" {% endif %}method="post" action="/login">
       <input type="hidden" name="next" value="{{ _nxt }}">
       <div class="field"><label for="al-email">Email</label>
         <input id="al-email" type="email" name="email" autocomplete="email" required></div>
@@ -534,6 +539,7 @@
       <div class="auth-row"><a class="tlink" href="/forgot">Zaboravljena lozinka?</a></div>
       <button type="submit" class="btn">Prijavi se</button>
     </form>
+    {% if _reg %}
     <form id="authSignup" role="tabpanel" aria-labelledby="authTabSignup" method="post" action="/signup" hidden>
       {% if not signup_open %}<p class="hint auth-note">Račun zasad mogu otvoriti samo pozvani članovi — javi se treneru za pozivnicu.</p>{% endif %}
       <div class="field"><label for="as-name">Ime (neobavezno)</label>
@@ -547,6 +553,7 @@
           </button></div></div>
       <button type="submit" class="btn">Otvori račun</button>
     </form>
+    {% endif %}
   </div>
 </dialog>
 {% endif %}
@@ -700,12 +707,13 @@
 
   // ---- auth modal ----
   function qmtAuthTab(which) {
-    var login = which !== "signup";
     var l = document.getElementById("authLogin"), s = document.getElementById("authSignup");
-    if (!l || !s) return;
-    l.hidden = !login; s.hidden = login;
-    document.getElementById("authTabLogin").setAttribute("aria-selected", login);
-    document.getElementById("authTabSignup").setAttribute("aria-selected", !login);
+    if (!l) return;
+    var login = which !== "signup" || !s;      // registration closed → login is all there is
+    l.hidden = !login; if (s) s.hidden = login;
+    var tl = document.getElementById("authTabLogin"), ts = document.getElementById("authTabSignup");
+    if (tl) tl.setAttribute("aria-selected", login);
+    if (ts) ts.setAttribute("aria-selected", !login);
     document.getElementById("authTitle").textContent = login ? "Dobrodošli natrag" : "Otvori račun";
     var first = document.getElementById(login ? "al-email" : "as-name");
     if (first) first.focus();

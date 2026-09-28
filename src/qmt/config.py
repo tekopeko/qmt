@@ -48,8 +48,8 @@ def _env_email(name: str) -> str:
     return os.environ.get(name, "").strip().strip("\"'").strip().lower()
 
 
-# The app owner. Always allowed to sign up, passes every trainer gate, and is
-# the only account that may manage roles (/korisnici).
+# The app owner. May sign up whenever signup is not closed, passes every
+# trainer gate, and is the only account that may manage roles (/korisnici).
 OWNER_EMAIL = _env_email("OWNER_EMAIL")
 if IS_PROD and not OWNER_EMAIL:
     raise RuntimeError("Set OWNER_EMAIL when ENV=production.")
@@ -60,21 +60,42 @@ def _allowlist() -> set[str]:
     return {e.strip().strip("\"'").lower() for e in raw.split(",") if e.strip()}
 
 
-def signup_open() -> bool:
-    """Is registration open to anyone, or still invite-only?
+SIGNUP_MODES = ("closed", "invite", "open")
 
-    Deliberately its OWN switch rather than "an empty ALLOWED_EMAILS means
-    open": that reading would turn a lost or mistyped env var into an open door
-    for the whole internet. Missing config must fail CLOSED — the studio stays
-    invite-only until somebody explicitly sets SIGNUP_OPEN=true.
+
+def signup_mode() -> str:
+    """Who may open an account right now. One switch, three words:
+
+        closed   nobody                         (the DEFAULT)
+        invite   the owner + ALLOWED_EMAILS
+        open     anyone
+
+    Set with SIGNUP_MODE. Missing or unrecognised config fails CLOSED: a lost or
+    mistyped env var must never become an open door, and an empty ALLOWED_EMAILS
+    is not an invitation to the whole internet either.
+
+    Closed by default since 28.9.2026: the owner was advised that prices may be
+    shown only to people who already have an account until the cjenik carries a
+    prior price beside the current one, the way shop shelves do. So /cjenik is
+    members-only and no new accounts are opened; existing accounts log in as
+    always. Reopening is SIGNUP_MODE=invite on Railway, no code change.
     """
-    return os.environ.get("SIGNUP_OPEN", "").strip().lower() in ("1", "true", "yes", "on")
+    mode = os.environ.get("SIGNUP_MODE", "").strip().strip("\"'").lower()
+    return mode if mode in SIGNUP_MODES else "closed"
+
+
+def signup_open() -> bool:
+    """Open to anyone, not only invited emails (drives the "samo uz poziv" copy)."""
+    return signup_mode() == "open"
 
 
 def email_allowed(email: str) -> bool:
-    e = email.strip().lower()
-    if signup_open():
+    mode = signup_mode()
+    if mode == "closed":
+        return False
+    if mode == "open":
         return True
+    e = email.strip().lower()
     if OWNER_EMAIL and e == OWNER_EMAIL:
         return True
     return e in _allowlist()
