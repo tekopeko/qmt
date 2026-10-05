@@ -124,10 +124,13 @@ active `online` plan → filled upitnik → matched programmes.
   first-class (`[data-theme]` tokens, pre-paint script, saved in
   `localStorage['qmt-theme']`). Never style with a raw hex that only works in one theme.
 - **The topbar is a floating dark pill, ONE row at every width**: `flex-wrap: nowrap`,
-  brand left, tabs middle, avatar right. When space runs out the wordmark shortens to
-  "QMT" (≤1200px), then the tabs fold into the ☰ drawer (≤900px, sized for the owner's
-  eight tabs). Tabs never wrap their own label. The avatar opens the account menu
-  (identity header, Profil, theme toggle, Odjava).
+  brand left, tabs middle, avatar right, everything inside the pill's padding. The
+  wordmark shows in full only when the room the tabs leave allows it, otherwise
+  "QMT": a container query on `.brand-slot`, never a window breakpoint — the pill is
+  capped at 1100px, so the window width says nothing about the room inside it.
+  Seven or more tabs (trainer, owner) run tight; all tabs tighten ≤1200px and fold
+  into the ☰ drawer ≤900px. Tabs never wrap their own label. The avatar opens the
+  account menu (identity header, Profil, theme toggle, Odjava).
 - **Guests log in through a modal** (`#authDlg`, opened by `data-auth` links; `/login`
   and `/signup` remain the no-JS fallback). **Clients on phones get an install
   banner** (`#a2hs`) once, never on desktop. Both live in `base.html`.

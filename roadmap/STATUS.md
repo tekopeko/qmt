@@ -8,6 +8,12 @@ Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 reverts with `git revert -m 1 <merge>`) and deployed. There is no long-lived
 branch any more: work happens on `master`, and every push deploys.
 
+Same day, first fix on master: as owner on any window wider than 1200px the
+avatar stuck out of the topbar pill (eight tabs + the full wordmark need 1086px,
+the pill offers 1076). The wordmark now follows the room the tabs leave (a
+container query on `.brand-slot`), bars with seven or more tabs run tight, and
+the audit checks the pill itself.
+
 Also new, and only about how Claude works here: delegation to an Opus 5.5
 worker sits behind the `QMT_DELEGATE` flag (off by default) — see "Models" in
 `CLAUDE.md`.

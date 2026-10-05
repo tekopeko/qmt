@@ -8,7 +8,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 
 | class | where | what |
 |---|---|---|
-| `.topbar` | base | a floating dark-glass pill (999px, blur, sticky 10px below the top, max 1100px) on every screen and both themes; ONE row at every width: brand left, tabs middle, avatar right. Wordmark shortens to "QMT" ≤1200px, tabs fold into ☰ ≤900px. Tabs never wrap. |
+| `.topbar` | base | a floating dark-glass pill (999px, blur, sticky 10px below the top, max 1100px) on every screen and both themes; ONE row at every width: brand left, tabs middle, avatar right, all inside the pill's padding. `.brand-slot` takes the room the tabs leave and is a query container: the wordmark shows in full when the slot is ≥19.2rem, else "QMT" (never a window breakpoint — the pill is capped, so the window says nothing about the room inside). 7+ tabs run tight (`.nav:has(> a:nth-of-type(7))`), all tabs tighten ≤1200px and fold into ☰ ≤900px. Tabs never wrap. |
 | `.nav a` / `.nav a.cta` / `.on` | base | tab, red pill tab (guest: Prijava, plus Registriraj se at equal weight while `SIGNUP_MODE` is not closed; never a Cjenik tab), current page |
 | `.avatar` / `.user-menu` | base | initials circle → account menu on the YouTube pattern: identity header (ellipsized email), icon gutter rows (Profil, theme, Odjava), full-bleed hover |
 | `main` | base | max-width 1100px, `clamp(14px,4vw,40px)` side padding; `main.full` for the landing |

@@ -111,9 +111,16 @@
       box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
       backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     }
-    /* brand pushes everything else right — nav, then the avatar at the edge */
+    /* The brand's SLOT takes whatever the tabs and the avatar leave over (which
+       also pushes them to the right edge), and the wordmark asks the slot how
+       much that is — a container query, further down: the full name when it
+       fits, "QMT" when it does not. It used to switch on the WINDOW width,
+       which was right while the bar spanned the window. The pill is capped at
+       1100px, so on any wider screen the owner's eight tabs plus the full name
+       pushed the avatar out of the pill (5.10.2026). */
+    .brand-slot { flex: 1 1 0; min-width: 5.4rem; display: flex; container-type: inline-size; }
     .brand { display: flex; align-items: center; gap: 11px; text-decoration: none;
-             margin-right: auto; flex: none; }
+             flex: 0 1 auto; min-width: 0; }
     .avatar-wrap { position: relative; flex: none; }
     .avatar {
       width: 34px; height: 34px; border-radius: 50%; flex: none; padding: 0;
@@ -167,12 +174,21 @@
     /* the icon shows the theme you'd switch TO, like the label does */
     [data-theme="dark"] .mi-moon { display: none; }
     :root:not([data-theme="dark"]) .mi-sun { display: none; }
-    .brand .mark { height: 36px; width: 36px; border-radius: 50%; display: block; }
+    .brand .mark { height: 36px; width: 36px; border-radius: 50%; display: block; flex: none; }
     .brand .full, .brand .short {
       font-weight: 700; font-size: .8rem; letter-spacing: .15em;
       text-transform: uppercase; color: #e6e6e3; white-space: nowrap;
     }
-    .brand .short { display: none; letter-spacing: .12em; }
+    /* "QMT" unless the slot can hold the whole name: 36 logo + 11 gap + 251
+       wordmark + 8 of air = 306px. A browser without container queries keeps
+       "QMT", which always fits; the clip on .full is for a fallback font that
+       runs wider than the real one. */
+    .brand .full { display: none; min-width: 0; overflow: hidden; }
+    .brand .short { letter-spacing: .12em; }
+    @container (min-width: 19.2rem) {
+      .brand .full { display: inline; }
+      .brand .short { display: none; }
+    }
     .nav { display: flex; gap: 2px; align-items: center; flex-wrap: nowrap; }
     /* .nav-burger sits OUTSIDE .nav (it toggles it), so it must be named here
        explicitly or it falls back to the red default-button style */
@@ -189,19 +205,22 @@
     .nav a.cta { background: var(--accent-fill); color: #fff; font-weight: 700; margin-left: 6px; border-radius: 999px; }
     .nav a.cta:hover { background: var(--accent-fill-hover); }
     .nav-burger { display: none; font-size: 1.35rem; padding: 6px 12px; }
+    /* Seven tabs or more (trainer + owner) run tight at every width, so the
+       studio's name still fits beside them in the 1100px pill. Not in the
+       drawer (≤900px), where each tab has a row to itself. */
+    @media (min-width: 901px) {
+      .nav:has(> a:nth-of-type(7)) a { padding: 8px 10px; font-size: .84rem; }
+    }
 
-    /* Step 1 — laptops: the full wordmark costs ~250px the owner's eight tabs
-       need, so it becomes "QMT" and the tabs tighten. */
+    /* Step 1 — laptops: the tabs tighten. The wordmark does not switch here
+       any more; it follows the room it is given (see .brand-slot). */
     @media (max-width: 1200px) {
-      .brand .full { display: none; }
-      .brand .short { display: inline; }
       .nav a, .nav .navbtn { padding: 8px 10px; font-size: .84rem; }
     }
 
     /* Step 2 — the owner's eight tabs stop fitting here: fold into the ☰ drawer */
     @media (max-width: 900px) {
       .nav-burger { display: inline-flex; }
-      .brand { min-width: 0; }
       .nav {
         display: none;
         position: absolute; top: calc(100% + 8px); left: 0; right: 0;
@@ -417,8 +436,8 @@
 </head>
 <body>
 <header class="topbar">
-  <a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
-     <span class="full">Quality Movement Training</span><span class="short">QMT</span></a>
+  <div class="brand-slot"><a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
+     <span class="full">Quality Movement Training</span><span class="short">QMT</span></a></div>
   {# auth pages keep only the brand — no competing actions while someone is
      typing a password (the Stripe/Notion pattern); the logo is the way out #}
   {% set auth_page = request.url.path in ('/login', '/signup', '/forgot', '/reset', '/verify-sent')

@@ -103,6 +103,22 @@ CHECKS = r"""
     if (el.scrollWidth - el.clientWidth > 2 && el.clientWidth > 0)
       out.inner.push({tag: el.tagName.toLowerCase(), cls: (el.className||'').toString().slice(0,28), by: el.scrollWidth - el.clientWidth});
   }
+  // The topbar pill: everything in it must sit inside its padding, and nothing
+  // in it may overlap. The loop above never sees the header (it walks `main`),
+  // and a child that only eats the pill's padding does not grow scrollWidth —
+  // the owner's avatar sat flush on the pill's edge under "0 overflow" until a
+  // screenshot from prod showed it (5.10.2026).
+  const tb = document.querySelector('.topbar');
+  if (tb) {
+    const tcs = getComputedStyle(tb), tr = tb.getBoundingClientRect();
+    const l = tr.left + px(tcs.borderLeftWidth) + px(tcs.paddingLeft), r = tr.right - px(tcs.borderRightWidth) - px(tcs.paddingRight);
+    const kids = [...tb.children].filter(k => vis(k) && getComputedStyle(k).position !== 'absolute').map(k => k.getBoundingClientRect());
+    let by = 0;
+    for (const k of kids) by = Math.max(by, k.right - r, l - k.left);
+    for (let i = 0; i < kids.length; i++) for (let j = i + 1; j < kids.length; j++)
+      by = Math.max(by, Math.min(kids[i].right, kids[j].right) - Math.max(kids[i].left, kids[j].left));
+    if (by > 0.5) out.inner.push({tag: 'header', cls: 'topbar', by: Math.round(by)});
+  }
   return out;
 }
 """

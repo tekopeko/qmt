@@ -113,6 +113,13 @@ Rules that came from real mistakes, keep them:
 - **Every row of actions shares one footprint** — same pill height, so right edges
   line up. Mixing a 31px pill with a 22px text button reads as misaligned even when
   the maths is right.
+- **Room that depends on content is a container question, not a window one.** The
+  topbar pill is capped at 1100px, so "is the window wide?" says nothing about
+  whether eight tabs and the full wordmark fit — the owner's avatar was pushed out
+  of the pill on every large screen. Give the flexible part a slot that takes the
+  leftover space and let it query that slot (`container-type: inline-size`), or
+  count the items (`:has(> a:nth-of-type(7))`). The audit checks the pill: nothing
+  in it may leave its padding or overlap.
 
 ## States must be said, not implied
 
