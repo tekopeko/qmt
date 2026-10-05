@@ -1,6 +1,16 @@
-# Where the last session left off — 28.9.2026.
+# Where the last session left off — 5.10.2026.
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
+
+## 5.10.2026 — the redesign is live; work continues on `master`
+
+`redesign` was merged into `master` (one merge commit, so the whole redesign
+reverts with `git revert -m 1 <merge>`) and deployed. There is no long-lived
+branch any more: work happens on `master`, and every push deploys.
+
+Also new, and only about how Claude works here: delegation to an Opus 5.5
+worker sits behind the `QMT_DELEGATE` flag (off by default) — see "Models" in
+`CLAUDE.md`.
 
 ## 28.9.2026 — prices members-only, registration closed (deployed)
 
@@ -15,13 +25,9 @@ this app and still shows them publicly.
 
 ## Deploy state
 
-`master` is deployed (Railway auto-deploys on push) and carries everything up to
-the 28.9. hotfix above. 91 tests green.
-
-**Branch `redesign` holds the Shape-club-style redesign and is NOT merged.** The
-owner decides whether it goes to prod; merging `redesign` into `master` deploys
-it. It is two commits of landing work plus one of app-screen work (see below),
-and it has the 28.9. hotfix merged in, so merging it keeps prices members-only.
+`master` is deployed (Railway auto-deploys on push) and carries everything:
+the Shape-club-style redesign, the 28.9. hotfix, the login modal and the
+install banner. 91 tests green.
 
 ## What this session shipped (25.9.)
 
@@ -33,7 +39,7 @@ and it has the 28.9. hotfix merged in, so merging it keeps prices members-only.
   alpha-composites backgrounds; the old "ratio 1" false positives are gone.
 - **Login/registration modal** (`#authDlg`) and **install banner** (`#a2hs`,
   phones only) — on master.
-- **Redesign, branch `redesign`** — Shape's structure in QMT's colours:
+- **Redesign** (built on a branch, merged 5.10.) — Shape's structure in QMT's colours:
   floating dark-glass topbar pill; pill buttons everywhere; radius scale
   28/20/12 (`--r-xl/--r-lg/--r-md`); landing rebuilt (kicker, centred hero,
   photo stage with on-photo chips, italic uppercase service titles); cjenik
@@ -45,10 +51,9 @@ and it has the 28.9. hotfix merged in, so merging it keeps prices members-only.
 
 ## Next up
 
-1. **Owner reviews the redesign** on the branch (or a Railway preview) and says
-   merge / change. The only photo asset (`static/gallery/dvorana-1.jpg`) has a
-   wall print in its upper third — the crop hides it, but real hero photography
-   from the owner would lift the landing more than any CSS.
+1. **Hero photography from the owner.** The only photo asset
+   (`static/gallery/dvorana-1.jpg`) has a wall print in its upper third — the
+   crop hides it, but real photos would lift the landing more than any CSS.
 2. Owner writes landing/service copy and records videos (his explicit wish —
    don't draft copy for him beyond placeholders).
 3. **Stripe go-live** (owner): the d.o.o.'s Stripe account, real prices, the

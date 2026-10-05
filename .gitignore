@@ -10,3 +10,4 @@ data/
 
 # subagent worktrees (harness-managed, never part of the repo)
 .claude/worktrees/
+.claude/settings.local.json
