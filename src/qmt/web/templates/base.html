@@ -20,7 +20,7 @@
   <meta name="apple-mobile-web-app-title" content="QMT">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@700&family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,700;1,700&family=Inter:wght@400;500;600;700;800&display=swap">
   <style>
     /* ===== QMT design tokens — from the logo: red #f80000, grey #606060 =====
        Modern surface language: rounded controls, soft depth, light + dark themes
@@ -36,6 +36,7 @@
       --accent-fill: #e10600;                              /* solid fill under white ink (AA) */
       --accent-fill-hover: #c00500;
       --accent-strong: #c00500;
+      --accent-tint-ink: #c00500;                          /* accent-coloured text ON --accent-dim: plain --accent is 4.0-4.3:1 there, under AA */
       --accent-ink: #ffffff;
       --accent-dim: rgba(225, 6, 0, .08);
       --good: #15803d;                                     /* filled-spots green, readable on light */
@@ -58,6 +59,7 @@
       --accent-fill: #e10600;
       --accent-fill-hover: #ff342b;
       --accent-strong: #ff5049;
+      --accent-tint-ink: #ff5049;
       --accent-ink: #ffffff;
       --accent-dim: rgba(255, 52, 43, .12);
       --good: #4ade80;                                     /* brighter green for dark contrast */
@@ -74,6 +76,8 @@
       --signal-ink: var(--accent-ink); --danger: var(--accent);
       --font-display: "PT Sans", system-ui, sans-serif;
       --font-body: "Inter", system-ui, sans-serif;
+      /* radii: xl for photo/feature cards, lg for app cards, md for controls */
+      --r-xl: 28px; --r-lg: 20px; --r-md: 12px;
     }
     * { box-sizing: border-box; margin: 0; }
     /* author `display:` rules (flex pills, inline-flex buttons) outrank the UA's
@@ -95,11 +99,17 @@
     /* ONE row, always (the YouTube header): brand left, nav middle, avatar right.
        Nothing wraps — when space runs out the wordmark shortens, then the nav
        folds into the burger. A two-row topbar was the old failure mode. */
+    /* A floating pill (the Shape header), not a slab: it sits 10px off the top
+       edge, glassy, and travels with the page. Same one-row rule, same folding. */
     .topbar {
-      background: #161618; color: #fff;
+      background: rgba(22, 22, 24, .86); color: #fff;
       display: flex; align-items: center; flex-wrap: nowrap;
-      gap: 12px; padding: 12px clamp(16px, 4vw, 40px);
-      position: sticky; top: 0; z-index: 40;
+      gap: 10px; padding: 8px 10px 8px 12px;
+      position: sticky; top: 10px; z-index: 40;
+      width: min(1100px, calc(100% - 20px)); margin: 10px auto 0;
+      border-radius: 999px; border: 1px solid rgba(255, 255, 255, .09);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     }
     /* brand pushes everything else right — nav, then the avatar at the edge */
     .brand { display: flex; align-items: center; gap: 11px; text-decoration: none;
@@ -157,7 +167,7 @@
     /* the icon shows the theme you'd switch TO, like the label does */
     [data-theme="dark"] .mi-moon { display: none; }
     :root:not([data-theme="dark"]) .mi-sun { display: none; }
-    .brand .mark { height: 38px; width: 38px; border-radius: 50%; display: block; }
+    .brand .mark { height: 36px; width: 36px; border-radius: 50%; display: block; }
     .brand .full, .brand .short {
       font-weight: 700; font-size: .8rem; letter-spacing: .15em;
       text-transform: uppercase; color: #e6e6e3; white-space: nowrap;
@@ -175,7 +185,8 @@
     }
     .nav a:hover, .nav .navbtn:hover, .nav-burger:hover { color: #fff; background: rgba(255,255,255,.09); transform: none; }
     .nav a.on { color: #fff; background: rgba(255,255,255,.13); }
-    .nav a.cta { background: var(--accent-fill); color: #fff; font-weight: 700; margin-left: 6px; }
+    .nav a, .nav .navbtn { border-radius: 999px; }
+    .nav a.cta { background: var(--accent-fill); color: #fff; font-weight: 700; margin-left: 6px; border-radius: 999px; }
     .nav a.cta:hover { background: var(--accent-fill-hover); }
     .nav-burger { display: none; font-size: 1.35rem; padding: 6px 12px; }
 
@@ -193,11 +204,12 @@
       .brand { min-width: 0; }
       .nav {
         display: none;
-        position: absolute; top: 100%; left: 0; right: 0;
+        position: absolute; top: calc(100% + 8px); left: 0; right: 0;
         flex-direction: column; align-items: stretch; gap: 2px;
-        background: #161618; padding: 8px 14px 16px;
-        border-top: 1px solid rgba(255, 255, 255, .08);
+        background: rgba(22, 22, 24, .96); padding: 10px 10px 12px;
+        border-radius: 22px; border: 1px solid rgba(255, 255, 255, .09);
         box-shadow: 0 16px 28px rgba(0, 0, 0, .45);
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
       }
       .nav.open { display: flex; }
       .nav a, .nav .navbtn {
@@ -208,7 +220,10 @@
       .nav a.cta { margin-left: 0; justify-content: center; }
     }
 
-    main { max-width: 1100px; margin: 0 auto; padding: clamp(18px, 3vw, 34px) clamp(14px, 4vw, 40px) 70px; }
+    main { max-width: 1100px; margin: 0 auto; padding: clamp(22px, 3.5vw, 40px) clamp(14px, 4vw, 40px) 70px; }
+    /* one page header for every app screen: title, then a one-line lead */
+    main > h1 { font-size: clamp(1.6rem, 3vw, 2rem); margin-bottom: 4px; }
+    main > h1 + .hint { font-size: .95rem; max-width: 70ch; margin-bottom: clamp(20px, 3vw, 28px); }
     main.full { max-width: none; padding: 0; }
 
     /* ===== controls: rounded, soft, no boxes ===== */
@@ -216,7 +231,7 @@
       font: 600 .92rem var(--font-body);
       /* a transparent hairline, so a filled button is exactly as tall as a
          .btn-ghost beside it — the confirm modal's Odustani/Potvrdi were 31/29 */
-      border: 1px solid transparent; border-radius: 12px; cursor: pointer;
+      border: 1px solid transparent; border-radius: 999px; cursor: pointer;   /* pills, like the nav and chips */
       padding: 11px 20px; text-decoration: none; display: inline-flex;
       align-items: center; justify-content: center; gap: 8px;
       background: var(--accent-fill); color: var(--accent-ink);
@@ -231,11 +246,11 @@
       border: 1px solid var(--line); box-shadow: none;
     }
     .btn-ghost:hover { background: var(--surface-2); transform: none; }
-    .btn-quiet, button.btn-quiet { background: var(--accent-dim); color: var(--accent); box-shadow: none; }
+    .btn-quiet, button.btn-quiet { background: var(--accent-dim); color: var(--accent-tint-ink); box-shadow: none; }
     .btn-quiet:hover { background: var(--accent-fill); color: var(--accent-ink); }
     /* the red glow is the HERO's voice — a small button inside a card or
        table row speaks at normal volume */
-    .btn-sm { padding: 7px 13px; font-size: .8rem; border-radius: 10px; box-shadow: none; }
+    .btn-sm { padding: 7px 14px; font-size: .8rem; border-radius: 999px; box-shadow: none; }
     /* An <a> carrying only .btn-sm/.btn-ghost/.btn-quiet misses the `button, .btn`
        base above, so it kept the browser's underline while looking like a button. */
     a.btn, a.btn-sm, a.btn-ghost, a.btn-quiet, a.act {
@@ -291,12 +306,12 @@
 
     .card {
       background: var(--surface); border: 1px solid var(--line);
-      border-radius: 16px; box-shadow: var(--shadow);
+      border-radius: var(--r-lg); box-shadow: var(--shadow);
     }
 
     /* ===== the post-login osvrt prompt ===== */
     .fb-modal {
-      padding: 0; border: 1px solid var(--line); border-radius: 16px;
+      padding: 0; border: 1px solid var(--line); border-radius: var(--r-lg);
       background: var(--surface); color: var(--text); box-shadow: var(--shadow);
       width: min(420px, calc(100vw - 32px)); max-width: none;
       /* the global `* { margin: 0 }` reset wipes the UA's `margin: auto` on
@@ -310,16 +325,16 @@
     /* ===== login + registration: ONE modal, two tabs (patterns.md §2) =====
        /login and /signup stay as the no-JS and deep-link fallback. */
     .fb-modal.auth { width: min(440px, calc(100vw - 32px)); }
-    .auth-tabs { display: flex; gap: 3px; background: var(--surface-2); border-radius: 12px;
+    .auth-tabs { display: flex; gap: 3px; background: var(--surface-2); border-radius: 999px;
                  padding: 3px; margin: 14px 0 16px; }
-    .auth-tabs button { flex: 1; padding: 8px; border: none; border-radius: 9px; background: none;
+    .auth-tabs button { flex: 1; padding: 8px; border: none; border-radius: 999px; background: none;
                         box-shadow: none; color: var(--muted); font: 600 .85rem var(--font-body);
                         transition: background .15s, color .15s; }
     .auth-tabs button:hover { transform: none; color: var(--text);
                               background: color-mix(in srgb, var(--text) 8%, transparent); }
     /* the selected tab carries the accent tint — "lighter than the track" flips
        meaning between the two themes, a tint does not (same call as the karton) */
-    .auth-tabs button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent); }
+    .auth-tabs button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent-tint-ink); }
     .auth input { padding: 13px 14px; }              /* ~48px: on this form the fields ARE the content */
     .pw { position: relative; }
     .pw input { padding-right: 46px; }

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Online treninzi — QMT{% endblock %}
 {% block content %}
-<h1 style="font-size:1.8rem; margin-bottom:4px;">Online treninzi</h1>
-<p class="hint" style="margin-bottom:24px; max-width:74ch;">
+<h1>Online treninzi</h1>
+<p class="hint">
   Sve je automatski: upitnik svrsta polaznika u razinu i cilj, a on odmah vidi programe
   označene tom kombinacijom — ništa se ne dodjeljuje ručno. Ti samo uređuješ sadržaj
   devet osnovnih varijanti (skice se stvore same) ili dodaš dodatne programe za istu kombinaciju.
@@ -21,7 +21,7 @@
     <tr>
       <td colspan="5" style="padding:14px 6px 7px; background:var(--surface-2);
           font:700 .76rem var(--font-display); text-transform:uppercase; letter-spacing:.08em;
-          color:var(--accent); border-bottom:1px solid var(--line);">{{ g.label }}</td>
+          color:var(--text); border-bottom:1px solid var(--line);">{{ g.label }}</td>
     </tr>
     {% for p, ni in g.rows %}
     <tr style="border-bottom:1px solid var(--line);">

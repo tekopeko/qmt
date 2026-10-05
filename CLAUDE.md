@@ -119,10 +119,11 @@ active `online` plan → filled upitnik → matched programmes.
   `db.BookingError`.
 - **Design tokens come from the LOGO** (`static/logo.png`): accent `--accent` (#e10600
   light / #ff342b dark), neutral surfaces, PT Sans uppercase display + Inter body.
-  Rounded controls (12px) and cards (14–16px), soft shadows. Both themes are
+  Three radius tokens (`--r-xl` 28 / `--r-lg` 20 / `--r-md` 12), every button a
+  pill, soft shadows — the Shape-club language in QMT's colours. Both themes are
   first-class (`[data-theme]` tokens, pre-paint script, saved in
   `localStorage['qmt-theme']`). Never style with a raw hex that only works in one theme.
-- **The topbar is ONE row at every width** (the YouTube header): `flex-wrap: nowrap`,
+- **The topbar is a floating dark pill, ONE row at every width**: `flex-wrap: nowrap`,
   brand left, tabs middle, avatar right. When space runs out the wordmark shortens to
   "QMT" (≤1200px), then the tabs fold into the ☰ drawer (≤900px, sized for the owner's
   eight tabs). Tabs never wrap their own label. The avatar opens the account menu
@@ -152,6 +153,47 @@ active `online` plan → filled upitnik → matched programmes.
   `document.documentElement.scrollWidth - clientWidth` must be 0.
 - **QMT is a PWA** (manifest + icons + root-scoped `/sw.js`). The SW never caches HTML
   or `/media`; bump its VERSION when changing cached assets.
+
+## Models — Fable leads; handing work to Opus is behind a flag
+
+**Fable 5.1 is the main model**: it talks to the owner, plans, decides and signs
+off. Handing small tasks down to **Opus 5.5** and reviewing them is optional: a
+hand-off plus a review is slower than doing the work, so it is a switch.
+
+**The flag is `QMT_DELEGATE`** = `on` | `off`, under `env` in
+`.claude/settings.local.json` (untracked, per machine). Missing, mistyped or
+unreadable means **off**. A SessionStart hook (`.claude/settings.json` →
+`.claude/hooks/delegation-flag.sh`) prints the value into every session; no
+such line means off, and running the script by hand shows the current value.
+The owner's word in the conversation beats the flag: "delegate this" delegates
+that one task, "delegation on" / "off" flips the flag — edit the file, then act
+on the new value at once.
+
+- **Off (the default)**: do the work directly. No `opus-worker`. `Explore` and
+  parallel searches stay available where they plainly save time.
+- **On**: small, self-contained tasks go to the `opus-worker` agent
+  (`.claude/agents/opus-worker.md`), and **delegated work is a draft until Fable
+  has reviewed it**.
+  - **Delegate**: mechanical edits across several files, tests for a rule that
+    is already decided, doc updates after a change, a code inventory with a
+    concrete question.
+  - **Keep on Fable**: design and UX judgment, schema and migrations, booking /
+    payment / auth / concurrency logic, merge conflicts, anything that touches
+    prod (a push to `master`, Railway, Stripe), the final report — and any edit
+    that is quicker to make than to brief.
+  - **Brief** the worker as someone with no context: the goal, the exact files,
+    what done looks like, what to leave alone. Start from a clean tree, or note
+    the existing diff, so its work is exactly `git diff`. One suite run at a
+    time: `qmt_test` is shared, so parallel workers must not both run `pytest`.
+  - **Review** means reading that diff, not the worker's summary, then
+    re-running the checks yourself (`pytest -q`; the audit for UI). Fix small
+    things directly, send bigger ones back. The worker never commits, pushes or
+    deploys: Fable does, after review, and answers for the result.
+
+The model pins are the owner's, in `~/.claude/settings.json`: `model: fable`, and
+`CLAUDE_CODE_SUBAGENT_MODEL=claude-opus-5-5`, which puts every subagent on
+Opus 5.5 whatever the flag says. If the session itself runs on another model
+(`/model`), there is nobody to hand down to — do the work directly.
 
 ## Gotchas
 

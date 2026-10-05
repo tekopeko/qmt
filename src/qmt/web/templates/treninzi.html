@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Online treninzi — QMT{% endblock %}
 {% block content %}
-<h1 style="font-size:1.8rem; margin-bottom:4px;">Moji online treninzi</h1>
-<p class="hint" style="margin-bottom:24px;">Program prilagođen tvojoj razini i cilju — određuje ih upitnik.</p>
+<h1>Moji online treninzi</h1>
+<p class="hint">Program prilagođen tvojoj razini i cilju — određuje ih upitnik.</p>
 
 {% if not has_plan %}
 <div class="card" style="padding:34px; text-align:center; max-width:640px;">
@@ -21,7 +21,7 @@
 {% else %}
 <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:18px;">
   <span style="font:700 .78rem var(--font-display); text-transform:uppercase; letter-spacing:.07em;
-               background:var(--accent-dim); color:var(--accent); border-radius:8px; padding:4px 10px;">
+               background:var(--accent-dim); color:var(--accent-tint-ink); border-radius:8px; padding:4px 10px;">
     {{ levels[onboarding.level] }} · {{ goals[onboarding.goal] }}</span>
   <a class="act act-quiet" href="/upitnik">promijeni (ispuni upitnik ponovno)</a>
 </div>
@@ -29,8 +29,7 @@
 <div style="display:flex; flex-direction:column; gap:12px; max-width:640px;">
   {% for p in programs %}
   <a class="card" href="/treninzi/{{ p.id }}"
-     style="padding:16px 20px; text-decoration:none; display:flex; gap:16px; align-items:center;
-            box-shadow: inset 3px 0 0 var(--accent);">
+     style="padding:16px 20px; text-decoration:none; display:flex; gap:16px; align-items:center;">
     <div style="flex:1; min-width:0;">
       <strong>{{ p.title }}</strong>
       <div class="hint">{{ p.items|length }} {{ "vježba" if p.items|length % 10 == 1 and p.items|length % 100 != 11 else "vježbi" }}{% if p.intro %} · {{ p.intro | truncate(60) }}{% endif %}</div>

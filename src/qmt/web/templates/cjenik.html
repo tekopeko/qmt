@@ -2,10 +2,18 @@
 {% block title %}Cjenik — QMT{% endblock %}
 {% block head %}
 <style>
-  .plan-h { font-size:1.02rem; }
+  .plan-h { font: 700 italic 1.15rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
   .plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
                gap: 18px; max-width: 1000px; }
-  .plan { padding: 22px 24px; display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 90px; }
+  .plan { padding: 26px 26px 24px; display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 90px;
+          border-radius: var(--r-xl); position: relative; }
+  /* the plan most people take sits a little proud of the row, with a chip
+     saying so — the Shape pricing move, in our colours */
+  .plan.featured { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  @media (min-width: 960px) { .plan.featured { transform: translateY(-8px); } }
+  .plan .featured-tag { position: absolute; top: 14px; right: 14px; display: inline-flex; padding: 4px 10px;
+                        border-radius: 999px; background: var(--accent-dim); color: var(--accent-tint-ink);
+                        font: 700 .68rem var(--font-body); letter-spacing: .08em; text-transform: uppercase; }
   .plan h3 { font-size: 1.02rem; }
   /* the description reserves its block, so every card's price sits on the
      same line and the footer (status/CTA/hint) shares the bottom edge */
@@ -28,13 +36,15 @@
   .tiers input { accent-color: var(--accent); margin: 0; }
   .plan .price { font: 800 1.3rem var(--font-body); }
   .plan .price small { font: 600 .8rem var(--font-body); color: var(--muted); }
-  .plan.mine { box-shadow: inset 3px 0 0 var(--good); }
+  /* the client's own plan: a green-tinted border, the same move as .featured.
+     (An inset bar curved along the 28px radius and looked like a glitch.) */
+  .plan.mine { border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
   .plan .owned { font: 700 .8rem var(--font-body); color: var(--good); }
 </style>
 {% endblock %}
 {% block content %}
-<h1 style="font-size:1.8rem; margin-bottom:4px;">Cjenik</h1>
-<p class="hint" style="margin-bottom:26px; max-width:70ch;">
+<h1>Cjenik</h1>
+<p class="hint">
   Svaka usluga je zasebna članarina — plaća se mjesečno, sljedeća uplata dospijeva mjesec
   dana nakon zadnje.
   {% if sellable %}Karticom kroz aplikaciju (pretplata, otkaziva se bilo kad) ili gotovinom u dvorani.
@@ -52,7 +62,8 @@
 
 <div class="plan-grid">
   {% for key in plans %}
-  <div class="card plan {% if key in my_plans %}mine{% endif %}" id="plan-{{ key }}">
+  <div class="card plan {% if key in my_plans %}mine{% endif %} {% if key == 'grupni' %}featured{% endif %}" id="plan-{{ key }}">
+    {% if key == 'grupni' %}<span class="featured-tag">Najpopularnije</span>{% endif %}
     <h2 class="plan-h">{{ plan_labels[key] }}</h2>
     <p>{{ desc[key] }}</p>
     {% set pr = prices.get(key) %}{% set ref = reference[key] %}
