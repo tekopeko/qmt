@@ -73,8 +73,35 @@ REFERENCE_PRICES = {
     "poluindividualni": ("25", "/ trening", None),
     "rehabilitacija": ("od 30", "/ tretman", "paketi od 5 i 10 tretmana"),
     "online": ("50", "/ mjesečno", None),
-    "prehrana": (None, "/ mjesečno", None),
+    "prehrana": ("od 3", "/ mjesečno", "3 € uz dvoranu, 5 € uz online"),
 }
+
+# MojiMakrosi (the prehrana app) as a monthly add-on, as the owner set it on
+# 5.10.2026: cheaper beside a plan in the dvorana, dearer for online-only
+# clients. The landing's offer cards print these; REFERENCE_PRICES["prehrana"]
+# above says the same thing for /cjenik.
+MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
+
+
+def _offer_prices(table: dict) -> dict[str, tuple[str, str]]:
+    """Plan -> (amount, unit) the way the landing's offer cards print it. Same
+    sources and order as /cjenik: the Stripe Price when one exists (that is what
+    a subscription charges), else the shop's reference price. A range collapses
+    to its floor ("od 60 €") because a card has room for one number. A plan with
+    no price at all is left out and the card says "na upit"."""
+    out = {}
+    for plan, (ref, unit, _note) in REFERENCE_PRICES.items():
+        pr = table.get(plan)
+        cur = "€" if not pr or pr.get("currency", "EUR") == "EUR" else pr["currency"]
+        if pr and pr.get("tiers"):
+            out[plan] = (f"od {pr['tiers'][0]['amount']:.0f} {cur}", "/ mjesečno")
+        elif pr:
+            amount = pr["amount"]
+            text = f"{amount:.0f}" if amount == int(amount) else f"{amount:.2f}".replace(".", ",")
+            out[plan] = (f"{text} {cur}", "/ mjesečno")
+        elif ref:
+            out[plan] = (f"od {ref.split('–')[0]} €" if "–" in ref else f"{ref} €", unit)
+    return out
 
 
 def _safe_next(nxt: str | None) -> str:
@@ -243,8 +270,13 @@ def landing(request: Request):
     ) if gallery_dir.is_dir() else []
     user = current_user(request)
     plans = db.active_plan_kinds(user.id) if user else set()
+    # members always see prices; guests see them unless PUBLIC_PRICES=off
+    show_prices = bool(user) or config.prices_public()
     return templates.TemplateResponse(request, "landing.html", _ctx(
         request, user, gallery=gallery, my_plans=plans,
+        show_prices=show_prices,
+        offer_prices=_offer_prices(payments.price_table()) if show_prices else {},
+        addon=MOJIMAKROSI_ADDON,
         # the hero only offers booking to someone who can actually book
         can_book=bool(plans & {"grupni", "individualni", "poluindividualni",
                                "rehabilitacija"})))

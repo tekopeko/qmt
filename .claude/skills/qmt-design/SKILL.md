@@ -146,7 +146,8 @@ Before calling any UI work done:
 
 1. Run the dev server with the demo seed and execute
    `python .claude/skills/qmt-design/scripts/audit.py`. It walks every page as
-   anon / client / owner, both themes, 1280px and 390px, and reports overflow,
+   anon / client / owner, both themes at 1280px and 390px plus 360px in dark (the
+   narrowest phone, where overflow shows first), and reports overflow,
    WCAG-AA contrast, tap targets under 32px, unlabelled controls, missing alt,
    order. Backgrounds are alpha-composited down to the page, so a chip on a 12%
    tint is measured against what it really sits on. It compares against
@@ -165,6 +166,15 @@ Before calling any UI work done:
    `data-photo` attribute on its container: the audit counts it instead of
    scoring it, because no colour math can see the image. Keep such text white
    over a dark gradient (`.stage::after`) so it reads on any photo.
+
+**The harness enforces the phone half.** A Stop hook
+(`.claude/hooks/ui-audit-gate.sh`, wired in `.claude/settings.json`) fingerprints
+the templates and static CSS/JS when a turn ends. If they differ from the last
+stamped state it runs `audit.py --phone` (390px and 360px, touch, all three
+roles, about half a minute) and blocks the stop with the findings when that
+fails. Any passing audit, full or `--phone`, writes the stamp. So UI work cannot
+be called done on files no phone check has seen. The hook measures; it does not
+look, and the screenshot in step 2 is still yours.
 
 ## How to make a change
 

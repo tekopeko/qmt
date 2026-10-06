@@ -45,6 +45,22 @@
 
   .mine-list { margin-top: 34px; }
   .mine-list h2 { font-size: 1.05rem; margin-bottom: 10px; }
+  /* "Moja članarina": four columns that have to fit a 360px phone, which leaves
+     328px. At full size the table is 355px and pushed the whole page sideways
+     (found 5.10.2026, the first time the audit walked 360px). Tighter gutters
+     and a slightly smaller face below 420px; the wrapper scrolls as a last
+     resort, so a longer plan name can never widen the page again. */
+  .mtable-wrap { overflow-x: auto; }
+  .mtable { border-collapse: collapse; font-size: .9rem; }
+  .mtable th, .mtable td { padding: 7px 18px 7px 0; text-align: left; }
+  .mtable th { padding-block: 6px; }
+  .mtable th:last-child, .mtable td:last-child { padding-right: 0; }
+  .mtable tr { border-bottom: 1px solid var(--line); }
+  .mtable .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  @media (max-width: 420px) {
+    .mtable { font-size: .84rem; }
+    .mtable th, .mtable td { padding-right: 10px; }
+  }
   /* auto-fill (not auto-fit): keep the empty tracks so a few day columns stay
      the same width as the week grid's instead of stretching across the page */
   .mine-week { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -131,23 +147,21 @@
 <div class="mine-list">
   <h2>Moja članarina <a href="/profil" class="act act-quiet" style="text-transform:none; letter-spacing:0; vertical-align:middle;">povijest plaćanja →</a></h2>
   {% if memberships %}
-  <table style="border-collapse:collapse; font-size:.9rem;">
-    <thead><tr style="text-align:left; border-bottom:1px solid var(--line);">
-      <th style="padding:6px 18px 6px 0;">Plan</th><th style="padding-right:18px;">Sljedeća uplata</th>
-      <th style="padding-right:18px;">Dospijeće</th><th>Status</th></tr></thead>
+  <div class="mtable-wrap"><table class="mtable">
+    <thead><tr><th>Plan</th><th>Sljedeća uplata</th><th>Dospijeće</th><th>Status</th></tr></thead>
     <tbody>
     {% for m in memberships %}
-      <tr style="border-bottom:1px solid var(--line);">
-        <td style="padding:7px 18px 7px 0;"><strong>{{ m.label }}</strong>
+      <tr>
+        <td><strong>{{ m.label }}</strong>
           {% if m.usage %}<div class="hint" style="font-size:.78rem;">{{ m.usage.used }} od {{ m.usage.quota }} treninga u ovom ciklusu</div>{% endif %}</td>
-        <td style="font-variant-numeric:tabular-nums; padding-right:18px;">{{ m.next_payment.strftime("%-d.%-m.%Y.") }}</td>
-        <td style="font-variant-numeric:tabular-nums; padding-right:18px;">{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</td>
+        <td class="num">{{ m.next_payment.strftime("%-d.%-m.%Y.") }}</td>
+        <td class="num">{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</td>
         <td>{% if m.active %}<span style="color:var(--good); font-weight:700;">aktivna</span>
             {% else %}<span style="color:var(--danger); font-weight:700;">istekla</span>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
   {# the moment they most want to know what a plan costs — so say it here #}
   <p class="hint" style="margin-bottom:10px;">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.</p>

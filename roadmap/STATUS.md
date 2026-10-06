@@ -1,4 +1,4 @@
-# Where the last session left off — 5.10.2026.
+# Where the last session left off — 6.10.2026.
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
@@ -13,6 +13,21 @@ avatar stuck out of the topbar pill (eight tabs + the full wordmark need 1086px,
 the pill offers 1076). The wordmark now follows the room the tabs leave (a
 container query on `.brand-slot`), bars with seven or more tabs run tight, and
 the audit checks the pill itself.
+
+6.10.2026 (built 5.10.), deployed: the homepage answers "what do you offer and what does it cost":
+the six service cards became **three offer cards with prices** (Online /
+Dvorana / Individualno, MojiMakrosi as an add-on: 5 € beside online, 3 € beside
+a plan in the dvorana; the online plan includes a monthly Zoom call or a
+meeting in person). The hero photo lost its service chips and is a link to the
+cards. **Prices are public again** — the owner's call, reversing 28.9.; the
+legal question behind that rule was not re-examined here, and
+`PUBLIC_PRICES=off` is the one-variable way back. Card titles and copy are
+placeholders for the owner to rewrite.
+
+And the phone check became a hook: the audit walks 360px as well as 390px
+(which at once found two overflows live on prod — the membership table on
+/raspored and the contact email on the landing, both fixed), has a ~30 s
+`--phone` mode, and a Stop hook runs it whenever UI files changed.
 
 Also new, and only about how Claude works here: delegation to an Opus 5.5
 worker sits behind the `QMT_DELEGATE` flag (off by default) — see "Models" in

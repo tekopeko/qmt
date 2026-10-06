@@ -11,9 +11,7 @@
      saying so — the Shape pricing move, in our colours */
   .plan.featured { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
   @media (min-width: 960px) { .plan.featured { transform: translateY(-8px); } }
-  .plan .featured-tag { position: absolute; top: 14px; right: 14px; display: inline-flex; padding: 4px 10px;
-                        border-radius: 999px; background: var(--accent-dim); color: var(--accent-tint-ink);
-                        font: 700 .68rem var(--font-body); letter-spacing: .08em; text-transform: uppercase; }
+  /* (.featured-tag itself lives in base.html; the landing uses it too) */
   .plan h3 { font-size: 1.02rem; }
   /* the description reserves its block, so every card's price sits on the
      same line and the footer (status/CTA/hint) shares the bottom edge */

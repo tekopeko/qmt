@@ -272,7 +272,7 @@ def test_no_double_subscription_and_portal_needs_a_customer(stripe_on):
     assert r.headers["location"].startswith("https://billing.stripe.com/")
 
 
-def test_cjenik_shows_stripe_prices_or_na_upit(stripe_on, monkeypatch):
+def test_cjenik_shows_stripe_prices_or_the_reference(stripe_on, monkeypatch):
     make_user("ivan@test.local")
     r = client_for("ivan@test.local").get("/cjenik")
     assert r.status_code == 200
@@ -280,7 +280,7 @@ def test_cjenik_shows_stripe_prices_or_na_upit(stripe_on, monkeypatch):
     assert "55,00 €" in page and "Pretplati se karticom" in page   # Stripe's price, per month
     assert "60–80 €" in page and 'name="sessions" value="12"' in page   # tiered: range + picker
     assert "35 €" in page and "/ trening" in page          # reference price where no Stripe price
-    assert "na upit" in page                               # prehrana: no price anywhere
+    assert "od 3 €" in page and "5 € uz online" in page    # prehrana: the MojiMakrosi add-on, 3 or 5 €
 
     monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "")   # unconfigured: reference prices only
     payments._price_cache = (0.0, {})

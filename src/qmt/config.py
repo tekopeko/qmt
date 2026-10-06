@@ -89,6 +89,20 @@ def signup_open() -> bool:
     return signup_mode() == "open"
 
 
+def prices_public() -> bool:
+    """May someone who is not logged in see prices on the landing page?
+
+    Yes, since 5.10.2026: the owner decided to show the offer and its prices on
+    the homepage, reversing the members-only rule of 28.9. (see signup_mode).
+    That rule existed on legal advice, so the way back is kept to one variable:
+    PUBLIC_PRICES=off hides every price from guests again, no code change.
+    /cjenik stays members-only either way; it is where plans are bought and
+    managed, not the shop window.
+    """
+    v = os.environ.get("PUBLIC_PRICES", "").strip().strip("\"'").lower()
+    return v not in ("0", "false", "no", "off")
+
+
 def email_allowed(email: str) -> bool:
     mode = signup_mode()
     if mode == "closed":

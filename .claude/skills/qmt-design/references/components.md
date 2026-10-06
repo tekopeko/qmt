@@ -15,6 +15,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `main > h1`, `main > h1 + .hint` | base | the page header: title `clamp(1.6rem,3vw,2rem)` + one lead sentence, 70ch max — templates write bare `<h1>` / `<p class="hint">` with no inline style |
 | `.card` | base | `--surface`, hairline, `--r-lg` (20px), `--shadow`; hero-grade cards (`.svc`, `.plan`, `.upitnik`, `.termini`) take `--r-xl` (28px) with 26px padding |
 | `.crumbs` | base | breadcrumb: muted links, `/` separators, `.here` current |
+| `.featured-tag` | base | "Najpopularnije" chip in the top-right corner of a `position: relative` card: accent tint + `--accent-tint-ink`. Used by `/cjenik` and the landing's offer |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
 | `#a2hs` `.card.a2hs` | base (clients) | install banner: phones only (`pointer: coarse`, plus a `pointer: fine` CSS kill-switch), not in standalone mode, not on the first page load, dismissed once (`localStorage qmt-a2hs`); iOS gets share-sheet steps, Chrome gets a real "Instaliraj" via `beforeinstallprompt` |
@@ -73,12 +74,18 @@ targets; do not introduce new uses.
 with `.red` on the last line, lead paragraph, `.cta-row` of `.btn-hero` (15px/28px,
 14px radius; `.secondary` = translucent white). Hero CTAs follow membership: member →
 Rezerviraj termin; plan-less client → Pogledaj cjenik; guest → Registriraj se while
-signup is open, else Što nudimo + Kontakt. **Guests never get a price or a
-`/cjenik` link** (members only since 28.9.2026). Service cards `.svc` in a 3×2 `.svc-grid`:
-icon tile, title, copy with `min-height: 4.65em`, accent meta line, CTA pinned with
-`margin-top: auto` — owned plan = green filled `.owned` (`--good-fill`, transparent
-1px border so it matches the neutral button's height), open plan = neutral
-`.svc-cta` ("Odaberi plan" for members, "Javi nam se" → `#kontakt` for guests). Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
+signup is open, else Što nudimo + Kontakt. The hero photo `.stage` is an `<a href="#usluge">`: the whole card leads to the
+offer, with a small `.go` arrow as the hint a phone needs (no hover there) and
+`data-photo` for the audit. **The offer** (`#usluge`): three `.offer` cards in
+`.offer-grid` (stacked below 900px) — italic uppercase title, one `.lead` line
+(two lines reserved), three dotted facts, then a `.foot` pinned to the bottom
+holding the `.addon` line, the `.price` (2.1rem number + muted unit) and one
+button, so add-on, price and button sit level across the row. `.featured` is
+taller, not shifted (`margin-block: -16px` + matching padding) and carries
+`.featured-tag`; `.mine` gets the green-tinted border. Buttons: accent
+`.btn-sm` on the featured card, neutral `.cta` beside it, green `.owned` for a
+plan the visitor has. Prices arrive from the route (`offer_prices`), are public
+unless `PUBLIC_PRICES=off`, and no public page links to `/cjenik`. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
 
@@ -103,7 +110,9 @@ are `--r-xl`; `.log-entry` rows are `--r-md` and keep the accent inset bar for
 `.fresh` — at 12px the bar still reads as a bar.
 
 **Calendar (`calendar.html`).** Seven `.day-col` on desktop → single agenda on
-phones (`.empty-day` hidden). `.sess.mine` = accent tint + inset bar,
+phones (`.empty-day` hidden). "Moja članarina" is `.mtable` in a `.mtable-wrap`
+(scrolls as a last resort): four columns that fit 360px through tighter gutters
+and a smaller face below 420px. `.sess.mine` = accent tint + inset bar,
 `.past`/`.canceled` at .45 opacity, `.today .day-head` red. "Moja članarina" table
 + usage line "3 od 12 treninga u ovom ciklusu" for tiered plans.
 

@@ -606,15 +606,16 @@ def test_calendar_shows_membership_gate():
 
 
 def test_cjenik_is_members_only_and_landing_plan_cta_states():
-    """Prices are shown only to people with an account (28.9.2026): a guest who
-    opens /cjenik is sent to log in, and no public page carries a price or a
-    path to one."""
+    """/cjenik is where plans are bought and managed, so it is for members: a
+    guest who opens it is sent to log in, and no public page links to it. The
+    one public place with prices is the landing's offer (since 5.10.2026)."""
     guest = TestClient(app)
     r = guest.get("/cjenik", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/login?next=/cjenik"
     for path in ("/", "/login", "/signup", "/prehrana", "/forgot"):
         page = guest.get(path).text
-        assert "€" not in page and 'href="/cjenik' not in page, path
+        assert 'href="/cjenik' not in page, path
+        assert ("€" in page) == (path == "/"), path     # prices: the landing, nowhere else
     page = guest.get("/").text
     assert "Javi nam se" in page and 'id="kontakt"' in page   # cards point at the studio
     assert "Odaberi plan →</a>" not in page             # the button, not the CSS comment naming it
@@ -626,6 +627,47 @@ def test_cjenik_is_members_only_and_landing_plan_cta_states():
     ci = client_for("ivan@test.local")
     assert "Aktivna članarina" in ci.get("/").text      # owned state on landing
     assert "Aktivna članarina" in ci.get("/cjenik").text
+
+
+def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
+    """The homepage answers "what do you offer and what does it cost" by itself
+    (5.10.2026): three cards, each with its price and the MojiMakrosi add-on,
+    visible to guests. The photo above them is a link to that section."""
+    page = TestClient(app).get("/").text
+    assert page.count('class="card offer') == 3
+    assert page.count('<span class="featured-tag">Najpopularnije</span>') == 1   # the chip, not the CSS comment naming it
+    for price in ("50 €", "od 60 €", "35 €", "25 € / trening", "od 30 € / tretman"):
+        assert price in page, price                     # the shop's reference prices
+    assert "+5 € / mjesečno" in page and page.count("+3 € / mjesečno") == 2   # MojiMakrosi: online 5, dvorana 3
+    assert "Zoom poziv" in page                         # what the online plan includes
+    assert '<a class="stage" href="#usluge"' in page and 'id="usluge"' in page
+    for chip in ("Grupni", "1:1", "Rehabilitacija"):    # the photo carries no service chips any more
+        assert f'<span class="tag">{chip}</span>' not in page, chip
+    assert page.count('href="#kontakt">Javi nam se →</a>') == 3      # invite-only: the studio is the way in
+
+    monkeypatch.setenv("SIGNUP_MODE", "open")           # open to anyone: the cards register instead
+    assert TestClient(app).get("/").text.count('data-auth="signup">Registriraj se →</a>') == 3
+    monkeypatch.setenv("SIGNUP_MODE", "invite")
+
+    make_user("ivan@test.local")                        # owns grupni: his card says so and leads into the app
+    page = client_for("ivan@test.local").get("/").text
+    assert 'class="card offer featured mine"' in page and "Aktivna članarina" in page
+    assert page.count("Odaberi plan →</a>") == 2        # the two he does not have
+
+
+def test_public_prices_switch_hides_them_from_guests_only(monkeypatch):
+    """PUBLIC_PRICES=off is the one-variable way back to the 28.9. rule: guests
+    see the offer without a single price, members see everything."""
+    assert config.prices_public()                       # the default since 5.10.2026
+    monkeypatch.setenv("PUBLIC_PRICES", "off")
+    assert not config.prices_public()
+    page = TestClient(app).get("/").text
+    assert page.count('class="card offer') == 3 and "€" not in page
+    assert page.count("Cijene nakon prijave") == 3
+
+    make_user("ana@test.local", plans=())
+    page = client_for("ana@test.local").get("/").text
+    assert "50 €" in page and "+3 € / mjesečno" in page and "Cijene nakon prijave" not in page
 
 
 def test_payment_ledger_accumulates_and_stats():

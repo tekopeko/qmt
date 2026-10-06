@@ -1,9 +1,17 @@
 """Measured design audit — run BEFORE calling any UI work done.
 
     python .claude/skills/qmt-design/scripts/audit.py [http://127.0.0.1:8100]
+    python .claude/skills/qmt-design/scripts/audit.py --phone     # phones only, ~30 s
 
-Walks every page as anon / client / owner, dark + light, 1280px + 390px, and
-reports: page + element horizontal overflow, WCAG-AA contrast failures, tap
+Walks every page as anon / client / owner. The full run covers dark + light at
+1280px and 390px, plus 360px in dark (the narrowest phone, where overflow shows
+first). --phone runs only 390px and 360px, dark: the layout half of the audit,
+quick enough for the Stop hook (.claude/hooks/ui-audit-gate.sh) to run by
+itself. Phone widths emulate a touch device. A passing run against the local
+server stamps the UI's fingerprint (.claude/ui-audit.stamp), which is how the
+hook knows these exact files were checked on a phone.
+
+Reports: page + element horizontal overflow, WCAG-AA contrast failures, tap
 targets under 32px, images without alt, unlabelled form controls, heading
 order. Needs the dev server up and the demo seed loaded (scripts/seed_demo.py).
 Backgrounds are alpha-composited down to the page, so text on a tinted chip is
@@ -20,6 +28,25 @@ import pathlib
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 BASE = ARGS[0] if ARGS else "http://127.0.0.1:8100"
 SAVE_BASELINE = "--save-baseline" in sys.argv
+PHONE = "--phone" in sys.argv
+# (theme, width) runs. Layout does not depend on the theme and contrast does not
+# depend on the width, so 360px is walked once, in dark.
+RUNS = ([("dark", 390), ("dark", 360)] if PHONE else
+        [("dark", 1280), ("dark", 390), ("dark", 360), ("light", 1280), ("light", 390)])
+ROOT = pathlib.Path(__file__).resolve().parents[4]
+STAMP = ROOT / ".claude" / "ui-audit.stamp"
+
+
+def ui_fingerprint() -> str:
+    """One hash over everything a browser renders (templates + static CSS/JS),
+    from the same script the Stop hook uses, so the two can never disagree."""
+    import subprocess
+    try:
+        return subprocess.run([str(ROOT / ".claude" / "hooks" / "ui-fingerprint.sh")],
+                              capture_output=True, text=True, timeout=20).stdout.strip()
+    except Exception:
+        return ""
+
 BASELINE = pathlib.Path(__file__).resolve().parent.parent / "references" / "audit-baseline.json"
 ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana"]
 CLIENT = ["/", "/raspored", "/karton", "/cjenik", "/prehrana", "/profil", "/treninzi", "/upitnik"]
@@ -147,29 +174,29 @@ def run(pg, routes, who, theme, width, findings):
 
 def main():
     findings = collections.defaultdict(list)
+    fingerprint = ui_fingerprint()        # taken BEFORE the walk: an edit made mid-run must not get stamped
     with sync_playwright() as p:
         b = p.chromium.launch()
-        for theme in ("dark", "light"):
-            for width in (1280, 390):
-                for email, pw, routes, who in (
-                        (None, None, ANON, "anon"),
-                        ("ivan@qmt.local", "lozinka123", CLIENT, "client"),
-                        ("trener@qmt.local", "trener123", OWNER, "owner")):
-                    # 390px is a PHONE: emulate a touch device so `pointer: coarse`
-                    # rules (the grown .btn-sm/.act) actually apply — otherwise every
-                    # small button fails the tap check for a reason no phone has
-                    ctx = b.new_context(viewport={"width": width, "height": 900},
-                                        has_touch=(width < 500), is_mobile=(width < 500))
-                    pg = ctx.new_page()
-                    pg.goto(BASE + "/login")
-                    pg.evaluate("t => localStorage.setItem('qmt-theme', t)", theme)
-                    if email:
-                        pg.fill("input[name=email]", email)
-                        pg.fill("input[name=password]", pw)
-                        pg.click("button[type=submit]")
-                        pg.wait_for_load_state("networkidle")
-                    run(pg, routes, who, theme, width, findings)
-                    ctx.close()
+        for theme, width in RUNS:
+            for email, pw, routes, who in (
+                    (None, None, ANON, "anon"),
+                    ("ivan@qmt.local", "lozinka123", CLIENT, "client"),
+                    ("trener@qmt.local", "trener123", OWNER, "owner")):
+                # 390px is a PHONE: emulate a touch device so `pointer: coarse`
+                # rules (the grown .btn-sm/.act) actually apply — otherwise every
+                # small button fails the tap check for a reason no phone has
+                ctx = b.new_context(viewport={"width": width, "height": 900},
+                                    has_touch=(width < 500), is_mobile=(width < 500))
+                pg = ctx.new_page()
+                pg.goto(BASE + "/login")
+                pg.evaluate("t => localStorage.setItem('qmt-theme', t)", theme)
+                if email:
+                    pg.fill("input[name=email]", email)
+                    pg.fill("input[name=password]", pw)
+                    pg.click("button[type=submit]")
+                    pg.wait_for_load_state("networkidle")
+                run(pg, routes, who, theme, width, findings)
+                ctx.close()
         b.close()
 
     # A baseline holds the signatures of findings already judged. Runs report
@@ -202,7 +229,12 @@ def main():
     if sum(findings["_onphoto"]):
         print(f"\n(text on photographs, unmeasured by design: {sum(findings['_onphoto'])} elements across runs)")
     print(f"\nnew findings: {total_new}")
-    sys.exit(1 if findings["overflow"] or findings["inner"] or total_new else 0)
+    failed = bool(findings["overflow"] or findings["inner"] or total_new)
+    # Stamp only what was really checked: these files, served locally, and clean.
+    if not failed and fingerprint and ("127.0.0.1" in BASE or "localhost" in BASE):
+        STAMP.write_text(fingerprint + "\n")
+        print(f"phone check passed at {', '.join(sorted({str(w) for _, w in RUNS if w < 500}))}px -> stamped {STAMP.name}")
+    sys.exit(1 if failed else 0)
 
 
 if __name__ == "__main__":

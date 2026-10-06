@@ -31,7 +31,7 @@ python scripts/seed_demo.py                # dev RESET: users, timetable, plans,
 python serve.py [--reload] [--port 8100]   # 8100 — 8000 is mojimakrosi's local port
 
 createdb qmt_test                          # once
-pytest -q                                  # 91 tests, must stay green
+pytest -q                                  # 93 tests, must stay green
 ```
 
 Demo logins: `trener@qmt.local/trener123` (trainer **and** owner locally, via
@@ -54,8 +54,8 @@ variables --kv` reads config). Pushing to `master` auto-deploys.
 
 | Route | Who | What |
 |---|---|---|
-| `/` | public | Landing: hero, six service cards (members: "Odaberi plan" → `/cjenik` or "✓ Aktivna članarina" linking into the app; guests: "Javi nam se" → `#kontakt`), gallery from `static/gallery/`, contact |
-| `/cjenik` | client | **Members only since 28.9.2026** (guests are sent to log in). Plan pricing from Stripe ("na upit" until Price ids exist) + "Pretplati se karticom" → Stripe Checkout; `/placanje/portal` for card/cancel/invoices |
+| `/` | public | Landing: hero whose photo is a link to the offer; **three offer cards with prices** (Online / Dvorana / Individualno, each with the MojiMakrosi add-on: 5 € beside online, 3 € beside a plan in the dvorana); gallery from `static/gallery/`; contact. A card's button follows the visitor: owner of the plan → into the app, member → "Odaberi plan" on `/cjenik`, guest → "Registriraj se" when signup is open, else "Javi nam se" → `#kontakt` |
+| `/cjenik` | client | **Members only since 28.9.2026** (guests are sent to log in): where plans are bought and managed; the public price list is the landing's offer. Plan pricing from Stripe ("na upit" until Price ids exist) + "Pretplati se karticom" → Stripe Checkout; `/placanje/portal` for card/cancel/invoices |
 | `/raspored` | client | Week calendar, booking, "Moja članarina" + "Moje rezervacije" as day columns |
 | `/karton`, `/upitnik` | client | Personal file: upitnik result, training diary, termini. `/karton/{id}` is the trainer's read-only view |
 | `/treninzi` | client/trainer | Online programmes — automatic (see below) |
@@ -134,13 +134,17 @@ active `online` plan → filled upitnik → matched programmes.
 - **Guests log in through a modal** (`#authDlg`, opened by `data-auth` links; `/login`
   and `/signup` remain the no-JS fallback). **Clients on phones get an install
   banner** (`#a2hs`) once, never on desktop. Both live in `base.html`.
-- **Prices are for members only** (28.9.2026, on legal advice: public prices
-  would need the prior price shown beside them, the way shop shelves do). No
-  public page shows a price or links to `/cjenik`, and `/cjenik` sends guests to
-  log in. **Registration is one switch**, `SIGNUP_MODE` = `closed` (the default,
-  also when unset or mistyped) / `invite` (owner + `ALLOWED_EMAILS`) / `open`;
-  closed hides every "Registriraj se" and the modal's Registracija tab.
-  Existing accounts always log in. Tests run with `invite` (`tests/conftest.py`).
+- **Prices are public on the landing since 5.10.2026** — the owner's decision,
+  reversing the members-only rule of 28.9. (which was legal advice: public
+  prices would need the prior price shown beside them, the way shop shelves do).
+  The way back is one variable: `PUBLIC_PRICES=off` hides every price from
+  guests again. Card prices come from `_offer_prices` in `app.py` (the Stripe
+  Price, else `REFERENCE_PRICES`), never from the template. `/cjenik` stays
+  members-only and no public page links to it. **Registration is one switch**,
+  `SIGNUP_MODE` = `closed` (the default, also when unset or mistyped) / `invite`
+  (owner + `ALLOWED_EMAILS`) / `open`; closed hides every "Registriraj se" and
+  the modal's Registracija tab. Existing accounts always log in. Tests run with
+  `invite` (`tests/conftest.py`).
 - **Design changes go through the `qmt-design` skill** (`.claude/skills/qmt-design`):
   tokens, components, patterns, and the measured audit that must pass before UI
   work is called done.
@@ -152,8 +156,13 @@ active `online` plan → filled upitnik → matched programmes.
 - **Jinja + dicts:** never key a template dict `items` — Jinja resolves `d.items` to the
   builtin method (the calendar uses `sessions`).
 - **Every screen works on every device — STANDING GOAL.** Phones are the primary client
-  device. Verify at 390px (and 360px) with Playwright before calling UI work done;
-  `document.documentElement.scrollWidth - clientWidth` must be 0.
+  device. Verify at 390px and 360px with Playwright before calling UI work done;
+  `document.documentElement.scrollWidth - clientWidth` must be 0. **A Stop hook
+  enforces the measurable half**: when templates or static CSS/JS differ from the
+  last stamped state, `.claude/hooks/ui-audit-gate.sh` runs the audit's phone pass
+  (`audit.py --phone`: 390px + 360px, touch, guest / client / owner, ~30 s) and
+  blocks the stop with the findings if it fails. It needs the dev server on 8100.
+  It measures; it does not look — one screenshot at 390px is still required.
 - **QMT is a PWA** (manifest + icons + root-scoped `/sw.js`). The SW never caches HTML
   or `/media`; bump its VERSION when changing cached assets.
 

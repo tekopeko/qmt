@@ -10,6 +10,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/ui-audit-gate.sh 2>/dev/null",
+            "timeout": 300,
+            "statusMessage": "Checking the UI on a phone (390px and 360px)"
+          }
+        ]
+      }
     ]
   }
 }

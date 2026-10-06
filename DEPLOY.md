@@ -20,7 +20,8 @@ is: new project → paste variables → repoint DNS. Nothing else is account-bou
    | `DATABASE_URL` | reference the Railway Postgres (internal URL) — note driver: `postgresql+psycopg://` |
    | `OWNER_EMAIL` | the app owner's address (Tvrtko) — controls roles and /korisnici |
    | `ALLOWED_EMAILS` | first clients, comma-separated (owner's address too, for testing) |
-   | `SIGNUP_MODE` | `closed` (the default, also when unset or mistyped): no new accounts, and no page offers one. `invite`: the owner + `ALLOWED_EMAILS`. `open`: anyone. **Leave unset for now**: since 28.9.2026 prices are members-only until the cjenik can show a prior price |
+   | `SIGNUP_MODE` | `closed` (the default, also when unset or mistyped): no new accounts, and no page offers one. `invite`: the owner + `ALLOWED_EMAILS`. `open`: anyone. **Leave unset for now**: registration has stayed closed since 28.9.2026 |
+   | `PUBLIC_PRICES` | leave unset: guests see the offer's prices on the landing (the owner's decision of 5.10.2026). `off` hides every price from guests again — the 28.9. rule, no code change. `/cjenik` is members-only either way |
    | `R2_ACCOUNT_ID` + `R2_ACCESS_KEY_ID` + `R2_SECRET_ACCESS_KEY` + `R2_BUCKET` | Cloudflare R2 media storage — all four together move uploads off Railway's ephemeral disk; `/media` then serves via presigned URLs. After setting them run `python scripts/migrate_media_to_r2.py` once |
    | `REMINDER_DAYS_BEFORE` | days before dospijeće the članarina email goes out (default 3). Reminders run in-process every 6 h; `python scripts/send_reminders.py` forces a pass |
    | `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` | switch card subscriptions on. Test-mode keys work end to end (card `4242 4242 4242 4242`) |

@@ -91,7 +91,7 @@ one card per programme with its razina × cilj as chips ("Srednja", "Gornji dio"
 and the trainer's photo/video still behind. Our chips are `.chip`; the uppercase
 title is PT Sans by default. Use once the owner's videos exist.
 
-## 5. Pricing presentation
+## 5. Pricing presentation — BUILT 5.10.2026 (the landing's `.offer` cards)
 
 **Theirs:** three plans side by side, each with a monthly price and the annual
 price under it ("20 EUR / mj · 240 EUR / god"), named plans (Shape Home / Unlimited
@@ -101,6 +101,11 @@ price under it ("20 EUR / mj · 240 EUR / god"), named plans (Shape Home / Unlim
 under the monthly the day annual Prices exist in Stripe — it is where the
 subscription margin is; and prefer one tier visually (the 12-treninga pill is
 already preselected — give it a "najpopularnije" chip).
+
+**Built as** three cards on the landing, not six: Online / Dvorana (featured,
+taller) / Individualno, each a name, one line, three facts, an add-on line, the
+price and one button. Shape's "less text" is the lesson — the six service cards
+described, these three sell. The hero photo links to them, as Shape's do.
 
 ## 6. Social proof section
 
