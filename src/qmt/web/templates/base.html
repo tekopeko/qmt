@@ -204,6 +204,25 @@
     .nav a, .nav .navbtn { border-radius: 999px; }
     .nav a.cta { background: var(--accent-fill); color: #fff; font-weight: 700; margin-left: 6px; border-radius: 999px; }
     .nav a.cta:hover { background: var(--accent-fill-hover); }
+    /* the quiet counterpart of .cta: the hero's "black" button, in the pill's own
+       dark glass (the bar is dark in both themes, so no theme token here) */
+    .nav a.dark { background: rgba(255,255,255,.07); color: #fff; font-weight: 700; margin-left: 6px;
+                  border: 1px solid rgba(255,255,255,.2); border-radius: 999px; }
+    .nav a.dark:hover { background: rgba(255,255,255,.14); color: #fff; }
+
+    /* Guests get Shape's small pill: the bar shrinks to its content and sits
+       centred, instead of stretching to the 1100px the owner's eight tabs need.
+       The brand is then content-sized (no slot query: the pill fits around it),
+       and the wordmark shortens only where even the small pill cannot fit the
+       name beside the ☰ — a window question, since the content is fixed. */
+    .topbar.compact { width: fit-content; max-width: calc(100% - 20px); }
+    .topbar.compact .brand-slot { flex: none; container-type: normal; min-width: 0; }
+    .topbar.compact .brand .full { display: inline; }
+    .topbar.compact .brand .short { display: none; }
+    @media (max-width: 420px) {
+      .topbar.compact .brand .full { display: none; }
+      .topbar.compact .brand .short { display: inline; }
+    }
     .nav-burger { display: none; font-size: 1.35rem; padding: 6px 12px; }
     /* Seven tabs or more (trainer + owner) run tight at every width, so the
        studio's name still fits beside them in the 1100px pill. Not in the
@@ -231,12 +250,15 @@
         backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
       }
       .nav.open { display: flex; }
+      /* under the small guest pill the drawer is a centred card of its own
+         width, not a 157px sliver hanging off a 159px pill */
+      .topbar.compact .nav { left: 50%; right: auto; transform: translateX(-50%); width: min(300px, calc(100vw - 20px)); }
       .nav a, .nav .navbtn {
         padding: 13px 14px; font-size: 1rem; border-radius: 10px;
         justify-content: flex-start; width: 100%;
       }
       .nav form { width: 100%; }
-      .nav a.cta { margin-left: 0; justify-content: center; }
+      .nav a.cta, .nav a.dark { margin-left: 0; justify-content: center; }
     }
 
     main { max-width: 1100px; margin: 0 auto; padding: clamp(22px, 3.5vw, 40px) clamp(14px, 4vw, 40px) 70px; }
@@ -440,13 +462,14 @@
   {% block head %}{% endblock %}
 </head>
 <body>
-<header class="topbar">
+{# auth pages keep only the brand — no competing actions while someone is
+   typing a password (the Stripe/Notion pattern); the logo is the way out #}
+{% set auth_page = request.url.path in ('/login', '/signup', '/forgot', '/reset', '/verify-sent')
+                   or request.url.path.startswith('/auth/') %}
+{# a guest's bar is Shape's small pill (.compact): it shrinks to its content #}
+<header class="topbar{% if not user %} compact{% endif %}">
   <div class="brand-slot"><a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
      <span class="full">Quality Movement Training</span><span class="short">QMT</span></a></div>
-  {# auth pages keep only the brand — no competing actions while someone is
-     typing a password (the Stripe/Notion pattern); the logo is the way out #}
-  {% set auth_page = request.url.path in ('/login', '/signup', '/forgot', '/reset', '/verify-sent')
-                     or request.url.path.startswith('/auth/') %}
   {% if not auth_page %}
   <button type="button" class="navbtn nav-burger" onclick="qmtToggleNav()"
           aria-label="Izbornik" aria-expanded="false" aria-controls="mainNav">☰</button>
@@ -466,12 +489,14 @@
       {% if is_owner %}<a href="/korisnici" class="{% if '/korisnici' in request.url.path %}on{% endif %}">Korisnici</a>
       <a href="/statistika" class="{% if '/statistika' in request.url.path %}on{% endif %}">Statistika</a>{% endif %}
     {% else %}
-      {# no Cjenik tab: prices are for members only (config.signup_mode).
-         Prijava and Registriraj se carry equal weight, since having an account
-         and getting one are the same priority; the second exists only while
-         registration is open. Written so a missing signup_mode hides it. #}
-      <a href="/login" class="cta" data-auth="login">Prijava</a>
-      {% if signup_mode in ('invite', 'open') %}<a href="/signup" class="cta" data-auth="signup">Registriraj se</a>{% endif %}
+      {# The guest's three: the offer in red, login as a plain tab, contact in
+         the dark pill. Absolute hrefs — this bar is on /prehrana too, where
+         the anchors do not exist. Registriraj se appears only while
+         registration is open; written so a missing signup_mode hides it. #}
+      <a href="/#usluge" class="cta">Što nudimo</a>
+      <a href="/login" data-auth="login">Prijava</a>
+      {% if signup_mode in ('invite', 'open') %}<a href="/signup" data-auth="signup">Registriraj se</a>{% endif %}
+      <a href="/#kontakt" class="dark">Kontakt</a>
     {% endif %}
   </nav>
   {% endif %}

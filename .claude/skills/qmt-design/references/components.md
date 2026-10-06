@@ -9,7 +9,8 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | class | where | what |
 |---|---|---|
 | `.topbar` | base | a floating dark-glass pill (999px, blur, sticky 10px below the top, max 1100px) on every screen and both themes; ONE row at every width: brand left, tabs middle, avatar right, all inside the pill's padding. `.brand-slot` takes the room the tabs leave and is a query container: the wordmark shows in full when the slot is ≥19.2rem, else "QMT" (never a window breakpoint — the pill is capped, so the window says nothing about the room inside). 7+ tabs run tight (`.nav:has(> a:nth-of-type(7))`), all tabs tighten ≤1200px and fold into ☰ ≤900px. Tabs never wrap. |
-| `.nav a` / `.nav a.cta` / `.on` | base | tab, red pill tab (guest: Prijava, plus Registriraj se at equal weight while `SIGNUP_MODE` is not closed; never a Cjenik tab), current page |
+| `.nav a` / `.nav a.cta` / `.nav a.dark` / `.on` | base | tab; red pill (`.cta`); dark glass pill (`.dark`, the pill's own "black", theme-free because the bar is always dark); current page. Guest bar: "Što nudimo" `.cta` · Prijava (plain tab, plus Registriraj se while signup is open) · "Kontakt" `.dark`; never a Cjenik tab |
+| `.topbar.compact` | base (guests) | Shape's small pill: `width: fit-content`, centred; the brand is content-sized (no slot query) and the wordmark shortens below 420px, where even the small pill cannot hold the name beside the ☰. Its drawer is a centred 300px card, not a sliver the pill's width |
 | `.avatar` / `.user-menu` | base | initials circle → account menu on the YouTube pattern: identity header (ellipsized email), icon gutter rows (Profil, theme, Odjava), full-bleed hover |
 | `main` | base | max-width 1100px, `clamp(14px,4vw,40px)` side padding; `main.full` for the landing |
 | `main > h1`, `main > h1 + .hint` | base | the page header: title `clamp(1.6rem,3vw,2rem)` + one lead sentence, 70ch max — templates write bare `<h1>` / `<p class="hint">` with no inline style |
@@ -72,9 +73,9 @@ targets; do not introduce new uses.
 
 **Landing (`landing.html`).** Hero: kicker with a red dash, uppercase PT Sans h1
 with `.red` on the last line, lead paragraph, `.cta-row` of `.btn-hero` (15px/28px,
-14px radius; `.secondary` = translucent white). Hero CTAs follow membership: member →
-Rezerviraj termin; plan-less client → Pogledaj cjenik; guest → Registriraj se while
-signup is open, else Što nudimo + Kontakt. The hero photo `.stage` is an `<a href="#usluge">`: the whole card leads to the
+14px radius; `.secondary` = translucent white). Hero CTAs follow membership: member → Rezerviraj
+termin; plan-less client → Pogledaj cjenik (+ a `.hero-note`); guest → nothing,
+the compact pill above carries Što nudimo / Prijava / Kontakt. The hero photo `.stage` is an `<a href="#usluge">`: the whole card leads to the
 offer, with a small `.go` arrow as the hint a phone needs (no hover there) and
 `data-photo` for the audit. **The offer** (`#usluge`): three `.offer` cards in
 `.offer-grid` (stacked below 900px) — italic uppercase title, one `.lead` line

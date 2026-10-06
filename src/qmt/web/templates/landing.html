@@ -178,27 +178,13 @@
       Male grupe do 8 polaznika, individualni rad 1:1 i programi povratka nakon ozljede —
       vođeni znanjem, ne trendovima.
     </p>
-    {# The hero offers only what this visitor can actually do: booking for
-       someone with a bookable plan, the cjenik for a member without one, the
-       account for a guest while registration is open, else the offer itself. #}
-    <div class="cta-row">
-      {% if can_book %}
-      <a class="btn btn-hero" href="/raspored">Rezerviraj termin</a>
-      <a class="btn btn-hero secondary" href="#usluge">Što nudimo</a>
-      {% elif user %}
-      <a class="btn btn-hero" href="/cjenik">Pogledaj cjenik</a>
-      <a class="btn btn-hero secondary" href="#usluge">Što nudimo</a>
-      {% elif signup_mode in ('invite', 'open') %}
-      <a class="btn btn-hero" href="/signup" data-auth="signup">Registriraj se</a>
-      <a class="btn btn-hero secondary" href="#usluge">Što nudimo</a>
-      {% else %}
-      <a class="btn btn-hero" href="#usluge">Što nudimo</a>
-      <a class="btn btn-hero secondary" href="#kontakt">Kontakt</a>
-      {% endif %}
-    </div>
-    {% if not user %}
-    <p class="hero-note">Već imaš račun? <a class="tlink" href="/login" data-auth="login">Prijavi se</a>.</p>
-    {% elif not can_book %}
+    {# A guest's hero has no buttons: the bar above carries Što nudimo, Prijava
+       and Kontakt, and the photo below leads to the offer. A member gets the
+       one action that fits their membership. #}
+    {% if can_book %}
+    <div class="cta-row"><a class="btn btn-hero" href="/raspored">Rezerviraj termin</a></div>
+    {% elif user %}
+    <div class="cta-row"><a class="btn btn-hero" href="/cjenik">Pogledaj cjenik</a></div>
     <p class="hero-note">Nemaš aktivnu članarinu za treninge — cjenik ti pokazuje sve opcije.</p>
     {% endif %}
 

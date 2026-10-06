@@ -24,6 +24,10 @@ legal question behind that rule was not re-examined here, and
 `PUBLIC_PRICES=off` is the one-variable way back. Card titles and copy are
 placeholders for the owner to rewrite.
 
+6.10., second change: the guest's bar is Shape's small pill (brand · Što
+nudimo in red · Prijava · Kontakt in dark), and the hero lost its buttons and
+the "Već imaš račun?" line — the pill carries those now.
+
 And the phone check became a hook: the audit walks 360px as well as 390px
 (which at once found two overflows live on prod — the membership table on
 /raspored and the contact email on the landing, both fixed), has a ~30 s

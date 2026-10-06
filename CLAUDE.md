@@ -54,7 +54,7 @@ variables --kv` reads config). Pushing to `master` auto-deploys.
 
 | Route | Who | What |
 |---|---|---|
-| `/` | public | Landing: hero whose photo is a link to the offer; **three offer cards with prices** (Online / Dvorana / Individualno, each with the MojiMakrosi add-on: 5 € beside online, 3 € beside a plan in the dvorana); gallery from `static/gallery/`; contact. A card's button follows the visitor: owner of the plan → into the app, member → "Odaberi plan" on `/cjenik`, guest → "Registriraj se" when signup is open, else "Javi nam se" → `#kontakt` |
+| `/` | public | Landing: hero (kicker, headline, lead; a member's one action; no buttons for guests, the pill has them) whose photo is a link to the offer; **three offer cards with prices** (Online / Dvorana / Individualno, each with the MojiMakrosi add-on: 5 € beside online, 3 € beside a plan in the dvorana); gallery from `static/gallery/`; contact. A card's button follows the visitor: owner of the plan → into the app, member → "Odaberi plan" on `/cjenik`, guest → "Registriraj se" when signup is open, else "Javi nam se" → `#kontakt` |
 | `/cjenik` | client | **Members only since 28.9.2026** (guests are sent to log in): where plans are bought and managed; the public price list is the landing's offer. Plan pricing from Stripe ("na upit" until Price ids exist) + "Pretplati se karticom" → Stripe Checkout; `/placanje/portal` for card/cancel/invoices |
 | `/raspored` | client | Week calendar, booking, "Moja članarina" + "Moje rezervacije" as day columns |
 | `/karton`, `/upitnik` | client | Personal file: upitnik result, training diary, termini. `/karton/{id}` is the trainer's read-only view |
@@ -124,8 +124,11 @@ active `online` plan → filled upitnik → matched programmes.
   first-class (`[data-theme]` tokens, pre-paint script, saved in
   `localStorage['qmt-theme']`). Never style with a raw hex that only works in one theme.
 - **The topbar is a floating dark pill, ONE row at every width**: `flex-wrap: nowrap`,
-  brand left, tabs middle, avatar right, everything inside the pill's padding. The
-  wordmark shows in full only when the room the tabs leave allows it, otherwise
+  brand left, tabs middle, avatar right, everything inside the pill's padding.
+  **A guest's pill is Shape's small one** (`.topbar.compact`, content-sized and
+  centred): brand · "Što nudimo" (red, `/#usluge`) · Prijava · "Kontakt" (dark,
+  `/#kontakt`); the hero below it carries no buttons. Members get the wide pill
+  with their tabs. The wordmark shows in full only when the room the tabs leave allows it, otherwise
   "QMT": a container query on `.brand-slot`, never a window breakpoint — the pill is
   capped at 1100px, so the window width says nothing about the room inside it.
   Seven or more tabs (trainer, owner) run tight; all tabs tighten ≤1200px and fold
