@@ -14,7 +14,7 @@ one text link ("Česta pitanja"), one filled CTA ("Prijava"). Not sticky.
 
 **Why it works:** nothing competes with the content; the single CTA is
 unmissable. **Built for QMT** on every screen: for guests exactly Shape's small pill
-(`.topbar.compact`, 6.10.2026: brand · Što nudimo · Prijava · Kontakt, content-sized,
+(`.topbar.compact`, 6.10.2026: brand · Prijava · Kontakt, content-sized,
 centred, a 300px drawer card on phones), and for members the bar
 became a dark-glass pill (`rgba(22,22,24,.86)` + `blur(14px)`, 999px, sticky
 10px below the top, max 1100px) that still carries the owner's eight tabs. The

@@ -1,0 +1,12 @@
+{# The in-place editable text. `c.t("key")` prints the edited text, or the
+   template's default from src/qmt/copy.py. A trainer or owner gets it wrapped
+   in a span the editor in base.html can open; everyone else gets bare text,
+   so the public page carries no editor markup at all.
+   Use: {% import "_copy.html" as c with context %} … {{ c.t("hero.lead") }} #}
+{% macro t(key) -%}
+  {%- set slot = COPY[key] -%}
+  {%- set text = copy_texts.get(key, slot.default) -%}
+  {%- if can_edit_copy -%}
+    <span class="ed" data-copy="{{ key }}" data-max="{{ slot.max }}" data-label="{{ slot.label }}">{{ text }}</span>
+  {%- else -%}{{ text }}{%- endif -%}
+{%- endmacro %}

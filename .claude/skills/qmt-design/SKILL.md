@@ -113,6 +113,11 @@ Rules that came from real mistakes, keep them:
 - **Every row of actions shares one footprint** — same pill height, so right edges
   line up. Mixing a 31px pill with a 22px text button reads as misaligned even when
   the maths is right.
+- **A text the owner can retype is a slot with a limit.** Public copy goes
+  through `{{ c.t("key") }}` with its limit in `src/qmt/copy.py`, sized so the
+  box holds it at every width — `tests/test_copy.py` fills every slot to its
+  limit in a browser and fails on the first wrap too many. Under every such text
+  sits `overflow-wrap: anywhere`, so one long word can never widen a page.
 - **Room that depends on content is a container question, not a window one.** The
   topbar pill is capped at 1100px, so "is the window wide?" says nothing about
   whether eight tabs and the full wordmark fit — the owner's avatar was pushed out

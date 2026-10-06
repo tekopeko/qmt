@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Quality Movement Training — Zagreb{% endblock %}
+{% import "_copy.html" as c with context %}
 {% block main_class %}full{% endblock %}
 {% block head %}
 <style>
@@ -166,18 +167,20 @@
   .socials svg { width: 20px; height: 20px; fill: currentColor; display: block; }
 
   footer { padding: 26px clamp(16px, 4vw, 40px) 40px; color: var(--muted); font-size: .84rem; text-align: center; }
+  /* everything the owner can retype: a word that does not fit its box breaks
+     rather than widening the page (the limits keep this from ever being seen
+     with real words; it is the net under them) */
+  .hero h1, .hero .lead, .hero .kicker, .stage .copy, .sec-kicker, section.band h2, .offer h3, .offer .lead,
+  .offer li, .offer .addon, .info h3, .info td, footer { overflow-wrap: anywhere; }
 </style>
 {% endblock %}
 {% block content %}
 
 <section class="hero">
   <div class="hero-inner">
-    <span class="kicker">Zagreb · Dubrava</span>
-    <h1>Kvaliteta pokreta <span class="red">prije svega</span></h1>
-    <p class="lead">
-      Male grupe do 8 polaznika, individualni rad 1:1 i programi povratka nakon ozljede —
-      vođeni znanjem, ne trendovima.
-    </p>
+    <span class="kicker">{{ c.t("hero.kicker") }}</span>
+    <h1>{{ c.t("hero.h1a") }} <span class="red">{{ c.t("hero.h1b") }}</span></h1>
+    <p class="lead">{{ c.t("hero.lead") }}</p>
     {# A guest's hero has no buttons: the bar above carries Što nudimo, Prijava
        and Kontakt, and the photo below leads to the offer. A member gets the
        one action that fits their membership. #}
@@ -191,10 +194,10 @@
     {# the stage: the studio itself. The whole card is a link to the offer. #}
     <a class="stage" href="#usluge" data-photo aria-label="Dvorana Quality Movement Training — pogledaj ponudu">
       <img src="/static/gallery/{{ gallery[0] if gallery else 'dvorana-1.jpg' }}" alt="" loading="eager">
-      <div class="tags r"><span class="tag">do 8 polaznika</span><span class="tag">07–20 h</span></div>
+      <div class="tags r"><span class="tag">{{ c.t("stage.chip1") }}</span><span class="tag">{{ c.t("stage.chip2") }}</span></div>
       <div class="copy">
-        <h2>Dvorana u Dubravi</h2>
-        <p>Jedan prostor za sve — grupni treninzi, individualni rad i rehabilitacija, s trenerom koji te poznaje.</p>
+        <h2>{{ c.t("stage.title") }}</h2>
+        <p>{{ c.t("stage.text") }}</p>
       </div>
       <span class="go" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></span>
     </a>
@@ -204,8 +207,8 @@
 <section class="band" id="usluge">
   <div class="band-inner">
     <div class="sec-head">
-      <div class="sec-kicker">Ponuda</div>
-      <h2>Odaberi kako treniraš</h2>
+      <div class="sec-kicker">{{ c.t("offer.kicker") }}</div>
+      <h2>{{ c.t("offer.h2") }}</h2>
     </div>
     {# What a card's button does depends on who is looking: an owner of the plan
        goes into the app, a member picks the plan on /cjenik, a guest registers
@@ -219,22 +222,24 @@
       {%- elif signup_mode == 'open' %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="/signup" data-auth="signup">Registriraj se →</a>
       {%- else %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="#kontakt">Javi nam se →</a>{% endif %}
     {%- endmacro %}
-    {# keys: the plans a card stands for, the first one prices it. points: (text,
-       plan whose price follows the text, or none). Prices come from the route
-       (offer_prices: Stripe, else the shop's reference) and are empty for a
-       guest while PUBLIC_PRICES=off, which also hides the add-on's amount. #}
-    {% macro offer(keys, title, lead, points, addon_eur, featured=false) -%}
+    {# keys: the plans a card stands for, the first one prices it. slot: the
+       card's copy slots (slot.title / .lead / .p1-3 in src/qmt/copy.py).
+       points: (n, plan whose price follows stavka n, or none). Prices come from
+       the route (offer_prices: Stripe, else the shop's reference) and are
+       empty for a guest while PUBLIC_PRICES=off, which also hides the add-on's
+       amount. #}
+    {% macro offer(keys, slot, points, addon_eur, featured=false) -%}
       <div class="card offer{% if featured %} featured{% endif %}{% if keys | select('in', my_plans) | list %} mine{% endif %}">
         {% if featured %}<span class="featured-tag">Najpopularnije</span>{% endif %}
-        <h3>{{ title }}</h3>
-        <p class="lead">{{ lead }}</p>
+        <h3>{{ c.t(slot ~ ".title") }}</h3>
+        <p class="lead">{{ c.t(slot ~ ".lead") }}</p>
         <ul>
-          {% for text, plan in points -%}
-          <li><span>{{ text }}{% if plan and offer_prices.get(plan) %} <span class="p">· {{ offer_prices[plan][0] }} {{ offer_prices[plan][1] }}</span>{% endif %}</span></li>
+          {% for n, plan in points -%}
+          <li><span>{{ c.t(slot ~ ".p" ~ n) }}{% if plan and offer_prices.get(plan) %} <span class="p">· {{ offer_prices[plan][0] }} {{ offer_prices[plan][1] }}</span>{% endif %}</span></li>
           {% endfor %}
         </ul>
         <div class="foot">
-          <p class="addon">MojiMakrosi prehrana{% if show_prices %} <b>+{{ addon_eur }} € / mjesečno</b>{% endif %}</p>
+          <p class="addon">{{ c.t("offer.addon") }}{% if show_prices %} <b>+{{ addon_eur }} € / mjesečno</b>{% endif %}</p>
           {% set pr = offer_prices.get(keys[0]) %}
           {% if pr %}<div class="price"><b>{{ pr[0] }}</b><span>{{ pr[1] }}</span></div>
           {% elif show_prices %}<div class="price"><b>na upit</b></div>
@@ -244,21 +249,10 @@
       </div>
     {%- endmacro %}
     <div class="offer-grid">
-      {{ offer(["online"], "Online", "Treniraj gdje god jesi.",
-               [("Program po tvojoj razini i cilju", none),
-                ("Video upute za svaku vježbu", none),
-                ("Mjesečni Zoom poziv ili susret s trenerom", none)],
-               addon.online) }}
-      {{ offer(["grupni"], "Dvorana", "Grupni treninzi u Dubravi.",
-               [("Male grupe do 8 polaznika", none),
-                ("8, 12 ili 16 treninga mjesečno", none),
-                ("Termin rezerviraš u aplikaciji", none)],
-               addon.dvorana, featured=true) }}
-      {{ offer(["individualni", "poluindividualni", "rehabilitacija"], "Individualno", "Trener samo za tebe.",
-               [("Rad 1:1, po dogovoru", none),
-                ("U dvoje ili troje", "poluindividualni"),
-                ("Rehabilitacija", "rehabilitacija")],
-               addon.dvorana) }}
+      {{ offer(["online"], "offer.online", [(1, none), (2, none), (3, none)], addon.online) }}
+      {{ offer(["grupni"], "offer.dvorana", [(1, none), (2, none), (3, none)], addon.dvorana, featured=true) }}
+      {{ offer(["individualni", "poluindividualni", "rehabilitacija"], "offer.individualno",
+               [(1, none), (2, "poluindividualni"), (3, "rehabilitacija")], addon.dvorana) }}
     </div>
   </div>
 </section>
@@ -286,15 +280,15 @@
     <div class="card info-card">
       <div class="info-grid">
         <div>
-          <h3>Radno vrijeme</h3>
+          <h3>{{ c.t("info.hours.h") }}</h3>
           <table>
-            <tr><td class="d">pon · sri · čet · pet</td><td>07:00 – 20:00</td></tr>
-            <tr><td class="d">uto</td><td>individualni termini</td></tr>
-            <tr><td class="d">sub · ned</td><td>zatvoreno</td></tr>
+            <tr><td class="d">{{ c.t("info.hours.d1") }}</td><td>{{ c.t("info.hours.t1") }}</td></tr>
+            <tr><td class="d">{{ c.t("info.hours.d2") }}</td><td>{{ c.t("info.hours.t2") }}</td></tr>
+            <tr><td class="d">{{ c.t("info.hours.d3") }}</td><td>{{ c.t("info.hours.t3") }}</td></tr>
           </table>
         </div>
         <div>
-          <h3>Gdje smo</h3>
+          <h3>{{ c.t("info.where.h") }}</h3>
           {# query_place_id pins the exact building — the text query alone is ambiguous #}
           <a class="crow" href="https://www.google.com/maps/search/?api=1&query=Virovska+ul.+1%2C+Zagreb&query_place_id=ChIJtSVeRefXZUcRM03Say70HFo"
              target="_blank" rel="noopener" title="Otvori u Google kartama">
@@ -303,7 +297,7 @@
           </a>
         </div>
         <div>
-          <h3>Kontakt</h3>
+          <h3>{{ c.t("info.contact.h") }}</h3>
           <a class="crow" href="tel:+385914424418">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             +385 91 442 4418
@@ -333,7 +327,7 @@
 </section>
 
 <footer>
-  <span>© Quality Movement Training, Zagreb</span>
+  <span>{{ c.t("footer") }}</span>
 </footer>
 
 {% endblock %}

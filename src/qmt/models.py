@@ -218,6 +218,20 @@ class Membership(Base):
 PAYMENT_METHODS = {"gotovina": "Gotovina", "kartica": "Kartica", "stripe": "Stripe"}
 
 
+class SiteCopy(Base):
+    """A text the trainer or owner edited in place. One row per edited slot;
+    no row means the template's default (src/qmt/copy.py). The key is the
+    slot name, the text is already cleaned (copy.clean)."""
+
+    __tablename__ = "site_copy"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    text: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                 onupdate=func.now())
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
 class ReminderLog(Base):
     """One row per reminder actually sent — the idempotency ledger.
 

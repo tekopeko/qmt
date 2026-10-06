@@ -24,9 +24,17 @@ legal question behind that rule was not re-examined here, and
 `PUBLIC_PRICES=off` is the one-variable way back. Card titles and copy are
 placeholders for the owner to rewrite.
 
-6.10., second change: the guest's bar is Shape's small pill (brand · Što
-nudimo in red · Prijava · Kontakt in dark), and the hero lost its buttons and
-the "Već imaš račun?" line — the pill carries those now.
+6.10., second change: the guest's bar is Shape's small pill (brand · Prijava
+in red · Kontakt in dark; "Što nudimo" was tried and dropped — the photo leads
+to the offer), and the hero lost its buttons and the "Već imaš račun?" line.
+
+Later on 6.10.: **the texts are editable in place** by the trainer or owner —
+46 of them (the whole landing, the cjenik descriptions, the prehrana page),
+each with a character limit its box can take; `src/qmt/copy.py` is the list,
+`tests/test_copy.py` proves the limits in a real browser. The editor is the
+"✎ Uredi tekstove" button at the bottom right of a page. Migration
+`e5a7c3b9d1f2` (site_copy). And the guest bar lost "Što nudimo" again:
+Prijava is red, Kontakt dark.
 
 And the phone check became a hook: the audit walks 360px as well as 390px
 (which at once found two overflows live on prod — the membership table on

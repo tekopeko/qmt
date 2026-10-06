@@ -49,6 +49,8 @@ Railway shows a target → add **CNAME `qmt` → that target** in Cloudflare
    DATABASE_URL="<railway PUBLIC postgres url, +psycopg>" python scripts/make_trainer.py <trainer email>
    ```
 4. Trainer builds the real timetable in `/admin` (seed is dev-only and refuses prod).
+   The texts on the landing, cjenik and prehrana pages are edited in place: log
+   in as the trainer, press "✎ Uredi tekstove" bottom right, click a text.
 5. Registration is closed by default. To take invited clients, set
    `SIGNUP_MODE=invite` and add their emails to `ALLOWED_EMAILS` as they join;
    `SIGNUP_MODE=open` takes anyone. The signup and login copy follow the switch

@@ -10,14 +10,14 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
 
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import auth, config, db, mailer, payments, reminders, storage, upitnik
+from .. import auth, config, copy, db, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, PAYMENT_METHODS, PLAN_ABBR, PLAN_LABELS,
                       PLAN_TYPES, SESSION_KINDS)
 
@@ -47,6 +47,7 @@ async def _lifespan(app: FastAPI):
 app = FastAPI(title="QMT", lifespan=_lifespan)
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=config.IS_PROD)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+templates.env.globals["COPY"] = copy.SLOTS      # the editable texts and their limits (_copy.html)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 WEEKDAYS = ["Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota", "Nedjelja"]
@@ -158,6 +159,9 @@ def _ctx(request: Request, user, **extra):
             "plan_links": PLAN_LINKS,
             "signup_open": config.signup_open(),
             "signup_mode": config.signup_mode(),
+            # in-place editable copy: the edited texts, and whether this viewer may edit
+            "copy_texts": db.copy_texts(),
+            "can_edit_copy": bool(user and (user.is_trainer or _is_owner(user))),
             "feedback_prompt": _pop_feedback_prompt(request, user),
             "is_owner": _is_owner(user), **extra}
 
@@ -248,6 +252,33 @@ def logout(request: Request):
     # the shop window, not the door back in — logging out is not a prelude to
     # logging in again
     return RedirectResponse("/", status_code=303)
+
+
+# ---------- editable copy ----------
+
+@app.post("/copy/{key}")
+def copy_save(request: Request, key: str, text: str = Form("")):
+    """Save one edited text (the in-place editor in base.html posts here).
+    JSON in both directions: this is called by fetch, never by a form. The
+    limit is the slot's, enforced here as well as in the browser; an empty
+    text puts the template's default back."""
+    user = current_user(request)
+    if user is None:
+        return JSONResponse({"ok": False, "error": "Prijava je istekla — prijavi se ponovno."}, status_code=401)
+    if not (user.is_trainer or _is_owner(user)):
+        return JSONResponse({"ok": False, "error": "Tekstove uređuje samo trener."}, status_code=403)
+    slot = copy.SLOTS.get(key)
+    if slot is None:
+        return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
+    cleaned = copy.clean(text)
+    if len(cleaned) > slot.max:
+        return JSONResponse({"ok": False, "error": f"Najviše {slot.max} znakova — ovo ih ima {len(cleaned)}."},
+                            status_code=400)
+    if not cleaned:
+        db.reset_copy(key)
+        return JSONResponse({"ok": True, "text": slot.default, "default": True})
+    db.set_copy(key, cleaned, user.id)
+    return JSONResponse({"ok": True, "text": cleaned, "default": False})
 
 
 # ---------- calendar ----------

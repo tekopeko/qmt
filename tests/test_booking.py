@@ -134,7 +134,7 @@ def test_signup_is_closed_by_default_and_members_still_log_in(monkeypatch):
     assert "trenutno zatvorena" in c.get("/login").text
     page = c.get("/").text
     assert 'data-auth="login"' in page                  # Prijava stays
-    assert 'href="/#kontakt" class="dark">Kontakt' in page and 'href="/#usluge" class="cta">Što nudimo' in page   # the guest's bar
+    assert 'href="/#kontakt" class="dark">Kontakt' in page and 'class="cta" data-auth="login">Prijava' in page   # the guest's bar
 
     make_user("ana@test.local")                         # an existing member...
     client_for("ana@test.local")                        # ...logs in as always

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Cjenik — QMT{% endblock %}
+{% import "_copy.html" as c with context %}
 {% block head %}
 <style>
   .plan-h { font: 700 italic 1.15rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
@@ -15,9 +16,11 @@
   .plan h3 { font-size: 1.02rem; }
   /* the description reserves its block, so every card's price sits on the
      same line and the footer (status/CTA/hint) shares the bottom edge */
-  .plan p { color: var(--muted); font-size: .9rem; min-height: 3.9em; flex: none; }
+  .plan p { color: var(--muted); font-size: .9rem; min-height: 3.9em; flex: none; overflow-wrap: anywhere; }
   .plan .foot { margin-top: auto; display: flex; flex-direction: column;
                 gap: 8px; align-items: flex-start; padding-top: 4px; }
+  /* the editable note (cjenik.note) must break rather than widen the card */
+  .plan .foot .hint { max-width: 100%; overflow-wrap: anywhere; }
   .plan .foot form { margin: 0; }
   .plan .foot .switch { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line);
                        display: flex; flex-direction: column; gap: 8px; align-items: flex-start; align-self: stretch; }
@@ -43,27 +46,18 @@
 {% block content %}
 <h1>Cjenik</h1>
 <p class="hint">
-  Svaka usluga je zasebna članarina — plaća se mjesečno, sljedeća uplata dospijeva mjesec
-  dana nakon zadnje.
+  {{ c.t("cjenik.hint") }}
   {% if sellable %}Karticom kroz aplikaciju (pretplata, otkaziva se bilo kad) ili gotovinom u dvorani.
   {% else %}Plaćanje karticom kroz aplikaciju stiže uskoro; do tada gotovinom ili karticom u dvorani.{% endif %}
 </p>
 
-{% set desc = {
-  "grupni": "Satni termini u malim grupama do 8 polaznika — rezerviraš u rasporedu.",
-  "individualni": "Rad 1:1 s trenerom, termini po dogovoru.",
-  "poluindividualni": "Trening u dvoje ili troje — pola puta između grupe i 1:1.",
-  "rehabilitacija": "Programi povratka nakon ozljede, 1:1 stručno vođeni.",
-  "online": "Programi po tvojoj razini i cilju, s video uputama — gdje god jesi.",
-  "prehrana": "Vođenje prehrane uz aplikaciju MojiMakrosi i zdrave recepte.",
-} %}
 
 <div class="plan-grid">
   {% for key in plans %}
   <div class="card plan {% if key in my_plans %}mine{% endif %} {% if key == 'grupni' %}featured{% endif %}" id="plan-{{ key }}">
     {% if key == 'grupni' %}<span class="featured-tag">Najpopularnije</span>{% endif %}
     <h2 class="plan-h">{{ plan_labels[key] }}</h2>
-    <p>{{ desc[key] }}</p>
+    <p>{{ c.t("cjenik." ~ key) }}</p>
     {% set pr = prices.get(key) %}{% set ref = reference[key] %}
     {# Stripe's Price when one exists (that is what the button charges);
        otherwise the shop's reference price in the shop's own unit #}
@@ -131,7 +125,7 @@
       <span class="hint" style="font-size:.78rem;">Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.</span>
     {% elif user %}
       <span class="owned" style="color:var(--muted);">Nemaš ovu članarinu</span>
-      <span class="hint" style="font-size:.82rem;">Za upis se javi treneru u dvorani.</span>
+      <span class="hint" style="font-size:.82rem;">{{ c.t("cjenik.note") }}</span>
     {% else %}
       <a class="btn btn-sm" href="/login?next=/cjenik" data-auth="login">Prijavi se ili se registriraj</a>
     {% endif %}

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from . import config
 from .models import (PLAN_LABELS, Base, Booking, Membership, OnboardingResponse,
                      Payment, Program, ProgramItem, ReminderLog, SessionTemplate,
-                     TrainingLog, TrainingSession, User)
+                     SiteCopy, TrainingLog, TrainingSession, User)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -119,6 +119,29 @@ def list_all_users() -> list[User]:
     """Owner roster — every account, newest first."""
     with session_scope() as s:
         return list(s.scalars(select(User).order_by(User.created_at.desc(), User.id.desc())))
+
+
+# ---------- editable copy (src/qmt/copy.py has the slots and their limits) ----------
+
+def copy_texts() -> dict[str, str]:
+    """Every edited text, by slot key. Pages overlay this on the defaults."""
+    with session_scope() as s:
+        return {row.key: row.text for row in s.scalars(select(SiteCopy))}
+
+
+def set_copy(key: str, text: str, user_id: int | None) -> None:
+    with session_scope() as s:
+        row = s.get(SiteCopy, key)
+        if row is None:
+            s.add(SiteCopy(key=key, text=text, updated_by=user_id))
+        else:
+            row.text, row.updated_by = text, user_id
+
+
+def reset_copy(key: str) -> None:
+    """Back to the template's default: the row goes, the default returns."""
+    with session_scope() as s:
+        s.execute(sa_delete(SiteCopy).where(SiteCopy.key == key))
 
 
 def set_trainer_id(user_id: int, is_trainer: bool) -> bool:

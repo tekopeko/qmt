@@ -9,13 +9,14 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | class | where | what |
 |---|---|---|
 | `.topbar` | base | a floating dark-glass pill (999px, blur, sticky 10px below the top, max 1100px) on every screen and both themes; ONE row at every width: brand left, tabs middle, avatar right, all inside the pill's padding. `.brand-slot` takes the room the tabs leave and is a query container: the wordmark shows in full when the slot is ≥19.2rem, else "QMT" (never a window breakpoint — the pill is capped, so the window says nothing about the room inside). 7+ tabs run tight (`.nav:has(> a:nth-of-type(7))`), all tabs tighten ≤1200px and fold into ☰ ≤900px. Tabs never wrap. |
-| `.nav a` / `.nav a.cta` / `.nav a.dark` / `.on` | base | tab; red pill (`.cta`); dark glass pill (`.dark`, the pill's own "black", theme-free because the bar is always dark); current page. Guest bar: "Što nudimo" `.cta` · Prijava (plain tab, plus Registriraj se while signup is open) · "Kontakt" `.dark`; never a Cjenik tab |
+| `.nav a` / `.nav a.cta` / `.nav a.dark` / `.on` | base | tab; red pill (`.cta`); dark glass pill (`.dark`, the pill's own "black", theme-free because the bar is always dark); current page. Guest bar: Prijava `.cta` (plus Registriraj se at the same weight while signup is open) · "Kontakt" `.dark`; never a Cjenik tab, and no "Što nudimo" — the photo leads to the offer |
 | `.topbar.compact` | base (guests) | Shape's small pill: `width: fit-content`, centred; the brand is content-sized (no slot query) and the wordmark shortens below 420px, where even the small pill cannot hold the name beside the ☰. Its drawer is a centred 300px card, not a sliver the pill's width |
 | `.avatar` / `.user-menu` | base | initials circle → account menu on the YouTube pattern: identity header (ellipsized email), icon gutter rows (Profil, theme, Odjava), full-bleed hover |
 | `main` | base | max-width 1100px, `clamp(14px,4vw,40px)` side padding; `main.full` for the landing |
 | `main > h1`, `main > h1 + .hint` | base | the page header: title `clamp(1.6rem,3vw,2rem)` + one lead sentence, 70ch max — templates write bare `<h1>` / `<p class="hint">` with no inline style |
 | `.card` | base | `--surface`, hairline, `--r-lg` (20px), `--shadow`; hero-grade cards (`.svc`, `.plan`, `.upitnik`, `.termini`) take `--r-xl` (28px) with 26px padding |
 | `.crumbs` | base | breadcrumb: muted links, `/` separators, `.here` current |
+| `.ed` / `.copy-toggle` / `.copy-bar` | base (trainer, owner) | in-place copy editor: `_copy.html` wraps each editable text in `.ed`; the fixed "✎ Uredi tekstove" pill toggles `body.editing` (dashed outlines, click to edit, `.ed-on` while open); the bar under the pill shows label, `n / max` counter and Spremi / Zadano / Odustani. Visitors get bare text, no markup |
 | `.featured-tag` | base | "Najpopularnije" chip in the top-right corner of a `position: relative` card: accent tint + `--accent-tint-ink`. Used by `/cjenik` and the landing's offer |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
@@ -75,7 +76,7 @@ targets; do not introduce new uses.
 with `.red` on the last line, lead paragraph, `.cta-row` of `.btn-hero` (15px/28px,
 14px radius; `.secondary` = translucent white). Hero CTAs follow membership: member → Rezerviraj
 termin; plan-less client → Pogledaj cjenik (+ a `.hero-note`); guest → nothing,
-the compact pill above carries Što nudimo / Prijava / Kontakt. The hero photo `.stage` is an `<a href="#usluge">`: the whole card leads to the
+the compact pill above carries Prijava / Kontakt and the photo leads to the offer. The hero photo `.stage` is an `<a href="#usluge">`: the whole card leads to the
 offer, with a small `.go` arrow as the hint a phone needs (no hover there) and
 `data-photo` for the audit. **The offer** (`#usluge`): three `.offer` cards in
 `.offer-grid` (stacked below 900px) — italic uppercase title, one `.lead` line

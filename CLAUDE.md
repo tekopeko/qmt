@@ -31,7 +31,7 @@ python scripts/seed_demo.py                # dev RESET: users, timetable, plans,
 python serve.py [--reload] [--port 8100]   # 8100 — 8000 is mojimakrosi's local port
 
 createdb qmt_test                          # once
-pytest -q                                  # 93 tests, must stay green
+pytest -q                                  # 96 tests, must stay green
 ```
 
 Demo logins: `trener@qmt.local/trener123` (trainer **and** owner locally, via
@@ -61,6 +61,7 @@ variables --kv` reads config). Pushing to `master` auto-deploys.
 | `/treninzi` | client/trainer | Online programmes — automatic (see below) |
 | `/prehrana` | public | MojiMakrosi link (`/nutricionizam` 301s here) |
 | `/profil` | any | Basic info form + članarina overview + billing history |
+| `POST /copy/{key}` | trainer/owner | Saves one in-place-edited text (JSON); empty text restores the default |
 | `/admin` | trainer | Weekly timetable as an **editable week grid** + one-off termini |
 | `/clanarine` | trainer | Record cash/card uplate per client per plan |
 | `/korisnici`, `/statistika` | owner | Roster + trainer grants; uplate per plan per month |
@@ -102,6 +103,7 @@ active `online` plan → filled upitnik → matched programmes.
 | Path | Role |
 |---|---|
 | `src/qmt/config.py` | `.env`, `OWNER_EMAIL`/`ALLOWED_EMAILS`, booking knobs, prod guards |
+| `src/qmt/copy.py` | The texts a trainer/owner may edit in place: slot → default, character limit, label |
 | `src/qmt/models.py` | `User` (+profile fields), `SessionTemplate`, `TrainingSession`, `Booking`, `Membership`, `Payment`, `OnboardingResponse`, `TrainingLog`, `Program`(level/goal)/`ProgramItem`; `PLAN_*`, `FEELING_LABELS`, `PAYMENT_METHODS` |
 | `src/qmt/db.py` | Queries + rules. **`book()` locks the session row FOR UPDATE** and re-counts inside the lock (tested) |
 | `src/qmt/upitnik.py` | Questions, scoring thresholds, level/goal labels |
@@ -126,8 +128,8 @@ active `online` plan → filled upitnik → matched programmes.
 - **The topbar is a floating dark pill, ONE row at every width**: `flex-wrap: nowrap`,
   brand left, tabs middle, avatar right, everything inside the pill's padding.
   **A guest's pill is Shape's small one** (`.topbar.compact`, content-sized and
-  centred): brand · "Što nudimo" (red, `/#usluge`) · Prijava · "Kontakt" (dark,
-  `/#kontakt`); the hero below it carries no buttons. Members get the wide pill
+  centred): brand · Prijava (red) · "Kontakt" (dark, `/#kontakt`); the hero
+  below it carries no buttons, the photo leads to the offer. Members get the wide pill
   with their tabs. The wordmark shows in full only when the room the tabs leave allows it, otherwise
   "QMT": a container query on `.brand-slot`, never a window breakpoint — the pill is
   capped at 1100px, so the window width says nothing about the room inside it.
@@ -148,6 +150,16 @@ active `online` plan → filled upitnik → matched programmes.
   (owner + `ALLOWED_EMAILS`) / `open`; closed hides every "Registriraj se" and
   the modal's Registracija tab. Existing accounts always log in. Tests run with
   `invite` (`tests/conftest.py`).
+- **Public copy is editable in place** by the trainer and the owner (6.10.2026, so
+  the gym owner fine-tunes the texts himself). Every such text is a slot in
+  `src/qmt/copy.py` with a character limit its box can take, printed through
+  `{{ c.t("key") }}` (`_copy.html`); the editor in `base.html` ("✎ Uredi
+  tekstove", then click a text; Enter saves, Esc cancels, "Zadano" restores the
+  default) posts to `/copy/{key}`, which enforces the limit again and stores
+  the text in `site_copy`. Adding a text = one registry line + the macro call;
+  `tests/test_copy.py` then checks it is on a page and, in a real browser, that
+  every slot at its limit still fits at 360 / 390 / 900 / 1280px. Never put a
+  slot inside a link's `href` or an attribute — the editor edits text nodes.
 - **Design changes go through the `qmt-design` skill** (`.claude/skills/qmt-design`):
   tokens, components, patterns, and the measured audit that must pass before UI
   work is called done.
