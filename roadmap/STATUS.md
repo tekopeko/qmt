@@ -19,6 +19,8 @@ the rest are copy slots the owner types. Dvorana and Individualno sit in
 `site_copy` row of JSON each); migration `1b09c249c2c6` folds the old
 `offer.<card>.p1..p3` rows into them, so the owner's prod edits carry over.
 
+15.10.2026, second task (Opus draft, awaiting review): after a booking on `/raspored` the ok alert offers "Isti termin svaki tjedan do …", which books the same weekly slot for the rest of the paid period (`db.book_series`, `POST /book/{id}/series`; no schema change).
+
 ## 5.10.2026 — the redesign is live; work continues on `master`
 
 `redesign` was merged into `master` (one merge commit, so the whole redesign

@@ -234,6 +234,23 @@ def set_template_active(template_id: int, active: bool) -> None:
             t.active = active
 
 
+def _materialize(s, t: SessionTemplate, day: date) -> datetime:
+    """Template `t`'s session on `day`, inserted unless it already exists;
+    returns its starts_at. ON CONFLICT DO NOTHING against
+    uq_session_template_start, so concurrent week views (and series) cannot
+    double-create. Week views and book_series() share this statement, so a
+    series creates exactly the session a week view would."""
+    starts = datetime(day.year, day.month, day.day,
+                      t.start_min // 60, t.start_min % 60, tzinfo=config.TZ)
+    s.execute(
+        pg_insert(TrainingSession).values(
+            template_id=t.id, title=t.title, kind=t.kind, starts_at=starts,
+            duration_min=t.duration_min, capacity=t.capacity,
+        ).on_conflict_do_nothing(constraint="uq_session_template_start")
+    )
+    return starts
+
+
 def materialize_week(monday) -> None:
     """Ensure every active template has a concrete session in the given week.
 
@@ -251,15 +268,7 @@ def materialize_week(monday) -> None:
         templates = s.scalars(select(SessionTemplate).where(SessionTemplate.active)
                               .order_by(SessionTemplate.id)).all()  # stable order: no deadlocks
         for t in templates:
-            day = monday + timedelta(days=t.weekday)
-            starts = datetime(day.year, day.month, day.day,
-                              t.start_min // 60, t.start_min % 60, tzinfo=config.TZ)
-            s.execute(
-                pg_insert(TrainingSession).values(
-                    template_id=t.id, title=t.title, kind=t.kind, starts_at=starts,
-                    duration_min=t.duration_min, capacity=t.capacity,
-                ).on_conflict_do_nothing(constraint="uq_session_template_start")
-            )
+            _materialize(s, t, monday + timedelta(days=t.weekday))
 
 
 def sessions_between(start: datetime, end: datetime) -> list[dict]:
@@ -332,35 +341,63 @@ def book(user_id: int, session_id: int) -> None:
         sess = s.execute(
             select(TrainingSession).where(TrainingSession.id == session_id).with_for_update()
         ).scalar_one_or_none()
-        if sess is None or sess.canceled:
-            raise BookingError("Termin ne postoji ili je otkazan.")
-        if sess.starts_at <= now:
-            raise BookingError("Termin je već počeo ili prošao.")
-        if sess.starts_at > now + timedelta(days=config.BOOKING_HORIZON_DAYS):
-            raise BookingError(f"Rezervacije se otvaraju {config.BOOKING_HORIZON_DAYS} dana unaprijed.")
-        if sess.kind not in active_plan_kinds(user_id, s):
-            raise MembershipRequired(
-                f"Za termin \"{PLAN_LABELS.get(sess.kind, sess.kind)}\" treba ti "
-                "aktivna članarina.", sess.kind)
-        # tiered plan: this termin's cycle must still have a trening left
-        m = s.scalar(select(Membership).where(Membership.user_id == user_id,
-                                              Membership.plan == sess.kind))
-        if m is not None and m.sessions_per_cycle:
-            day = sess.starts_at.astimezone(config.TZ).date()
-            start, end = m.cycle_bounds(day)
-            if _cycle_used(s, user_id, sess.kind, start, end) >= m.sessions_per_cycle:
-                raise BookingError(
-                    f"Iskoristio/la si svih {m.sessions_per_cycle} treninga u ciklusu "
-                    f"{start:%-d.%-m.}–{(end - timedelta(days=1)):%-d.%-m.} — "
-                    "otkaži neki termin ili pričekaj sljedeći ciklus.")
-        taken = s.scalar(select(func.count()).select_from(Booking).where(Booking.session_id == session_id))
-        if taken >= sess.capacity:
-            raise BookingError("Termin je popunjen.")
-        already = s.scalar(select(func.count()).select_from(Booking)
-                           .where(Booking.session_id == session_id, Booking.user_id == user_id))
-        if already:
-            raise BookingError("Već si rezervirao/la ovaj termin.")
+        refused = _refusal(s, user_id, sess, now)
+        if refused:
+            raise refused[1]
         s.add(Booking(user_id=user_id, session_id=session_id))
+
+
+def _refusal(s, user_id: int, sess: TrainingSession | None, now: datetime,
+             horizon: bool = True) -> tuple[str, BookingError] | None:
+    """Why `user_id` may not book `sess`: (reason, the error book() raises),
+    or None when the booking may go in. The caller holds the session row FOR
+    UPDATE, so the counts below are the ones that decide.
+
+    book() and book_series() both ask this, so their rules cannot drift. The
+    checks run in book()'s order, so a single booking gets exactly the message
+    it always got. The series passes horizon=False: it books the paid period
+    ahead and is bounded by that period's end instead."""
+    if sess is None or sess.canceled:
+        return "otkazan", BookingError("Termin ne postoji ili je otkazan.")
+    if sess.starts_at <= now:
+        return "prošao", BookingError("Termin je već počeo ili prošao.")
+    if horizon and sess.starts_at > now + timedelta(days=config.BOOKING_HORIZON_DAYS):
+        return "horizont", BookingError(
+            f"Rezervacije se otvaraju {config.BOOKING_HORIZON_DAYS} dana unaprijed.")
+    if sess.kind not in active_plan_kinds(user_id, s):
+        return "članarina", _plan_needed(sess.kind)
+    # tiered plan: this termin's cycle must still have a trening left
+    m = _membership(s, user_id, sess.kind)
+    if m is not None and m.sessions_per_cycle:
+        day = sess.starts_at.astimezone(config.TZ).date()
+        start, end = m.cycle_bounds(day)
+        if _cycle_used(s, user_id, sess.kind, start, end) >= m.sessions_per_cycle:
+            return "paket", BookingError(
+                f"Iskoristio/la si svih {m.sessions_per_cycle} treninga u ciklusu "
+                f"{start:%-d.%-m.}–{(end - timedelta(days=1)):%-d.%-m.} — "
+                "otkaži neki termin ili pričekaj sljedeći ciklus.")
+    taken = s.scalar(select(func.count()).select_from(Booking).where(Booking.session_id == sess.id))
+    if taken >= sess.capacity:
+        return "popunjen", BookingError("Termin je popunjen.")
+    if _holds(s, user_id, sess.id):
+        return "već rezervirano", BookingError("Već si rezervirao/la ovaj termin.")
+    return None
+
+
+def _plan_needed(kind: str) -> MembershipRequired:
+    return MembershipRequired(
+        f"Za termin \"{PLAN_LABELS.get(kind, kind)}\" treba ti aktivna članarina.", kind)
+
+
+def _membership(s, user_id: int, plan: str) -> Membership | None:
+    return s.scalar(select(Membership).where(Membership.user_id == user_id,
+                                             Membership.plan == plan))
+
+
+def _holds(s, user_id: int, session_id: int) -> bool:
+    """Has this user already booked this session?"""
+    return bool(s.scalar(select(func.count()).select_from(Booking)
+                         .where(Booking.session_id == session_id, Booking.user_id == user_id)))
 
 
 def _cycle_used(s, user_id: int, kind: str, start: date, end: date) -> int:
@@ -417,6 +454,110 @@ def my_upcoming(user_id: int) -> list[TrainingSession]:
             .where(Booking.user_id == user_id, TrainingSession.starts_at >= datetime.now(config.TZ))
             .order_by(TrainingSession.starts_at)
         ).all())
+
+
+# ---------- weekly series: "isti termin svaki tjedan" ----------
+
+def _weekly_template(s, sess: TrainingSession) -> SessionTemplate:
+    """The weekly template `sess` repeats, or the BookingError saying there is
+    none. A session left over from before the trainer moved its slot (another
+    day, hour or kind) counts as off the timetable: the template's following
+    weeks hold a different termin, and repeating the old weekday would create
+    sessions no week view ever would."""
+    t = s.get(SessionTemplate, sess.template_id) if sess.template_id else None
+    if t is None:
+        raise BookingError("Ovaj termin nema tjedni raspored.")
+    local = sess.starts_at.astimezone(config.TZ)
+    if not t.active or (t.weekday, t.start_min, t.kind) != (
+            local.weekday(), local.hour * 60 + local.minute, sess.kind):
+        raise BookingError("Ovaj termin više nije u tjednom rasporedu.")
+    return t
+
+
+def _series_dates(sess: TrainingSession, m: Membership) -> tuple[list[date], date]:
+    """The dates of `sess`'s slot on the following weeks of its paid period
+    that are still ahead, and that period's last day. The period is the cycle
+    containing `sess` (Membership.cycle_bounds), cut at dospijeće: a termin in
+    the grace week repeats up to dospijeće, never into a month nobody has paid
+    for. Past weeks are left out, so an offer reopened long after the booking
+    never creates sessions in history."""
+    day = sess.starts_at.astimezone(config.TZ).date()
+    end = min(m.cycle_bounds(day)[1], m.dospijece + timedelta(days=1))
+    today = config.today()
+    dates, nxt = [], day + timedelta(days=7)
+    while nxt < end:
+        if nxt >= today:
+            dates.append(nxt)
+        nxt += timedelta(days=7)
+    return dates, end - timedelta(days=1)
+
+
+def series_preview(user_id: int, session_id: int) -> dict | None:
+    """The offer after booking `session_id`: {"n": weeks left, "last": the
+    last of them, "until": the paid period's last day}, or None when there is
+    nothing to offer (a one-off termin, a slot off the timetable, no active
+    plan of its kind, no week left). Read-only: a week nobody has opened yet
+    counts as free, and the real run (book_series) skips what is full."""
+    with session_scope() as s:
+        sess = s.get(TrainingSession, session_id)
+        if sess is None or sess.kind not in active_plan_kinds(user_id, s):
+            return None
+        try:
+            _weekly_template(s, sess)
+        except BookingError:
+            return None
+        dates, until = _series_dates(sess, _membership(s, user_id, sess.kind))
+        return {"n": len(dates), "last": dates[-1], "until": until} if dates else None
+
+
+def book_series(user_id: int, session_id: int) -> dict:
+    """Book `session_id`'s slot on every following week of its paid period.
+
+    ONE transaction, dates in order: the session rows are locked in starts_at
+    order, so two series (or a series and book()) cannot deadlock. Each date
+    is materialized the way a week view does it, locked FOR UPDATE and judged
+    by book()'s own rules (_refusal) except the horizon: the paid period is
+    the bound here. A canceled, full or already-held date is skipped and
+    reported; a spent paket stops the run and the rest stays unbooked. The
+    quota is counted inside this transaction, so what the loop books counts
+    as it goes.
+
+    Returns {"booked": [dates], "skipped": [(date, reason)], "stopped":
+    "paket" | None, "until": the period's last day, "quota": the paket size
+    (None = unlimited), which the message names}."""
+    now = datetime.now(config.TZ)
+    with session_scope() as s:
+        sess = s.get(TrainingSession, session_id)
+        if sess is None:
+            raise BookingError("Termin ne postoji ili je otkazan.")
+        t = _weekly_template(s, sess)
+        if sess.kind not in active_plan_kinds(user_id, s):
+            raise _plan_needed(sess.kind)
+        m = _membership(s, user_id, sess.kind)
+        dates, until = _series_dates(sess, m)
+        booked, skipped, stopped = [], [], None
+        for day in dates:
+            starts = _materialize(s, t, day)
+            occ = s.execute(select(TrainingSession).where(
+                TrainingSession.template_id == t.id, TrainingSession.starts_at == starts,
+            ).with_for_update()).scalar_one_or_none()
+            refused = _refusal(s, user_id, occ, now, horizon=False)
+            if refused is None:
+                s.add(Booking(user_id=user_id, session_id=occ.id))
+                s.flush()                    # counted by the next date's quota check
+                booked.append(day)
+                continue
+            reason, err = refused
+            if reason in ("paket", "popunjen") and _holds(s, user_id, occ.id):
+                reason = "već rezervirano"   # spent or full with their own booking in it
+            if reason == "paket":
+                stopped = "paket"
+                break
+            if reason == "članarina":
+                raise err                    # the plan lapsed mid-run: book nothing
+            skipped.append((day, reason))
+        return {"booked": booked, "skipped": skipped, "stopped": stopped,
+                "until": until, "quota": m.sessions_per_cycle}
 
 
 # ---------- memberships (članarine) ----------

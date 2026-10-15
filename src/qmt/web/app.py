@@ -462,7 +462,7 @@ async def stripe_webhook(request: Request):
 
 
 @app.get("/raspored", response_class=HTMLResponse)
-def calendar(request: Request, week: str | None = None):
+def calendar(request: Request, week: str | None = None, series: str | None = None):
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
@@ -527,9 +527,24 @@ def calendar(request: Request, week: str | None = None):
             "one_on_one": sess.capacity == 1,
         })
 
+    # Right after a booking (POST /book adds ?series=<id>): offer the same slot
+    # on every following week of the paid period. Only on the client's own
+    # booking; trainers do not book. A garbage id simply offers nothing (and
+    # one past Postgres' integer range never reaches a query, where it 500s).
+    series_offer = None
+    try:
+        series_id = int(series) if series else None
+    except ValueError:
+        series_id = None
+    if series_id and 0 < series_id < 2**31 and not user.is_trainer \
+            and db.user_booking_ids(user.id, [series_id]):
+        preview = db.series_preview(user.id, series_id)
+        if preview:
+            series_offer = dict(preview, session_id=series_id, noun=_termin(preview["n"]))
+
     return templates.TemplateResponse(request, "calendar.html", _ctx(
         request, user,
-        days=days, monday=monday,
+        days=days, monday=monday, series_offer=series_offer,
         prev_week=(monday - timedelta(days=7)).isoformat(),
         next_week=(monday + timedelta(days=7)).isoformat(),
         mine_days=mine_days,
@@ -542,19 +557,20 @@ def calendar(request: Request, week: str | None = None):
 
 
 def _redirect_back(week: str, error: str | None = None, ok: str | None = None,
-                   cta: str | None = None) -> RedirectResponse:
+                   cta: str | None = None, series: int | None = None) -> RedirectResponse:
     """Back to the calendar, on the right week, with feedback visible.
     The separator depends on whether `back` already has a query string —
     "/&error=..." is not a query string and the message silently vanishes.
     `cta` turns a refusal into an offer: it carries a PLAN KIND, never a URL —
     the alert builds the link itself, so a crafted ?cta= cannot become an
-    off-site href."""
+    off-site href. `series` (a session id) asks the calendar to offer that
+    booking's weekly repeat."""
     from urllib.parse import quote
 
     back = f"/raspored?week={week}" if week else "/raspored"
-    for key, val in (("error", error), ("ok", ok), ("cta", cta)):
+    for key, val in (("error", error), ("ok", ok), ("cta", cta), ("series", series)):
         if val:
-            back += ("&" if "?" in back else "?") + f"{key}=" + quote(val)
+            back += ("&" if "?" in back else "?") + f"{key}=" + quote(str(val))
     return RedirectResponse(back, status_code=303)
 
 
@@ -570,7 +586,53 @@ def book(request: Request, session_id: int, week: str = Form("")):
         return _redirect_back(week, str(e), cta=e.kind)
     except db.BookingError as e:
         return _redirect_back(week, str(e))
-    return _redirect_back(week, ok="Rezervirano ✓")
+    return _redirect_back(week, ok="Rezervirano ✓", series=session_id)
+
+
+def _termin(n: int) -> str:
+    """The noun after a count: 1 termin, 3 termina, 21 termin."""
+    return "termin" if n % 10 == 1 and n % 100 != 11 else "termina"
+
+
+def _series_feedback(res: dict) -> tuple[str, bool]:
+    """(alert text, ok?) after a series run: the dates booked, the dates
+    skipped and why, a spent paket. Nothing booked at all is an error."""
+    def days(ds):
+        return ", ".join(f"{d:%-d.%-m.}" for d in ds)
+
+    tail = []
+    if res["skipped"]:
+        tail.append("preskočeno " + ", ".join(f"{d:%-d.%-m.} ({why})" for d, why in res["skipped"]))
+    n = len(res["booked"])
+    if n:
+        if res["stopped"] == "paket":
+            tail.append(f"paket od {res['quota']} treninga je popunjen, ostatak nije rezerviran")
+        return " — ".join([f"Rezervirano još {n} {_termin(n)}: {days(res['booked'])}", *tail]), True
+    if res["stopped"] == "paket":
+        tail.append(f"paket od {res['quota']} treninga je popunjen")
+    elif not tail:
+        tail.append(f"do {res['until']:%-d.%-m.} nema više termina")
+    return " — ".join(["Nijedan termin nije rezerviran", *tail]) + ".", False
+
+
+@app.post("/book/{session_id}/series")
+def book_series(request: Request, session_id: int, week: str = Form("")):
+    """"Isti termin svaki tjedan": the slot just booked, on every following
+    week of the paid period (the rules are db.book_series')."""
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not db.user_booking_ids(user.id, [session_id]):
+        # the offer only ever follows the client's own booking
+        return _redirect_back(week, "Nemaš rezervaciju za ovaj termin.")
+    try:
+        res = db.book_series(user.id, session_id)
+    except db.MembershipRequired as e:
+        return _redirect_back(week, str(e), cta=e.kind)
+    except db.BookingError as e:
+        return _redirect_back(week, str(e))
+    text, ok = _series_feedback(res)
+    return _redirect_back(week, ok=text) if ok else _redirect_back(week, text)
 
 
 @app.post("/cancel/{session_id}")

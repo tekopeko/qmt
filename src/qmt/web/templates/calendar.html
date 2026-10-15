@@ -70,12 +70,32 @@
   .mine-week { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
                gap: 12px; }
 
+  /* "Isti termin svaki tjedan …" rides in the booking's ok alert, the way the
+     error alert carries "Pogledaj cjenik →". Its label is a whole sentence,
+     wider than a phone, so this one pill may wrap (.act is nowrap everywhere
+     else); the non-breaking spaces in the label choose where it breaks. */
+  .series-offer .act { white-space: normal; text-align: left; }
+
   @media (max-width: 860px) {
     .week, .mine-week { grid-template-columns: 1fr; }
     .day-col.empty-day { display: none; }   /* phones: skip blank days, show a compact agenda */
     .week.all-empty { display: none; }      /* fully empty week: the message above stands alone */
   }
 </style>
+{% endblock %}
+{% block ok_alert %}
+{% if series_offer %}
+{# right after booking a weekly termin: the confirmation carries the offer to
+   book the same slot for the rest of the paid period. ONE alert. On a phone
+   the label breaks between "… do 14.11. —" and "još 3 termina →". #}
+<div class="alert ok" role="status">
+  <span>Rezervirano ✓</span>
+  <form class="series-offer" method="post" action="/book/{{ series_offer.session_id }}/series">
+    <input type="hidden" name="week" value="{{ monday.isoformat() }}">
+    <button class="act" type="submit">Isti termin svaki tjedan do&nbsp;{{ series_offer.until.strftime("%-d.%-m.") }}&nbsp;— još&nbsp;{{ series_offer.n }}&nbsp;{{ series_offer.noun }}&nbsp;→</button>
+  </form>
+</div>
+{% else %}{{ super() }}{% endif %}
 {% endblock %}
 {% block content %}
 

@@ -31,7 +31,7 @@ python scripts/seed_demo.py                # dev RESET: users, timetable, plans,
 python serve.py [--reload] [--port 8100]   # 8100 — 8000 is mojimakrosi's local port
 
 createdb qmt_test                          # once
-pytest -q                                  # 98 tests, must stay green
+pytest -q                                  # 108 tests, must stay green
 ```
 
 Demo logins: `trener@qmt.local/trener123` (trainer **and** owner locally, via
@@ -56,7 +56,7 @@ variables --kv` reads config). Pushing to `master` auto-deploys.
 |---|---|---|
 | `/` | public | Landing: hero (kicker, headline, lead; a member's one action; no buttons for guests, the pill has them) whose photo is a link to the offer; **the offer (`#usluge`) is three tiers of the online plan** (QMove START / PRO, featured / ELITE; each with the MojiMakrosi add-on, 5 €): tier 1's monthly price is the online plan's own, every other price (tiers 2–3 monthly, all three yearly) is editable text until a plan exists; a **Mjesečno / Godišnje** switch under the cards shows one price per card (per page view, monthly without JS); on phones (<900px) the tiers are a swipe carousel with three dots. Below it, quieter, **the gym (`#dvorana`)**: Dvorana and Individualno cards (add-on 3 €; Individualno names its semi-individual and rehab prices in a muted line under its own). Gallery from `static/gallery/`; contact. A card's button follows the visitor: owner of the plan → into the app, member → "Odaberi plan" on `/cjenik`, guest → "Registriraj se" when signup is open, else "Javi nam se" → `#kontakt` |
 | `/cjenik` | client | **Members only since 28.9.2026** (guests are sent to log in): where plans are bought and managed; the public price list is the landing's offer. Plan pricing from Stripe ("na upit" until Price ids exist) + "Pretplati se karticom" → Stripe Checkout; `/placanje/portal` for card/cancel/invoices |
-| `/raspored` | client | Week calendar, booking, "Moja članarina" + "Moje rezervacije" as day columns |
+| `/raspored` | client | Week calendar, booking, "Moja članarina" + "Moje rezervacije" as day columns. After booking a weekly slot the ok alert offers "Isti termin svaki tjedan do …" → `POST /book/{id}/series` books that slot for the rest of the paid period |
 | `/karton`, `/upitnik` | client | Personal file: upitnik result, training diary, termini. `/karton/{id}` is the trainer's read-only view |
 | `/treninzi` | client/trainer | Online programmes — automatic (see below) |
 | `/prehrana` | public | MojiMakrosi link (`/nutricionizam` 301s here) |
@@ -89,7 +89,12 @@ webhook writes the same rows with `method="stripe"`. **Grupni is tiered** like t
 owner's shop — 8 / 12 / 16 treninga a month (`Membership.sessions_per_cycle`, NULL =
 unlimited); `book()` counts the cycle's live bookings of that kind and refuses past the
 quota. Cycles are anchored on `next_payment` (`Membership.cycle_bounds`), so an early
-renewal never smears two months' quotas together.
+renewal never smears two months' quotas together. **A booking can repeat weekly**
+(`db.book_series`, offered right after booking a templated session): the same slot on
+every following week of the paid period, i.e. the cycle containing that termin, cut at
+dospijeće. No 28-day horizon there (the period is the bound); each date is materialized
+and judged by `book()`'s own rules (`_refusal`, shared so they cannot drift), full /
+canceled / already-held dates are skipped and reported, and a spent paket stops the run.
 
 **3. The online side is automated, never hand-assigned.** The upitnik
 (`src/qmt/upitnik.py`, five scored questions + a goal) routes a client into a razina

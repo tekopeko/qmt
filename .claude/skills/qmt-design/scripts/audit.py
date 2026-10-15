@@ -48,8 +48,10 @@ def ui_fingerprint() -> str:
         return ""
 
 BASELINE = pathlib.Path(__file__).resolve().parent.parent / "references" / "audit-baseline.json"
-ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana"]
-CLIENT = ["/", "/raspored", "/karton", "/cjenik", "/prehrana", "/profil", "/treninzi", "/upitnik"]
+# ?ok= / ?error= pages: the flash alerts are text nobody audits otherwise
+ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana",
+        "/login?ok=Lozinka+je+promijenjena", "/login?error=Pogre%C5%A1an+email+ili+lozinka."]
+CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/karton", "/cjenik", "/prehrana", "/profil", "/treninzi", "/upitnik"]
 OWNER = ["/", "/raspored", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi", "/profil"]
 
 CHECKS = r"""

@@ -480,9 +480,12 @@
       padding: 11px 15px; margin-bottom: 18px; font-size: .92rem;
       display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     }
-    .alert.ok { color: var(--good); font-weight: 600;
+    /* light theme: --good on the tinted alert measures 4.16:1, so the ok alert
+       speaks in --good-strong there; dark keeps the bright green (12:1) */
+    .alert.ok { color: var(--good-strong); font-weight: 600;
                 background: color-mix(in srgb, var(--good) 10%, var(--surface));
                 border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+    [data-theme="dark"] .alert.ok { color: var(--good); }
     .hint { color: var(--muted); font-size: .85rem; }
 
     /* breadcrumb on detail pages: parent segment is the link, current one stands */
@@ -594,9 +597,13 @@
       {% endif %}
     </div>
   {% endif %}
+  {# a page may put its own ok alert here instead (the calendar's offer to
+     repeat a booking) — one alert either way #}
+  {% block ok_alert %}
   {% if request.query_params.get("ok") %}
     <div class="alert ok" role="status">{{ request.query_params.get("ok") }}</div>
   {% endif %}
+  {% endblock %}
   {% block content %}{% endblock %}
 </main>
 {% if not user %}
