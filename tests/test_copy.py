@@ -261,49 +261,59 @@ MEASURE = r"""(strict) => {
   return out;
 }"""
 
-# The landing's two offer sections. The three online tiers: three columns on a
-# wide screen, a swipe row with three dots on a phone, the shown prices level
-# across the row either way (the featured card hangs 16px past its neighbours
-# on a desktop, so the row check above can miss it; this one cannot). The gym:
-# two cards stacked on a phone, side by side with level prices on a desktop.
+# The landing's two offer sections, each a row of cards (.swipe-row): the three
+# online tiers and the gym's two. On a wide screen the tiers are three columns
+# and the gym two; below 900px each is a swipe row with a dot per card (made
+# by the script, so the count and the labels follow the cards). The shown
+# prices are level across a row either way (the featured tier hangs 16px past
+# its neighbours on a desktop, so the row check above can miss it; this one
+# cannot).
 LANDING = r"""([w, strict]) => {
   const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().width > 0; };
   const out = [], top = el => el.getBoundingClientRect().top, price = card => [...card.querySelectorAll('.price')].find(vis);
   const level = (cards, what) => { if (!strict) return;       // one unbreakable word: it only must not widen
     const t = cards.map(c => Math.round(top(price(c))));
     if (Math.max(...t) - Math.min(...t) > 1) out.push(`${what} prices not level: ${t.join(', ')}`); };
-  const grid = document.querySelector('#usluge .offer-grid'), tiers = [...grid.children];
-  const dots = [...document.querySelectorAll('#usluge .dots button')].filter(vis);
-  if (tiers.length !== 3 || !tiers.every(c => c.classList.contains('offer'))) out.push(`${tiers.length} tier cards`);
-  if (w < 900) {
-    if (getComputedStyle(grid).overflowX !== 'auto' || grid.scrollWidth <= grid.clientWidth) out.push('the tiers do not scroll sideways');
-    const snaps = tiers.filter(c => getComputedStyle(c).scrollSnapAlign.includes('center'));
-    if (snaps.length !== 3) out.push(`${snaps.length} tier cards snap`);
-    if (dots.length !== 3) out.push(`${dots.length} dots under the tiers`);
-    for (const d of dots) { const r = d.getBoundingClientRect(); if (r.width < 32 || r.height < 32) out.push(`a dot is ${r.width}x${r.height}`); }
-  } else {
-    if (dots.length) out.push('dots on a wide screen');
-    const t = tiers.map(top); if (Math.max(...t) - Math.min(...t) > 17) out.push(`the tiers are not one row: ${t.join(', ')}`);
+  // [section, cards, name, how far a card may stand out of the row on a desktop]
+  for (const [sec, n, what, slack] of [['#usluge', 3, 'tier', 17], ['#dvorana', 2, 'gym', 1]]) {
+    const row = document.querySelector(`${sec} .swipe-row`), cards = row ? [...row.children] : [];
+    const dots = [...document.querySelectorAll(`${sec} .dots button`)].filter(vis);
+    if (cards.length !== n || !cards.every(c => c.classList.contains('offer'))) { out.push(`${cards.length} ${what} cards`); continue; }
+    if (w < 900) {
+      if (getComputedStyle(row).overflowX !== 'auto' || row.scrollWidth <= row.clientWidth) out.push(`the ${what} cards do not scroll sideways`);
+      const snaps = cards.filter(c => getComputedStyle(c).scrollSnapAlign.includes('center'));
+      if (snaps.length !== n) out.push(`${snaps.length} ${what} cards snap`);
+      if (dots.length !== n) out.push(`${dots.length} dots under the ${what} cards`);
+      dots.forEach((d, i) => { const r = d.getBoundingClientRect();
+        if (r.width < 32 || r.height < 32) out.push(`a ${what} dot is ${r.width}x${r.height}`);
+        if (d.getAttribute('aria-label') !== `Kartica ${i + 1} od ${n}`) out.push(`${what} dot ${i + 1} says "${d.getAttribute('aria-label')}"`); });
+    } else {
+      if (dots.length) out.push(`dots under the ${what} cards on a wide screen`);
+      const cols = getComputedStyle(row).gridTemplateColumns.split(' ').length;
+      if (cols !== n) out.push(`the ${what} cards are in ${cols} columns`);
+      const t = cards.map(top); if (Math.max(...t) - Math.min(...t) > slack) out.push(`the ${what} cards are not one row: ${t.join(', ')}`);
+    }
+    level(cards, what);
   }
-  level(tiers, 'tier');
-  const gym = [...document.querySelectorAll('#dvorana .offer')];
-  if (gym.length !== 2) { out.push(`${gym.length} gym cards`); return out; }
-  const [a, b] = gym.map(g => g.getBoundingClientRect());
-  if (w < 720 && b.top < a.bottom) out.push('the gym cards do not stack');
-  if (w >= 720) { if (Math.abs(a.top - b.top) > 1) out.push('the gym cards are not one row'); else level(gym, 'gym'); }
   return out;
 }"""
 
-# The Mjesečno / Godišnje switch: every tier card shows exactly the chosen price.
+# Mjesečno / Godišnje: one choice, two switches (under the tiers, under the
+# gym). Every card of both sections shows exactly the chosen price, and both
+# switches say it.
 PERIOD = r"""(p) => {
   const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && el.getBoundingClientRect().width > 0; };
   const out = [];
-  for (const c of document.querySelectorAll('#usluge .offer')) {
+  for (const c of document.querySelectorAll('#usluge .offer, #dvorana .offer')) {
     const shown = [...c.querySelectorAll('.price')].filter(vis).map(x => x.dataset.period);
-    if (shown.join() !== p) out.push(`a tier shows "${shown.join('+')}" for ${p}`);
+    if (shown.join() !== p) out.push(`a card in #${c.closest('section').id} shows "${shown.join('+')}" for ${p}`);
   }
-  const sel = document.querySelector('#usluge .period [aria-selected="true"]');
-  if (!sel || sel.dataset.period !== p) out.push(`the switch does not say ${p}`);
+  const switches = [...document.querySelectorAll('.period')], where = switches.map(s => s.closest('section').id);
+  if (where.join() !== 'usluge,dvorana') out.push(`switches in: ${where.join(', ')}`);
+  for (const sw of switches) {
+    const said = [...sw.querySelectorAll('[aria-selected="true"]')].map(b => b.dataset.period);
+    if (said.join() !== p) out.push(`the #${sw.closest('section').id} switch says "${said.join('+')}" for ${p}`);
+  }
   return out;
 }"""
 
@@ -336,14 +346,17 @@ def test_layout_holds_with_every_slot_at_its_limit(server):
                 if path != "/":
                     continue
                 problems += [f"{where} {p}" for p in pg.evaluate(LANDING, [w, strict])]
-                if not pg.locator("#usluge .period").is_visible():
-                    problems.append(f"{where} no Mjesečno / Godišnje switch"); continue
+                if not all(pg.locator(f"{sec} .period").is_visible() for sec in ("#usluge", "#dvorana")):
+                    problems.append(f"{where} no Mjesečno / Godišnje switch under each row"); continue
                 problems += [f"{where} on load: {p}" for p in pg.evaluate(PERIOD, "month")]   # monthly first
-                for period in ("year", "month"):          # there and back: same checks in both states
-                    pg.click(f'#usluge .period button[data-period="{period}"]')
-                    problems += [f"{where} {period}: {p}" for p in pg.evaluate(PERIOD, period)]
-                    problems += [f"{where} {period}: {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
-                    problems += [f"{where} {period}: {p}" for p in pg.evaluate(LANDING, [w, strict])]
+                # either switch flips both sections: each pressed both ways,
+                # the same checks after every press
+                for sec, period in (("#usluge", "year"), ("#dvorana", "month"), ("#dvorana", "year"), ("#usluge", "month")):
+                    pg.click(f'{sec} .period button[data-period="{period}"]')
+                    did = f"{where} {sec} {period}:"
+                    problems += [f"{did} {p}" for p in pg.evaluate(PERIOD, period)]
+                    problems += [f"{did} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
+                    problems += [f"{did} {p}" for p in pg.evaluate(LANDING, [w, strict])]
             problems += [f"[{label} {w}px] js: {e}" for e in errs]
             ctx.browser.close()
         return problems

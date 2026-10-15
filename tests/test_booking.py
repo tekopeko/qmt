@@ -638,6 +638,9 @@ def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
     page = TestClient(app).get("/").text
     offer, gym = page.split('id="usluge"')[1].split('id="dvorana"')
     assert offer.count('class="card offer') == 3 and gym.count('class="card offer') == 2
+    for section, cards in ((offer, 3), (gym, 2)):       # a Mjesečno / Godišnje switch under each row, and
+        assert section.count('class="period"') == 1     # every card's yearly price behind it
+        assert section.count('data-period="year" hidden>') == cards
     assert page.count('<span class="featured-tag">Najpopularnije</span>') == 1   # the chip, not the CSS comment naming it
     assert '<span class="featured-tag">' in offer       # on a tier, not in the gym
     flat = page.replace("\u00a0", " ")                  # a price and its unit are held together
@@ -669,11 +672,13 @@ def test_public_prices_switch_hides_them_from_guests_only(monkeypatch):
     page = TestClient(app).get("/").text
     assert page.count('class="card offer') == 5 and "€" not in page
     assert page.count("Cijene nakon prijave") == 5
-    assert 'class="period"' not in page                 # no Mjesečno / Godišnje switch without prices
+    # no Mjesečno / Godišnje switch under either row, and no yearly price behind one
+    assert 'class="period"' not in page and 'data-period="' not in page
 
     make_user("ana@test.local", plans=())
     page = client_for("ana@test.local").get("/").text
     assert "50 €" in page and "+3 € / mjesečno" in page and "Cijene nakon prijave" not in page
+    assert page.count('class="period"') == 2            # a member gets both switches
 
 
 def test_payment_ledger_accumulates_and_stats():

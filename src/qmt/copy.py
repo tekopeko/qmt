@@ -84,18 +84,25 @@ SLOTS: dict[str, Slot | ListSlot] = {
     "offer.online3.year_price": Slot("na upit", 9, "Online 3: godišnja cijena"),
     "offer.online3.year_unit": Slot("", 11, "Online 3: uz godišnju cijenu"),
     # ---- landing: the gym, a quieter section below the online tiers ----
+    # Both cards are tiers too: the monthly price is the plan's own, the yearly
+    # one text until a plan exists for it; the gym's own "Mjesečno / Godišnje"
+    # switch is one choice with the tiers'.
     "gym.kicker": Slot("Dvorana", 16, "Mala oznaka iznad dvorane"),
     "gym.h2": Slot("Treninzi u dvorani", 28, "Naslov: dvorana"),
     "offer.dvorana.title": Slot("Dvorana", 14, "Dvorana: naziv"),
     "offer.dvorana.lead": Slot("Grupni treninzi u Dubravi.", 48, "Dvorana: podnaslov"),
     "offer.dvorana.points": ListSlot(("Male grupe do 8 polaznika", "8, 12 ili 16 treninga mjesečno",
                                       "Termin rezerviraš u aplikaciji"), 6, 44, "Dvorana: stavka"),
+    "offer.dvorana.year_price": Slot("na upit", 9, "Dvorana: godišnja cijena"),
+    "offer.dvorana.year_unit": Slot("", 11, "Dvorana: uz godišnju cijenu"),
     "offer.individualno.title": Slot("Individualno", 14, "Individualno: naziv"),
     "offer.individualno.lead": Slot("Trener samo za tebe.", 48, "Individualno: podnaslov"),
     # the prices of these used to follow the bullets; they are one line under
     # the card's price now (landing.html, .price-note), so a bullet is free text
     "offer.individualno.points": ListSlot(("Rad 1:1, po dogovoru", "U dvoje ili troje", "Rehabilitacija"),
                                           6, 44, "Individualno: stavka"),
+    "offer.individualno.year_price": Slot("na upit", 9, "Individualno: godišnja cijena"),
+    "offer.individualno.year_unit": Slot("", 11, "Individualno: uz godišnju cijenu"),
     "offer.addon": Slot("MojiMakrosi prehrana", 26, "Naziv dodatka za prehranu"),
     # ---- landing: info ----
     "info.hours.h": Slot("Radno vrijeme", 16, "Naslov: radno vrijeme"),

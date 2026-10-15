@@ -21,6 +21,8 @@ the rest are copy slots the owner types. Dvorana and Individualno sit in
 
 15.10.2026, second task (Opus draft, awaiting review): after a booking on `/raspored` the ok alert offers "Isti termin svaki tjedan do …", which books the same weekly slot for the rest of the paid period (`db.book_series`, `POST /book/{id}/series`; no schema change).
 
+15.10.2026, third task (Opus draft, awaiting review): the gym (`#dvorana`) has the Mjesečno / Godišnje switch too, one choice with the tiers' (either switch flips every card on the page): Dvorana and Individualno keep their real monthly prices, the yearly ones are copy slots (`offer.dvorana.year_*`, `offer.individualno.year_*`), and on phones the two cards are a swipe row with two dots, one carousel (`.swipe-row`) for both sections.
+
 ## 5.10.2026 — the redesign is live; work continues on `master`
 
 `redesign` was merged into `master` (one merge commit, so the whole redesign

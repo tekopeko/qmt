@@ -107,25 +107,31 @@
      edges and the extra padding gives the 16px back, so its text still starts
      and ends on the same lines as its neighbours'. */
   @media (min-width: 900px) { .offer.featured { margin-block: -16px; padding-block: 46px 42px; } }
-  /* Phones and tablets: the three tiers are one swipe row (Shape's pricing on
-     a phone), not a stack — a card and a bit of the next, snapping to the
-     centre, with three dots under it. The band gives up its side padding so
-     the row runs to the screen's edges and the scroller carries the gutter
-     itself; nothing but the scroller is ever wider than the screen. The
-     vertical padding keeps the cards' shadows from being cut by the scroller,
-     and the negative margin gives that room back. */
+  /* Phones and tablets: each row of cards (.swipe-row: the three tiers, the
+     gym's two) is one swipe row (Shape's pricing on a phone), not a stack — a
+     card and a bit of the next, snapping to the centre, with a dot per card
+     under it. The band gives up its side padding so the row runs to the
+     screen's edges and the scroller carries the gutter itself; nothing but the
+     scroller is ever wider than the screen. The vertical padding keeps the
+     cards' shadows from being cut by the scroller, and the negative margin
+     gives that room back. */
   @media (max-width: 899px) {
-    #usluge { padding-inline: 0; }
-    #usluge .sec-head { padding-inline: clamp(16px, 4vw, 40px); }
-    #usluge .offer-grid { display: flex; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain;
-                          scroll-snap-type: x mandatory; scrollbar-width: none;
-                          padding: 12px clamp(16px, 4vw, 40px) 20px; margin-top: -12px; }
-    #usluge .offer-grid::-webkit-scrollbar { display: none; }
-    #usluge .offer-grid > .offer { flex: 0 0 86%; scroll-snap-align: center; scroll-snap-stop: always; }
+    section.band:has(.swipe-row) { padding-inline: 0; }
+    section.band:has(.swipe-row) .sec-head { padding-inline: clamp(16px, 4vw, 40px); }
+    .swipe-row { display: flex; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain;
+                 scroll-snap-type: x mandatory; scrollbar-width: none;
+                 padding: 12px clamp(16px, 4vw, 40px) 20px; margin-top: -12px; }
+    .swipe-row::-webkit-scrollbar { display: none; }
+    /* no scroll-snap-stop: always — it also halts a smooth programmatic scroll
+       at the first snap point, so a tapped third dot stopped on the second card */
+    .swipe-row > * { flex: 0 0 86%; scroll-snap-align: center; }
   }
-  /* the dots: 32px tap targets around an 8px dot; the lit one is the card in
-     view (landing's script). Phones only — on a desktop all three are seen. */
+  /* the dots: 32px tap targets around an 8px dot, one per card of the row
+     above; the lit one is the card in view. The landing's script makes them
+     and only then shows their box, so without it there are no dots that do
+     nothing. Phones only — on a desktop every card is seen. */
   .dots { display: none; justify-content: center; }
+  .dots[hidden] { display: none; }
   .dots button { width: 32px; height: 32px; padding: 0; border: none; background: none; box-shadow: none;
                  display: grid; place-items: center; }
   .dots button::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--line);
@@ -149,9 +155,10 @@
   .period button:hover { transform: none; color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
   .period button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent-tint-ink); }
   @media (max-width: 899px) { .period { margin-top: 10px; } }
-  /* the gym: two cards, each about as wide as a tier above, stacked on a phone */
-  .gym-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; max-width: 480px; margin-inline: auto; }
-  @media (min-width: 720px) { .gym-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 760px; } }
+  /* the gym: two cards, each about as wide as a tier above; below 900px they
+     are a swipe row like the tiers (.swipe-row) */
+  @media (min-width: 900px) { .gym-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
+                                          max-width: 760px; margin-inline: auto; } }
   .offer h3 { font: 700 italic 1.5rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
   /* two lines reserved, so the three lists start level when a lead wraps */
   .offer .lead { color: var(--muted); font-size: .95rem; margin-top: 6px; min-height: 2.9em; }
@@ -176,9 +183,11 @@
   /* Three columns between 900 and 1100px leave a card 209-273px inside, where a
      price at its limit (9 + 11 characters) wraps its unit under the number; the
      second line is reserved there so the three stay level. Wider, and on a
-     phone with the smaller number below, the limits fit one line. */
+     phone with the smaller number below, the limits fit one line. The gym's
+     cards are 314px inside at those widths, where the limits fit one line,
+     so they do not reserve it (.offer-grid: the tiers only). */
   @media (min-width: 900px) and (max-width: 1100px) {
-    #usluge .offer .price { min-height: calc(2.1rem + 8px + 1.1rem); align-content: flex-start; }
+    .offer-grid .offer .price { min-height: calc(2.1rem + 8px + 1.1rem); align-content: flex-start; }
   }
   @media (max-width: 420px) { .offer .price b { font-size: 1.8rem; } }
   .offer .price.quiet { font: 600 .9rem/2.1rem var(--font-body); color: var(--muted); }
@@ -186,10 +195,11 @@
   .offer .price[hidden] { display: none; }
   /* Individualno's other prices, one muted line under its own. An empty one
      in the Dvorana card beside it holds the same room, so the two prices and
-     buttons stay level (the cards are equally wide, the room is two lines). */
+     buttons stay level (the cards are equally wide, the room is two lines).
+     Beside it at every width: two columns, or the swipe row on a phone. */
   .offer .price-note { margin-top: -8px; font-size: .82rem; line-height: 1.4; color: var(--muted); }
   .offer .price-note:empty { display: none; }
-  @media (min-width: 720px) { .gym-grid .offer .price-note { display: block; min-height: 2.8em; } }
+  .gym-grid .offer .price-note { display: block; min-height: 2.8em; }
   /* red only on the popular card's action; neutral beside it; green for "yours" */
   .offer .btn-sm { padding: 10px 18px; font-size: .86rem; }
   @media (pointer: coarse) { .offer .btn-sm { padding: 12px 20px; } }
@@ -297,8 +307,9 @@
     {%- endmacro %}
     {# keys: the plans a card stands for, the first one prices it. slot: the
        card's copy prefix (slot.title / .lead / .points in src/qmt/copy.py).
-       tier: an online tier — a monthly and a yearly price, the switch under
-       the cards shows one; real: its monthly price is the plan's own, else the
+       tier: a monthly and a yearly price (the yearly is the slot.year_price /
+       .year_unit text), the switch under the row shows one; every card on the
+       landing is one; real: its monthly price is the plan's own, else the
        slot.price / slot.unit text. note: a muted line under the price (none:
        no line; "": an empty one holding the room, see .price-note). Plan
        prices come from the route (offer_prices: Stripe, else the shop's
@@ -324,31 +335,38 @@
         </div>
       </div>
     {%- endmacro %}
+    {# Mjesečno / Godišnje, under each row of cards (the tiers, the gym): two
+       switches, one choice — the script keeps them in step and shows the
+       chosen price on every card of both. Hidden until the script works it;
+       none at all while a guest sees no prices. #}
+    {% macro period_switch() -%}
+      {% if show_prices %}
+      <div class="period" role="tablist" aria-label="Razdoblje plaćanja" hidden>
+        <button type="button" role="tab" aria-selected="true" data-period="month">Mjesečno</button>
+        <button type="button" role="tab" aria-selected="false" data-period="year">Godišnje</button>
+      </div>
+      {% endif %}
+    {%- endmacro %}
     {# Three tiers of the online plan. They all stand for the online plan
-       (button and "yours" follow it); tier 1 is priced by it. #}
-    <div class="offer-grid">
+       (button and "yours" follow it); tier 1 is priced by it. The dots under
+       a .swipe-row are the script's, one per card. #}
+    <div class="offer-grid swipe-row">
       {{ offer(["online"], "offer.online", addon.online, tier=true) }}
       {{ offer(["online"], "offer.online2", addon.online, featured=true, tier=true, real=false) }}
       {{ offer(["online"], "offer.online3", addon.online, tier=true, real=false) }}
     </div>
-    <div class="dots" role="group" aria-label="Kartice ponude">
-      <button type="button" aria-label="Kartica 1 od 3" aria-current="true"></button>
-      <button type="button" aria-label="Kartica 2 od 3" aria-current="false"></button>
-      <button type="button" aria-label="Kartica 3 od 3" aria-current="false"></button>
-    </div>
-    {% if show_prices %}
-    <div class="period" role="tablist" aria-label="Razdoblje plaćanja" hidden>
-      <button type="button" role="tab" aria-selected="true" data-period="month">Mjesečno</button>
-      <button type="button" role="tab" aria-selected="false" data-period="year">Godišnje</button>
-    </div>
-    {% endif %}
+    <div class="dots" role="group" aria-label="Kartice ponude" hidden></div>
+    {{ period_switch() }}
   </div>
 </section>
 
-{# The gym: a quieter section under the online tiers, same cards. Individualno
-   names its other two prices under its own; they used to follow its bullets,
-   which are free text now. A price and its unit never part at a line break
-   ("od 30 €" over "/ tretman" read as two things). #}
+{# The gym: a quieter section under the online tiers, same cards. Both are
+   tiers too: the monthly price is the plan's own, the yearly one text until a
+   plan exists for it, and the switch under them is one choice with the tiers'.
+   Individualno names its other two prices under its own, in both periods;
+   they used to follow its bullets, which are free text now. A price and its
+   unit never part at a line break ("od 30 €" over "/ tretman" read as two
+   things). #}
 {% set gym_note = [] %}
 {% for plan, what in [("poluindividualni", "u dvoje ili troje"), ("rehabilitacija", "rehabilitacija")] if offer_prices.get(plan) %}
   {%- set _ = gym_note.append(what ~ " " ~ ((offer_prices[plan][0] ~ " " ~ offer_prices[plan][1]) | replace(" ", "\u00a0"))) -%}
@@ -360,11 +378,13 @@
       <div class="sec-kicker">{{ c.t("gym.kicker") }}</div>
       <h2>{{ c.t("gym.h2") }}</h2>
     </div>
-    <div class="gym-grid">
-      {{ offer(["grupni"], "offer.dvorana", addon.dvorana, note=("" if gym_note else none)) }}
+    <div class="gym-grid swipe-row">
+      {{ offer(["grupni"], "offer.dvorana", addon.dvorana, tier=true, note=("" if gym_note else none)) }}
       {{ offer(["individualni", "poluindividualni", "rehabilitacija"], "offer.individualno", addon.dvorana,
-               note=(gym_note or none)) }}
+               tier=true, note=(gym_note or none)) }}
     </div>
+    <div class="dots" role="group" aria-label="Kartice ponude" hidden></div>
+    {{ period_switch() }}
   </div>
 </section>
 
@@ -444,35 +464,55 @@
 {% endblock %}
 {% block scripts %}
 <script>
-  // The online tiers. On a phone they are a swipe row: the dot of the card in
-  // view is lit, a tapped dot brings its card to the centre. On every screen
-  // the Mjesečno / Godišnje switch shows one price per card, the same on all
-  // three; it is per page view, nothing is remembered.
+  // The rows of cards (.swipe-row: the online tiers, the gym). On a phone each
+  // is a swipe row with a dot per card under it, made here from the row's
+  // cards: the dot of the card in view is lit, a tapped dot brings its card to
+  // the centre.
   (function () {
-    var grid = document.querySelector("#usluge .offer-grid");
-    if (!grid) return;
-    var cards = [].slice.call(grid.children), dots = [].slice.call(document.querySelectorAll("#usluge .dots button"));
-    function mark(i) { dots.forEach(function (d, j) { d.setAttribute("aria-current", i === j ? "true" : "false"); }); }
-    if (dots.length && "IntersectionObserver" in window) {
-      var io = new IntersectionObserver(function (es) {
-        es.forEach(function (e) { if (e.isIntersecting && e.intersectionRatio >= .75) mark(cards.indexOf(e.target)); });
-      }, {root: grid, threshold: .75});
-      cards.forEach(function (card) { io.observe(card); });
-    }
-    dots.forEach(function (d, i) {
-      d.addEventListener("click", function () {
-        var g = grid.getBoundingClientRect(), r = cards[i].getBoundingClientRect();
-        grid.scrollBy({left: r.left - g.left - (g.width - r.width) / 2, behavior: "smooth"});
+    [].forEach.call(document.querySelectorAll(".swipe-row"), function (row) {
+      var box = row.nextElementSibling;
+      if (!box || !box.classList.contains("dots")) return;
+      var cards = [].slice.call(row.children);
+      var dots = cards.map(function (card, i) {
+        var d = document.createElement("button");
+        d.type = "button";
+        d.setAttribute("aria-label", "Kartica " + (i + 1) + " od " + cards.length);
+        d.setAttribute("aria-current", i === 0 ? "true" : "false");
+        d.addEventListener("click", function () {
+          var g = row.getBoundingClientRect(), r = card.getBoundingClientRect();
+          row.scrollBy({left: r.left - g.left - (g.width - r.width) / 2, behavior: "smooth"});
+        });
+        return box.appendChild(d);
       });
+      box.hidden = false;
+      function mark(i) { dots.forEach(function (d, j) { d.setAttribute("aria-current", i === j ? "true" : "false"); }); }
+      if ("IntersectionObserver" in window) {
+        var io = new IntersectionObserver(function (es) {
+          es.forEach(function (e) { if (e.isIntersecting && e.intersectionRatio >= .75) mark(cards.indexOf(e.target)); });
+        }, {root: row, threshold: .75});
+        cards.forEach(function (card) { io.observe(card); });
+      }
     });
-    var sw = document.querySelector("#usluge .period");
-    if (!sw) return;
-    sw.hidden = false;
-    sw.addEventListener("click", function (e) {
-      var b = e.target.closest("button[data-period]");
-      if (!b) return;
-      [].forEach.call(sw.querySelectorAll("button"), function (x) { x.setAttribute("aria-selected", x === b ? "true" : "false"); });
-      [].forEach.call(document.querySelectorAll("#usluge .price[data-period]"), function (p) { p.hidden = p.dataset.period !== b.dataset.period; });
+  })();
+  // Mjesečno / Godišnje: one choice, two switches (under the tiers, under the
+  // gym). Pressing either shows that price on every card of both sections and
+  // marks both switches alike; it is per page view, nothing is remembered.
+  (function () {
+    var switches = [].slice.call(document.querySelectorAll(".period"));
+    function show(period) {
+      switches.forEach(function (sw) {
+        [].forEach.call(sw.querySelectorAll("button[data-period]"), function (x) {
+          x.setAttribute("aria-selected", x.dataset.period === period ? "true" : "false");
+        });
+      });
+      [].forEach.call(document.querySelectorAll(".price[data-period]"), function (p) { p.hidden = p.dataset.period !== period; });
+    }
+    switches.forEach(function (sw) {
+      sw.hidden = false;
+      sw.addEventListener("click", function (e) {
+        var b = e.target.closest("button[data-period]");
+        if (b) show(b.dataset.period);
+      });
     });
   })();
 </script>

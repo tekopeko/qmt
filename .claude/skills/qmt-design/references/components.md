@@ -89,23 +89,30 @@ blocks, `data-period="month"` and `"year"` (`hidden`); the `.period` switch
 under the cards (the `.auth-tabs` idiom on a `--surface` track — the tint over
 `--surface-2` is 4.34:1 in dark) shows one on all three, per page view, and is
 hidden until the script runs. Tier prices are mostly owner-typed text, so the
-tiers reserve a second price line (`min-height`) and stay level whatever is
-typed. `.featured` (tier 2) is taller, not shifted (`margin-block: -16px` +
-matching padding, desktop only) and carries `.featured-tag`; `.mine` gets the
-green-tinted border. **Below 900px the tiers are a carousel**: the band drops
-its side padding, `.offer-grid` becomes a flex scroller (`scroll-snap-type: x
-mandatory`, cards `flex: 0 0 86%` snapping to the centre, scrollbar hidden,
-the gutter as its own padding) and `.dots` under it are three 32px buttons
-around an 8px dot (`--line`, lit `--accent`, `aria-current`) that follow the
-scroll (IntersectionObserver) and bring their card in on tap. **The gym**
-(`#dvorana`, below): the same `.offer` cards in `.gym-grid` (two columns ≥720px,
-capped at 760px so each is about a tier's width; stacked below), not featured;
-Individualno's other prices are a muted `.price-note` under its `.price`, and
-an empty one in the Dvorana card holds the same two lines so both rows stay
-level. Buttons: accent `.btn-sm` on the featured card, neutral `.cta` beside
-it, green `.owned` for a plan the visitor has. Plan prices arrive from the
-route (`offer_prices`), are public unless `PUBLIC_PRICES=off` (which also hides
-the switch), and no public page links to `/cjenik`. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
+cards (tiers and gym) reserve a second price line (`min-height`, 900–1100px)
+and stay level whatever is typed. `.featured` (tier 2) is taller, not shifted
+(`margin-block: -16px` + matching padding, desktop only) and carries
+`.featured-tag`; `.mine` gets the green-tinted border. **Below 900px each row
+of cards is a carousel** (`.swipe-row`, on `.offer-grid` and `.gym-grid`):
+the band drops its side padding, the row becomes a flex scroller
+(`scroll-snap-type: x mandatory`, cards `flex: 0 0 86%` snapping to the
+centre, scrollbar hidden, the gutter as its own padding) and the `.dots`
+under it are 32px buttons around an 8px dot (`--line`, lit `--accent`,
+`aria-current`), one per card, made by the script (no script, no dots), that
+follow the scroll (IntersectionObserver) and bring their card in on tap.
+**The gym** (`#dvorana`, below): the same `.offer` cards in `.gym-grid` (two
+columns ≥900px, capped at 760px so each is about a tier's width; the swipe
+row, two dots, below), not featured; Individualno's other
+prices are a muted `.price-note` under its `.price`, and an empty one in the
+Dvorana card holds the same two lines so both rows stay level. Both gym cards
+are tiers too (the plan's real monthly price, an editable yearly one) with
+their own `.period` under `.gym-grid`, and the two switches are one choice:
+pressing either sets every `.price[data-period]` on the page and
+`aria-selected` on both. Buttons: accent `.btn-sm` on the featured card,
+neutral `.cta` beside it, green `.owned` for a plan the visitor has. Plan
+prices arrive from the route (`offer_prices`), are public unless
+`PUBLIC_PRICES=off` (which also hides both switches), and no public page links
+to `/cjenik`. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
 
