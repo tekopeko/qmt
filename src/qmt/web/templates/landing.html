@@ -83,7 +83,7 @@
 
   /* ---- sections ---- */
   main.full > .alert { margin: 16px clamp(16px, 4vw, 40px); }
-  /* 28px: an anchor jump (the stage, "Što nudimo") leaves the section's kicker 17px
+  /* 28px: an anchor jump (the photo card) leaves the section's kicker 17px
      clear of the floating pill on a phone, where the band's own padding is smallest */
   section.band { padding: clamp(56px, 8vw, 104px) clamp(16px, 4vw, 40px); scroll-margin-top: 28px; }
   .band-inner { max-width: 1100px; margin: 0 auto; }
@@ -170,7 +170,7 @@
   /* everything the owner can retype: a word that does not fit its box breaks
      rather than widening the page (the limits keep this from ever being seen
      with real words; it is the net under them) */
-  .hero h1, .hero .lead, .hero .kicker, .stage .copy, .sec-kicker, section.band h2, .offer h3, .offer .lead,
+  .hero h1, .hero .lead, .hero .kicker, .hero-note, .stage .copy, .sec-kicker, section.band h2, .offer h3, .offer .lead,
   .offer li, .offer .addon, .info h3, .info td, footer { overflow-wrap: anywhere; }
 </style>
 {% endblock %}
@@ -181,14 +181,14 @@
     <span class="kicker">{{ c.t("hero.kicker") }}</span>
     <h1>{{ c.t("hero.h1a") }} <span class="red">{{ c.t("hero.h1b") }}</span></h1>
     <p class="lead">{{ c.t("hero.lead") }}</p>
-    {# A guest's hero has no buttons: the bar above carries Što nudimo, Prijava
-       and Kontakt, and the photo below leads to the offer. A member gets the
-       one action that fits their membership. #}
+    {# A guest's hero has no buttons: the bar above carries Prijava and
+       Kontakt, and the photo below leads to the offer. A member gets the one
+       action that fits their membership. #}
     {% if can_book %}
     <div class="cta-row"><a class="btn btn-hero" href="/raspored">Rezerviraj termin</a></div>
     {% elif user %}
     <div class="cta-row"><a class="btn btn-hero" href="/cjenik">Pogledaj cjenik</a></div>
-    <p class="hero-note">Nemaš aktivnu članarinu za treninge — cjenik ti pokazuje sve opcije.</p>
+    <p class="hero-note">{{ c.t("hero.note") }}</p>
     {% endif %}
 
     {# the stage: the studio itself. The whole card is a link to the offer. #}

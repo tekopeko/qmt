@@ -28,6 +28,9 @@ SLOTS: dict[str, Slot] = {
     "hero.h1b": Slot("prije svega", 18, "Naslov, crveni red"),
     "hero.lead": Slot("Male grupe do 8 polaznika, individualni rad 1:1 i programi povratka nakon ozljede "
                       "— vođeni znanjem, ne trendovima.", 160, "Uvodni tekst"),
+    # shown to a member without a bookable plan, under "Pogledaj cjenik"
+    "hero.note": Slot("Nemaš aktivnu članarinu za treninge — cjenik ti pokazuje sve opcije.", 100,
+                      "Napomena članu bez članarine"),
     # ---- landing: the photo card ----
     "stage.title": Slot("Dvorana u Dubravi", 20, "Naslov na fotografiji"),
     "stage.text": Slot("Jedan prostor za sve — grupni treninzi, individualni rad i rehabilitacija, "

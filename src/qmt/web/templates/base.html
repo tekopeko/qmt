@@ -655,6 +655,8 @@
       var max = +cur.dataset.max, t = cur.textContent;
       if (t.length > max) { cur.textContent = t.slice(0, max); caretEnd(cur); t = cur.textContent; }
       count.textContent = t.length + " / " + max; count.classList.toggle("over", t.length >= max);
+      if (!t.length) msg.textContent = "Prazno: Spremi vraća izvorni tekst.";
+      else if (msg.textContent.indexOf("Prazno") === 0) msg.textContent = "";
     }
     function begin(el) {
       if (cur === el) return;
