@@ -58,12 +58,21 @@ Railway shows a target → add **CNAME `qmt` → that target** in Cloudflare
 
 ## 4. Backups (from the laptop, like mojimakrosi's)
 
-`.env` gets `QMT_PROD_DATABASE_URL` (Railway **public** URL) + the same `R2_*`
-keys mojimakrosi uses; then:
-```bash
-python scripts/backup_db.py     # → r2://<bucket>/qmt-backups/, keeps 60
-```
-Schedule it alongside the mojimakrosi backup job.
+Running since 15.10.2026: `~/Library/LaunchAgents/com.qmt.backup.plist` runs
+`scripts/backup_db.py` every morning at 07:10 (ten minutes after mojimakrosi's;
+a sleeping Mac runs it on the next wake), log in `~/Library/Logs/qmt-backup.log`.
+
+The script reaches the database through `railway connect Postgres
+--tunnel-only` — an SSH tunnel, so the database has **no public address**
+("Add Public Access" in Railway stays off). It needs the Railway CLI logged in
+on the laptop with its SSH key registered (`railway ssh keys add -k <key
+comment>`; done for this Mac), `postgresql@18` from Homebrew because the server
+is PG 18 and pg_dump must not be older, and the app's own `R2_*` keys in
+`.env`: the dump lands in the media bucket under `qmt-backups/`, 60 kept
+(about 9 KB each). Run it by hand with `python scripts/backup_db.py`; setting
+`QMT_PROD_DATABASE_URL` in `.env` would skip the tunnel.
+
+Restore: `gunzip < qmt-….sql.gz | psql "<url>"` into an empty database.
 
 ## 5. Post-deploy smoke test
 
