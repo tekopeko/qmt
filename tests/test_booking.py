@@ -631,28 +631,33 @@ def test_cjenik_is_members_only_and_landing_plan_cta_states():
 
 def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
     """The homepage answers "what do you offer and what does it cost" by itself
-    (5.10.2026): three cards, each with its price and the MojiMakrosi add-on,
-    visible to guests. The photo above them is a link to that section."""
+    (5.10.2026): cards, each with its price and the MojiMakrosi add-on, visible
+    to guests. The photo above them is a link to that section. Since 15.10.2026
+    the offer is three tiers of the online plan, and the gym's two cards sit in
+    a section below it."""
     page = TestClient(app).get("/").text
-    assert page.count('class="card offer') == 3
+    offer, gym = page.split('id="usluge"')[1].split('id="dvorana"')
+    assert offer.count('class="card offer') == 3 and gym.count('class="card offer') == 2
     assert page.count('<span class="featured-tag">Najpopularnije</span>') == 1   # the chip, not the CSS comment naming it
+    assert '<span class="featured-tag">' in offer       # on a tier, not in the gym
+    flat = page.replace("\u00a0", " ")                  # a price and its unit are held together
     for price in ("50 €", "od 60 €", "35 €", "25 € / trening", "od 30 € / tretman"):
-        assert price in page, price                     # the shop's reference prices
-    assert "+5 € / mjesečno" in page and page.count("+3 € / mjesečno") == 2   # MojiMakrosi: online 5, dvorana 3
+        assert price in flat, price                     # the shop's reference prices
+    assert offer.count("+5 € / mjesečno") == 3 and gym.count("+3 € / mjesečno") == 2   # MojiMakrosi: online 5, dvorana 3
     assert "Zoom poziv" in page                         # what the online plan includes
     assert '<a class="stage" href="#usluge"' in page and 'id="usluge"' in page
     for chip in ("Grupni", "1:1", "Rehabilitacija"):    # the photo carries no service chips any more
         assert f'<span class="tag">{chip}</span>' not in page, chip
-    assert page.count('href="#kontakt">Javi nam se →</a>') == 3      # invite-only: the studio is the way in
+    assert page.count('href="#kontakt">Javi nam se →</a>') == 5      # invite-only: the studio is the way in
 
     monkeypatch.setenv("SIGNUP_MODE", "open")           # open to anyone: the cards register instead
-    assert TestClient(app).get("/").text.count('data-auth="signup">Registriraj se →</a>') == 3
+    assert TestClient(app).get("/").text.count('data-auth="signup">Registriraj se →</a>') == 5
     monkeypatch.setenv("SIGNUP_MODE", "invite")
 
     make_user("ivan@test.local")                        # owns grupni: his card says so and leads into the app
     page = client_for("ivan@test.local").get("/").text
-    assert 'class="card offer featured mine"' in page and "Aktivna članarina" in page
-    assert page.count("Odaberi plan →</a>") == 2        # the two he does not have
+    assert 'class="card offer mine"' in page.split('id="dvorana"')[1] and "Aktivna članarina" in page
+    assert page.count("Odaberi plan →</a>") == 4        # the four he does not have (three tiers, individualno)
 
 
 def test_public_prices_switch_hides_them_from_guests_only(monkeypatch):
@@ -662,8 +667,9 @@ def test_public_prices_switch_hides_them_from_guests_only(monkeypatch):
     monkeypatch.setenv("PUBLIC_PRICES", "off")
     assert not config.prices_public()
     page = TestClient(app).get("/").text
-    assert page.count('class="card offer') == 3 and "€" not in page
-    assert page.count("Cijene nakon prijave") == 3
+    assert page.count('class="card offer') == 5 and "€" not in page
+    assert page.count("Cijene nakon prijave") == 5
+    assert 'class="period"' not in page                 # no Mjesečno / Godišnje switch without prices
 
     make_user("ana@test.local", plans=())
     page = client_for("ana@test.local").get("/").text

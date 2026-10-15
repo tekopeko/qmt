@@ -16,7 +16,8 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `main > h1`, `main > h1 + .hint` | base | the page header: title `clamp(1.6rem,3vw,2rem)` + one lead sentence, 70ch max — templates write bare `<h1>` / `<p class="hint">` with no inline style |
 | `.card` | base | `--surface`, hairline, `--r-lg` (20px), `--shadow`; hero-grade cards (`.svc`, `.plan`, `.upitnik`, `.termini`) take `--r-xl` (28px) with 26px padding |
 | `.crumbs` | base | breadcrumb: muted links, `/` separators, `.here` current |
-| `.ed` / `.copy-toggle` / `.copy-bar` | base (trainer, owner) | in-place copy editor: `_copy.html` wraps each editable text in `.ed`; the fixed "✎ Uredi tekstove" pill toggles `body.editing` (dashed outlines, click to edit, `.ed-on` while open); the bar under the pill shows label, `n / max` counter and Spremi / Zadano / Odustani. Visitors get bare text, no markup |
+| `.ed` / `.copy-toggle` / `.copy-bar` | base (trainer, owner) | in-place copy editor: `_copy.html` wraps each editable text in `.ed`; the fixed "✎ Uredi tekstove" pill toggles `body.editing` (dashed outlines, click to edit, `.ed-on` while open; an empty `.ed` keeps a 2.5em box so it can be clicked); the bar under the pill shows label, `n / max` counter and Spremi / Zadano / Odustani. Visitors get bare text, no markup |
+| `ul[data-list]` / `.ed-x` / `.ed-add` | base (trainer, owner) | an editable list (`c.points`): each item an `.ed` with `data-index`, a 32px round `.ed-x` ✕ beside it (negative margin, so the line height holds) and an `.act.ed-add` "+ Dodaj stavku" after the list, hidden at the count limit; both only under `body.editing`. The bar names the item ("…: stavka 2") and its Zadano reads "Zadano (cijela lista)" |
 | `.featured-tag` | base | "Najpopularnije" chip in the top-right corner of a `position: relative` card: accent tint + `--accent-tint-ink`. Used by `/cjenik` and the landing's offer |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
@@ -78,16 +79,33 @@ with `.red` on the last line, lead paragraph, `.cta-row` of `.btn-hero` (15px/28
 termin; plan-less client → Pogledaj cjenik (+ a `.hero-note`); guest → nothing,
 the compact pill above carries Prijava / Kontakt and the photo leads to the offer. The hero photo `.stage` is an `<a href="#usluge">`: the whole card leads to the
 offer, with a small `.go` arrow as the hint a phone needs (no hover there) and
-`data-photo` for the audit. **The offer** (`#usluge`): three `.offer` cards in
-`.offer-grid` (stacked below 900px) — italic uppercase title, one `.lead` line
-(two lines reserved), three dotted facts, then a `.foot` pinned to the bottom
-holding the `.addon` line, the `.price` (2.1rem number + muted unit) and one
-button, so add-on, price and button sit level across the row. `.featured` is
-taller, not shifted (`margin-block: -16px` + matching padding) and carries
-`.featured-tag`; `.mine` gets the green-tinted border. Buttons: accent
-`.btn-sm` on the featured card, neutral `.cta` beside it, green `.owned` for a
-plan the visitor has. Prices arrive from the route (`offer_prices`), are public
-unless `PUBLIC_PRICES=off`, and no public page links to `/cjenik`. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
+`data-photo` for the audit. **The offer** (`#usluge`): three tiers of the
+online plan as `.offer` cards in `.offer-grid` — italic uppercase title, one
+`.lead` line (two lines reserved), an editable list of dotted facts
+(`c.points`, up to six), then a `.foot` pinned to the bottom holding the
+`.addon` line, the `.price` (2.1rem number + muted unit) and one button, so
+add-on, price and button sit level across the row. Each tier has two `.price`
+blocks, `data-period="month"` and `"year"` (`hidden`); the `.period` switch
+under the cards (the `.auth-tabs` idiom on a `--surface` track — the tint over
+`--surface-2` is 4.34:1 in dark) shows one on all three, per page view, and is
+hidden until the script runs. Tier prices are mostly owner-typed text, so the
+tiers reserve a second price line (`min-height`) and stay level whatever is
+typed. `.featured` (tier 2) is taller, not shifted (`margin-block: -16px` +
+matching padding, desktop only) and carries `.featured-tag`; `.mine` gets the
+green-tinted border. **Below 900px the tiers are a carousel**: the band drops
+its side padding, `.offer-grid` becomes a flex scroller (`scroll-snap-type: x
+mandatory`, cards `flex: 0 0 86%` snapping to the centre, scrollbar hidden,
+the gutter as its own padding) and `.dots` under it are three 32px buttons
+around an 8px dot (`--line`, lit `--accent`, `aria-current`) that follow the
+scroll (IntersectionObserver) and bring their card in on tap. **The gym**
+(`#dvorana`, below): the same `.offer` cards in `.gym-grid` (two columns ≥720px,
+capped at 760px so each is about a tier's width; stacked below), not featured;
+Individualno's other prices are a muted `.price-note` under its `.price`, and
+an empty one in the Dvorana card holds the same two lines so both rows stay
+level. Buttons: accent `.btn-sm` on the featured card, neutral `.cta` beside
+it, green `.owned` for a plan the visitor has. Plan prices arrive from the
+route (`offer_prices`), are public unless `PUBLIC_PRICES=off` (which also hides
+the switch), and no public page links to `/cjenik`. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
 

@@ -104,10 +104,13 @@ under the monthly the day annual Prices exist in Stripe — it is where the
 subscription margin is; and prefer one tier visually (the 12-treninga pill is
 already preselected — give it a "najpopularnije" chip).
 
-**Built as** three cards on the landing, not six: Online / Dvorana (featured,
-taller) / Individualno, each a name, one line, three facts, an add-on line, the
-price and one button. Shape's "less text" is the lesson — the six service cards
-described, these three sell. The hero photo links to them, as Shape's do.
+**Built as** three cards on the landing (5.10.), then, on 15.10., exactly
+Shape's shape: three tiers of ONE product (QMove START / PRO / ELITE, PRO
+featured and taller), a Mjesečno / Godišnje switch under them, and on phones a
+swipe row with three dots. The gym's two cards sit in a quieter section below.
+Each card is a name, one line, editable bullets, an add-on line, the price and
+one button. Shape's "less text" is the lesson — the six service cards
+described, these sell. The hero photo links to them, as Shape's do.
 
 ## 6. Social proof section
 

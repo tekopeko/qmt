@@ -370,6 +370,20 @@
     body.editing .ed:hover { outline-style: solid; }
     body.editing .ed.ed-on { outline: 2px solid var(--accent); background: var(--accent-dim); }
     body.editing a:has(> .ed), body.editing a:has(.ed) { cursor: text; }
+    /* a text whose default is empty (a price's unit) still needs a box to click */
+    body.editing .ed:empty { display: inline-block; min-width: 2.5em; min-height: 1em; vertical-align: middle; }
+    /* an editable list (_copy.html, points): a ✕ on every item and "+ Dodaj
+       stavku" after the list, in edit mode only. The ✕ is a 32px round target
+       whose negative margin keeps the item's line height, so the list does
+       not jump when edit mode turns on. */
+    .ed-x, .ed-add { display: none; }
+    body.editing .ed-x { display: inline-grid; place-items: center; flex: none; width: 32px; height: 32px;
+                         margin: -6px -6px -6px auto; padding: 0; border: none; border-radius: 50%;
+                         background: none; box-shadow: none; color: var(--muted); font: 600 .8rem var(--font-body); }
+    body.editing .ed-x:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); transform: none; }
+    body.editing .ed-x.armed { width: auto; padding: 0 10px; border-radius: 999px; color: var(--accent-tint-ink);
+                               background: var(--accent-dim); font-weight: 700; }
+    body.editing .ed-add:not([hidden]) { display: inline-flex; align-self: flex-start; min-height: 32px; margin-top: 12px; }
     .copy-bar { position: fixed; top: calc(72px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
                 z-index: 60; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
                 max-width: calc(100% - 20px); padding: 8px 10px 8px 16px; border-radius: 999px;
@@ -645,43 +659,113 @@
   // Edit mode: every .ed becomes a text box on click. Enter or Spremi saves to
   // /copy/<key>; Esc or Odustani restores; Zadano puts the template's default
   // back. The limit is enforced while typing and again on the server.
+  // An item of a list (data-index, _copy.html's points) saves with its index;
+  // its ✕ saves it empty, which removes it; "+ Dodaj stavku" opens a new empty
+  // item at the end, which leaves no trace if it is cancelled unsaved; Zadano
+  // puts the whole default list back. The server answers with the whole list
+  // and the items are redrawn from it, so indexes always match the database.
   (function () {
     var mode = false, cur = null, orig = "";
     var tog = document.getElementById("copyToggle"), bar = document.getElementById("copyBar");
     var label = bar.querySelector(".cb-label"), count = bar.querySelector(".cb-count"), msg = bar.querySelector(".cb-msg");
+    var resetBtn = document.getElementById("cbReset");
+    function isItem(el) { return el.hasAttribute("data-index"); }
     function caretEnd(el) { var r = document.createRange(), sel = window.getSelection(); r.selectNodeContents(el); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); }
     function tick() {
       if (!cur) return;
       var max = +cur.dataset.max, t = cur.textContent;
       if (t.length > max) { cur.textContent = t.slice(0, max); caretEnd(cur); t = cur.textContent; }
       count.textContent = t.length + " / " + max; count.classList.toggle("over", t.length >= max);
-      if (!t.length) msg.textContent = "Prazno: Spremi vraća izvorni tekst.";
+      if (!t.length) msg.textContent = isItem(cur) ? "Prazno: Spremi uklanja stavku." : "Prazno: Spremi vraća izvorni tekst.";
       else if (msg.textContent.indexOf("Prazno") === 0) msg.textContent = "";
     }
-    function begin(el) {
+    function begin(el, quiet) {
       if (cur === el) return;
       if (cur) end(false);
       cur = el; orig = el.textContent; msg.textContent = "";
       el.setAttribute("contenteditable", "plaintext-only"); el.classList.add("ed-on");
-      label.textContent = el.dataset.label; tick(); bar.hidden = false; el.focus(); caretEnd(el);
+      label.textContent = el.dataset.label + (isItem(el) ? " " + (+el.dataset.index + 1) : "");
+      resetBtn.textContent = isItem(el) ? "Zadano (cijela lista)" : "Zadano";
+      resetBtn.title = isItem(el) ? "Vrati izvorne stavke cijele liste" : "Vrati izvorni tekst";
+      tick(); bar.hidden = false;
+      if (!quiet) { el.focus(); caretEnd(el); }      // quiet: a removal, no keyboard to pop up
     }
     function end(keep) {
       if (!cur) return;
-      if (!keep) cur.textContent = orig;
-      cur.removeAttribute("contenteditable"); cur.classList.remove("ed-on"); cur = null; bar.hidden = true;
+      var el = cur;
+      if (!keep) el.textContent = orig;
+      el.removeAttribute("contenteditable"); el.classList.remove("ed-on"); cur = null; bar.hidden = true;
+      if (!keep && el.hasAttribute("data-fresh")) { var ul = el.closest("ul"); el.closest("li").remove(); fitAdd(ul); }
+    }
+    // one item, the same shape _copy.html renders
+    function item(ul, text, i) {
+      var li = document.createElement("li"), sp = document.createElement("span"), x = document.createElement("button");
+      sp.className = "ed"; sp.textContent = text;
+      sp.setAttribute("data-copy", ul.dataset.list); sp.setAttribute("data-index", i);
+      sp.setAttribute("data-max", ul.dataset.max); sp.setAttribute("data-label", ul.dataset.label);
+      x.type = "button"; x.className = "ed-x"; x.textContent = "✕"; x.setAttribute("aria-label", "Ukloni stavku " + (i + 1));
+      li.appendChild(sp); li.appendChild(x); return li;
+    }
+    function fitAdd(ul) {
+      var add = ul.nextElementSibling;
+      if (add && add.classList.contains("ed-add")) add.hidden = ul.children.length >= +ul.dataset.maxItems;
+    }
+    function draw(ul, items) {
+      ul.textContent = "";
+      items.forEach(function (t, i) { ul.appendChild(item(ul, t, i)); });
+      fitAdd(ul);
     }
     function save(reset) {
       if (!cur) return;
-      var el = cur, text = reset ? "" : el.textContent; msg.textContent = "Spremam…";
+      var el = cur, text = reset ? "" : el.textContent, body = "text=" + encodeURIComponent(text);
+      if (reset) body += "&reset=1";
+      else if (isItem(el)) {
+        if (el.hasAttribute("data-fresh") && !text.trim()) { end(false); return; }   // an empty new item: nothing to add
+        body += "&index=" + el.dataset.index;
+      }
+      msg.textContent = "Spremam…";
       fetch("/copy/" + encodeURIComponent(el.dataset.copy), {
         method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"},
-        body: "text=" + encodeURIComponent(text), credentials: "same-origin"
+        body: body, credentials: "same-origin"
       }).then(function (r) { return r.json(); }).then(function (d) {
         if (!d.ok) { msg.textContent = d.error || "Nije spremljeno."; return; }
+        if (d.items) {                               // a list: redraw it from the answer
+          var ul = el.closest("ul");
+          el.removeAttribute("data-fresh");
+          if (cur && ul.contains(cur)) end(true);
+          draw(ul, d.items); return;
+        }
         // the same text can sit in several places (the add-on label on every card)
         document.querySelectorAll('[data-copy="' + el.dataset.copy + '"]').forEach(function (x) { x.textContent = d.text; });
         orig = d.text; end(true);
       }).catch(function () { msg.textContent = "Nije spremljeno — provjeri vezu."; });
+    }
+    // removing something a person wrote asks first: the first tap arms the ✕
+    // into "Ukloni?", the second within four seconds removes, anything else disarms
+    var armed = null, armTimer = null;
+    function disarm() {
+      if (armed) { armed.textContent = "✕"; armed.classList.remove("armed"); armed.setAttribute("aria-label", armed.dataset.label); }
+      armed = null; clearTimeout(armTimer);
+    }
+    function remove(x) {
+      var sp = x.parentElement.querySelector(".ed");
+      if (cur && cur !== sp) end(false);
+      if (!sp.isConnected) return;
+      if (sp.hasAttribute("data-fresh")) { end(false); return; }   // never saved: just drop it
+      if (armed !== x) {
+        disarm(); armed = x; x.dataset.label = x.getAttribute("aria-label") || "";
+        x.textContent = "Ukloni?"; x.classList.add("armed"); x.setAttribute("aria-label", "Potvrdi uklanjanje");
+        armTimer = setTimeout(disarm, 4000); return;
+      }
+      disarm(); begin(sp, true); sp.textContent = ""; save(false);
+    }
+    document.addEventListener("click", function (e) { if (armed && !e.target.closest(".ed-x")) disarm(); }, true);
+    function add(btn) {
+      var ul = btn.previousElementSibling;
+      if (cur) end(false);
+      if (ul.children.length >= +ul.dataset.maxItems) return;
+      var li = item(ul, "", ul.children.length);
+      li.firstChild.setAttribute("data-fresh", ""); ul.appendChild(li); fitAdd(ul); begin(li.firstChild);
     }
     tog.addEventListener("click", function () {
       if (cur) end(false);
@@ -689,8 +773,11 @@
       tog.setAttribute("aria-pressed", mode ? "true" : "false"); tog.textContent = mode ? "✓ Gotovo" : "✎ Uredi tekstove";
     });
     document.addEventListener("click", function (e) {
-      var el = e.target.closest(".ed");
-      if (mode && el) { e.preventDefault(); e.stopPropagation(); begin(el); }
+      if (!mode) return;
+      var x = e.target.closest(".ed-x"), a = e.target.closest(".ed-add"), el = e.target.closest(".ed");
+      if (x) { e.preventDefault(); e.stopPropagation(); remove(x); }
+      else if (a) { e.preventDefault(); e.stopPropagation(); add(a); }
+      else if (el) { e.preventDefault(); e.stopPropagation(); begin(el); }
     }, true);
     document.addEventListener("input", function (e) { if (cur && e.target === cur) tick(); });
     document.addEventListener("keydown", function (e) {
@@ -704,7 +791,7 @@
       document.execCommand("insertText", false, ((e.clipboardData || window.clipboardData).getData("text/plain") || "").replace(/\s+/g, " "));
     });
     document.getElementById("cbSave").addEventListener("click", function () { save(false); });
-    document.getElementById("cbReset").addEventListener("click", function () { save(true); });
+    resetBtn.addEventListener("click", function () { save(true); });
     document.getElementById("cbCancel").addEventListener("click", function () { end(false); });
   })();
 </script>

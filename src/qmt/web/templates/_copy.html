@@ -10,3 +10,29 @@
     <span class="ed" data-copy="{{ key }}" data-max="{{ slot.max }}" data-label="{{ slot.label }}">{{ text }}</span>
   {%- else -%}{{ text }}{%- endif -%}
 {%- endmacro %}
+
+{# An editable LIST (copy.ListSlot): `c.points("key")` prints the <ul>. Each
+   item is an .ed span that saves with its index; for an editor every item
+   also gets a ✕ and the list a "+ Dodaj stavku" after it, both shown only in
+   edit mode (body.editing). The editor redraws the items from the server's
+   answer, so the markup of one item here and in base.html's script is one
+   shape: <li><span class="ed" …>text</span><button class="ed-x">✕</button></li>.
+   A visitor gets plain items, and nothing at all for an emptied list. #}
+{% macro points(key) -%}
+  {%- set slot = COPY[key] -%}
+  {%- set entries = copy_items(key, copy_texts) -%}
+  {%- if can_edit_copy -%}
+    <ul data-list="{{ key }}" data-max="{{ slot.max_chars }}" data-max-items="{{ slot.max_items }}" data-label="{{ slot.label }}">
+      {%- for text in entries %}
+      <li><span class="ed" data-copy="{{ key }}" data-index="{{ loop.index0 }}" data-max="{{ slot.max_chars }}" data-label="{{ slot.label }}">{{ text }}</span><button type="button" class="ed-x" aria-label="Ukloni stavku {{ loop.index }}">✕</button></li>
+      {%- endfor %}
+    </ul>
+    <button type="button" class="act ed-add"{% if entries | length >= slot.max_items %} hidden{% endif %}>+ Dodaj stavku</button>
+  {%- elif entries -%}
+    <ul>
+      {%- for text in entries %}
+      <li><span>{{ text }}</span></li>
+      {%- endfor %}
+    </ul>
+  {%- endif -%}
+{%- endmacro %}

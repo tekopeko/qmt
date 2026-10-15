@@ -12,7 +12,7 @@ val=$(jq -r '.env.QMT_DELEGATE // empty' "$root/.claude/settings.local.json" 2>/
 [ -n "$val" ] || val="${QMT_DELEGATE:-}"
 case "$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')" in
   on|1|true|yes)
-    msg='Delegation is ON (QMT_DELEGATE): hand small, self-contained tasks to the opus-worker agent and review its diff before accepting, as CLAUDE.md "Models" describes.' ;;
+    msg='Delegation is ON (QMT_DELEGATE): implementations go to the opus-worker agent (Opus 5.5, max effort); Fable reads its diff and re-runs the tests and the audit before anything counts, as CLAUDE.md "Models" describes.' ;;
   *)
     msg='Delegation is OFF (QMT_DELEGATE): do the work directly. Use opus-worker only when the owner asks for it in the conversation.' ;;
 esac

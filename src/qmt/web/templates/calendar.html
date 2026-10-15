@@ -22,6 +22,10 @@
     gap: 6px;                      /* "Ponedjeljak" + date must never touch */
   }
   .day-head .num { color: var(--muted); font-family: var(--font-body); font-weight: 600; }
+  /* seven columns are ~135px wide at most: "Ponedjeljak 12.10." does not fit
+     (4px over, found 15.10.2026), "pon 12.10." does; the agenda below 860px has room */
+  .day-head .short { display: none; }
+  @media (min-width: 861px) { .day-head .long { display: none; } .day-head .short { display: inline; } }
   .day-col.today .day-head { background: var(--accent-fill); color: var(--accent-ink); }   /* --accent-fill: AA under white ink in both themes */
   .day-col.today .day-head .num { color: var(--accent-ink); }
 
@@ -95,7 +99,7 @@
 <div class="week{% if week_empty %} all-empty{% endif %}">
   {% for day in days %}
   <div class="day-col {% if day.is_today %}today{% endif %} {% if not day.sessions %}empty-day{% endif %}">
-    <div class="day-head"><span>{{ day.name }}</span><span class="num">{{ day.date.strftime("%-d.%-m.") }}</span></div>
+    <div class="day-head"><span class="long">{{ day.name }}</span><span class="short">{{ weekdays_short[day.date.weekday()] }}</span><span class="num">{{ day.date.strftime("%-d.%-m.") }}</span></div>
     {% for s in day.sessions %}
       <div class="sess {% if s.mine %}mine{% endif %} {% if s.full %}full{% endif %}
                   {% if s.past %}past{% endif %} {% if s.canceled %}canceled{% endif %}">
@@ -177,7 +181,7 @@
   <div class="mine-week">
     {% for day in mine_days %}
     <div class="day-col {% if day.is_today %}today{% endif %}">
-      <div class="day-head"><span>{{ day.name }}</span><span class="num">{{ day.date.strftime("%-d.%-m.") }}</span></div>
+      <div class="day-head"><span class="long">{{ day.name }}</span><span class="short">{{ weekdays_short[day.date.weekday()] }}</span><span class="num">{{ day.date.strftime("%-d.%-m.") }}</span></div>
       {% for s in day.sessions %}
       <div class="sess {% if s.canceled %}canceled{% endif %}">
         <div class="t">{{ s.time }}–{{ s.end }}</div>

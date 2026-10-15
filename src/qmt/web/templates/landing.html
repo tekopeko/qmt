@@ -93,9 +93,11 @@
   section.band h2 { font-size: clamp(1.6rem, 3.2vw, 2.3rem); }
   .sec-head p { color: var(--muted); margin-top: 10px; font-size: 1rem; }
 
-  /* ---- the offer: three plans side by side, the popular one taller than its
-     neighbours. Shape's pricing block in QMT's colours, and little text on
-     purpose: a name, one line, three facts, the price, one button. ---- */
+  /* ---- the offer: three tiers of the online plan side by side, the popular
+     one taller than its neighbours. Shape's pricing block in QMT's colours, and
+     little text on purpose: a name, one line, a few facts, the price, one
+     button. The gym's two cards are the same .offer in a quieter section
+     below (#dvorana, .gym-grid). ---- */
   .offer-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
   .offer { position: relative; padding: 30px 28px 26px; display: flex; flex-direction: column;
            border-radius: var(--r-xl); }
@@ -105,7 +107,51 @@
      edges and the extra padding gives the 16px back, so its text still starts
      and ends on the same lines as its neighbours'. */
   @media (min-width: 900px) { .offer.featured { margin-block: -16px; padding-block: 46px 42px; } }
-  @media (max-width: 899px) { .offer-grid { grid-template-columns: minmax(0, 1fr); max-width: 480px; margin-inline: auto; } }
+  /* Phones and tablets: the three tiers are one swipe row (Shape's pricing on
+     a phone), not a stack — a card and a bit of the next, snapping to the
+     centre, with three dots under it. The band gives up its side padding so
+     the row runs to the screen's edges and the scroller carries the gutter
+     itself; nothing but the scroller is ever wider than the screen. The
+     vertical padding keeps the cards' shadows from being cut by the scroller,
+     and the negative margin gives that room back. */
+  @media (max-width: 899px) {
+    #usluge { padding-inline: 0; }
+    #usluge .sec-head { padding-inline: clamp(16px, 4vw, 40px); }
+    #usluge .offer-grid { display: flex; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain;
+                          scroll-snap-type: x mandatory; scrollbar-width: none;
+                          padding: 12px clamp(16px, 4vw, 40px) 20px; margin-top: -12px; }
+    #usluge .offer-grid::-webkit-scrollbar { display: none; }
+    #usluge .offer-grid > .offer { flex: 0 0 86%; scroll-snap-align: center; scroll-snap-stop: always; }
+  }
+  /* the dots: 32px tap targets around an 8px dot; the lit one is the card in
+     view (landing's script). Phones only — on a desktop all three are seen. */
+  .dots { display: none; justify-content: center; }
+  .dots button { width: 32px; height: 32px; padding: 0; border: none; background: none; box-shadow: none;
+                 display: grid; place-items: center; }
+  .dots button::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--line);
+                         transition: background .15s; }
+  .dots button:hover { background: none; transform: none; }
+  .dots button[aria-current="true"]::before { background: var(--accent); }
+  @media (max-width: 899px) { .dots { display: flex; margin-top: -4px; } }
+  /* Mjesečno / Godišnje: the .auth-tabs idiom (base.html), the chosen half in
+     the accent tint with its own ink. The track is --surface with a hairline,
+     not .auth-tabs' --surface-2: in dark the tint over --surface-2 leaves the
+     ink at 4.34:1, under AA (4.81:1 over --surface). Hidden until the script
+     can work it, so without JS there is no switch that does nothing (the
+     monthly price shows). 34px on a desktop clears the featured card, which
+     hangs 16px below the row. */
+  .period { display: flex; gap: 3px; width: fit-content; margin: 34px auto 0; padding: 3px;
+            border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+  .period[hidden] { display: none; }
+  .period button { min-height: 36px; padding: 8px 18px; border: none; border-radius: 999px; background: none;
+                   box-shadow: none; color: var(--muted); font: 600 .85rem var(--font-body);
+                   transition: background .15s, color .15s; }
+  .period button:hover { transform: none; color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .period button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent-tint-ink); }
+  @media (max-width: 899px) { .period { margin-top: 10px; } }
+  /* the gym: two cards, each about as wide as a tier above, stacked on a phone */
+  .gym-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; max-width: 480px; margin-inline: auto; }
+  @media (min-width: 720px) { .gym-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 760px; } }
   .offer h3 { font: 700 italic 1.5rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
   /* two lines reserved, so the three lists start level when a lead wraps */
   .offer .lead { color: var(--muted); font-size: .95rem; margin-top: 6px; min-height: 2.9em; }
@@ -113,7 +159,6 @@
   .offer li { display: flex; gap: 12px; align-items: flex-start; font-size: .95rem; line-height: 1.4; }
   .offer li::before { content: ""; flex: none; width: 8px; height: 8px; margin: .42em 4px 0; border-radius: 50%;
                       background: var(--accent); box-shadow: 0 0 0 5px var(--accent-dim); }
-  .offer li .p { color: var(--muted); white-space: nowrap; }
   /* add-on, price and button are one block pinned to the bottom: level across the row */
   .offer .foot { margin-top: auto; padding-top: 26px; display: flex; flex-direction: column;
                  align-items: flex-start; gap: 16px; }
@@ -122,8 +167,29 @@
   .offer .addon b { color: var(--text); font-weight: 700; white-space: nowrap; }
   .offer .price { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   .offer .price b { font: 800 2.1rem/1 var(--font-body); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
-  .offer .price span { font: 600 .88rem var(--font-body); color: var(--muted); }
+  .offer .price > span { font: 600 .88rem/1.25 var(--font-body); color: var(--muted); }
+  /* A tier's price is mostly text the owner types, a number and a unit
+     beside it; long ones wrap the unit under the number. The tiers reserve
+     that second line in every card, so the prices and buttons stay level
+     whatever is typed (the move .lead makes for its two lines): the number
+     line, the row gap, the unit line. */
+  /* Three columns between 900 and 1100px leave a card 209-273px inside, where a
+     price at its limit (9 + 11 characters) wraps its unit under the number; the
+     second line is reserved there so the three stay level. Wider, and on a
+     phone with the smaller number below, the limits fit one line. */
+  @media (min-width: 900px) and (max-width: 1100px) {
+    #usluge .offer .price { min-height: calc(2.1rem + 8px + 1.1rem); align-content: flex-start; }
+  }
+  @media (max-width: 420px) { .offer .price b { font-size: 1.8rem; } }
   .offer .price.quiet { font: 600 .9rem/2.1rem var(--font-body); color: var(--muted); }
+  /* a tier carries a monthly and a yearly price; the switch shows one */
+  .offer .price[hidden] { display: none; }
+  /* Individualno's other prices, one muted line under its own. An empty one
+     in the Dvorana card beside it holds the same room, so the two prices and
+     buttons stay level (the cards are equally wide, the room is two lines). */
+  .offer .price-note { margin-top: -8px; font-size: .82rem; line-height: 1.4; color: var(--muted); }
+  .offer .price-note:empty { display: none; }
+  @media (min-width: 720px) { .gym-grid .offer .price-note { display: block; min-height: 2.8em; } }
   /* red only on the popular card's action; neutral beside it; green for "yours" */
   .offer .btn-sm { padding: 10px 18px; font-size: .86rem; }
   @media (pointer: coarse) { .offer .btn-sm { padding: 12px 20px; } }
@@ -171,7 +237,7 @@
      rather than widening the page (the limits keep this from ever being seen
      with real words; it is the net under them) */
   .hero h1, .hero .lead, .hero .kicker, .hero-note, .stage .copy, .sec-kicker, section.band h2, .offer h3, .offer .lead,
-  .offer li, .offer .addon, .info h3, .info td, footer { overflow-wrap: anywhere; }
+  .offer li, .offer .addon, .offer .price, .offer .price-note, .info h3, .info td, footer { overflow-wrap: anywhere; }
 </style>
 {% endblock %}
 {% block content %}
@@ -222,37 +288,82 @@
       {%- elif signup_mode == 'open' %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="/signup" data-auth="signup">Registriraj se →</a>
       {%- else %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="#kontakt">Javi nam se →</a>{% endif %}
     {%- endmacro %}
+    {# A price that is text, not a plan's: two copy slots, the amount and the
+       unit beside it. A visitor gets no unit span when the unit is empty. #}
+    {% macro text_price(price_key, unit_key, period) -%}
+      {%- set unit = copy_texts.get(unit_key, COPY[unit_key].default) -%}
+      <div class="price" data-period="{{ period }}"{% if period == "year" %} hidden{% endif %}><b>{{ c.t(price_key) }}</b>
+        {%- if unit or can_edit_copy %}<span>{{ c.t(unit_key) }}</span>{% endif %}</div>
+    {%- endmacro %}
     {# keys: the plans a card stands for, the first one prices it. slot: the
-       card's copy slots (slot.title / .lead / .p1-3 in src/qmt/copy.py).
-       points: (n, plan whose price follows stavka n, or none). Prices come from
-       the route (offer_prices: Stripe, else the shop's reference) and are
-       empty for a guest while PUBLIC_PRICES=off, which also hides the add-on's
-       amount. #}
-    {% macro offer(keys, slot, points, addon_eur, featured=false) -%}
+       card's copy prefix (slot.title / .lead / .points in src/qmt/copy.py).
+       tier: an online tier — a monthly and a yearly price, the switch under
+       the cards shows one; real: its monthly price is the plan's own, else the
+       slot.price / slot.unit text. note: a muted line under the price (none:
+       no line; "": an empty one holding the room, see .price-note). Plan
+       prices come from the route (offer_prices: Stripe, else the shop's
+       reference); a guest sees no price at all while PUBLIC_PRICES=off, which
+       also hides the add-on's amount. #}
+    {% macro offer(keys, slot, addon_eur, featured=false, tier=false, real=true, note=none) -%}
       <div class="card offer{% if featured %} featured{% endif %}{% if keys | select('in', my_plans) | list %} mine{% endif %}">
         {% if featured %}<span class="featured-tag">Najpopularnije</span>{% endif %}
         <h3>{{ c.t(slot ~ ".title") }}</h3>
         <p class="lead">{{ c.t(slot ~ ".lead") }}</p>
-        <ul>
-          {% for n, plan in points -%}
-          <li><span>{{ c.t(slot ~ ".p" ~ n) }}{% if plan and offer_prices.get(plan) %} <span class="p">· {{ offer_prices[plan][0] }} {{ offer_prices[plan][1] }}</span>{% endif %}</span></li>
-          {% endfor %}
-        </ul>
+        {{ c.points(slot ~ ".points") }}
         <div class="foot">
           <p class="addon">{{ c.t("offer.addon") }}{% if show_prices %} <b>+{{ addon_eur }} € / mjesečno</b>{% endif %}</p>
-          {% set pr = offer_prices.get(keys[0]) %}
-          {% if pr %}<div class="price"><b>{{ pr[0] }}</b><span>{{ pr[1] }}</span></div>
-          {% elif show_prices %}<div class="price"><b>na upit</b></div>
-          {% else %}<div class="price quiet">Cijene nakon prijave</div>{% endif %}
+          {% if not show_prices %}<div class="price quiet">Cijene nakon prijave</div>
+          {% else %}
+            {% if real %}{% set pr = offer_prices.get(keys[0]) %}
+            <div class="price"{% if tier %} data-period="month"{% endif %}>{% if pr %}<b>{{ pr[0] }}</b><span>{{ pr[1] }}</span>{% else %}<b>na upit</b>{% endif %}</div>
+            {% else %}{{ text_price(slot ~ ".price", slot ~ ".unit", "month") }}{% endif %}
+            {% if tier %}{{ text_price(slot ~ ".year_price", slot ~ ".year_unit", "year") }}{% endif %}
+            {% if note is not none %}<p class="price-note">{{ note }}</p>{% endif %}
+          {% endif %}
           {{ offer_cta(keys, featured) }}
         </div>
       </div>
     {%- endmacro %}
+    {# Three tiers of the online plan. They all stand for the online plan
+       (button and "yours" follow it); tier 1 is priced by it. #}
     <div class="offer-grid">
-      {{ offer(["online"], "offer.online", [(1, none), (2, none), (3, none)], addon.online) }}
-      {{ offer(["grupni"], "offer.dvorana", [(1, none), (2, none), (3, none)], addon.dvorana, featured=true) }}
-      {{ offer(["individualni", "poluindividualni", "rehabilitacija"], "offer.individualno",
-               [(1, none), (2, "poluindividualni"), (3, "rehabilitacija")], addon.dvorana) }}
+      {{ offer(["online"], "offer.online", addon.online, tier=true) }}
+      {{ offer(["online"], "offer.online2", addon.online, featured=true, tier=true, real=false) }}
+      {{ offer(["online"], "offer.online3", addon.online, tier=true, real=false) }}
+    </div>
+    <div class="dots" role="group" aria-label="Kartice ponude">
+      <button type="button" aria-label="Kartica 1 od 3" aria-current="true"></button>
+      <button type="button" aria-label="Kartica 2 od 3" aria-current="false"></button>
+      <button type="button" aria-label="Kartica 3 od 3" aria-current="false"></button>
+    </div>
+    {% if show_prices %}
+    <div class="period" role="tablist" aria-label="Razdoblje plaćanja" hidden>
+      <button type="button" role="tab" aria-selected="true" data-period="month">Mjesečno</button>
+      <button type="button" role="tab" aria-selected="false" data-period="year">Godišnje</button>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{# The gym: a quieter section under the online tiers, same cards. Individualno
+   names its other two prices under its own; they used to follow its bullets,
+   which are free text now. A price and its unit never part at a line break
+   ("od 30 €" over "/ tretman" read as two things). #}
+{% set gym_note = [] %}
+{% for plan, what in [("poluindividualni", "u dvoje ili troje"), ("rehabilitacija", "rehabilitacija")] if offer_prices.get(plan) %}
+  {%- set _ = gym_note.append(what ~ " " ~ ((offer_prices[plan][0] ~ " " ~ offer_prices[plan][1]) | replace(" ", "\u00a0"))) -%}
+{% endfor %}
+{% set gym_note = gym_note | join(" · ") %}
+<section class="band" id="dvorana" style="padding-top:0;">
+  <div class="band-inner">
+    <div class="sec-head">
+      <div class="sec-kicker">{{ c.t("gym.kicker") }}</div>
+      <h2>{{ c.t("gym.h2") }}</h2>
+    </div>
+    <div class="gym-grid">
+      {{ offer(["grupni"], "offer.dvorana", addon.dvorana, note=("" if gym_note else none)) }}
+      {{ offer(["individualni", "poluindividualni", "rehabilitacija"], "offer.individualno", addon.dvorana,
+               note=(gym_note or none)) }}
     </div>
   </div>
 </section>
@@ -330,4 +441,39 @@
   <span>{{ c.t("footer") }}</span>
 </footer>
 
+{% endblock %}
+{% block scripts %}
+<script>
+  // The online tiers. On a phone they are a swipe row: the dot of the card in
+  // view is lit, a tapped dot brings its card to the centre. On every screen
+  // the Mjesečno / Godišnje switch shows one price per card, the same on all
+  // three; it is per page view, nothing is remembered.
+  (function () {
+    var grid = document.querySelector("#usluge .offer-grid");
+    if (!grid) return;
+    var cards = [].slice.call(grid.children), dots = [].slice.call(document.querySelectorAll("#usluge .dots button"));
+    function mark(i) { dots.forEach(function (d, j) { d.setAttribute("aria-current", i === j ? "true" : "false"); }); }
+    if (dots.length && "IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting && e.intersectionRatio >= .75) mark(cards.indexOf(e.target)); });
+      }, {root: grid, threshold: .75});
+      cards.forEach(function (card) { io.observe(card); });
+    }
+    dots.forEach(function (d, i) {
+      d.addEventListener("click", function () {
+        var g = grid.getBoundingClientRect(), r = cards[i].getBoundingClientRect();
+        grid.scrollBy({left: r.left - g.left - (g.width - r.width) / 2, behavior: "smooth"});
+      });
+    });
+    var sw = document.querySelector("#usluge .period");
+    if (!sw) return;
+    sw.hidden = false;
+    sw.addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-period]");
+      if (!b) return;
+      [].forEach.call(sw.querySelectorAll("button"), function (x) { x.setAttribute("aria-selected", x === b ? "true" : "false"); });
+      [].forEach.call(document.querySelectorAll("#usluge .price[data-period]"), function (p) { p.hidden = p.dataset.period !== b.dataset.period; });
+    });
+  })();
+</script>
 {% endblock %}

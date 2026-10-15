@@ -1,6 +1,23 @@
-# Where the last session left off — 6.10.2026.
+# Where the last session left off — 15.10.2026.
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
+
+## 15.10.2026 — Opus implements, Fable reviews
+
+The owner's rule: implementations are delegated to `opus-worker` (Opus 5.5,
+`effort: max`), Fable designs and briefs, then reads the diff and re-runs the
+tests and the audit before anything ships. `QMT_DELEGATE=on` on his machine.
+First task under the rule: the landing's offer becomes three online tiers
+(the gym cards move to a section below), bullets become editable lists, and
+the tiers are a swipe carousel with dots on phones.
+
+Built (Opus draft, awaiting review): `#usluge` holds QMove START / PRO
+(featured) / ELITE, each with a monthly and a yearly price behind a
+"Mjesečno / Godišnje" switch; only START's monthly price is a real plan's,
+the rest are copy slots the owner types. Dvorana and Individualno sit in
+`#dvorana` below. Bullets are `ListSlot`s (up to 6 × 44 characters, one
+`site_copy` row of JSON each); migration `1b09c249c2c6` folds the old
+`offer.<card>.p1..p3` rows into them, so the owner's prod edits carry over.
 
 ## 5.10.2026 — the redesign is live; work continues on `master`
 

@@ -48,6 +48,7 @@ app = FastAPI(title="QMT", lifespan=_lifespan)
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=config.IS_PROD)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["COPY"] = copy.SLOTS      # the editable texts and their limits (_copy.html)
+templates.env.globals["copy_items"] = copy.items_for   # a list slot's items (_copy.html, points)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 WEEKDAYS = ["Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota", "Nedjelja"]
@@ -257,11 +258,13 @@ def logout(request: Request):
 # ---------- editable copy ----------
 
 @app.post("/copy/{key}")
-def copy_save(request: Request, key: str, text: str = Form("")):
+def copy_save(request: Request, key: str, text: str = Form(""), index: str = Form(""),
+              reset: str = Form("")):
     """Save one edited text (the in-place editor in base.html posts here).
     JSON in both directions: this is called by fetch, never by a form. The
     limit is the slot's, enforced here as well as in the browser; an empty
-    text puts the template's default back."""
+    text, or reset=1, puts the template's default back. A list slot is edited
+    one item at a time (see _copy_save_list)."""
     user = current_user(request)
     if user is None:
         return JSONResponse({"ok": False, "error": "Prijava je istekla — prijavi se ponovno."}, status_code=401)
@@ -270,7 +273,9 @@ def copy_save(request: Request, key: str, text: str = Form("")):
     slot = copy.SLOTS.get(key)
     if slot is None:
         return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
-    cleaned = copy.clean(text)
+    if isinstance(slot, copy.ListSlot):
+        return _copy_save_list(key, slot, text, index, reset, user.id)
+    cleaned = "" if reset == "1" else copy.clean(text)
     if len(cleaned) > slot.max:
         return JSONResponse({"ok": False, "error": f"Najviše {slot.max} znakova — ovo ih ima {len(cleaned)}."},
                             status_code=400)
@@ -279,6 +284,50 @@ def copy_save(request: Request, key: str, text: str = Form("")):
         return JSONResponse({"ok": True, "text": slot.default, "default": True})
     db.set_copy(key, cleaned, user.id)
     return JSONResponse({"ok": True, "text": cleaned, "default": False})
+
+
+def _copy_save_list(key: str, slot: copy.ListSlot, text: str, index: str, reset: str,
+                    user_id: int) -> JSONResponse:
+    """One change to a list slot. reset=1 puts the default list back. Otherwise
+    `index` says which item: 0..n-1 replaces that item with `text`, n appends
+    `text` as a new one, and an empty text removes the item at `index` (with no
+    index, or at n, there is nothing to remove and nothing changes). The answer
+    is always the whole list, so the editor can redraw it with fresh indexes."""
+    def ok(items: list[str], default: bool) -> JSONResponse:
+        return JSONResponse({"ok": True, "items": items, "default": default})
+
+    def bad(error: str) -> JSONResponse:
+        return JSONResponse({"ok": False, "error": error}, status_code=400)
+
+    if reset == "1":
+        db.reset_copy(key)
+        return ok(list(slot.default), True)
+    stored = db.copy_texts().get(key)
+    items = copy.load_items(stored, slot)
+    cleaned = copy.clean(text)
+    try:
+        i = int(index) if index.strip() else None
+    except ValueError:
+        return bad("Nepoznata stavka.")
+    if i is None:
+        return bad("Nepoznata stavka.") if cleaned else ok(items, stored is None)
+    if not 0 <= i <= len(items):
+        return bad("Nepoznata stavka.")
+    if not cleaned:
+        if i == len(items):
+            return ok(items, stored is None)
+        del items[i]
+    else:
+        if len(cleaned) > slot.max_chars:
+            return bad(f"Najviše {slot.max_chars} znakova — ovo ih ima {len(cleaned)}.")
+        if i == len(items):
+            if len(items) >= slot.max_items:
+                return bad(f"Najviše {slot.max_items} stavki.")
+            items.append(cleaned)
+        else:
+            items[i] = cleaned
+    db.set_copy(key, copy.dump_items(items), user_id)
+    return ok(items, False)
 
 
 # ---------- calendar ----------

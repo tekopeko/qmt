@@ -1,5 +1,6 @@
 """In-place editable copy: src/qmt/copy.py (the slots and their limits),
-POST /copy/{key} (the save), _copy.html (the macro), the editor in base.html.
+POST /copy/{key} (the save), _copy.html (the macros), the editor in base.html,
+and the migration that turned the offer cards' bullets into lists.
 
 The browser half is what makes the limits TRUE: it starts the app in a thread,
 fills every slot to its limit — once with words, once with one unbreakable
@@ -9,7 +10,11 @@ text break its box fails here, not on the owner's phone.
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import os
+import pathlib
+import re
 import threading
 import time
 from datetime import date
@@ -80,6 +85,93 @@ def test_only_a_trainer_saves_and_the_limit_and_reset_hold():
     assert r.json() == {"ok": True, "text": slot.default, "default": True}
     assert slot.default in TestClient(app).get("/").text and db.copy_texts() == {}
 
+    t.post(f"/copy/{key}", data={"text": "Opet novi."})                     # reset=1 does the same
+    r = t.post(f"/copy/{key}", data={"text": "ignoriran", "reset": "1"})
+    assert r.json() == {"ok": True, "text": slot.default, "default": True} and db.copy_texts() == {}
+
+
+def test_a_list_slot_takes_edits_additions_and_removals_within_its_limits():
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    key, slot = "offer.dvorana.points", copy.SLOTS["offer.dvorana.points"]
+    d = list(slot.default)
+
+    assert TestClient(app).post(f"/copy/{key}", data={"text": "x", "index": "0"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "x", "index": "0"}).status_code == 403
+
+    t = client_for("trener@test.local")
+    def post(**data):
+        return t.post(f"/copy/{key}", data=data)
+
+    r = post(text="  Grupe   do 8 ", index="1")                             # edit one item
+    assert r.status_code == 200 and r.json() == {"ok": True, "items": [d[0], "Grupe do 8", d[2]], "default": False}
+    r = post(text="Četvrta stavka", index="3")                              # index == count appends
+    assert r.json()["items"] == [d[0], "Grupe do 8", d[2], "Četvrta stavka"]
+    assert json.loads(db.copy_texts()[key]) == r.json()["items"]            # one row, a JSON array
+    page = TestClient(app).get("/").text                                    # everyone reads it...
+    assert "Četvrta stavka" in page and f'data-copy="{key}"' not in page and 'class="ed-x"' not in page
+    page = t.get("/").text                                                  # ...the editor gets a span per item
+    assert page.count(f'data-copy="{key}"') == 4 and 'data-index="3"' in page
+
+    r = post(text="", index="0")                                            # empty text removes the item
+    assert r.json() == {"ok": True, "items": ["Grupe do 8", d[2], "Četvrta stavka"], "default": False}
+    assert post(text="").json()["items"] == ["Grupe do 8", d[2], "Četvrta stavka"]    # no index: nothing to remove
+    assert post(text="  ", index="3").json()["items"] == ["Grupe do 8", d[2], "Četvrta stavka"]  # nothing at n
+    assert post(text="x").status_code == 400                                # a text needs an index
+    assert post(text="x", index="9").status_code == 400                     # past the end
+    assert post(text="x", index="-1").status_code == 400
+    assert post(text="x", index="dva").status_code == 400
+
+    for n in range(3, slot.max_items):                                      # up to six...
+        assert post(text=f"Stavka {n}", index=str(n)).status_code == 200
+    r = post(text="Sedma", index=str(slot.max_items))                       # ...and not one more
+    assert r.status_code == 400 and r.json()["error"] == f"Najviše {slot.max_items} stavki."
+    r = post(text="x" * (slot.max_chars + 1), index="0")
+    assert r.status_code == 400 and f"Najviše {slot.max_chars} znakova" in r.json()["error"]
+    assert post(text="x" * slot.max_chars, index="0").status_code == 200
+    assert len(json.loads(db.copy_texts()[key])) == slot.max_items
+
+    r = post(text="ignoriran", reset="1")                                   # Zadano: the whole default list
+    assert r.json() == {"ok": True, "items": d, "default": True} and key not in db.copy_texts()
+
+    for _ in d:                                                             # an emptied list stays empty...
+        post(text="", index="0")
+    assert json.loads(db.copy_texts()[key]) == []
+    page = TestClient(app).get("/").text                                    # ...and a visitor sees no bullets
+    assert d[1] not in page and d[2] not in page and "Grupni treninzi u Dubravi." in page
+    assert 'data-list="offer.dvorana.points"' in t.get("/").text            # the editor can still add one
+
+
+def _migration():
+    path = pathlib.Path(__file__).parents[1] / "alembic" / "versions" / "1b09c249c2c6_offer_points_lists.py"
+    spec = importlib.util.spec_from_file_location("offer_points_lists", path)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_migration_folds_the_old_bullet_slots_into_lists():
+    mig = _migration(); uid = make_user("trener@test.local", is_trainer=True)
+    for key, text in [("offer.online.p1", "Prva"), ("offer.online.p2", "Druga"), ("offer.online.p3", "Treća"),
+                      ("offer.individualno.p2", "U paru"),             # only the middle one edited
+                      ("hero.lead", "Ostaje kakav jest.")]:
+        db.set_copy(key, text, uid)
+    with db.engine.begin() as conn:
+        mig.fold_points(conn)
+    texts = db.copy_texts()
+    assert json.loads(texts["offer.online.points"]) == ["Prva", "Druga", "Treća"]
+    # the bullets nobody edited come back as the old defaults, in their places
+    assert json.loads(texts["offer.individualno.points"]) == ["Rad 1:1, po dogovoru", "U paru", "Rehabilitacija"]
+    assert "offer.dvorana.points" not in texts                              # never edited: no row, new defaults
+    assert not [k for k in texts if re.fullmatch(r"offer\.\w+\.p\d", k)]   # the old rows are gone
+    assert texts["hero.lead"] == "Ostaje kakav jest."
+    page = TestClient(app).get("/").text
+    assert "U paru" in page and "Treća" in page                             # and the page reads them
+
+    with db.engine.begin() as conn:                                         # the way back
+        mig.split_points(conn)
+    texts = db.copy_texts()
+    assert [texts[f"offer.online.p{n}"] for n in (1, 2, 3)] == ["Prva", "Druga", "Treća"]
+    assert texts["offer.individualno.p2"] == "U paru" and not [k for k in texts if k.endswith(".points")]
+
 
 def test_every_slot_is_on_exactly_one_page_and_only_editors_see_the_editor():
     make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
@@ -87,16 +179,20 @@ def test_every_slot_is_on_exactly_one_page_and_only_editors_see_the_editor():
     for path in PAGES:
         page = t.get(path).text
         assert 'id="copyToggle"' in page, path
-        for key in copy.SLOTS:
+        for key, slot in copy.SLOTS.items():
             if f'data-copy="{key}"' in page:
                 assert key not in seen, f"{key} is on {seen[key]} and {path}"
                 seen[key] = path
+                if isinstance(slot, copy.ListSlot):     # one list, an editable span per item
+                    assert page.count(f'data-list="{key}"') == 1, key
+                    assert page.count(f'data-copy="{key}"') == len(slot.default), key
     assert set(seen) == set(copy.SLOTS), f"slots on no page: {set(copy.SLOTS) - set(seen)}"
     for c in (TestClient(app), client_for("ivan@test.local")):
         for path in PAGES:
             page = c.get(path).text
             if c.get(path, follow_redirects=False).status_code == 200:
-                assert "data-copy" not in page and "copyToggle" not in page, path
+                for mark in ("data-copy", "copyToggle", "data-list", 'class="ed-x"', 'ed-add"'):
+                    assert mark not in page, (path, mark)
 
 
 # ---------- the layout, measured in a browser ----------
@@ -157,9 +253,57 @@ MEASURE = r"""(strict) => {
   // rows of cards: the prices sit on one line across each row (the cjenik's
   // featured card is raised by a transform on purpose; measure as if it were not)
   const ty = el => { const m = getComputedStyle(el).transform.match(/matrix\(([^)]+)\)/); return m ? px(m[1].split(',')[5]) : 0; };
+  // a tier card holds a monthly and a yearly price; the one shown is measured
+  const price = card => [...card.querySelectorAll('.price')].find(vis);
   for (const sel of ['.offer', '.plan']) { const rows = {};
-    for (const card of document.querySelectorAll(sel)) { const top = Math.round((card.getBoundingClientRect().top - ty(card)) / 20); (rows[top] ||= []).push(Math.round(card.querySelector('.price').getBoundingClientRect().top - ty(card))); }
+    for (const card of document.querySelectorAll(sel)) { const top = Math.round((card.getBoundingClientRect().top - ty(card)) / 20); (rows[top] ||= []).push(Math.round(price(card).getBoundingClientRect().top - ty(card))); }
     for (const tops of Object.values(rows)) if (Math.max(...tops) - Math.min(...tops) > 1) out.problems.push(`${sel} prices not level: ${tops.join(', ')}`); }
+  return out;
+}"""
+
+# The landing's two offer sections. The three online tiers: three columns on a
+# wide screen, a swipe row with three dots on a phone, the shown prices level
+# across the row either way (the featured card hangs 16px past its neighbours
+# on a desktop, so the row check above can miss it; this one cannot). The gym:
+# two cards stacked on a phone, side by side with level prices on a desktop.
+LANDING = r"""([w, strict]) => {
+  const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().width > 0; };
+  const out = [], top = el => el.getBoundingClientRect().top, price = card => [...card.querySelectorAll('.price')].find(vis);
+  const level = (cards, what) => { if (!strict) return;       // one unbreakable word: it only must not widen
+    const t = cards.map(c => Math.round(top(price(c))));
+    if (Math.max(...t) - Math.min(...t) > 1) out.push(`${what} prices not level: ${t.join(', ')}`); };
+  const grid = document.querySelector('#usluge .offer-grid'), tiers = [...grid.children];
+  const dots = [...document.querySelectorAll('#usluge .dots button')].filter(vis);
+  if (tiers.length !== 3 || !tiers.every(c => c.classList.contains('offer'))) out.push(`${tiers.length} tier cards`);
+  if (w < 900) {
+    if (getComputedStyle(grid).overflowX !== 'auto' || grid.scrollWidth <= grid.clientWidth) out.push('the tiers do not scroll sideways');
+    const snaps = tiers.filter(c => getComputedStyle(c).scrollSnapAlign.includes('center'));
+    if (snaps.length !== 3) out.push(`${snaps.length} tier cards snap`);
+    if (dots.length !== 3) out.push(`${dots.length} dots under the tiers`);
+    for (const d of dots) { const r = d.getBoundingClientRect(); if (r.width < 32 || r.height < 32) out.push(`a dot is ${r.width}x${r.height}`); }
+  } else {
+    if (dots.length) out.push('dots on a wide screen');
+    const t = tiers.map(top); if (Math.max(...t) - Math.min(...t) > 17) out.push(`the tiers are not one row: ${t.join(', ')}`);
+  }
+  level(tiers, 'tier');
+  const gym = [...document.querySelectorAll('#dvorana .offer')];
+  if (gym.length !== 2) { out.push(`${gym.length} gym cards`); return out; }
+  const [a, b] = gym.map(g => g.getBoundingClientRect());
+  if (w < 720 && b.top < a.bottom) out.push('the gym cards do not stack');
+  if (w >= 720) { if (Math.abs(a.top - b.top) > 1) out.push('the gym cards are not one row'); else level(gym, 'gym'); }
+  return out;
+}"""
+
+# The Mjesečno / Godišnje switch: every tier card shows exactly the chosen price.
+PERIOD = r"""(p) => {
+  const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && el.getBoundingClientRect().width > 0; };
+  const out = [];
+  for (const c of document.querySelectorAll('#usluge .offer')) {
+    const shown = [...c.querySelectorAll('.price')].filter(vis).map(x => x.dataset.period);
+    if (shown.join() !== p) out.push(`a tier shows "${shown.join('+')}" for ${p}`);
+  }
+  const sel = document.querySelector('#usluge .period [aria-selected="true"]');
+  if (!sel || sel.dataset.period !== p) out.push(`the switch does not say ${p}`);
   return out;
 }"""
 
@@ -171,7 +315,10 @@ def test_layout_holds_with_every_slot_at_its_limit(server):
 
     def fill(make):
         for key, slot in copy.SLOTS.items():
-            db.set_copy(key, make(slot.max), None)
+            if isinstance(slot, copy.ListSlot):         # every list full, every item at its limit
+                db.set_copy(key, copy.dump_items([make(slot.max_chars)] * slot.max_items), None)
+            else:
+                db.set_copy(key, make(slot.max), None)
 
     def walk(pw, email, widths, label, strict=True):
         problems = []
@@ -184,8 +331,19 @@ def test_layout_holds_with_every_slot_at_its_limit(server):
                 pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
             for path in PAGES if email else ("/",):
                 pg.goto(server + path); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
-                for p in pg.evaluate(MEASURE, strict)["problems"]:
-                    problems.append(f"[{label} {email or 'guest'} {w}px {path}] {p}")
+                where = f"[{label} {email or 'guest'} {w}px {path}]"
+                problems += [f"{where} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
+                if path != "/":
+                    continue
+                problems += [f"{where} {p}" for p in pg.evaluate(LANDING, [w, strict])]
+                if not pg.locator("#usluge .period").is_visible():
+                    problems.append(f"{where} no Mjesečno / Godišnje switch"); continue
+                problems += [f"{where} on load: {p}" for p in pg.evaluate(PERIOD, "month")]   # monthly first
+                for period in ("year", "month"):          # there and back: same checks in both states
+                    pg.click(f'#usluge .period button[data-period="{period}"]')
+                    problems += [f"{where} {period}: {p}" for p in pg.evaluate(PERIOD, period)]
+                    problems += [f"{where} {period}: {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
+                    problems += [f"{where} {period}: {p}" for p in pg.evaluate(LANDING, [w, strict])]
             problems += [f"[{label} {w}px] js: {e}" for e in errs]
             ctx.browser.close()
         return problems

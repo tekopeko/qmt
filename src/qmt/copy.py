@@ -10,7 +10,15 @@ with: nothing changes until someone edits.
 Adding a slot is one line here plus `{{ c.t("the.key") }}` in the template
 (see _copy.html). The tests pick it up by themselves: every slot must appear
 on a page, and every page must still fit.
+
+A ListSlot is a list of short texts the editor can add to and remove from, not
+only retype — the bullets on the landing's offer cards. It is stored as ONE
+site_copy row whose text is a JSON array of cleaned, non-empty strings; no row
+means the default list. Its limits are a count (max_items) and a length per
+item (max_chars), and the browser test fills every list to both at once.
+Printed with `{{ c.points("the.key") }}`.
 """
+import json
 from dataclasses import dataclass
 
 
@@ -21,7 +29,19 @@ class Slot:
     label: str      # what the editor sees while editing
 
 
-SLOTS: dict[str, Slot] = {
+@dataclass(frozen=True)
+class ListSlot:
+    default: tuple[str, ...]
+    max_items: int  # how many items the list may hold
+    max_chars: int  # characters per item, counted as for Slot.max
+    label: str      # the editor shows it with the item's number ("…: stavka 2")
+
+
+# the online tiers' bullets: tier 1's own defaults, and placeholders for 2 and 3
+ONLINE_POINTS = ("Program po tvojoj razini i cilju", "Video upute za svaku vježbu",
+                 "Mjesečni Zoom poziv ili susret s trenerom")
+
+SLOTS: dict[str, Slot | ListSlot] = {
     # ---- landing: hero ----
     "hero.kicker": Slot("Zagreb · Dubrava", 24, "Mala oznaka iznad naslova"),
     "hero.h1a": Slot("Kvaliteta pokreta", 18, "Naslov, bijeli red"),
@@ -40,22 +60,42 @@ SLOTS: dict[str, Slot] = {
     # ---- landing: the offer ----
     "offer.kicker": Slot("Ponuda", 16, "Mala oznaka iznad ponude"),
     "offer.h2": Slot("Odaberi kako treniraš", 28, "Naslov ponude"),
-    "offer.online.title": Slot("Online", 14, "Kartica 1: naziv"),
-    "offer.online.lead": Slot("Treniraj gdje god jesi.", 48, "Kartica 1: podnaslov"),
-    "offer.online.p1": Slot("Program po tvojoj razini i cilju", 44, "Kartica 1: stavka 1"),
-    "offer.online.p2": Slot("Video upute za svaku vježbu", 44, "Kartica 1: stavka 2"),
-    "offer.online.p3": Slot("Mjesečni Zoom poziv ili susret s trenerom", 44, "Kartica 1: stavka 3"),
-    "offer.dvorana.title": Slot("Dvorana", 14, "Kartica 2: naziv"),
-    "offer.dvorana.lead": Slot("Grupni treninzi u Dubravi.", 48, "Kartica 2: podnaslov"),
-    "offer.dvorana.p1": Slot("Male grupe do 8 polaznika", 44, "Kartica 2: stavka 1"),
-    "offer.dvorana.p2": Slot("8, 12 ili 16 treninga mjesečno", 44, "Kartica 2: stavka 2"),
-    "offer.dvorana.p3": Slot("Termin rezerviraš u aplikaciji", 44, "Kartica 2: stavka 3"),
-    "offer.individualno.title": Slot("Individualno", 14, "Kartica 3: naziv"),
-    "offer.individualno.lead": Slot("Trener samo za tebe.", 48, "Kartica 3: podnaslov"),
-    "offer.individualno.p1": Slot("Rad 1:1, po dogovoru", 44, "Kartica 3: stavka 1"),
-    # the price follows these two on the same line, so they get less room
-    "offer.individualno.p2": Slot("U dvoje ili troje", 26, "Kartica 3: stavka 2 (cijena slijedi)"),
-    "offer.individualno.p3": Slot("Rehabilitacija", 26, "Kartica 3: stavka 3 (cijena slijedi)"),
+    # three tiers of the online plan. Tier 1's monthly price is the online
+    # plan's own (Stripe, else the reference price); every other price is text
+    # until a plan exists for it. The "Mjesečno / Godišnje" switch under the
+    # cards shows one price per card.
+    "offer.online.title": Slot("QMove START", 14, "Online 1: naziv"),
+    "offer.online.lead": Slot("Treniraj gdje god jesi.", 48, "Online 1: podnaslov"),
+    "offer.online.points": ListSlot(ONLINE_POINTS, 6, 44, "Online 1: stavka"),
+    "offer.online.year_price": Slot("na upit", 9, "Online 1: godišnja cijena"),
+    "offer.online.year_unit": Slot("", 11, "Online 1: uz godišnju cijenu"),
+    "offer.online2.title": Slot("QMove PRO", 14, "Online 2: naziv"),
+    "offer.online2.lead": Slot("Treniraj gdje god jesi.", 48, "Online 2: podnaslov"),
+    "offer.online2.points": ListSlot(ONLINE_POINTS, 6, 44, "Online 2: stavka"),
+    "offer.online2.price": Slot("na upit", 9, "Online 2: mjesečna cijena"),
+    "offer.online2.unit": Slot("", 11, "Online 2: uz mjesečnu cijenu"),
+    "offer.online2.year_price": Slot("na upit", 9, "Online 2: godišnja cijena"),
+    "offer.online2.year_unit": Slot("", 11, "Online 2: uz godišnju cijenu"),
+    "offer.online3.title": Slot("QMove ELITE", 14, "Online 3: naziv"),
+    "offer.online3.lead": Slot("Treniraj gdje god jesi.", 48, "Online 3: podnaslov"),
+    "offer.online3.points": ListSlot(ONLINE_POINTS, 6, 44, "Online 3: stavka"),
+    "offer.online3.price": Slot("na upit", 9, "Online 3: mjesečna cijena"),
+    "offer.online3.unit": Slot("", 11, "Online 3: uz mjesečnu cijenu"),
+    "offer.online3.year_price": Slot("na upit", 9, "Online 3: godišnja cijena"),
+    "offer.online3.year_unit": Slot("", 11, "Online 3: uz godišnju cijenu"),
+    # ---- landing: the gym, a quieter section below the online tiers ----
+    "gym.kicker": Slot("Dvorana", 16, "Mala oznaka iznad dvorane"),
+    "gym.h2": Slot("Treninzi u dvorani", 28, "Naslov: dvorana"),
+    "offer.dvorana.title": Slot("Dvorana", 14, "Dvorana: naziv"),
+    "offer.dvorana.lead": Slot("Grupni treninzi u Dubravi.", 48, "Dvorana: podnaslov"),
+    "offer.dvorana.points": ListSlot(("Male grupe do 8 polaznika", "8, 12 ili 16 treninga mjesečno",
+                                      "Termin rezerviraš u aplikaciji"), 6, 44, "Dvorana: stavka"),
+    "offer.individualno.title": Slot("Individualno", 14, "Individualno: naziv"),
+    "offer.individualno.lead": Slot("Trener samo za tebe.", 48, "Individualno: podnaslov"),
+    # the prices of these used to follow the bullets; they are one line under
+    # the card's price now (landing.html, .price-note), so a bullet is free text
+    "offer.individualno.points": ListSlot(("Rad 1:1, po dogovoru", "U dvoje ili troje", "Rehabilitacija"),
+                                          6, 44, "Individualno: stavka"),
     "offer.addon": Slot("MojiMakrosi prehrana", 26, "Naziv dodatka za prehranu"),
     # ---- landing: info ----
     "info.hours.h": Slot("Radno vrijeme", 16, "Naslov: radno vrijeme"),
@@ -88,3 +128,28 @@ def clean(text: str) -> str:
     """What gets stored: whitespace collapsed to single spaces, no newlines —
     every slot is one run of text, the box decides where it wraps."""
     return " ".join(text.split())
+
+
+def load_items(raw: str | None, slot: ListSlot) -> list[str]:
+    """A list slot's items: the stored JSON array, or the default list when
+    nothing is stored (or the row cannot be read as a list)."""
+    if raw is None:
+        return list(slot.default)
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return list(slot.default)
+    if not isinstance(data, list):
+        return list(slot.default)
+    return [t for t in (clean(str(x)) for x in data) if t]
+
+
+def dump_items(items: list[str]) -> str:
+    """What a list slot stores: a JSON array of cleaned, non-empty items."""
+    return json.dumps([t for t in (clean(x) for x in items) if t], ensure_ascii=False)
+
+
+def items_for(key: str, texts: dict[str, str]) -> list[str]:
+    """The items a page prints for list slot `key`, given the edited texts
+    (db.copy_texts()). Templates call it as copy_items (see _copy.html)."""
+    return load_items(texts.get(key), SLOTS[key])
