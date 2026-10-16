@@ -152,6 +152,59 @@ def test_a_list_slot_takes_edits_additions_and_removals_within_its_limits():
     assert 'data-list="offer.dvorana.points"' in t.get("/").text            # the editor can still add one
 
 
+def test_a_flag_slot_switches_on_and_off_and_takes_nothing_else():
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    key, slot = "event1.show", copy.SLOTS["event1.show"]
+    assert isinstance(slot, copy.FlagSlot) and slot.default is True
+
+    assert TestClient(app).post(f"/copy/{key}", data={"text": "off"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "off"}).status_code == 403
+    assert key not in db.copy_texts()
+
+    t = client_for("trener@test.local")
+    r = t.post(f"/copy/{key}", data={"text": "off"})                        # stored like any slot: the text "off"
+    assert r.status_code == 200 and r.json() == {"ok": True, "on": False, "default": False}
+    assert db.copy_texts()[key] == "off" and copy.flag_on(key, db.copy_texts()) is False
+    r = t.post(f"/copy/{key}", data={"text": "on"})
+    assert r.json() == {"ok": True, "on": True, "default": False} and db.copy_texts()[key] == "on"
+    for bad in ("maybe", "", " off", "OFF", "1"):                          # exactly "on" or "off"
+        r = t.post(f"/copy/{key}", data={"text": bad})
+        assert r.status_code == 400 and r.json() == {"ok": False, "error": "Nepoznata vrijednost."}, bad
+    assert db.copy_texts()[key] == "on"                                     # a refused value changes nothing
+
+    t.post(f"/copy/{key}", data={"text": "off"})                            # reset=1: the default, and no row
+    r = t.post(f"/copy/{key}", data={"text": "off", "reset": "1"})
+    assert r.json() == {"ok": True, "on": True, "default": True} and key not in db.copy_texts()
+    db.set_copy(key, "nešto", None)                                         # a row that is neither: the default
+    assert copy.flag_on(key, db.copy_texts()) is True
+
+
+def test_the_announcements_show_what_is_on_and_the_editor_keeps_what_is_off():
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    one, two = copy.SLOTS["event1.title"].default, copy.SLOTS["event2.title"].default
+    page = TestClient(app).get("/").text                                    # both by default, under the gym
+    assert 'id="aktualno"' in page and one in page and two in page and '<div class="ev-grid">' in page
+    assert page.index('id="dvorana"') < page.index('id="aktualno"') < page.index('id="kontakt"')
+    assert page.count('<a class="act" href="/#kontakt"><span class="t">Javi nam se</span></a>') == 2
+
+    db.set_copy("event2.show", "off", None)                                 # one off: gone from a visitor's page
+    for c in (TestClient(app), client_for("ivan@test.local")):              # and a client's, the row one column
+        page = c.get("/").text
+        assert one in page and two not in page and '<div class="ev-grid single">' in page
+        assert 'is-off"' not in page
+    page = client_for("trener@test.local").get("/").text                    # the editor has it, marked off
+    assert two in page and '<div class="ev-grid single">' in page and 'data-flag-group' in page
+    assert '<article class="card event is-off" data-flag="event2.show">' in page
+
+    db.set_copy("event1.show", "off", None)                                 # both off: no section at all
+    page = TestClient(app).get("/").text
+    assert 'id="aktualno"' not in page and one not in page and two not in page
+    page = client_for("trener@test.local").get("/").text                    # the editor keeps both, and the section
+    assert '<section class="band is-off" id="aktualno"' in page and one in page and two in page
+    assert page.count('<article class="card event is-off" data-flag="') == 2
+    assert page.count('aria-pressed="false">Skriveno</button>') == 2 and '<div class="ev-grid">' in page
+
+
 def _migration():
     path = pathlib.Path(__file__).parents[1] / "alembic" / "versions" / "1b09c249c2c6_offer_points_lists.py"
     spec = importlib.util.spec_from_file_location("offer_points_lists", path)
@@ -197,12 +250,14 @@ def test_every_slot_is_on_exactly_one_page_and_only_editors_see_the_editor():
                 if isinstance(slot, copy.ListSlot):     # one list, an editable span per item
                     assert page.count(f'data-list="{key}"') == 1, key
                     assert page.count(f'data-copy="{key}"') == len(slot.default), key
+                if isinstance(slot, copy.FlagSlot):     # a switch: its toggle, once
+                    assert page.count(f'data-copy="{key}"') == 1 and f'class="ed-flag" data-copy="{key}"' in page, key
     assert set(seen) == set(copy.SLOTS), f"slots on no page: {set(copy.SLOTS) - set(seen)}"
     for c in (TestClient(app), client_for("ivan@test.local")):
         for path in PAGES:
             page = c.get(path).text
             if c.get(path, follow_redirects=False).status_code == 200:
-                for mark in ("data-copy", "copyToggle", "data-list", 'class="ed-x"', 'ed-add"'):
+                for mark in ("data-copy", "copyToggle", "data-list", 'class="ed-x"', 'ed-add"', 'class="ed-flag"', "data-flag"):
                     assert mark not in page, (path, mark)
 
 
@@ -261,7 +316,8 @@ MEASURE = r"""(strict) => {
   if (tb) { const cs = getComputedStyle(tb), r = tb.getBoundingClientRect(), l = r.left + px(cs.borderLeftWidth) + px(cs.paddingLeft), rr = r.right - px(cs.borderRightWidth) - px(cs.paddingRight);
     for (const k of [...tb.children].filter(k => vis(k) && getComputedStyle(k).position !== 'absolute')) { const b = k.getBoundingClientRect(); if (b.right - rr > 0.5 || l - b.left > 0.5) out.problems.push('topbar child leaves the pill'); } }
   // typography: an editable span never changes the font of what it sits in
-  for (const el of document.querySelectorAll('[data-copy]')) { const a = getComputedStyle(el), b = getComputedStyle(el.parentElement);
+  // (a flag's toggle is a button of its own, not a text)
+  for (const el of document.querySelectorAll('[data-copy]:not(.ed-flag)')) { const a = getComputedStyle(el), b = getComputedStyle(el.parentElement);
     if (a.fontFamily !== b.fontFamily || a.fontSize !== b.fontSize || a.fontWeight !== b.fontWeight) out.problems.push(`${el.dataset.copy} changes the font`); }
   // nothing is cut: a text (span.t, every viewer's, editor or not) never
   // reaches past an ancestor that hides its overflow. The one clamp on
@@ -298,18 +354,20 @@ MEASURE = r"""(strict) => {
 # The landing's two offer sections, each a row of cards (.swipe-row): the three
 # online tiers and the gym's two. On a wide screen the tiers are three columns
 # and the gym two; below 900px each is a swipe row with a dot per card (made
-# by the script, so the count and the labels follow the cards). The shown
-# prices are level across a row either way, at their bottom edge as in MEASURE
-# (the featured tier hangs 16px past its neighbours on a desktop, so the row
-# check above can miss it; this one cannot).
+# by the script, so the count and the labels follow the cards) and starts on
+# its featured card, centred, with that card's dot lit: the tiers on QMove PRO
+# in the middle, the gym (no featured card) on its first. The shown prices are
+# level across a row either way, at their bottom edge as in MEASURE (the
+# featured tier hangs 16px past its neighbours on a desktop, so the row check
+# above can miss it; this one cannot).
 LANDING = r"""([w, strict]) => {
   const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().width > 0; };
   const out = [], top = el => el.getBoundingClientRect().top, price = card => [...card.querySelectorAll('.price')].find(vis);
   const level = (cards, what) => { if (!strict) return;       // one unbreakable word: it only must not widen
     const b = cards.map(c => Math.round(price(c).getBoundingClientRect().bottom));
     if (Math.max(...b) - Math.min(...b) > 1) out.push(`${what} prices not level: ${b.join(', ')}`); };
-  // [section, cards, name, how far a card may stand out of the row on a desktop]
-  for (const [sec, n, what, slack] of [['#usluge', 3, 'tier', 17], ['#dvorana', 2, 'gym', 1]]) {
+  // [section, cards, name, how far a card may stand out of the row on a desktop, the card a phone starts on]
+  for (const [sec, n, what, slack, first] of [['#usluge', 3, 'tier', 17, 1], ['#dvorana', 2, 'gym', 1, 0]]) {
     const row = document.querySelector(`${sec} .swipe-row`), cards = row ? [...row.children] : [];
     const dots = [...document.querySelectorAll(`${sec} .dots button`)].filter(vis);
     if (cards.length !== n || !cards.every(c => c.classList.contains('offer'))) { out.push(`${cards.length} ${what} cards`); continue; }
@@ -321,6 +379,11 @@ LANDING = r"""([w, strict]) => {
       dots.forEach((d, i) => { const r = d.getBoundingClientRect();
         if (r.width < 32 || r.height < 32) out.push(`a ${what} dot is ${r.width}x${r.height}`);
         if (d.getAttribute('aria-label') !== `Kartica ${i + 1} od ${n}`) out.push(`${what} dot ${i + 1} says "${d.getAttribute('aria-label')}"`); });
+      const lit = dots.findIndex(d => d.getAttribute('aria-current') === 'true');
+      if (lit !== first) out.push(`the ${what} row starts on card ${lit + 1}, not ${first + 1}`);
+      if (first) { const g = row.getBoundingClientRect(), r = cards[first].getBoundingClientRect(), off = r.left + r.width / 2 - (g.left + g.width / 2);
+        if (!cards[first].classList.contains('featured')) out.push(`${what} card ${first + 1} is not the featured one`);
+        if (Math.abs(off) > 4) out.push(`the featured ${what} card is ${Math.round(off)}px off its row's centre`); }
     } else {
       if (dots.length) out.push(`dots under the ${what} cards on a wide screen`);
       const cols = getComputedStyle(row).gridTemplateColumns.split(' ').length;
@@ -369,12 +432,37 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
 
     def fill(make):
         for key, slot in copy.SLOTS.items():
+            if isinstance(slot, copy.FlagSlot):         # a switch, not a text: left on, both announcements show
+                continue
             if isinstance(slot, copy.ListSlot):         # every list 12 items long, each item 60 characters
                 db.set_copy(key, copy.dump_items([make(min(slot.max_chars, ITEM))] * min(slot.max_items, ITEMS)), None)
             else:                                       # every text 300 characters
                 db.set_copy(key, make(min(slot.max, LONG)), None)
 
-    def walk(pw, email, widths, label, strict=True, lead=False):
+    def flip(pg):
+        """The editor's switch in a browser: in edit mode the first
+        announcement, switched off, stays on the page with its content dimmed
+        (not its toggle); after a reload it is gone and the second is there.
+        Switched back on for the walks after this one."""
+        out = []
+        pg.click("#copyToggle"); pg.locator("#aktualno .ed-flag").first.click()
+        pg.wait_for_function("""() => { const b = document.querySelector('#aktualno .ed-flag');
+          return b.getAttribute('aria-pressed') === 'false' && b.closest('.event').classList.contains('is-off'); }""", timeout=5000)
+        seen = pg.evaluate("""() => { const c = document.querySelector('#aktualno .event'), o = el => +getComputedStyle(el).opacity;
+          return [c.getBoundingClientRect().height > 0, o(c.querySelector('h3')), o(c.querySelector('.ed-flag'))]; }""")
+        if seen != [True, 0.55, 1]:
+            out.append(f"a card switched off in edit mode (shown, its title's and its toggle's opacity): {seen}")
+        pg.reload(); pg.wait_for_load_state("networkidle")
+        cards = pg.locator("#aktualno .event")
+        if cards.nth(0).is_visible() or not cards.nth(1).is_visible():
+            out.append("after a reload the card switched off shows, or the other one does not")
+        if db.copy_texts().get("event1.show") != "off":
+            out.append("the switch was not stored")
+        out += pg.evaluate(MEASURE, True)["problems"]
+        db.set_copy("event1.show", "on", None)
+        return out
+
+    def walk(pw, email, widths, label, strict=True, lead=False, switch=None):
         problems = []
         for w in widths:
             phone = w < 600
@@ -403,6 +491,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                     problems += [f"{did} {p}" for p in pg.evaluate(PERIOD, period)]
                     problems += [f"{did} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
                     problems += [f"{did} {p}" for p in pg.evaluate(LANDING, [w, strict])]
+                if w == switch:                             # the editor's switch, once
+                    problems += [f"{where} switch: {p}" for p in flip(pg)]
             problems += [f"[{label} {w}px] js: {e}" for e in errs]
             ctx.browser.close()
         return problems
@@ -410,7 +500,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     with sync_playwright() as pw:
         fill(words)                                   # long texts: 300 characters, lists of 12
         problems = walk(pw, None, (360, 390, 900, 1280), "words")
-        problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words")
+        problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=390)
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")
         db.set_copy("hero.lead", LINES, None)         # line breaks: the lead in three lines
         problems += walk(pw, None, (390, 1280), "lines", lead=True)

@@ -18,6 +18,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.crumbs` | base | breadcrumb: muted links, `/` separators, `.here` current |
 | `.ed` / `.copy-toggle` / `.copy-bar` | base (trainer, owner) | in-place copy editor: `_copy.html` prints every slot in a `span.t` (`white-space: pre-line`, so the owner's line breaks show) and makes it an `.ed` for an editor; the fixed "✎ Uredi tekstove" pill toggles `body.editing` (dashed outlines, click to edit, `.ed-on` while open; an empty `.ed` keeps a 2.5em box so it can be clicked); Enter is a new line, ⌘/Ctrl+Enter saves; the bar under the pill (as wide as its content, at most the window less 20px) shows label, an "n znakova" counter, the `.cb-hint` "Enter = novi red · ⌘/Ctrl+Enter = spremi" (600px and up) and Spremi / Zadano / Odustani. Visitors get a bare `span.t`, no editor markup |
 | `ul[data-list]` / `.ed-x` / `.ed-add` | base (trainer, owner) | an editable list (`c.points`): each item an `.ed` with `data-index`, a 32px round `.ed-x` ✕ beside it (negative margin, so the line height holds) and an `.act.ed-add` "+ Dodaj stavku" after the list, hidden at the count limit; both only under `body.editing`. The bar names the item ("…: stavka 2") and its Zadano reads "Zadano (cijela lista)" |
+| `.ed-flag` / `.is-off` | base (trainer, owner) | the edit-mode toggle of a `copy.FlagSlot` (an on/off switch, the landing's announcements): the first child of the box it switches (`data-flag`), a 32px pill, green `--good-fill` "● Prikazano" / grey `--surface-2` "○ Skriveno", saved at a click, no confirm (hiding loses no text). A switched-off box is `.is-off`: hidden, shown only in edit mode with its content dimmed to .55 and the toggle at full strength; its `data-flag-group` follows its boxes (`.is-off` when none is on, `.single` on their row when one is). A visitor gets neither the toggle nor a hidden box |
 | `.featured-tag` | base | "Najpopularnije" chip in the top-right corner of a `position: relative` card: accent tint + `--accent-tint-ink`. Used by `/cjenik` and the landing's offer |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
@@ -100,6 +101,9 @@ centre, scrollbar hidden, the gutter as its own padding) and the `.dots`
 under it are 32px buttons around an 8px dot (`--line`, lit `--accent`,
 `aria-current`), one per card, made by the script (no script, no dots), that
 follow the scroll (IntersectionObserver) and bring their card in on tap.
+A row opens on its `.featured` card, centred at once (the tiers: PRO, START
+a swipe to the left, ELITE to the right), else on its first; the script does
+it only where the row scrolls, so the desktop grid is untouched.
 **The gym** (`#dvorana`, below): the same `.offer` cards in `.gym-grid` (two
 columns ≥900px, capped at 760px so each is about a tier's width; the swipe
 row, two dots, below), not featured; Individualno's other
@@ -112,7 +116,18 @@ pressing either sets every `.price[data-period]` on the page and
 neutral `.cta` beside it, green `.owned` for a plan the visitor has. Plan
 prices arrive from the route (`offer_prices`), are public unless
 `PUBLIC_PRICES=off` (which also hides both switches), and no public page links
-to `/cjenik`. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
+to `/cjenik`. **Aktualno** (`#aktualno`, between the gym and the
+gallery): the owner's two announcements for the month as `.event` cards in
+`.ev-grid` (two columns capped at 760px like the gym's row, a stack below
+700px, one 560px column when one card shows, `.single`): the `.card` shape at
+`--r-xl` with `.offer`'s padding, a `.tag` chip (accent tint +
+`--accent-tint-ink`; scoped `.event .tag`, not the photo's glass `.tag`), the
+italic uppercase `h3` of `.offer`, a `.when` line behind a 7px accent dot (on
+the baseline, so a wrapped line keeps it on its first), a muted `.text`, and
+one grey `.act` to `/#kontakt` in a `.foot` pinned to the bottom so the two
+links sit level (the red button stays on the featured tier). Each card is
+switched off with its `.ed-flag`; a visitor never gets a hidden one, nor the
+section when both are. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
 

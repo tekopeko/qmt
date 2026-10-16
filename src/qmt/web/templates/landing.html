@@ -167,7 +167,7 @@
      are a swipe row like the tiers (.swipe-row) */
   @media (min-width: 900px) { .gym-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
                                           max-width: 760px; margin-inline: auto; } }
-  .offer h3 { font: 700 italic 1.5rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
+  .offer h3, .event h3 { font: 700 italic 1.5rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
   /* two lines kept free, so the three lists start level when a lead wraps */
   .offer .lead { color: var(--muted); font-size: .95rem; margin-top: 6px; min-height: 2.9em; }
   .offer ul { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
@@ -217,6 +217,45 @@
   .offer .owned { background: var(--good-fill); color: var(--good-ink); border: 1px solid transparent; box-shadow: none; }
   .offer .owned:hover { background: var(--good-strong); color: var(--good-ink); }
 
+  /* ---- aktualno: the owner's announcements for the month (a new group, a
+     course), between the gym and the gallery. Two cards as wide as the gym's
+     row above, the .offer shape without a price: a chip, the title, when, a
+     few lines, one grey link to the contact (the page's one red button stays
+     on the featured tier). Below 700px a stack, not a swipe row: two short
+     cards read better one under the other. With one card shown (.single)
+     the row is one narrower column. ---- */
+  .ev-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
+             max-width: 760px; margin-inline: auto; }
+  .ev-grid.single { grid-template-columns: minmax(0, 1fr); max-width: 560px; }
+  .event { position: relative; display: flex; flex-direction: column; padding: 30px 28px 26px;
+           border-radius: var(--r-xl); }
+  /* not the glass chip above, which sits on a photo: the accent tint on the
+     card, with the ink that is AA on it in both themes */
+  .event .tag { display: inline-block; align-self: flex-start; max-width: 100%; margin-bottom: 14px;
+                padding: 5px 12px; border: 0; border-radius: 999px; background: var(--accent-dim);
+                color: var(--accent-tint-ink); font: 700 .74rem var(--font-body); letter-spacing: .06em;
+                text-transform: uppercase; white-space: pre-line;
+                backdrop-filter: none; -webkit-backdrop-filter: none; }
+  /* the hero kicker's dot; on the baseline, so a line that wraps keeps the
+     dot beside its first line */
+  .event .when { display: inline-flex; align-items: baseline; gap: 8px; margin-top: 8px;
+                 font: 600 .92rem var(--font-body); color: var(--text); }
+  .event .when::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .event .text { margin-top: 10px; color: var(--muted); font-size: .95rem; line-height: 1.5; }
+  /* the link pinned to the bottom, so the two cards' links sit level */
+  .event .foot { margin-top: auto; padding-top: 22px; display: flex; }
+  /* A card the editor switched off (copy.FlagSlot) is on his page only, as
+     .is-off, and so is the section when both are: hidden, so outside edit
+     mode he sees the visitor's page. Edit mode shows them, the card's content
+     dimmed but not its toggle, which stays readable to switch it back on, and
+     both columns come back, since both cards show. */
+  .event.is-off, section.is-off { display: none; }
+  body.editing section.is-off { display: block; }
+  body.editing .event.is-off { display: flex; }
+  body.editing .event.is-off > :not(.ed-flag) { opacity: .55; }
+  body.editing .ev-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 760px; }
+  @media (max-width: 699px) { .ev-grid, .ev-grid.single, body.editing .ev-grid { grid-template-columns: minmax(0, 1fr); } }
+
   /* gallery: the same photo-card shape as the stage */
   .gal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
   .gal-item { overflow: hidden; display: block; aspect-ratio: 4 / 3; text-decoration: none;
@@ -256,7 +295,8 @@
      this is the net under every such text. The chips are in it because their
      text (span.t, pre-line) wraps now, where .tag alone would not. */
   .hero h1, .hero .lead, .hero .kicker, .hero-note, .stage .copy, .stage .tags, .sec-kicker, section.band h2, .offer h3, .offer .lead,
-  .offer li, .offer .addon, .offer .price, .offer .price-note, .info h3, .info td, footer { overflow-wrap: anywhere; }
+  .offer li, .offer .addon, .offer .price, .offer .price-note, .event h3, .event .tag, .event .when, .event .text,
+  .event .act, .info h3, .info td, footer { overflow-wrap: anywhere; }
 </style>
 {% endblock %}
 {% block content %}
@@ -397,6 +437,41 @@
   </div>
 </section>
 
+{# Aktualno: the owner's announcements for the month, two cards he switches
+   off in edit mode when one is over (copy.FlagSlot: the toggle on top of
+   each card). A visitor gets only the cards that are on, and no section at
+   all when both are off. An editor gets both cards and the section always,
+   what is off marked .is-off (shown, dimmed, in edit mode only); the
+   data-flag marks are for the editor's script, which keeps .is-off and
+   .single in step when a toggle is pressed. The link leads to the contact. #}
+{% set ev_on = [copy_flag("event1.show", copy_texts), copy_flag("event2.show", copy_texts)] %}
+{% set ev_shown = ev_on | select | list | length %}
+{% if ev_shown or can_edit_copy %}
+<section class="band{% if not ev_shown %} is-off{% endif %}" id="aktualno" style="padding-top:0;"{% if can_edit_copy %} data-flag-group{% endif %}>
+  <div class="band-inner">
+    <div class="sec-head">
+      <div class="sec-kicker">{{ c.t("events.kicker") }}</div>
+      <h2>{{ c.t("events.h2") }}</h2>
+    </div>
+    <div class="ev-grid{% if ev_shown == 1 %} single{% endif %}">
+      {% for on in ev_on %}{% set ev = "event" ~ loop.index %}
+      {% if on or can_edit_copy %}
+      <article class="card event{% if not on %} is-off{% endif %}"{% if can_edit_copy %} data-flag="{{ ev }}.show"{% endif %}>
+        {% if can_edit_copy %}<button type="button" class="ed-flag" data-copy="{{ ev }}.show" data-label="{{ COPY[ev ~ '.show'].label }}"
+                aria-pressed="{{ 'true' if on else 'false' }}">{{ "Prikazano" if on else "Skriveno" }}</button>{% endif %}
+        <span class="tag">{{ c.t(ev ~ ".tag") }}</span>
+        <h3>{{ c.t(ev ~ ".title") }}</h3>
+        <p class="when">{{ c.t(ev ~ ".when") }}</p>
+        <p class="text">{{ c.t(ev ~ ".text") }}</p>
+        <div class="foot"><a class="act" href="/#kontakt">{{ c.t(ev ~ ".cta") }}</a></div>
+      </article>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
 {% if gallery | length > 1 %}
 <section class="band" id="galerija" style="padding-top:0;">
   <div class="band-inner">
@@ -476,7 +551,11 @@
   // The rows of cards (.swipe-row: the online tiers, the gym). On a phone each
   // is a swipe row with a dot per card under it, made here from the row's
   // cards: the dot of the card in view is lit, a tapped dot brings its card to
-  // the centre.
+  // the centre. A row starts on its .featured card when it has one (the tiers:
+  // QMove PRO in the middle, START a swipe to the left, ELITE to the right),
+  // else on its first card (the gym's two). At once, not gliding there: the
+  // page opens on it. Only where the row scrolls, so a desktop grid (900px
+  // and up) is left alone; without the script a row starts on its first card.
   (function () {
     [].forEach.call(document.querySelectorAll(".swipe-row"), function (row) {
       var box = row.nextElementSibling;
@@ -500,6 +579,12 @@
           es.forEach(function (e) { if (e.isIntersecting && e.intersectionRatio >= .75) mark(cards.indexOf(e.target)); });
         }, {root: row, threshold: .75});
         cards.forEach(function (card) { io.observe(card); });
+      }
+      var start = cards.map(function (c) { return c.classList.contains("featured"); }).indexOf(true);
+      if (start > 0 && row.scrollWidth > row.clientWidth) {
+        var g = row.getBoundingClientRect(), r = cards[start].getBoundingClientRect();
+        row.scrollLeft += r.left - g.left - (g.width - r.width) / 2;   // the row's own scroll-behavior: auto, instant
+        mark(start);
       }
     });
   })();

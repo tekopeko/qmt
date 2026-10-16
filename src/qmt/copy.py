@@ -21,6 +21,13 @@ only retype — the bullets on the landing's offer cards. It is stored as ONE
 site_copy row whose text is a JSON array of cleaned, non-empty strings; no row
 means the default list. Its caps are a count (max_items) and a length per item
 (max_chars). Printed with `{{ c.points("the.key") }}`.
+
+A FlagSlot is a switch, not a text: whether a part of a page shows at all —
+the landing's two announcements for the month (#aktualno), each one the owner
+switches off when it is over. It is stored like any slot, as the text "on" or
+"off"; no row means the default. Read with `copy_flag("the.key", copy_texts)`
+(flag_on below). In edit mode the editor flips it with a toggle (.ed-flag,
+base.html); a visitor never gets the markup of what a flag hides.
 """
 import json
 import re
@@ -45,11 +52,17 @@ class ListSlot:
     label: str      # the editor shows it with the item's number ("…: stavka 2")
 
 
+@dataclass(frozen=True)
+class FlagSlot:
+    default: bool   # True: shown until someone switches it off
+    label: str      # what the editor's toggle stands for ("Događanje 1: prikazano")
+
+
 # the online tiers' bullets: tier 1's own defaults, and placeholders for 2 and 3
 ONLINE_POINTS = ("Program po tvojoj razini i cilju", "Video upute za svaku vježbu",
                  "Mjesečni Zoom poziv ili susret s trenerom")
 
-SLOTS: dict[str, Slot | ListSlot] = {
+SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
     # ---- landing: hero ----
     "hero.kicker": Slot("Zagreb · Dubrava", CAP, "Mala oznaka iznad naslova"),
     "hero.h1a": Slot("Kvaliteta pokreta", CAP, "Naslov, bijeli red"),
@@ -112,6 +125,28 @@ SLOTS: dict[str, Slot | ListSlot] = {
     "offer.individualno.year_price": Slot("na upit", CAP, "Individualno: godišnja cijena"),
     "offer.individualno.year_unit": Slot("", CAP, "Individualno: uz godišnju cijenu"),
     "offer.addon": Slot("MojiMakrosi prehrana", CAP, "Naziv dodatka za prehranu"),
+    # ---- landing: aktualno, between the gym and the gallery ----
+    # The owner's announcements for the month (a new group, a course): two
+    # cards, the defaults are examples to retype. Each one is switched off in
+    # edit mode when it is over (FlagSlot); a hidden card is not on a visitor's
+    # page at all, and with both hidden neither is the section. The card's
+    # link always leads to the contact (/#kontakt).
+    "events.kicker": Slot("Ovaj mjesec", CAP, "Mala oznaka iznad događanja"),
+    "events.h2": Slot("Aktualno u dvorani", CAP, "Naslov: događanja"),
+    "event1.show": FlagSlot(True, "Događanje 1: prikazano"),
+    "event1.tag": Slot("Novo", CAP, "Događanje 1: oznaka"),
+    "event1.title": Slot("Treninzi za penziće", CAP, "Događanje 1: naslov"),
+    "event1.when": Slot("Utorkom i četvrtkom u 10:00", CAP, "Događanje 1: termin"),
+    "event1.text": Slot("Lagani grupni treninzi za zlatne godine: snaga, ravnoteža i pokretljivost u ugodnom "
+                        "tempu, uz stručno vodstvo. Prijave u dvorani ili porukom.", CAP, "Događanje 1: tekst"),
+    "event1.cta": Slot("Javi nam se", CAP, "Događanje 1: gumb"),
+    "event2.show": FlagSlot(True, "Događanje 2: prikazano"),
+    "event2.tag": Slot("Nova grupa", CAP, "Događanje 2: oznaka"),
+    "event2.title": Slot("Pilates za cure", CAP, "Događanje 2: naslov"),
+    "event2.when": Slot("Srijedom u 18:00", CAP, "Događanje 2: termin"),
+    "event2.text": Slot("Pilates u maloj grupi: jezgra, držanje i opuštanje, za sve razine. Prijave u tijeku.",
+                        CAP, "Događanje 2: tekst"),
+    "event2.cta": Slot("Javi nam se", CAP, "Događanje 2: gumb"),
     # ---- landing: info ----
     "info.hours.h": Slot("Radno vrijeme", CAP, "Naslov: radno vrijeme"),
     "info.hours.d1": Slot("pon · sri · čet · pet", CAP, "Radno vrijeme, dani 1"),
@@ -173,3 +208,13 @@ def items_for(key: str, texts: dict[str, str]) -> list[str]:
     """The items a page prints for list slot `key`, given the edited texts
     (db.copy_texts()). Templates call it as copy_items (see _copy.html)."""
     return load_items(texts.get(key), SLOTS[key])
+
+
+def flag_on(key: str, texts: dict[str, str]) -> bool:
+    """Whether flag slot `key` is on, given the edited texts
+    (db.copy_texts()): a stored "on" or "off", else the default (no row, or a
+    row that is neither). Templates call it as copy_flag (landing.html)."""
+    stored = texts.get(key)
+    if stored in ("on", "off"):
+        return stored == "on"
+    return SLOTS[key].default

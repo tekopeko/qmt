@@ -31,7 +31,7 @@ python scripts/seed_demo.py                # dev RESET: users, timetable, plans,
 python serve.py [--reload] [--port 8100]   # 8100 — 8000 is mojimakrosi's local port
 
 createdb qmt_test                          # once
-pytest -q                                  # 108 tests, must stay green
+pytest -q                                  # 110 tests, must stay green
 ```
 
 Demo logins: `trener@qmt.local/trener123` (trainer **and** owner locally, via
@@ -54,7 +54,7 @@ variables --kv` reads config). Pushing to `master` auto-deploys.
 
 | Route | Who | What |
 |---|---|---|
-| `/` | public | Landing: hero (kicker, headline, lead; a member's one action; no buttons for guests, the pill has them) whose photo is a link to the offer; **the offer (`#usluge`) is three tiers of the online plan** (QMove START / PRO, featured / ELITE; each with the MojiMakrosi add-on, 5 €): tier 1's monthly price is the online plan's own, every other price (tiers 2–3 monthly, all three yearly) is editable text until a plan exists; a **Mjesečno / Godišnje** switch under the cards shows one price per card (per page view, monthly without JS); on phones (<900px) the tiers are a swipe carousel with three dots. Below it, quieter, **the gym (`#dvorana`)**: Dvorana and Individualno cards (add-on 3 €; Individualno names its semi-individual and rehab prices in a muted line under its own), tiers too (the plan's real monthly price, an editable yearly one) with their own switch, one choice with the tiers' (pressing either flips both sections), and a two-card swipe row on phones. Gallery from `static/gallery/`; contact. A card's button follows the visitor: owner of the plan → into the app, member → "Odaberi plan" on `/cjenik`, guest → "Registriraj se" when signup is open, else "Javi nam se" → `#kontakt` |
+| `/` | public | Landing: hero (kicker, headline, lead; a member's one action; no buttons for guests, the pill has them) whose photo is a link to the offer; **the offer (`#usluge`) is three tiers of the online plan** (QMove START / PRO, featured / ELITE; each with the MojiMakrosi add-on, 5 €): tier 1's monthly price is the online plan's own, every other price (tiers 2–3 monthly, all three yearly) is editable text until a plan exists; a **Mjesečno / Godišnje** switch under the cards shows one price per card (per page view, monthly without JS); on phones (<900px) the tiers are a swipe carousel with three dots that opens on PRO (the featured middle card: START a swipe to the left, ELITE to the right). Below it, quieter, **the gym (`#dvorana`)**: Dvorana and Individualno cards (add-on 3 €; Individualno names its semi-individual and rehab prices in a muted line under its own), tiers too (the plan's real monthly price, an editable yearly one) with their own switch, one choice with the tiers' (pressing either flips both sections), and a two-card swipe row on phones. Then **`#aktualno`**: the owner's two announcement cards for the month (chip, title, when, a few lines, a grey "Javi nam se" → `/#kontakt`), each switched off by the editor (a `FlagSlot`), the section gone when both are. Gallery from `static/gallery/`; contact. A card's button follows the visitor: owner of the plan → into the app, member → "Odaberi plan" on `/cjenik`, guest → "Registriraj se" when signup is open, else "Javi nam se" → `#kontakt` |
 | `/cjenik` | client | **Members only since 28.9.2026** (guests are sent to log in): where plans are bought and managed; the public price list is the landing's offer. Plan pricing from Stripe ("na upit" until Price ids exist) + "Pretplati se karticom" → Stripe Checkout; `/placanje/portal` for card/cancel/invoices |
 | `/raspored` | client | Week calendar, booking, "Moja članarina" + "Moje rezervacije" as day columns. After booking a weekly slot the ok alert offers "Isti termin svaki tjedan do …" → `POST /book/{id}/series` books that slot for the rest of the paid period |
 | `/karton`, `/upitnik` | client | Personal file: upitnik result, training diary, termini. `/karton/{id}` is the trainer's read-only view |
@@ -108,7 +108,7 @@ active `online` plan → filled upitnik → matched programmes.
 | Path | Role |
 |---|---|
 | `src/qmt/config.py` | `.env`, `OWNER_EMAIL`/`ALLOWED_EMAILS`, booking knobs, prod guards |
-| `src/qmt/copy.py` | The texts a trainer/owner may edit in place: slot → default text, label; a 2000-character cap, no design limit since 16.10.2026 |
+| `src/qmt/copy.py` | The texts a trainer/owner may edit in place: slot → default text, label; a 2000-character cap, no design limit since 16.10.2026; lists (`ListSlot`) and on/off flags (`FlagSlot`, the landing's announcements) |
 | `src/qmt/models.py` | `User` (+profile fields), `SessionTemplate`, `TrainingSession`, `Booking`, `Membership`, `Payment`, `OnboardingResponse`, `TrainingLog`, `Program`(level/goal)/`ProgramItem`; `PLAN_*`, `FEELING_LABELS`, `PAYMENT_METHODS` |
 | `src/qmt/db.py` | Queries + rules. **`book()` locks the session row FOR UPDATE** and re-counts inside the lock (tested) |
 | `src/qmt/upitnik.py` | Questions, scoring thresholds, level/goal labels |
@@ -178,6 +178,13 @@ active `online` plan → filled upitnik → matched programmes.
   through `{{ c.points("key") }}`. In edit mode each item has a ✕ and the list
   a "+ Dodaj stavku"; an item saves with its `index` (n appends, an empty text
   removes it) and "Zadano (cijela lista)" (`reset=1`) restores the whole list.
+  **Flags** (16.10.2026, the landing's announcements) are a `FlagSlot`: an
+  on/off switch stored as copy, the text "on" or "off" in `site_copy` (no row =
+  the default), read in a template with `copy_flag(key, copy_texts)`; `POST
+  /copy/{key}` takes exactly "on" or "off", or `reset=1`. In edit mode the card
+  it governs carries a `.ed-flag` toggle ("Prikazano" / "Skriveno") that saves
+  at a click; a hidden card stays on an editor's page as `.is-off` (shown,
+  dimmed, in edit mode only), and a visitor never gets a hidden card's markup.
 - **Design changes go through the `qmt-design` skill** (`.claude/skills/qmt-design`):
   tokens, components, patterns, and the measured audit that must pass before UI
   work is called done.

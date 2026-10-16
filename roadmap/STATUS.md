@@ -23,7 +23,9 @@ the rest are copy slots the owner types. Dvorana and Individualno sit in
 
 15.10.2026, third task (Opus draft, awaiting review): the gym (`#dvorana`) has the Mjesečno / Godišnje switch too, one choice with the tiers' (either switch flips every card on the page): Dvorana and Individualno keep their real monthly prices, the yearly ones are copy slots (`offer.dvorana.year_*`, `offer.individualno.year_*`), and on phones the two cards are a swipe row with two dots, one carousel (`.swipe-row`) for both sections.
 
-16.10.2026 (Opus draft, awaiting review): the owner lifted the copy limits (the copy first, a design pass once it is final): every slot takes up to 2000 characters (lists 12 items), line breaks are kept and show (`span.t`, pre-line), Enter is a new line in the editor and ⌘/Ctrl+Enter saves; `tests/test_copy.py` guards overflow and clipping only, and the photo card's caption is clamped inside the card.
+16.10.2026 (Opus draft, reviewed, live): the owner lifted the copy limits (the copy first, a design pass once it is final): every slot takes up to 2000 characters (lists 12 items), line breaks are kept and show (`span.t`, pre-line), Enter is a new line in the editor and ⌘/Ctrl+Enter saves; `tests/test_copy.py` guards overflow and clipping only, and the photo card's caption is clamped inside the card.
+
+16.10.2026, second task (Opus draft, reviewed, live): the landing has an announcements section, `#aktualno`, between the gym and the gallery: the owner's two cards for the month ("Treninzi za penziće" and "Pilates za cure" as examples to retype: chip, title, when, text, a grey "Javi nam se" to the contact), each switched off in edit mode by a new slot type, `FlagSlot` ("on" / "off" stored as copy, no schema change). A hidden card is not on a visitor's page, and with both hidden neither is the section; the editor sees it dimmed in edit mode only. Same task: on phones the three tiers' swipe row opens on PRO, the featured middle card.
 
 ## 5.10.2026 — the redesign is live; work continues on `master`
 

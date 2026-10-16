@@ -391,6 +391,23 @@
     body.editing .ed-x.armed { width: auto; padding: 0 10px; border-radius: 999px; color: var(--accent-tint-ink);
                                background: var(--accent-dim); font-weight: 700; }
     body.editing .ed-add:not([hidden]) { display: inline-flex; align-self: flex-start; min-height: 32px; margin-top: 12px; }
+    /* a part of a page the editor switches on and off (copy.FlagSlot: the
+       landing's announcements) carries a toggle at its top, in edit mode
+       only: green "● Prikazano" while visitors get it, grey "○ Skriveno"
+       while they do not. Hover deepens the colour it has, never floods red
+       (the base button:hover); both states are AA in both themes. */
+    .ed-flag { display: none; }
+    body.editing .ed-flag { display: inline-flex; align-self: flex-start; align-items: center; gap: 8px;
+                            min-height: 32px; margin-bottom: 14px; padding: 0 14px; border-radius: 999px;
+                            border: 1px solid var(--line); box-shadow: none; font: 700 .8rem var(--font-body);
+                            background: var(--surface-2); color: var(--muted); }
+    body.editing .ed-flag::before { content: "○"; content: "○" / ""; }
+    body.editing .ed-flag:hover { transform: none; color: var(--text);
+                                  background: color-mix(in srgb, var(--text) 10%, var(--surface-2)); }
+    body.editing .ed-flag[aria-pressed="true"] { background: var(--good-fill); color: var(--good-ink); border-color: transparent; }
+    body.editing .ed-flag[aria-pressed="true"]::before { content: "●"; content: "●" / ""; }
+    body.editing .ed-flag[aria-pressed="true"]:hover { color: var(--good-ink);
+                                                       background: color-mix(in srgb, var(--good-fill) 86%, var(--text)); }
     /* width: max-content: centred by left: 50%, the bar would otherwise
        shrink to half the window and wrap its buttons long before max-width */
     .copy-bar { position: fixed; top: calc(72px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
@@ -687,6 +704,8 @@
   // item at the end, which leaves no trace if it is cancelled unsaved; Zadano
   // puts the whole default list back. The server answers with the whole list
   // and the items are redrawn from it, so indexes always match the database.
+  // A flag's toggle (.ed-flag, copy.FlagSlot) saves "on" or "off" at a click,
+  // no confirm: hiding loses no text. Its box and group follow (flag below).
   (function () {
     var mode = false, cur = null, orig = "";
     var tog = document.getElementById("copyToggle"), bar = document.getElementById("copyBar");
@@ -719,7 +738,7 @@
       if (!quiet) { el.focus(); caretEnd(el); }      // quiet: a removal, no keyboard to pop up
     }
     function end(keep) {
-      if (!cur) return;
+      if (!cur) { bar.hidden = true; return; }      // nothing open: at most a failed switch's message
       var el = cur;
       if (!keep) el.textContent = orig;
       el.removeAttribute("contenteditable"); el.classList.remove("ed-on"); cur = null; bar.hidden = true;
@@ -795,15 +814,44 @@
       var li = item(ul, "", ul.children.length);
       li.firstChild.setAttribute("data-fresh", ""); ul.appendChild(li); fitAdd(ul); begin(li.firstChild);
     }
+    // A flag: the server's answer sets the toggle, marks its [data-flag] box
+    // .is-off or not, and its [data-flag-group] follows the boxes: .is-off
+    // when none is on, and .single on their row (the boxes' parent) when one
+    // is. A failure is said in the bar, under the toggle's label; Odustani
+    // closes it.
+    function flag(btn) {
+      end(false);
+      var on = btn.getAttribute("aria-pressed") !== "true";
+      function fail(text) {
+        if (!cur) { label.textContent = btn.dataset.label; count.textContent = ""; bar.hidden = false; }
+        msg.textContent = text;
+      }
+      fetch("/copy/" + encodeURIComponent(btn.dataset.copy), {
+        method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: "text=" + (on ? "on" : "off"), credentials: "same-origin"
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) { fail(d.error || "Nije spremljeno."); return; }
+        btn.setAttribute("aria-pressed", d.on ? "true" : "false"); btn.textContent = d.on ? "Prikazano" : "Skriveno";
+        btn.closest("[data-flag]").classList.toggle("is-off", !d.on);
+        var group = btn.closest("[data-flag-group]");
+        if (group) {
+          var boxes = group.querySelectorAll("[data-flag]"), shown = group.querySelectorAll("[data-flag]:not(.is-off)").length;
+          group.classList.toggle("is-off", shown === 0);
+          boxes[0].parentElement.classList.toggle("single", shown === 1);
+        }
+        if (!cur) bar.hidden = true;                 // an earlier failure's message goes
+      }).catch(function () { fail("Nije spremljeno — provjeri vezu."); });
+    }
     tog.addEventListener("click", function () {
-      if (cur) end(false);
+      end(false);
       mode = !mode; document.body.classList.toggle("editing", mode);
       tog.setAttribute("aria-pressed", mode ? "true" : "false"); tog.textContent = mode ? "✓ Gotovo" : "✎ Uredi tekstove";
     });
     document.addEventListener("click", function (e) {
       if (!mode) return;
-      var x = e.target.closest(".ed-x"), a = e.target.closest(".ed-add"), el = e.target.closest(".ed");
-      if (x) { e.preventDefault(); e.stopPropagation(); remove(x); }
+      var f = e.target.closest(".ed-flag"), x = e.target.closest(".ed-x"), a = e.target.closest(".ed-add"), el = e.target.closest(".ed");
+      if (f) { e.preventDefault(); e.stopPropagation(); flag(f); }
+      else if (x) { e.preventDefault(); e.stopPropagation(); remove(x); }
       else if (a) { e.preventDefault(); e.stopPropagation(); add(a); }
       else if (el) { e.preventDefault(); e.stopPropagation(); begin(el); }
     }, true);

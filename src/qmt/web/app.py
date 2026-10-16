@@ -49,6 +49,7 @@ app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=c
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["COPY"] = copy.SLOTS      # the editable texts and their limits (_copy.html)
 templates.env.globals["copy_items"] = copy.items_for   # a list slot's items (_copy.html, points)
+templates.env.globals["copy_flag"] = copy.flag_on      # a flag slot: on or off (landing.html, #aktualno)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 WEEKDAYS = ["Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota", "Nedjelja"]
@@ -264,7 +265,8 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
     JSON in both directions: this is called by fetch, never by a form. The
     limit is the slot's, enforced here as well as in the browser; an empty
     text, or reset=1, puts the template's default back. A list slot is edited
-    one item at a time (see _copy_save_list)."""
+    one item at a time (see _copy_save_list); a flag slot is switched, its
+    text "on" or "off" and nothing else."""
     user = current_user(request)
     if user is None:
         return JSONResponse({"ok": False, "error": "Prijava je istekla — prijavi se ponovno."}, status_code=401)
@@ -275,6 +277,14 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
         return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
     if isinstance(slot, copy.ListSlot):
         return _copy_save_list(key, slot, text, index, reset, user.id)
+    if isinstance(slot, copy.FlagSlot):
+        if reset == "1":
+            db.reset_copy(key)
+            return JSONResponse({"ok": True, "on": slot.default, "default": True})
+        if text not in ("on", "off"):
+            return JSONResponse({"ok": False, "error": "Nepoznata vrijednost."}, status_code=400)
+        db.set_copy(key, text, user.id)
+        return JSONResponse({"ok": True, "on": text == "on", "default": False})
     cleaned = "" if reset == "1" else copy.clean(text)
     if len(cleaned) > slot.max:
         return JSONResponse({"ok": False, "error": f"Najviše {slot.max} znakova — ovo ih ima {len(cleaned)}."},
