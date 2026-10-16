@@ -355,6 +355,13 @@
                     border-radius: 999px; background: var(--accent-dim); color: var(--accent-tint-ink);
                     font: 700 .68rem var(--font-body); letter-spacing: .08em; text-transform: uppercase; }
 
+    /* Every text from src/qmt/copy.py prints in a span.t (_copy.html), for
+       every viewer: the line breaks the owner saved (copy.clean keeps them)
+       show; runs of spaces were collapsed when it was saved. span.t, not .t:
+       .sess .t (a session's time, calendar and admin) is another class of
+       the same name. */
+    span.t { white-space: pre-line; }
+
     /* ---- in-place copy editor (trainer / owner only; _copy.html wraps each
        editable text in .ed). Off by default: a page is read before it is
        edited, and the stage is a link, so clicks must mean "edit" only in
@@ -384,14 +391,20 @@
     body.editing .ed-x.armed { width: auto; padding: 0 10px; border-radius: 999px; color: var(--accent-tint-ink);
                                background: var(--accent-dim); font-weight: 700; }
     body.editing .ed-add:not([hidden]) { display: inline-flex; align-self: flex-start; min-height: 32px; margin-top: 12px; }
+    /* width: max-content: centred by left: 50%, the bar would otherwise
+       shrink to half the window and wrap its buttons long before max-width */
     .copy-bar { position: fixed; top: calc(72px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
                 z-index: 60; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
-                max-width: calc(100% - 20px); padding: 8px 10px 8px 16px; border-radius: 999px;
+                width: max-content; max-width: calc(100% - 20px); padding: 8px 10px 8px 16px; border-radius: 999px;
                 background: var(--surface); color: var(--text); border: 1px solid var(--line); box-shadow: var(--shadow);
                 font: 500 .84rem var(--font-body); }
     .copy-bar .cb-label { color: var(--muted); }
     .copy-bar .cb-count { font-variant-numeric: tabular-nums; }
     .copy-bar .cb-count.over { color: var(--accent); font-weight: 700; }
+    /* how to save now that Enter is a new line; a phone keeps the bar small
+       (its keyboard has no Ctrl/⌘ — Spremi is the way there) */
+    .copy-bar .cb-hint { color: var(--muted); font-size: .78rem; }
+    @media (max-width: 599px) { .copy-bar .cb-hint { display: none; } }
     .copy-bar .cb-msg { color: var(--accent); font-weight: 600; }
     .copy-bar .cb-msg:empty { display: none; }
 
@@ -657,15 +670,18 @@
 {# the copy editor: a toggle, and a bar that appears while one text is open #}
 <button type="button" class="copy-toggle" id="copyToggle" aria-pressed="false">✎ Uredi tekstove</button>
 <div class="copy-bar" id="copyBar" hidden role="status" aria-live="polite">
-  <span class="cb-label"></span><span class="cb-count"></span><span class="cb-msg"></span>
+  <span class="cb-label"></span><span class="cb-count"></span><span class="cb-hint">Enter = novi red · ⌘/Ctrl+Enter = spremi</span><span class="cb-msg"></span>
   <button type="button" class="btn btn-sm" id="cbSave">Spremi</button>
   <button type="button" class="act act-quiet" id="cbReset" title="Vrati izvorni tekst">Zadano</button>
   <button type="button" class="act act-quiet" id="cbCancel">Odustani</button>
 </div>
 <script>
-  // Edit mode: every .ed becomes a text box on click. Enter or Spremi saves to
-  // /copy/<key>; Esc or Odustani restores; Zadano puts the template's default
-  // back. The limit is enforced while typing and again on the server.
+  // Edit mode: every .ed becomes a text box on click. Enter is a new line (the
+  // box is contenteditable="plaintext-only", and that is its own Enter);
+  // Ctrl+Enter / Cmd+Enter or Spremi saves to /copy/<key>; Esc or Odustani
+  // restores; Zadano puts the template's default back. The cap (2000
+  // characters, src/qmt/copy.py) is enforced while typing and again on the
+  // server, which tidies the text (copy.clean) and answers with what it kept.
   // An item of a list (data-index, _copy.html's points) saves with its index;
   // its ✕ saves it empty, which removes it; "+ Dodaj stavku" opens a new empty
   // item at the end, which leaves no trace if it is cancelled unsaved; Zadano
@@ -677,13 +693,18 @@
     var label = bar.querySelector(".cb-label"), count = bar.querySelector(".cb-count"), msg = bar.querySelector(".cb-msg");
     var resetBtn = document.getElementById("cbReset");
     function isItem(el) { return el.hasAttribute("data-index"); }
+    // "1 znak", "3 znaka", "5 znakova", "21 znak", "112 znakova"
+    function chars(n) {
+      var d = n % 10, h = n % 100;
+      return n + (d === 1 && h !== 11 ? " znak" : d >= 2 && d <= 4 && (h < 12 || h > 14) ? " znaka" : " znakova");
+    }
     function caretEnd(el) { var r = document.createRange(), sel = window.getSelection(); r.selectNodeContents(el); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); }
     function tick() {
       if (!cur) return;
       var max = +cur.dataset.max, t = cur.textContent;
       if (t.length > max) { cur.textContent = t.slice(0, max); caretEnd(cur); t = cur.textContent; }
-      count.textContent = t.length + " / " + max; count.classList.toggle("over", t.length >= max);
-      if (!t.length) msg.textContent = isItem(cur) ? "Prazno: Spremi uklanja stavku." : "Prazno: Spremi vraća izvorni tekst.";
+      count.textContent = chars(t.length); count.classList.toggle("over", t.length >= max);
+      if (!t.trim()) msg.textContent = isItem(cur) ? "Prazno: Spremi uklanja stavku." : "Prazno: Spremi vraća izvorni tekst.";
       else if (msg.textContent.indexOf("Prazno") === 0) msg.textContent = "";
     }
     function begin(el, quiet) {
@@ -707,7 +728,7 @@
     // one item, the same shape _copy.html renders
     function item(ul, text, i) {
       var li = document.createElement("li"), sp = document.createElement("span"), x = document.createElement("button");
-      sp.className = "ed"; sp.textContent = text;
+      sp.className = "ed t"; sp.textContent = text;
       sp.setAttribute("data-copy", ul.dataset.list); sp.setAttribute("data-index", i);
       sp.setAttribute("data-max", ul.dataset.max); sp.setAttribute("data-label", ul.dataset.label);
       x.type = "button"; x.className = "ed-x"; x.textContent = "✕"; x.setAttribute("aria-label", "Ukloni stavku " + (i + 1));
@@ -789,13 +810,16 @@
     document.addEventListener("input", function (e) { if (cur && e.target === cur) tick(); });
     document.addEventListener("keydown", function (e) {
       if (!cur) return;
-      if (e.key === "Enter") { e.preventDefault(); save(false); }
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(false); }   // a plain Enter: a new line
       else if (e.key === "Escape") { e.preventDefault(); end(false); }
     });
+    // a pasted text keeps its line breaks (as \n, whatever the source used);
+    // runs of spaces and tabs become one space
     document.addEventListener("paste", function (e) {
       if (!cur || e.target !== cur) return;
       e.preventDefault();
-      document.execCommand("insertText", false, ((e.clipboardData || window.clipboardData).getData("text/plain") || "").replace(/\s+/g, " "));
+      var t = (e.clipboardData || window.clipboardData).getData("text/plain") || "";
+      document.execCommand("insertText", false, t.replace(/\r\n?/g, "\n").replace(/[ \t]+/g, " "));
     });
     document.getElementById("cbSave").addEventListener("click", function () { save(false); });
     resetBtn.addEventListener("click", function () { save(true); });

@@ -108,7 +108,7 @@ active `online` plan → filled upitnik → matched programmes.
 | Path | Role |
 |---|---|
 | `src/qmt/config.py` | `.env`, `OWNER_EMAIL`/`ALLOWED_EMAILS`, booking knobs, prod guards |
-| `src/qmt/copy.py` | The texts a trainer/owner may edit in place: slot → default, character limit, label |
+| `src/qmt/copy.py` | The texts a trainer/owner may edit in place: slot → default text, label; a 2000-character cap, no design limit since 16.10.2026 |
 | `src/qmt/models.py` | `User` (+profile fields), `SessionTemplate`, `TrainingSession`, `Booking`, `Membership`, `Payment`, `OnboardingResponse`, `TrainingLog`, `Program`(level/goal)/`ProgramItem`; `PLAN_*`, `FEELING_LABELS`, `PAYMENT_METHODS` |
 | `src/qmt/db.py` | Queries + rules. **`book()` locks the session row FOR UPDATE** and re-counts inside the lock (tested) |
 | `src/qmt/upitnik.py` | Questions, scoring thresholds, level/goal labels |
@@ -157,16 +157,24 @@ active `online` plan → filled upitnik → matched programmes.
   `invite` (`tests/conftest.py`).
 - **Public copy is editable in place** by the trainer and the owner (6.10.2026, so
   the gym owner fine-tunes the texts himself). Every such text is a slot in
-  `src/qmt/copy.py` with a character limit its box can take, printed through
-  `{{ c.t("key") }}` (`_copy.html`); the editor in `base.html` ("✎ Uredi
-  tekstove", then click a text; Enter saves, Esc cancels, "Zadano" restores the
-  default) posts to `/copy/{key}`, which enforces the limit again and stores
-  the text in `site_copy`. Adding a text = one registry line + the macro call;
-  `tests/test_copy.py` then checks it is on a page and, in a real browser, that
-  every slot at its limit still fits at 360 / 390 / 900 / 1280px. Never put a
-  slot inside a link's `href` or an attribute — the editor edits text nodes.
-  **Lists** (15.10.2026, the offer cards' bullets) are a `ListSlot`: a count
-  limit and a per-item limit, one `site_copy` row holding a JSON array, printed
+  `src/qmt/copy.py`, printed through `{{ c.t("key") }}` (`_copy.html`) in a
+  `span.t` for every viewer; the editor in `base.html` ("✎ Uredi tekstove",
+  then click a text; Enter is a new line, ⌘/Ctrl+Enter saves, Esc cancels,
+  "Zadano" restores the default) posts to `/copy/{key}`, which enforces the cap
+  again and stores the text in `site_copy`. **No per-box limits since
+  16.10.2026** (the owner's call: the copy first, then a design pass that fits
+  the boxes to the final texts): every text takes up to 2000 characters, a cap
+  against a stray paste. Line breaks are kept (`copy.clean` collapses spaces
+  and tabs, allows one empty line in a row) and show (`span.t`, `white-space:
+  pre-line`). Adding a text = one registry line + the macro call;
+  `tests/test_copy.py` then checks it is on a page and, in a real browser at
+  360 / 390 / 900 / 1280px, guards overflow only: 300-character texts and line
+  breaks never widen a page or get cut (the photo card's caption, clamped in
+  the card, is the one cut on purpose), and the cards' prices stay level.
+  Never put a slot inside a link's `href` or an attribute — the editor edits
+  text nodes.
+  **Lists** (15.10.2026, the offer cards' bullets) are a `ListSlot`: up to 12
+  items of up to 2000 characters, one `site_copy` row holding a JSON array, printed
   through `{{ c.points("key") }}`. In edit mode each item has a ✕ and the list
   a "+ Dodaj stavku"; an item saves with its `index` (n appends, an empty text
   removes it) and "Zadano (cijela lista)" (`reset=1`) restores the whole list.

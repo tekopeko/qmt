@@ -1,4 +1,4 @@
-# Where the last session left off — 15.10.2026.
+# Where the last session left off — 16.10.2026.
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
@@ -22,6 +22,8 @@ the rest are copy slots the owner types. Dvorana and Individualno sit in
 15.10.2026, second task (Opus draft, awaiting review): after a booking on `/raspored` the ok alert offers "Isti termin svaki tjedan do …", which books the same weekly slot for the rest of the paid period (`db.book_series`, `POST /book/{id}/series`; no schema change).
 
 15.10.2026, third task (Opus draft, awaiting review): the gym (`#dvorana`) has the Mjesečno / Godišnje switch too, one choice with the tiers' (either switch flips every card on the page): Dvorana and Individualno keep their real monthly prices, the yearly ones are copy slots (`offer.dvorana.year_*`, `offer.individualno.year_*`), and on phones the two cards are a swipe row with two dots, one carousel (`.swipe-row`) for both sections.
+
+16.10.2026 (Opus draft, awaiting review): the owner lifted the copy limits (the copy first, a design pass once it is final): every slot takes up to 2000 characters (lists 12 items), line breaks are kept and show (`span.t`, pre-line), Enter is a new line in the editor and ⌘/Ctrl+Enter saves; `tests/test_copy.py` guards overflow and clipping only, and the photo card's caption is clamped inside the card.
 
 ## 5.10.2026 — the redesign is live; work continues on `master`
 

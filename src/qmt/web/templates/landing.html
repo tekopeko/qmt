@@ -64,6 +64,14 @@
   .stage .tags.r { right: 18px; justify-content: flex-end; }
   /* the right inset leaves the arrow its corner */
   .stage .copy { position: absolute; z-index: 1; left: clamp(18px, 3vw, 36px); right: calc(clamp(18px, 3vw, 34px) + 56px); bottom: clamp(18px, 3vw, 34px); color: #fff; text-align: left; }
+  /* The caption is the owner's text, any length since 16.10.2026: a long one
+     is cut inside the card, as far from its top as from its bottom, rather
+     than spill out of the photo, until the design pass fits the card to the
+     final copy. The 6px of padding, given back by the margin, keep tall
+     capitals (Č, Š, Ž) and the editor's dashed outline inside the cut; the
+     text sits where it did. */
+  .stage .copy { max-height: calc(100% - 2 * clamp(18px, 3vw, 34px) + 12px); overflow: hidden;
+                 padding: 6px; margin: -6px; }
   .stage .copy h2 { font-size: clamp(1.4rem, 3.4vw, 2.4rem); color: #fff; margin-bottom: 8px; }
   .stage .copy p { max-width: 48ch; color: rgba(255,255,255,.82); font-size: clamp(.92rem, 1.3vw, 1.05rem); }
   /* phones: a wide band, not a tall one — a 4:5 window on a landscape photo
@@ -160,7 +168,7 @@
   @media (min-width: 900px) { .gym-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
                                           max-width: 760px; margin-inline: auto; } }
   .offer h3 { font: 700 italic 1.5rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
-  /* two lines reserved, so the three lists start level when a lead wraps */
+  /* two lines kept free, so the three lists start level when a lead wraps */
   .offer .lead { color: var(--muted); font-size: .95rem; margin-top: 6px; min-height: 2.9em; }
   .offer ul { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
   .offer li { display: flex; gap: 12px; align-items: flex-start; font-size: .95rem; line-height: 1.4; }
@@ -181,7 +189,7 @@
      whatever is typed (the move .lead makes for its two lines): the number
      line, the row gap, the unit line. */
   /* Three columns between 900 and 1100px leave a card 209-273px inside, where a
-     price at its limit (9 + 11 characters) wraps its unit under the number; the
+     long price wraps its unit under the number; the
      second line is reserved there so the three stay level. Wider, and on a
      phone with the smaller number below, the limits fit one line. The gym's
      cards are 314px inside at those widths, where the limits fit one line,
@@ -244,9 +252,10 @@
 
   footer { padding: 26px clamp(16px, 4vw, 40px) 40px; color: var(--muted); font-size: .84rem; text-align: center; }
   /* everything the owner can retype: a word that does not fit its box breaks
-     rather than widening the page (the limits keep this from ever being seen
-     with real words; it is the net under them) */
-  .hero h1, .hero .lead, .hero .kicker, .hero-note, .stage .copy, .sec-kicker, section.band h2, .offer h3, .offer .lead,
+     rather than widening the page. Since the limits were lifted (16.10.2026)
+     this is the net under every such text. The chips are in it because their
+     text (span.t, pre-line) wraps now, where .tag alone would not. */
+  .hero h1, .hero .lead, .hero .kicker, .hero-note, .stage .copy, .stage .tags, .sec-kicker, section.band h2, .offer h3, .offer .lead,
   .offer li, .offer .addon, .offer .price, .offer .price-note, .info h3, .info td, footer { overflow-wrap: anywhere; }
 </style>
 {% endblock %}

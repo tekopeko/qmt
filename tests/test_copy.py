@@ -1,11 +1,13 @@
-"""In-place editable copy: src/qmt/copy.py (the slots and their limits),
+"""In-place editable copy: src/qmt/copy.py (the slots and their caps),
 POST /copy/{key} (the save), _copy.html (the macros), the editor in base.html,
 and the migration that turned the offer cards' bullets into lists.
 
-The browser half is what makes the limits TRUE: it starts the app in a thread,
-fills every slot to its limit — once with words, once with one unbreakable
-word — and measures the pages at four widths. A limit generous enough to let a
-text break its box fails here, not on the owner's phone.
+The browser half is the net under the texts. Their design limits were lifted
+on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
+slot with a long text — once with words, once with one unbreakable word —
+gives the hero lead three lines, and measures the pages at four widths.
+Nothing may overflow or be cut, and the cards' prices stay level. It proves
+no design; that pass comes once the copy is final.
 """
 
 from __future__ import annotations
@@ -70,19 +72,25 @@ def test_only_a_trainer_saves_and_the_limit_and_reset_hold():
     assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "x"}).status_code == 403
 
     t = client_for("trener@test.local")
-    r = t.post(f"/copy/{key}", data={"text": "  Novi   uvodni\n tekst.  "})
-    assert r.status_code == 200 and r.json() == {"ok": True, "text": "Novi uvodni tekst.", "default": False}
-    assert "Novi uvodni tekst." in TestClient(app).get("/").text          # everyone reads the edit
-    assert 'data-copy="hero.lead"' not in TestClient(app).get("/").text   # ...without editor markup
-    assert 'data-copy="hero.lead"' in t.get("/").text                     # the editor has it
+    r = t.post(f"/copy/{key}", data={"text": "  Novi   uvodni\n tekst.  "})   # spaces collapse, the line break stays
+    assert r.status_code == 200 and r.json() == {"ok": True, "text": "Novi uvodni\ntekst.", "default": False}
+    page = TestClient(app).get("/").text                                    # everyone reads the edit, in a .t span
+    assert '<span class="t">Novi uvodni\ntekst.</span>' in page             # (span.t prints the line break)
+    assert 'data-copy="hero.lead"' not in page                              # ...without editor markup
+    assert (f'<span class="ed t" data-copy="{key}" data-max="2000" data-label="{slot.label}">'
+            "Novi uvodni\ntekst.</span>") in t.get("/").text                 # the editor has it
+    r = t.post(f"/copy/{key}", data={"text": " a \n\n\n\n b "})              # one empty line at most
+    assert r.json()["text"] == "a\n\nb" and db.copy_texts()[key] == "a\n\nb"
 
-    r = t.post(f"/copy/{key}", data={"text": "x" * (slot.max + 1)})
-    assert r.status_code == 400 and f"Najviše {slot.max} znakova" in r.json()["error"]
-    assert t.post(f"/copy/{key}", data={"text": "x" * slot.max}).status_code == 200
+    r = t.post(f"/copy/{key}", data={"text": "x" * 2001})                   # the cap: against a stray paste
+    assert r.status_code == 400 and r.json()["error"] == "Najviše 2000 znakova — ovo ih ima 2001."
+    assert t.post(f"/copy/{key}", data={"text": "x" * 2000}).status_code == 200
     assert t.post("/copy/no.such.slot", data={"text": "x"}).status_code == 404
 
-    r = t.post(f"/copy/{key}", data={"text": "   "})                       # empty = back to the default
-    assert r.json() == {"ok": True, "text": slot.default, "default": True}
+    for blank in ("   ", " \n \n\n "):                                       # empty = back to the default,
+        t.post(f"/copy/{key}", data={"text": "Nešto."})                     # line breaks alone are empty too
+        r = t.post(f"/copy/{key}", data={"text": blank})
+        assert r.json() == {"ok": True, "text": slot.default, "default": True}
     assert slot.default in TestClient(app).get("/").text and db.copy_texts() == {}
 
     t.post(f"/copy/{key}", data={"text": "Opet novi."})                     # reset=1 does the same
@@ -121,14 +129,17 @@ def test_a_list_slot_takes_edits_additions_and_removals_within_its_limits():
     assert post(text="x", index="-1").status_code == 400
     assert post(text="x", index="dva").status_code == 400
 
-    for n in range(3, slot.max_items):                                      # up to six...
+    for n in range(3, 12):                                                  # up to twelve...
         assert post(text=f"Stavka {n}", index=str(n)).status_code == 200
-    r = post(text="Sedma", index=str(slot.max_items))                       # ...and not one more
-    assert r.status_code == 400 and r.json()["error"] == f"Najviše {slot.max_items} stavki."
-    r = post(text="x" * (slot.max_chars + 1), index="0")
-    assert r.status_code == 400 and f"Najviše {slot.max_chars} znakova" in r.json()["error"]
-    assert post(text="x" * slot.max_chars, index="0").status_code == 200
-    assert len(json.loads(db.copy_texts()[key])) == slot.max_items
+    r = post(text="Trinaesta", index="12")                                  # ...and not one more
+    assert r.status_code == 400 and r.json()["error"] == "Najviše 12 stavki."
+    r = post(text="x" * 2001, index="0")
+    assert r.status_code == 400 and r.json()["error"] == "Najviše 2000 znakova — ovo ih ima 2001."
+    assert post(text="x" * 2000, index="0").status_code == 200
+    assert len(json.loads(db.copy_texts()[key])) == 12
+    r = post(text=" Prvi red \n\n\n drugi red ", index="1")                # an item keeps its line breaks too
+    assert r.json()["items"][1] == "Prvi red\n\ndrugi red"
+    assert '<li><span class="t">Prvi red\n\ndrugi red</span></li>' in TestClient(app).get("/").text
 
     r = post(text="ignoriran", reset="1")                                   # Zadano: the whole default list
     assert r.json() == {"ok": True, "items": d, "default": True} and key not in db.copy_texts()
@@ -196,13 +207,24 @@ def test_every_slot_is_on_exactly_one_page_and_only_editors_see_the_editor():
 
 
 # ---------- the layout, measured in a browser ----------
+#
+# No slot has a design limit since 16.10.2026 (src/qmt/copy.py): the copy
+# comes first, and a design pass fits the boxes to it once it is final. So
+# this proves no design at a limit; it proves the net under the texts. Long
+# texts (300 characters, lists of 12 items of 60) and line breaks may make a
+# box tall, but nothing may widen a page or leave the topbar's pill, an
+# editable span never changes a font, nothing is cut by a box that hides its
+# overflow, and the cards' prices stay level across each row.
 
 WORDS = ("trening snaga pokret zdravlje tehnika grupa trener dvorana program "
          "ravnoteža mobilnost izdržljivost oporavak sprava").split()
 
+LONG, ITEMS, ITEM = 300, 12, 60     # a long text; a list of 12 items, 60 characters each
+LINES = "Male grupe do 8 polaznika.\nIndividualni rad 1:1.\nPovratak nakon ozljede."   # a lead in three lines
+
 
 def words(n: int) -> str:
-    """n characters of real-looking words (the longest text a slot allows)."""
+    """n characters of real-looking words."""
     out, i = "", 0
     while len(out) < n:
         out = f"{out} {WORDS[i % len(WORDS)]}".strip(); i += 1
@@ -241,23 +263,35 @@ MEASURE = r"""(strict) => {
   // typography: an editable span never changes the font of what it sits in
   for (const el of document.querySelectorAll('[data-copy]')) { const a = getComputedStyle(el), b = getComputedStyle(el.parentElement);
     if (a.fontFamily !== b.fontFamily || a.fontSize !== b.fontSize || a.fontWeight !== b.fontWeight) out.problems.push(`${el.dataset.copy} changes the font`); }
-  if (!strict) return out;      // one unbreakable word: it may wrap anywhere, it must only never widen
-  const lines = el => { const cs = getComputedStyle(el); const lh = px(cs.lineHeight) || px(cs.fontSize) * 1.2; return el.getBoundingClientRect().height / lh; };
-  const h1 = document.querySelector('.hero h1');
-  if (h1 && lines(h1) > 4.3) out.problems.push(`hero h1 runs to ${lines(h1).toFixed(1)} lines`);
-  for (const h of document.querySelectorAll('.offer h3')) if (lines(h) > 1.3) out.problems.push(`offer title "${h.textContent.slice(0, 20)}" wraps`);
-  for (const l of document.querySelectorAll('.offer .lead')) if (lines(l) > 2.3) out.problems.push(`offer lead runs to ${lines(l).toFixed(1)} lines`);
-  for (const p of document.querySelectorAll('.plan p')) if (lines(p) > 3.3) out.problems.push(`cjenik description runs to ${lines(p).toFixed(1)} lines`);
-  const stage = document.querySelector('.stage'); if (stage) { const s = stage.getBoundingClientRect(), c = stage.querySelector('.copy').getBoundingClientRect(), h2 = stage.querySelector('.copy h2');
-    if (c.top < s.top + 40 || c.bottom > s.bottom) out.problems.push('stage copy leaves the photo'); if (lines(h2) > 2.3) out.problems.push('stage title runs past two lines'); }
-  // rows of cards: the prices sit on one line across each row (the cjenik's
-  // featured card is raised by a transform on purpose; measure as if it were not)
+  // nothing is cut: a text (span.t, every viewer's, editor or not) never
+  // reaches past an ancestor that hides its overflow. The one clamp on
+  // purpose is the photo card's caption (.stage .copy, landing.html): what is
+  // in it counts as far as it shows, and the caption must sit in the card.
+  const hides = cs => ['hidden', 'clip'].includes(cs.overflowX) || ['hidden', 'clip'].includes(cs.overflowY);
+  for (const el of document.querySelectorAll('span.t')) {
+    if (!vis(el)) continue;
+    let {left: l, top: t, right: r, bottom: b} = el.getBoundingClientRect();
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      if (!hides(getComputedStyle(a))) continue;
+      const box = a.getBoundingClientRect();
+      if (a.matches('.stage .copy')) { l = Math.max(l, box.left); t = Math.max(t, box.top); r = Math.min(r, box.right); b = Math.min(b, box.bottom); continue; }
+      if (l < box.left - 1 || t < box.top - 1 || r > box.right + 1 || b > box.bottom + 1) {
+        const what = el.dataset.copy || `${el.parentElement.tagName.toLowerCase()}.${el.parentElement.className}`;
+        out.problems.push(`${what} "${el.textContent.slice(0, 12)}…" is cut by ${a.tagName.toLowerCase()}.${(a.className || '').toString().slice(0, 30)}`); break; }
+    }
+  }
+  if (!strict) return out;      // one unbreakable word: it may wrap anywhere, it must only never widen or be cut
+  // rows of cards: the prices sit level across each row. A price is text the
+  // owner may make any length, so it may wrap: it is measured at its bottom
+  // edge, which the foot pinned to the bottom of a landing card keeps level
+  // whatever is typed (the cjenik's featured card is raised by a transform on
+  // purpose; measure as if it were not)
   const ty = el => { const m = getComputedStyle(el).transform.match(/matrix\(([^)]+)\)/); return m ? px(m[1].split(',')[5]) : 0; };
   // a tier card holds a monthly and a yearly price; the one shown is measured
   const price = card => [...card.querySelectorAll('.price')].find(vis);
   for (const sel of ['.offer', '.plan']) { const rows = {};
-    for (const card of document.querySelectorAll(sel)) { const top = Math.round((card.getBoundingClientRect().top - ty(card)) / 20); (rows[top] ||= []).push(Math.round(price(card).getBoundingClientRect().top - ty(card))); }
-    for (const tops of Object.values(rows)) if (Math.max(...tops) - Math.min(...tops) > 1) out.problems.push(`${sel} prices not level: ${tops.join(', ')}`); }
+    for (const card of document.querySelectorAll(sel)) { const top = Math.round((card.getBoundingClientRect().top - ty(card)) / 20); (rows[top] ||= []).push(Math.round(price(card).getBoundingClientRect().bottom - ty(card))); }
+    for (const bottoms of Object.values(rows)) if (Math.max(...bottoms) - Math.min(...bottoms) > 1) out.problems.push(`${sel} prices not level: ${bottoms.join(', ')}`); }
   return out;
 }"""
 
@@ -265,15 +299,15 @@ MEASURE = r"""(strict) => {
 # online tiers and the gym's two. On a wide screen the tiers are three columns
 # and the gym two; below 900px each is a swipe row with a dot per card (made
 # by the script, so the count and the labels follow the cards). The shown
-# prices are level across a row either way (the featured tier hangs 16px past
-# its neighbours on a desktop, so the row check above can miss it; this one
-# cannot).
+# prices are level across a row either way, at their bottom edge as in MEASURE
+# (the featured tier hangs 16px past its neighbours on a desktop, so the row
+# check above can miss it; this one cannot).
 LANDING = r"""([w, strict]) => {
   const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().width > 0; };
   const out = [], top = el => el.getBoundingClientRect().top, price = card => [...card.querySelectorAll('.price')].find(vis);
   const level = (cards, what) => { if (!strict) return;       // one unbreakable word: it only must not widen
-    const t = cards.map(c => Math.round(top(price(c))));
-    if (Math.max(...t) - Math.min(...t) > 1) out.push(`${what} prices not level: ${t.join(', ')}`); };
+    const b = cards.map(c => Math.round(price(c).getBoundingClientRect().bottom));
+    if (Math.max(...b) - Math.min(...b) > 1) out.push(`${what} prices not level: ${b.join(', ')}`); };
   // [section, cards, name, how far a card may stand out of the row on a desktop]
   for (const [sec, n, what, slack] of [['#usluge', 3, 'tier', 17], ['#dvorana', 2, 'gym', 1]]) {
     const row = document.querySelector(`${sec} .swipe-row`), cards = row ? [...row.children] : [];
@@ -317,20 +351,30 @@ PERIOD = r"""(p) => {
   return out;
 }"""
 
+# The hero lead in three lines (LINES): the line breaks show, so its span.t is
+# three lines tall, not the one line the same words take without them.
+LEAD = r"""() => {
+  const t = document.querySelector('.hero .lead span.t');
+  if (!t) return ['no span.t in the hero lead'];
+  const cs = getComputedStyle(t), lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;
+  const n = t.getBoundingClientRect().height / lh;
+  return n < 2.5 ? [`the three-line hero lead shows as ${n.toFixed(1)} lines`] : [];
+}"""
 
-def test_layout_holds_with_every_slot_at_its_limit(server):
+
+def test_layout_holds_with_long_texts_and_line_breaks(server):
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
     make_user("trener@test.local", is_trainer=True); make_user("ivan@test.local", plans=("grupni",))
 
     def fill(make):
         for key, slot in copy.SLOTS.items():
-            if isinstance(slot, copy.ListSlot):         # every list full, every item at its limit
-                db.set_copy(key, copy.dump_items([make(slot.max_chars)] * slot.max_items), None)
-            else:
-                db.set_copy(key, make(slot.max), None)
+            if isinstance(slot, copy.ListSlot):         # every list 12 items long, each item 60 characters
+                db.set_copy(key, copy.dump_items([make(min(slot.max_chars, ITEM))] * min(slot.max_items, ITEMS)), None)
+            else:                                       # every text 300 characters
+                db.set_copy(key, make(min(slot.max, LONG)), None)
 
-    def walk(pw, email, widths, label, strict=True):
+    def walk(pw, email, widths, label, strict=True, lead=False):
         problems = []
         for w in widths:
             phone = w < 600
@@ -345,6 +389,8 @@ def test_layout_holds_with_every_slot_at_its_limit(server):
                 problems += [f"{where} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
                 if path != "/":
                     continue
+                if lead:
+                    problems += [f"{where} {p}" for p in pg.evaluate(LEAD)]
                 problems += [f"{where} {p}" for p in pg.evaluate(LANDING, [w, strict])]
                 if not all(pg.locator(f"{sec} .period").is_visible() for sec in ("#usluge", "#dvorana")):
                     problems.append(f"{where} no Mjesečno / Godišnje switch under each row"); continue
@@ -362,10 +408,13 @@ def test_layout_holds_with_every_slot_at_its_limit(server):
         return problems
 
     with sync_playwright() as pw:
-        fill(words)                                   # the longest texts the limits allow
+        fill(words)                                   # long texts: 300 characters, lists of 12
         problems = walk(pw, None, (360, 390, 900, 1280), "words")
         problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words")
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")
+        db.set_copy("hero.lead", LINES, None)         # line breaks: the lead in three lines
+        problems += walk(pw, None, (390, 1280), "lines", lead=True)
+        problems += walk(pw, "trener@test.local", (390,), "lines", lead=True)
         fill(lambda n: "W" * n)                       # one unbreakable word: must wrap, never widen
         problems += walk(pw, "trener@test.local", (360, 1280), "one-word", strict=False)
     print("\n".join(problems))
