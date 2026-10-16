@@ -8,7 +8,10 @@ slot with a long text — once with words, once with one unbreakable word —
 gives the first announcement's text three lines, and measures the pages at
 four widths.
 Nothing may overflow or be cut, and the cards' prices stay level. It proves
-no design; that pass comes once the copy is final.
+no design; that pass comes once the copy is final. On the way it walks the
+landing's rows of cards, the announcements' among them (on a phone they move
+on by themselves, and hold still when they must), and the install banner's
+week between asks.
 """
 
 from __future__ import annotations
@@ -187,21 +190,23 @@ def test_the_announcements_show_what_is_on_and_the_editor_keeps_what_is_off():
     assert 'id="aktualno"' in page and one in page and two in page          # under the headline, above the photo
     assert page.index("<h1") < page.index('id="aktualno"') < page.index('class="stage"')
     assert page.count('<a class="act" href="/#kontakt"><span class="t">Javi nam se</span></a>') == 2
+    assert '<div class="evs swipe-row" id="aktualno" data-auto="5000">' in page          # a phone's swipe row,
+    assert '<div class="dots" role="group" aria-label="Aktualno" hidden></div>' in page  # its dots the script's
 
     db.set_copy("event2.show", "off", None)                                 # one off: gone from a visitor's page
-    for c in (TestClient(app), client_for("ivan@test.local")):              # and a client's
+    for c in (TestClient(app), client_for("ivan@test.local")):              # and a client's, the one left alone
         page = c.get("/").text
-        assert one in page and two not in page
+        assert one in page and two not in page and 'class="evs swipe-row single"' in page
         assert 'is-off"' not in page
     page = client_for("trener@test.local").get("/").text                    # the editor has it, marked off
-    assert two in page and 'data-flag-group' in page
+    assert two in page and 'data-flag-group' in page and 'class="evs swipe-row single"' in page
     assert '<article class="card event is-off" data-flag="event2.show">' in page
 
     db.set_copy("event1.show", "off", None)                                 # both off: not even their box
     page = TestClient(app).get("/").text
-    assert 'id="aktualno"' not in page and one not in page and two not in page
+    assert 'id="aktualno"' not in page and one not in page and two not in page and 'aria-label="Aktualno"' not in page
     page = client_for("trener@test.local").get("/").text                    # the editor keeps both, and the box
-    assert '<div class="evs is-off" id="aktualno"' in page and one in page and two in page
+    assert '<div class="evs swipe-row is-off" id="aktualno"' in page and one in page and two in page
     assert page.count('<article class="card event is-off" data-flag="') == 2
     assert page.count('aria-pressed="false">Skriveno</button>') == 2
 
@@ -277,6 +282,8 @@ WORDS = ("trening snaga pokret zdravlje tehnika grupa trener dvorana program "
 
 LONG, ITEMS, ITEM = 300, 12, 60     # a long text; a list of 12 items, 60 characters each
 LINES = "Male grupe do 8 polaznika.\nIndividualni rad 1:1.\nPovratak nakon ozljede."   # a text in three lines
+IPHONE = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
+          "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")   # the install banner's iOS steps
 
 
 def words(n: int) -> str:
@@ -396,6 +403,41 @@ LANDING = r"""([w, strict]) => {
   return out;
 }"""
 
+# The announcements (#aktualno, in the hero), both on in every walk (fill()
+# leaves the flags alone). Below 900px a swipe row exactly as wide as the
+# screen (it runs to the edges like the tiers' row; the hero keeps its gutter
+# for the rest) with a dot per card under it, the first lit on load. From
+# 900px two cards side by side and no dots, each card a header line (chip,
+# title over when, the link) with its text on a line of its own under it.
+AKTUALNO = r"""(w) => {
+  const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().width > 0; };
+  const out = [], row = document.querySelector('#aktualno');
+  if (!row) return ['no announcements'];
+  const cards = [...row.querySelectorAll('.event')].filter(vis), dots = [...document.querySelectorAll('#aktualno + .dots button')].filter(vis);
+  if (cards.length !== 2) out.push(`${cards.length} announcements shown`);
+  if (w < 900) {
+    const r = row.getBoundingClientRect();
+    if (!row.classList.contains('swipe-row') || getComputedStyle(row).overflowX !== 'auto') out.push('the announcements are not a swipe row');
+    if (Math.abs(r.width - innerWidth) > 1 || Math.abs(r.left) > 1) out.push(`the announcements' row is ${r.width}px wide at ${r.left}, the screen ${innerWidth}px`);
+    if (dots.length !== 2) out.push(`${dots.length} dots under the announcements`);
+    dots.forEach((d, i) => { const b = d.getBoundingClientRect();
+      if (b.width < 32 || b.height < 32) out.push(`an announcement dot is ${b.width}x${b.height}`);
+      if (d.getAttribute('aria-label') !== `Kartica ${i + 1} od 2`) out.push(`announcement dot ${i + 1} says "${d.getAttribute('aria-label')}"`); });
+    const lit = dots.findIndex(d => d.getAttribute('aria-current') === 'true');
+    if (lit !== 0) out.push(`the announcements start on card ${lit + 1}, not 1`);
+  } else {
+    if (dots.length) out.push('dots under the announcements on a wide screen');
+    const cols = getComputedStyle(row).gridTemplateColumns.split(' ').length;
+    if (cols !== 2) out.push(`the announcements are in ${cols} columns`);
+    const t = cards.map(c => c.getBoundingClientRect().top);
+    if (Math.max(...t) - Math.min(...t) > 1) out.push(`the announcements are not side by side: ${t.join(', ')}`);
+    for (const c of cards)
+      if (c.querySelector('.text').getBoundingClientRect().top < c.querySelector('.foot').getBoundingClientRect().bottom - 1)
+        out.push("an announcement's text is not on a line of its own under the link");
+  }
+  return out;
+}"""
+
 # Mjesečno / Godišnje: one choice, two switches (under the tiers, under the
 # gym). Every card of both sections shows exactly the chosen price, and both
 # switches say it.
@@ -429,7 +471,7 @@ EVENT_TEXT = r"""() => {
 
 def test_layout_holds_with_long_texts_and_line_breaks(server):
     pytest.importorskip("playwright")
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright
     make_user("trener@test.local", is_trainer=True); make_user("ivan@test.local", plans=("grupni",))
 
     def fill(make):
@@ -441,10 +483,12 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             else:                                       # every text 300 characters
                 db.set_copy(key, make(min(slot.max, LONG)), None)
 
-    def flip(pg):
+    def flip(pg, w):
         """The editor's switch in a browser: in edit mode the first
         announcement, switched off, stays on the page with its content dimmed
-        (not its toggle); after a reload it is gone and the second is there.
+        (not its toggle), and on a wide screen both columns stay; after a
+        reload it is gone and the second is alone (.single on their box): the
+        whole row on a phone, one column of at most 760px on a wide screen.
         Switched back on for the walks after this one."""
         out = []
         pg.click("#copyToggle"); pg.locator("#aktualno .ed-flag").first.click()
@@ -454,17 +498,92 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
           return [c.getBoundingClientRect().height > 0, o(c.querySelector('.head')), o(c.querySelector('.ed-flag'))]; }""")
         if seen != [True, 0.55, 1]:
             out.append(f"a strip switched off in edit mode (shown, its title block's and its toggle's opacity): {seen}")
+        cols = "() => getComputedStyle(document.querySelector('#aktualno')).gridTemplateColumns.split(' ').length"
+        if w >= 900 and pg.evaluate(cols) != 2:
+            out.append(f"in edit mode, one announcement off, they are in {pg.evaluate(cols)} columns, not both")
         pg.reload(); pg.wait_for_load_state("networkidle")
         cards = pg.locator("#aktualno .event")
         if cards.nth(0).is_visible() or not cards.nth(1).is_visible():
             out.append("after a reload the card switched off shows, or the other one does not")
+        alone = pg.evaluate("""() => { const row = document.querySelector('#aktualno'), cs = getComputedStyle(row), [a, b] = row.querySelectorAll('.event');
+          return {single: row.classList.contains('single'), off: getComputedStyle(a).display, width: b.getBoundingClientRect().width,
+                  room: row.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight),
+                  cols: cs.gridTemplateColumns.split(' ').length, row: row.getBoundingClientRect().width}; }""")
+        if not alone["single"] or alone["off"] != "none":
+            out.append(f"after a reload their box is not .single, or the card switched off is not display: none: {alone}")
+        if w < 900 and abs(alone["width"] - alone["room"]) > 1:
+            out.append(f"the one announcement left is {alone['width']}px of the row's {alone['room']}px")
+        if w >= 900 and (alone["cols"] != 1 or alone["row"] > 761):
+            out.append(f"the one announcement left is in {alone['cols']} columns, {alone['row']}px wide")
         if db.copy_texts().get("event1.show") != "off":
             out.append("the switch was not stored")
         out += pg.evaluate(MEASURE, True)["problems"]
         db.set_copy("event1.show", "on", None)
         return out
 
-    def walk(pw, email, widths, label, strict=True, lines=False, switch=None):
+    ROW = "document.querySelector('#aktualno')"
+    STATE = f"() => [{ROW}.scrollLeft, [...document.querySelectorAll('#aktualno + .dots button')].map(d => d.getAttribute('aria-current')).join()]"
+    IN_VIEW = f"() => window.scrollTo({{top: scrollY + {ROW}.getBoundingClientRect().top - 60, behavior: 'instant'}})"
+
+    def advance(pg):
+        """The announcements move on by themselves on a phone (the landing's
+        script): with their row on the screen (the long texts push it below
+        the fold, and off the screen it holds still), the second card is in
+        and its dot lit within one tick (5 s) and the glide. A touch starts
+        the whole delay again: tapped about a second before the next tick
+        was due, nothing moves for the 2 s after the finger lifts."""
+        pg.evaluate(IN_VIEW)
+        try:
+            t = pg.wait_for_function(f"""() => {{ const d = document.querySelectorAll('#aktualno + .dots button');
+              return d.length === 2 && d[1].getAttribute('aria-current') === 'true' && {ROW}.scrollLeft > 0 && performance.now(); }}""",
+              timeout=8000).json_value()
+        except PlaywrightTimeout:
+            return [f"the announcements did not move on by themselves in 8 s: {pg.evaluate(STATE)}"]
+        pg.wait_for_function(f"() => performance.now() > {t + 3500}")      # the next tick about a second away
+        h = pg.locator("#aktualno .event").nth(1).locator("h2").bounding_box()
+        pg.touchscreen.tap(h["x"] + h["width"] / 2, h["y"] + h["height"] / 2)
+        before = pg.evaluate(STATE); pg.wait_for_timeout(2000); after = pg.evaluate(STATE)
+        return [] if after == before else [f"the announcements moved within 2 s of a touch: {before} -> {after}"]
+
+    def still(pw):
+        """Under reduced motion the announcements never move by themselves
+        (a swipe and the dots still work): 6.5 s on, with their row on the
+        screen, the first card is still the one in view."""
+        ctx = pw.chromium.launch().new_context(viewport={"width": 390, "height": 900}, has_touch=True, is_mobile=True,
+                                               reduced_motion="reduce")
+        pg = ctx.new_page(); pg.goto(server + "/"); pg.wait_for_load_state("networkidle")
+        pg.evaluate(IN_VIEW); pg.wait_for_timeout(6500); seen = pg.evaluate(STATE)
+        ctx.browser.close()
+        return [] if seen == [0, "true,false"] else [f"[reduced motion 390px] the announcements moved by themselves: {seen}"]
+
+    def banner(pw):
+        """The install banner (base.html) asks again a week after it was
+        dismissed, until the app is installed. On an iPhone it shows at load
+        (the share-sheet steps, no native prompt to wait for), so each case
+        is one reload, from the second page on: dismissed with its ✕ just
+        now, or six days ago, it stays away; eight days ago, or the old "no"
+        (one dismissal was for good before 16.10.2026), it is back; and
+        "installed" (the native prompt accepted) keeps it away."""
+        out, ctx = [], pw.chromium.launch().new_context(viewport={"width": 390, "height": 900}, has_touch=True,
+                                                         is_mobile=True, user_agent=IPHONE)
+        pg = ctx.new_page()
+        pg.goto(server + "/login"); pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        pg.goto(server + "/prehrana")                 # the second page with the banner: it asks
+        if not pg.locator("#a2hs").is_visible():
+            out.append("not shown on the second page")
+        pg.click("#a2hs .a2hs-x"); stored = pg.evaluate("localStorage.getItem('qmt-a2hs')"); pg.reload()
+        if pg.locator("#a2hs").is_visible() or not (stored or "").isdigit():
+            out.append(f"dismissed with its ✕ ({stored!r} stored), it is back at once")
+        for when, value, back in (("six days ago", "Date.now() - 6 * 864e5", False), ("eight days ago", "Date.now() - 8 * 864e5", True),
+                                  ('with the old "no"', "'no'", True), ('as "installed"', "'installed'", False)):
+            pg.evaluate(f"localStorage.setItem('qmt-a2hs', String({value}))"); pg.reload()
+            if pg.locator("#a2hs").is_visible() != back:
+                out.append(f"dismissed {when}, it is {'still away' if back else 'back'}")
+        ctx.browser.close()
+        return [f"[install banner 390px] {p}" for p in out]
+
+    def walk(pw, email, widths, label, strict=True, lines=False, switch=(), auto=None):
         problems = []
         for w in widths:
             phone = w < 600
@@ -482,6 +601,9 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 if lines:
                     problems += [f"{where} {p}" for p in pg.evaluate(EVENT_TEXT)]
                 problems += [f"{where} {p}" for p in pg.evaluate(LANDING, [w, strict])]
+                problems += [f"{where} {p}" for p in pg.evaluate(AKTUALNO, w)]
+                if w == auto:                               # the announcements moving by themselves, once
+                    problems += [f"{where} {p}" for p in advance(pg)]
                 if not all(pg.locator(f"{sec} .period").is_visible() for sec in ("#usluge", "#dvorana")):
                     problems.append(f"{where} no Mjesečno / Godišnje switch under each row"); continue
                 problems += [f"{where} on load: {p}" for p in pg.evaluate(PERIOD, "month")]   # monthly first
@@ -493,17 +615,19 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                     problems += [f"{did} {p}" for p in pg.evaluate(PERIOD, period)]
                     problems += [f"{did} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
                     problems += [f"{did} {p}" for p in pg.evaluate(LANDING, [w, strict])]
-                if w == switch:                             # the editor's switch, once
-                    problems += [f"{where} switch: {p}" for p in flip(pg)]
+                if w in switch:                             # the editor's switch, on a phone and a wide screen
+                    problems += [f"{where} switch: {p}" for p in flip(pg, w)]
             problems += [f"[{label} {w}px] js: {e}" for e in errs]
             ctx.browser.close()
         return problems
 
     with sync_playwright() as pw:
         fill(words)                                   # long texts: 300 characters, lists of 12
-        problems = walk(pw, None, (360, 390, 900, 1280), "words")
-        problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=390)
+        problems = walk(pw, None, (360, 390, 900, 1280), "words", auto=390)
+        problems += still(pw)                         # under reduced motion: never by themselves
+        problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280))
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")
+        problems += banner(pw)                        # the install banner's week between asks
         db.set_copy("event1.text", LINES, None)       # line breaks: the first announcement's text in three lines
         problems += walk(pw, None, (390, 1280), "lines", lines=True)
         problems += walk(pw, "trener@test.local", (390,), "lines", lines=True)

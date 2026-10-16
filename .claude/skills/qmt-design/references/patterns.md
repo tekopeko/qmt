@@ -75,7 +75,9 @@ install prompt API.
 **Map to QMT** (QMT is already a PWA: manifest, icons, `/sw.js`):
 - Show only on phones (`pointer: coarse`), only in a browser tab (not when
   `display-mode: standalone`), only to logged-in clients, after their second
-  visit, and never again once dismissed (`localStorage['qmt-a2hs']`).
+  visit, and again a week after each dismissal until the app is installed
+  (`localStorage['qmt-a2hs']` holds when it was dismissed; the owner's call,
+  16.10.2026: one dismissal used to be for good).
 - Android/Chrome: capture `beforeinstallprompt`, show a `.btn.btn-sm` "Instaliraj"
   that calls `prompt()`. iOS: the two-step Share instruction with the share
   glyph. Both: "U redu" as `.act.act-quiet`.

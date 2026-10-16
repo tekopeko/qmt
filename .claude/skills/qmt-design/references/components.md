@@ -22,7 +22,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.featured-tag` | base | "Najpopularnije" chip in the top-right corner of a `position: relative` card: accent tint + `--accent-tint-ink`. Used by `/cjenik` and the landing's offer |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
-| `#a2hs` `.card.a2hs` | base (clients) | install banner: phones only (`pointer: coarse`, plus a `pointer: fine` CSS kill-switch), not in standalone mode, not on the first page load, dismissed once (`localStorage qmt-a2hs`); iOS gets share-sheet steps, Chrome gets a real "Instaliraj" via `beforeinstallprompt` |
+| `#a2hs` `.card.a2hs` | base (clients) | install banner: phones only (`pointer: coarse`, plus a `pointer: fine` CSS kill-switch), not in standalone mode, not on the first page load, back a week after each dismissal until installed (`localStorage qmt-a2hs`: when it was dismissed, or `installed` once the native prompt was accepted; the owner's call, 16.10.2026); iOS gets share-sheet steps, Chrome gets a real "Instaliraj" via `beforeinstallprompt` |
 
 ## Buttons and links
 
@@ -100,8 +100,10 @@ the band drops its side padding, the row becomes a flex scroller
 (`scroll-snap-type: x mandatory`, cards `flex: 0 0 86%` snapping to the
 centre, scrollbar hidden, the gutter as its own padding) and the `.dots`
 under it are 32px buttons around an 8px dot (`--line`, lit `--accent`,
-`aria-current`), one per card, made by the script (no script, no dots), that
-follow the scroll (IntersectionObserver) and bring their card in on tap.
+`aria-current`), one per card, made by the script (no script, no dots; it
+skips a card with no box, `display: none`, and makes none for fewer than
+two), that follow the scroll (IntersectionObserver) and bring their card in
+on tap.
 A row opens on its `.featured` card, centred at once (the tiers: PRO, START
 a swipe to the left, ELITE to the right), else on its first; the script does
 it only where the row scrolls, so the desktop grid is untouched.
@@ -119,21 +121,38 @@ prices arrive from the route (`offer_prices`), are public unless
 `PUBLIC_PRICES=off` (which also hides both switches), and no public page links
 to `/cjenik`. **Aktualno** (`#aktualno`, in the hero since 16.10.2026,
 between the h1 and the photo: the first thing on the page): the owner's two
-announcements for the month as `.event` strips in `.evs` (one column, 12px
-apart, as wide as the photo, text left-aligned in the centred hero): the
-`.card` surface at `--r-lg` (a shallow strip, not the stage's `--r-xl`), one
-flex row that WRAPS, its items centred on their line: a `.tag` chip (accent
-tint + `--accent-tint-ink`; scoped `.event .tag`, not the photo's glass
-`.tag`), a `.head` holding the italic uppercase title of `.offer` at 1.15rem
-(an `h2`: it sits straight under the page's `h1`) over a `.when` line behind
-a 7px accent dot (on the baseline, so a wrapped line keeps it on its first),
-a muted `.text` that takes the free room (`flex: 1 1 280px`), and one grey
-`.act` to `/#kontakt` in a `.foot` at the right end (the red button stays on
-the featured tier). A long text makes a strip taller, never wider: no piece
-is wider than the strip, and a long one wraps onto a line of its own. Below
-700px a strip is a column. Each strip is switched off with its `.ed-flag`,
-its first item in edit mode; a visitor never gets a hidden one, nor the box
-when both are. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
+announcements for the month as `.event` cards in `.evs` (text left-aligned
+in the centred hero): the `.card` surface at `--r-lg` (a shallow card, not
+the stage's `--r-xl`), one flex row that WRAPS, its items centred on their
+line and its lines at the top (`align-content: flex-start`: a card stretched
+to its neighbour's height keeps its chip and title level with the
+neighbour's): a `.tag` chip (accent tint + `--accent-tint-ink`; scoped
+`.event .tag`, not the photo's glass `.tag`), a `.head` holding the italic
+uppercase title of `.offer` at 1.15rem (an `h2`: it sits straight under the
+page's `h1`) over a `.when` line behind a 7px accent dot (on the baseline,
+so a wrapped line keeps it on its first), a muted `.text` that takes the
+free room (`flex: 1 1 280px`), and one grey `.act` to `/#kontakt` in a
+`.foot` at the right end (the red button stays on the featured tier). A long
+text makes a card taller, never wider: no piece is wider than the card, and
+a long one wraps onto a line of its own. **From 900px** the two sit side by
+side (two columns 16px apart, together as wide as the photo; the owner's
+call, 16.10.2026), each in two lines: chip, title and link, then the text
+across the card (`order: 1; flex-basis: 100%`); one card alone (`.single`)
+is one 760px column, centred, and edit mode keeps both columns. **Below
+900px** `.evs` is a `.swipe-row` with its `.dots`, like the tiers: it runs to
+the screen's edges (the hero's side padding moves into `.hero-inner`, and the
+row's negative margins reach into it, never past it, which would be
+overflow), cards 86% wide, a column below 700px; one card alone takes the
+whole row (`.single`, `:only-child`; 86% again in edit mode, where both
+show). It **moves on by itself** (`data-auto="5000"`, the owner's 5 s): the
+next card glides in as its dot would bring it, after the last the first, and
+the lit dot follows. Quiet whenever a person is on the row or its dots (a
+finger, a mouse where the device can hover, the focus), with the whole delay
+again once they leave; no tick while the tab is hidden or the row is off the
+screen; never under `prefers-reduced-motion`; only where the row scrolls.
+Each card is switched off with its `.ed-flag`, its first item in edit mode;
+a visitor never gets a hidden one, nor the box when both are. Info band
+`.info-grid`: radno vrijeme table, `.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
 

@@ -877,7 +877,8 @@
 {% endif %}
 {% if user and not user.is_trainer %}
 {# the install banner — a PWA nobody installs is a website. JS decides whether
-   to show it (phone, browser tab, not the first page, not dismissed). #}
+   to show it (phone, browser tab, not the first page, not dismissed in the
+   last week, not installed). #}
 <div id="a2hs" class="card a2hs" hidden role="dialog" aria-labelledby="a2hsTitle">
   <button type="button" class="a2hs-x" aria-label="Zatvori" onclick="qmtA2hsDismiss()">✕</button>
   <div class="a2hs-head">
@@ -1058,16 +1059,27 @@
   }
 
   // ---- install banner ----
+  // Dismissed (the ✕, "U redu", or the native prompt declined), it stays away
+  // for a week and then asks again, on and on until the app is installed: the
+  // owner's call (16.10.2026), for the people who still have not. qmt-a2hs
+  // holds when it was dismissed (ms), or "installed" once the native prompt
+  // was accepted (never again, as before). A launch from the home screen
+  // (standalone) is never asked. An old "no", from when one dismissal was
+  // for good, counts as dismissed long ago: those phones see it once more,
+  // then the week's rhythm.
+  var A2HS_AGAIN = 7 * 24 * 3600 * 1000;   // a reminder, not a nag: a week between asks
   var _a2hsDeferred = null;
-  function qmtA2hsDismiss() {
+  function qmtA2hsDismiss(installed) {
     var box = document.getElementById("a2hs");
     if (box) box.hidden = true;
-    try { localStorage.setItem("qmt-a2hs", "no"); } catch (e) {}
+    try { localStorage.setItem("qmt-a2hs", installed ? "installed" : String(Date.now())); } catch (e) {}
   }
+  // installed from the browser's own menu (Android), without our button: done asking
+  window.addEventListener("appinstalled", function () { qmtA2hsDismiss(true); });
   function qmtA2hsInstall() {
     if (!_a2hsDeferred) return;
     _a2hsDeferred.prompt();
-    _a2hsDeferred.userChoice.then(function () { qmtA2hsDismiss(); });
+    _a2hsDeferred.userChoice.then(function (c) { qmtA2hsDismiss(c && c.outcome === "accepted"); });
   }
   (function () {
     var box = document.getElementById("a2hs");
@@ -1076,7 +1088,8 @@
     var standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
     var dismissed = false, loads = 1;
     try {
-      dismissed = localStorage.getItem("qmt-a2hs") === "no";
+      var seen = localStorage.getItem("qmt-a2hs"), when = parseInt(seen, 10) || 0;   // "no": long ago
+      dismissed = seen === "installed" || (!!seen && Date.now() - when < A2HS_AGAIN);
       loads = (parseInt(localStorage.getItem("qmt-loads") || "0", 10) || 0) + 1;
       localStorage.setItem("qmt-loads", String(loads));
     } catch (e) {}
