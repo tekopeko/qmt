@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
@@ -50,6 +50,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["COPY"] = copy.SLOTS      # the editable texts and their limits (_copy.html)
 templates.env.globals["copy_items"] = copy.items_for   # a list slot's items (_copy.html, points)
 templates.env.globals["copy_flag"] = copy.flag_on      # a flag slot: on or off (landing.html, #aktualno)
+templates.env.globals["copy_image"] = copy.image_name  # an image slot: its file's name, or None (landing.html, #aktualno)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 WEEKDAYS = ["Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota", "Nedjelja"]
@@ -266,7 +267,9 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
     limit is the slot's, enforced here as well as in the browser; an empty
     text, or reset=1, puts the template's default back. A list slot is edited
     one item at a time (see _copy_save_list); a flag slot is switched, its
-    text "on" or "off" and nothing else."""
+    text "on" or "off" and nothing else. An image slot takes only reset=1,
+    which removes its photo; a photo goes up through POST /copy/{key}/slika,
+    so no text can ever land in an image slot."""
     user = current_user(request)
     if user is None:
         return JSONResponse({"ok": False, "error": "Prijava je istekla — prijavi se ponovno."}, status_code=401)
@@ -285,6 +288,15 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
             return JSONResponse({"ok": False, "error": "Nepoznata vrijednost."}, status_code=400)
         db.set_copy(key, text, user.id)
         return JSONResponse({"ok": True, "on": text == "on", "default": False})
+    if isinstance(slot, copy.ImageSlot):
+        if reset != "1":
+            return JSONResponse({"ok": False, "error": f"Sliku šalje /copy/{key}/slika."}, status_code=400)
+        # the row first, so no page names a file that is gone; then the file
+        old = copy.image_name(key, db.copy_texts())
+        db.reset_copy(key)
+        if old:
+            storage.delete(old)
+        return JSONResponse({"ok": True, "url": None, "default": True})
     cleaned = "" if reset == "1" else copy.clean(text)
     if len(cleaned) > slot.max:
         return JSONResponse({"ok": False, "error": f"Najviše {slot.max} znakova — ovo ih ima {len(cleaned)}."},
@@ -338,6 +350,120 @@ def _copy_save_list(key: str, slot: copy.ListSlot, text: str, index: str, reset:
             items[i] = cleaned
     db.set_copy(key, copy.dump_items(items), user_id)
     return ok(items, False)
+
+
+# An announcement's photo (copy.ImageSlot) arrives as a phone took it: a
+# camera's JPEG is a few MB, 15 leaves room for the biggest. What is kept is
+# the shrunk JPEG, a few hundred kB.
+IMAGE_MB = 15
+IMAGE_PX = 1600      # its long side once stored, at most: a card on a wide screen, twice over
+_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
+# what Pillow must find inside, whatever the name says; MPO is a phone's JPEG
+# that carries a second picture (a depth map), Pillow's name for it
+_IMAGE_FORMATS = ("JPEG", "MPO", "PNG", "WEBP")
+
+
+@app.post("/copy/{key}/slika")
+def copy_image_upload(request: Request, key: str, slika: UploadFile | None = File(None)):
+    """Put a photo behind an announcement: the editor's file picker posts it
+    here (multipart, the file as `slika`), JSON back as from POST /copy/{key}.
+    Turned upright (a phone keeps the rotation in EXIF), shrunk to IMAGE_PX
+    on its long side (never enlarged) and kept as a progressive JPEG with no
+    EXIF at all: the camera, the place and the time stay off a public page.
+    Each upload gets a new name, which is what lets /slika have browsers keep
+    a photo for good; the slot's previous photo is deleted once the new one
+    is recorded. Removing it is reset=1 on POST /copy/{key}."""
+    user = current_user(request)
+    if user is None:
+        return JSONResponse({"ok": False, "error": "Prijava je istekla — prijavi se ponovno."}, status_code=401)
+    if not (user.is_trainer or _is_owner(user)):
+        return JSONResponse({"ok": False, "error": "Tekstove uređuje samo trener."}, status_code=403)
+    slot = copy.SLOTS.get(key)
+    if slot is None:
+        return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
+    if not isinstance(slot, copy.ImageSlot):
+        return JSONResponse({"ok": False, "error": "Ovdje ne ide slika."}, status_code=400)
+
+    def bad(error: str) -> JSONResponse:
+        return JSONResponse({"ok": False, "error": error}, status_code=400)
+
+    unsupported = "Nepodržan format — dozvoljeno: jpg, png, webp."
+    if slika is None or Path(slika.filename or "").suffix.lower() not in _IMAGE_SUFFIXES:
+        return bad(unsupported)
+    import secrets
+    import tempfile
+
+    from PIL import Image, ImageOps
+
+    with tempfile.TemporaryDirectory() as tmp:       # whatever is left in it goes, a refusal's bytes too
+        raw, out = Path(tmp) / "upload", Path(tmp) / "slika.jpg"
+        # spooled first in 1 MB chunks, as _save_media does: the cap trips
+        # before Pillow reads a byte, let alone storage
+        total = 0
+        with raw.open("wb") as f:
+            while chunk := slika.file.read(1 << 20):
+                total += len(chunk)
+                if total > IMAGE_MB * 1024 * 1024:
+                    return bad(f"Slika je veća od {IMAGE_MB} MB.")
+                f.write(chunk)
+        try:
+            with Image.open(raw) as im:
+                if im.format not in _IMAGE_FORMATS:
+                    return bad(unsupported)
+                # a JPEG decodes straight at the smallest scale the shrink
+                # still has room in: a 48 MP photo at a quarter, in a
+                # sixteenth of the memory
+                scale = min(1, IMAGE_PX / max(im.size))
+                im.draft("RGB", (max(1, round(im.width * scale)), max(1, round(im.height * scale))))
+                photo = ImageOps.exif_transpose(im).convert("RGB")
+        except Exception:                                # not an image Pillow can read, or a broken one
+            return bad(unsupported)
+        photo.thumbnail((IMAGE_PX, IMAGE_PX))                         # never enlarges
+        photo.save(out, "JPEG", quality=82, progressive=True)        # no exif= given: none is written
+        n = key.split(".")[0].removeprefix("event")      # the card's number: event1.image -> 1
+        name = f"aktualno-{n}-{secrets.token_hex(8)}.jpg"
+        storage.save(name, out, "image/jpeg")
+    old = copy.image_name(key, db.copy_texts())
+    db.set_copy(key, name, user.id)
+    if old:
+        storage.delete(old)
+    return JSONResponse({"ok": True, "url": f"/slika/{name}"})
+
+
+@app.get("/slika/{name}")
+def slika(name: str):
+    """An announcement's photo, for anyone: the landing is public, and so is
+    what is on it. The one exception to "media only through the auth-gated
+    /media": it serves a name only while an ImageSlot row holds it, so no
+    programme's media (a client's content) can be reached through it, nor a
+    photo once it is replaced or removed. A name is new with every upload, so
+    the file may be cached for a year, immutable. On R2 the bytes are proxied,
+    not redirected: /media's presigned link is for private access, a new URL
+    on every request that no cache can keep; a public page wants one stable
+    address the browser can keep."""
+    if "/" in name or "\\" in name or ".." in name:
+        raise HTTPException(status_code=404)
+    texts = db.copy_texts()
+    if name not in {copy.image_name(k, texts) for k, s in copy.SLOTS.items() if isinstance(s, copy.ImageSlot)}:
+        raise HTTPException(status_code=404)
+    cache = {"Cache-Control": "public, max-age=31536000, immutable"}
+    if storage.r2_enabled():
+        try:
+            body, _ = storage.stream(name)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404)
+
+        def chunks():
+            try:
+                while chunk := body.read(64 * 1024):
+                    yield chunk
+            finally:
+                body.close()
+        return StreamingResponse(chunks(), media_type="image/jpeg", headers=cache)
+    path = storage.local_path(name)
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(path, media_type="image/jpeg", headers=cache)
 
 
 # ---------- calendar ----------

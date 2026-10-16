@@ -68,18 +68,19 @@
      .is-off, and so is their box when both are: hidden, so outside edit mode
      he sees the visitor's page. Edit mode shows them, the strip's content
      dimmed but not its toggle, which stays readable to switch it back on.
-     The toggle is the strip's first item, centred on it like the rest:
-     base.html gives it the margin and the alignment of a column. */
+     The toggle is the strip's first item, the photo's pills after it
+     (.ed-img, .has-img below), centred on it like the rest: base.html gives
+     them the margin and the alignment of a column. */
   .evs.is-off, .event.is-off { display: none; }
   body.editing .evs.is-off { display: grid; }
   body.editing .event.is-off { display: flex; }
   body.editing .event.is-off > :not(.ed-flag) { opacity: .55; }
-  body.editing .event .ed-flag { margin: 0; align-self: center; }
+  body.editing .event .ed-flag, body.editing .event .ed-img, body.editing .event .ed-img-x { margin: 0; align-self: center; }
   @media (max-width: 699px) {
     .event { flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 20px; }
     .event .text { flex-basis: auto; }
     .event .foot { margin-left: 0; margin-top: 4px; }
-    body.editing .event .ed-flag { align-self: flex-start; }
+    body.editing .event .ed-flag, body.editing .event .ed-img, body.editing .event .ed-img-x { align-self: flex-start; }
   }
   /* Desktop (900px and up): the two side by side, each half the hero's
      1100px, not one under the other (the owner's call, 16.10.2026 evening:
@@ -118,6 +119,46 @@
     body.editing .evs.single > .event { flex-basis: 86%; }
     body.editing .evs.is-off { display: flex; }
   }
+  /* An announcement over a photo (.has-img: the owner's upload, a
+     copy.ImageSlot): Shape's photo cards, in the stage's language (.stage,
+     below). The photo fills the card and a dark gradient makes white type
+     readable on any photo (as .stage::after), so the card is light-on-dark
+     whatever the theme: what its text sits on is the photo (as .stage and
+     .tag say), and the stage's dark ground holds it until the photo
+     arrives. No hairline: a photo is its own edge, as the stage's is. A
+     column at every width: the glass chip at the top; the title, when, the
+     text and a white pill (Shape's) at the bottom, where the head's auto
+     margin sets them. Never clamped, unlike the stage's caption: a long
+     text makes the card taller, and the photo stays behind all of it. */
+  .event.has-img { position: relative; overflow: hidden; color: #fff; background: #141416; border: 0;
+                   flex-direction: column; flex-wrap: nowrap; align-items: flex-start; min-height: 300px; }
+  .event.has-img .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .event.has-img::after { content: ""; position: absolute; inset: 0;
+                          background: linear-gradient(180deg, rgba(0,0,0,.25) 0%, rgba(0,0,0,.05) 35%, rgba(0,0,0,.82) 100%); }
+  .event.has-img > :not(.bg) { position: relative; z-index: 1; }
+  /* the photo's glass chip (.tag, below), not a plain card's accent tint;
+     its 1px border comes off the padding, so the chip keeps its size */
+  .event.has-img .tag { padding: 4px 11px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.16);
+                        color: #fff; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .event.has-img .head { margin-top: auto; }
+  .event.has-img h2, .event.has-img .when { color: #fff; }
+  /* in its place in the column: it does not grow (the head's margin takes
+     the room) and is not a line of its own after the link (900px and up) */
+  .event.has-img .text { order: 0; flex: 0 1 auto; max-width: 48ch; color: rgba(255,255,255,.85); }
+  .event.has-img .foot { margin-left: 0; margin-top: 4px; }
+  /* Shape's white pill on a photo; its hover a light grey, never the red of button:hover */
+  .event.has-img .act { background: #fff; color: #111; border-color: transparent; }
+  .event.has-img .act:hover { background: #e2e2e2; color: #111; border-color: transparent; }
+  body.editing .event.has-img .ed-flag, body.editing .event.has-img .ed-img,
+  body.editing .event.has-img .ed-img-x { align-self: flex-start; }
+  @media (min-width: 900px) { .event.has-img { min-height: 280px; } }
+  /* Beside a photo card (a desktop's grid) or after it (a tablet's row) the
+     plain card stretches to its height, and its lines, packed at the top,
+     left most of it empty under them while the photo card's text sits at
+     its bottom: the plain card's lines go to the bottom too, so the two
+     texts end level. From 700px, where the plain card is lines of a strip;
+     below, it is a column whose link already sits at the bottom. */
+  @media (min-width: 700px) { .evs:has(> .has-img) > .event:not(.has-img) { align-content: flex-end; } }
 
   /* ---- the photo card: one image, chips in the corners, title over a gradient ---- */
   /* The whole card is a link to the offer below, the way Shape's hero cards
@@ -365,16 +406,25 @@
        marks are for the editor's script, which keeps .is-off in step when a
        toggle is pressed, and .single on the box, set here too when one
        strip shows: it takes the whole row on a phone, and is one centred
-       column on a desktop. The link leads to the contact. #}
+       column on a desktop. The link leads to the contact.
+       A card may carry the owner's photo behind it (copy.ImageSlot): then
+       it is .has-img with the photo as its first child, served by /slika,
+       and data-photo, which tells the audit its text sits on a photograph.
+       An editor's card always carries data-image, where the script puts a
+       photo it has just sent, and its pills: "Dodaj sliku" (or "Promijeni
+       sliku") and, with a photo, "Ukloni sliku". #}
     {% set ev_on = [copy_flag("event1.show", copy_texts), copy_flag("event2.show", copy_texts)] %}
     {% set ev_shown = ev_on | select | list | length %}
     {% if ev_shown or can_edit_copy %}
     <div class="evs swipe-row{% if ev_shown == 1 %} single{% endif %}{% if not ev_shown %} is-off{% endif %}" id="aktualno" data-auto="5000"{% if can_edit_copy %} data-flag-group{% endif %}>
-      {% for on in ev_on %}{% set ev = "event" ~ loop.index %}
+      {% for on in ev_on %}{% set ev = "event" ~ loop.index %}{% set photo = copy_image(ev ~ ".image", copy_texts) %}
       {% if on or can_edit_copy %}
-      <article class="card event{% if not on %} is-off{% endif %}"{% if can_edit_copy %} data-flag="{{ ev }}.show"{% endif %}>
+      <article class="card event{% if photo %} has-img{% endif %}{% if not on %} is-off{% endif %}"{% if photo %} data-photo{% endif %}{% if can_edit_copy %} data-flag="{{ ev }}.show" data-image="{{ ev }}.image"{% endif %}>
+        {% if photo %}<img class="bg" src="/slika/{{ photo }}" alt="" loading="eager" decoding="async">{% endif %}
         {% if can_edit_copy %}<button type="button" class="ed-flag" data-copy="{{ ev }}.show" data-label="{{ COPY[ev ~ '.show'].label }}"
-                aria-pressed="{{ 'true' if on else 'false' }}">{{ "Prikazano" if on else "Skriveno" }}</button>{% endif %}
+                aria-pressed="{{ 'true' if on else 'false' }}">{{ "Prikazano" if on else "Skriveno" }}</button>
+        <button type="button" class="ed-img" data-copy="{{ ev }}.image" data-label="{{ COPY[ev ~ '.image'].label }}">{{ "Promijeni sliku" if photo else "Dodaj sliku" }}</button>
+        {% if photo %}<button type="button" class="ed-img-x" aria-label="Ukloni sliku" data-copy="{{ ev }}.image">Ukloni sliku</button>{% endif %}{% endif %}
         <span class="tag">{{ c.t(ev ~ ".tag") }}</span>
         <div class="head"><h2>{{ c.t(ev ~ ".title") }}</h2><p class="when">{{ c.t(ev ~ ".when") }}</p></div>
         <p class="text">{{ c.t(ev ~ ".text") }}</p>

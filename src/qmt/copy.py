@@ -28,6 +28,17 @@ switches off when it is over. It is stored like any slot, as the text "on" or
 "off"; no row means the default. Read with `copy_flag("the.key", copy_texts)`
 (flag_on below). In edit mode the editor flips it with a toggle (.ed-flag,
 base.html); a visitor never gets the markup of what a flag hides.
+
+An ImageSlot is a photo, not a text: the background of one of the hero's
+announcements, the way Shape's photo cards carry theirs. It is stored like any
+slot, its text the stored file's name ("aktualno-1-3f9a1c….jpg"); no row means
+no photo, a plain card. Only POST /copy/{key}/slika writes it: the upload is
+turned upright, shrunk to a 1600px JPEG and kept where programme media is kept
+(storage.py: R2 on prod), and reset=1 on POST /copy/{key} removes file and row.
+Read with `copy_image("the.key", copy_texts)` (image_name below). The photo is
+public, as the landing is: GET /slika/{name} serves the names an ImageSlot
+holds and nothing else. In edit mode the editor picks a file with "Dodaj sliku"
+/ "Promijeni sliku" and removes it with "Ukloni sliku" (.ed-img, base.html).
 """
 import json
 import re
@@ -58,11 +69,16 @@ class FlagSlot:
     label: str      # what the editor's toggle stands for ("Događanje 1: prikazano")
 
 
+@dataclass(frozen=True)
+class ImageSlot:
+    label: str      # what the editor's bar names while a photo goes up ("Događanje 1: slika")
+
+
 # the online tiers' bullets: tier 1's own defaults, and placeholders for 2 and 3
 ONLINE_POINTS = ("Program po tvojoj razini i cilju", "Video upute za svaku vježbu",
                  "Mjesečni Zoom poziv ili susret s trenerom")
 
-SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
+SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     # ---- landing: hero ----
     "hero.kicker": Slot("Zagreb · Dubrava", CAP, "Mala oznaka iznad naslova"),
     "hero.h1a": Slot("Kvaliteta pokreta", CAP, "Naslov, bijeli red"),
@@ -124,9 +140,11 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
     # The owner's announcements for the month (a new group, a course): two
     # strips, the defaults are examples to retype. Each one is switched off in
     # edit mode when it is over (FlagSlot); a hidden strip is not on a
-    # visitor's page at all, and with both hidden neither is their box. The
+    # visitor's page at all, and with both hidden neither is their box. Each
+    # one may carry a photo behind it (ImageSlot; no row: a plain card). The
     # strip's link always leads to the contact (/#kontakt).
     "event1.show": FlagSlot(True, "Događanje 1: prikazano"),
+    "event1.image": ImageSlot("Događanje 1: slika"),
     "event1.tag": Slot("Novo", CAP, "Događanje 1: oznaka"),
     "event1.title": Slot("Treninzi za penziće", CAP, "Događanje 1: naslov"),
     "event1.when": Slot("Utorkom i četvrtkom u 10:00", CAP, "Događanje 1: termin"),
@@ -134,6 +152,7 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
                         "tempu, uz stručno vodstvo. Prijave u dvorani ili porukom.", CAP, "Događanje 1: tekst"),
     "event1.cta": Slot("Javi nam se", CAP, "Događanje 1: gumb"),
     "event2.show": FlagSlot(True, "Događanje 2: prikazano"),
+    "event2.image": ImageSlot("Događanje 2: slika"),
     "event2.tag": Slot("Nova grupa", CAP, "Događanje 2: oznaka"),
     "event2.title": Slot("Pilates za cure", CAP, "Događanje 2: naslov"),
     "event2.when": Slot("Srijedom u 18:00", CAP, "Događanje 2: termin"),
@@ -211,3 +230,14 @@ def flag_on(key: str, texts: dict[str, str]) -> bool:
     if stored in ("on", "off"):
         return stored == "on"
     return SLOTS[key].default
+
+
+def image_name(key: str, texts: dict[str, str]) -> str | None:
+    """The stored photo's file name for image slot `key`, given the edited
+    texts (db.copy_texts()), or None: no row, or a row that is empty or names
+    a path rather than a file ("/", "\\" or ".." in it), which is never let
+    near storage. Templates call it as copy_image (landing.html)."""
+    name = texts.get(key)
+    if not name or "/" in name or "\\" in name or ".." in name:
+        return None
+    return name

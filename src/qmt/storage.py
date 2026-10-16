@@ -6,13 +6,14 @@ With the four R2_* env vars set, uploads land in the bucket instead and
 /media/{name} redirects to a short-lived presigned URL — the auth gate stays
 in the app, the bytes (and R2's free egress) come from Cloudflare.
 
-The interface is deliberately tiny: save / delete / serve-info. Callers never
-know which backend they got, and tests run on the local one unchanged.
+The interface is deliberately tiny: save / delete / stream / serve-info. Callers
+never know which backend they got, and tests run on the local one unchanged.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import IO
 
 from . import config
 
@@ -55,6 +56,25 @@ def delete(name: str) -> None:
     if r2_enabled():
         _client().delete_object(Bucket=config.R2_BUCKET, Key=name)
     (config.MEDIA_DIR / name).unlink(missing_ok=True)   # covers pre-R2 leftovers
+
+
+def stream(name: str) -> tuple[IO[bytes], str | None]:
+    """The stored bytes as a stream, and their content type where the backend
+    keeps one (R2 does, the local disk does not). For a route that serves the
+    bytes itself instead of redirecting: /slika, whose public URL must stay
+    the same to be cached. The caller closes the stream. A name that is not
+    stored raises FileNotFoundError on both backends."""
+    if r2_enabled():
+        from botocore.exceptions import ClientError
+
+        try:
+            obj = _client().get_object(Bucket=config.R2_BUCKET, Key=name)
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+                raise FileNotFoundError(name) from e
+            raise
+        return obj["Body"], obj.get("ContentType")
+    return local_path(name).open("rb"), None
 
 
 def presigned_url(name: str, expires_s: int = 600) -> str:

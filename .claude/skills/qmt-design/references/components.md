@@ -19,6 +19,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.ed` / `.copy-toggle` / `.copy-bar` | base (trainer, owner) | in-place copy editor: `_copy.html` prints every slot in a `span.t` (`white-space: pre-line`, so the owner's line breaks show) and makes it an `.ed` for an editor; the fixed "✎ Uredi tekstove" pill toggles `body.editing` (dashed outlines, click to edit, `.ed-on` while open; an empty `.ed` keeps a 2.5em box so it can be clicked); Enter is a new line, ⌘/Ctrl+Enter saves; the bar under the pill (as wide as its content, at most the window less 20px) shows label, an "n znakova" counter, the `.cb-hint` "Enter = novi red · ⌘/Ctrl+Enter = spremi" (600px and up) and Spremi / Zadano / Odustani. Visitors get a bare `span.t`, no editor markup |
 | `ul[data-list]` / `.ed-x` / `.ed-add` | base (trainer, owner) | an editable list (`c.points`): each item an `.ed` with `data-index`, a 32px round `.ed-x` ✕ beside it (negative margin, so the line height holds) and an `.act.ed-add` "+ Dodaj stavku" after the list, hidden at the count limit; both only under `body.editing`. The bar names the item ("…: stavka 2") and its Zadano reads "Zadano (cijela lista)" |
 | `.ed-flag` / `.is-off` | base (trainer, owner) | the edit-mode toggle of a `copy.FlagSlot` (an on/off switch, the landing's announcements): the first child of the box it switches (`data-flag`), a 32px pill, green `--good-fill` "● Prikazano" / grey `--surface-2` "○ Skriveno", saved at a click, no confirm (hiding loses no text). A switched-off box is `.is-off`: hidden, shown only in edit mode with its content dimmed to .55 and the toggle at full strength; its `data-flag-group` follows its boxes (`.is-off` when none is on, `.single` on their row when one is). A visitor gets neither the toggle nor a hidden box |
+| `.ed-img` / `.ed-img-x` / `#edImgFile` | base (trainer, owner) | the edit-mode pills of a `copy.ImageSlot`, a photo behind a box (the landing's announcements; the box carries `data-image`): `.ed-img` "Dodaj sliku" / "Promijeni sliku" opens the hidden file picker (`#edImgFile`: jpg, png, webp) and posts to `/copy/<key>/slika`; the answer's URL becomes the box's first child, `img.bg`, and the box turns `.has-img` + `data-photo`. `.ed-img-x` "Ukloni sliku" (only with a photo) asks first, as an item's ✕ ("Ukloni?" for 4 s, then `reset=1`). 32px pills like `.ed-flag` (`--surface-2` / `--muted`), after it; on a photo (`[data-photo]`) a solid `--surface` pill with `--text` ink: the editor's controls, not text on a photograph. A failure is said in the bar |
 | `.featured-tag` | base | "Najpopularnije" chip in the top-right corner of a `position: relative` card: accent tint + `--accent-tint-ink`. Used by `/cjenik` and the landing's offer |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
@@ -151,7 +152,23 @@ finger, a mouse where the device can hover, the focus), with the whole delay
 again once they leave; no tick while the tab is hidden or the row is off the
 screen; never under `prefers-reduced-motion`; only where the row scrolls.
 Each card is switched off with its `.ed-flag`, its first item in edit mode;
-a visitor never gets a hidden one, nor the box when both are. Info band
+a visitor never gets a hidden one, nor the box when both are.
+**A card over a photo** (`.has-img`: the owner's upload, a `copy.ImageSlot`;
+Shape's photo cards, 16.10.2026): the photo (`img.bg`, its first child, from
+`/slika`) fills the card under the stage's kind of gradient (`rgba(0,0,0,.25)`
+at the top, `.05` at 35%, `.82` at the bottom) on the stage's `#141416`
+ground, no hairline, light-on-dark in both themes; a column at every width:
+the glass chip (`.tag`'s own, not the accent tint) at the top, then, pushed
+down by the head's `margin-top: auto`, the white title and `.when` (its dot
+stays `--accent`), the text at `rgba(255,255,255,.85)` (48ch at most, never
+clamped: a long text makes the card taller) and Shape's white pill (`.act` in
+`#fff` / `#111`, a light grey on hover) at the bottom. At least 300px tall on
+a phone, 280px from 900px. `data-photo` makes the audit count its text
+instead of scoring it. The plain card beside it, stretched to its height,
+moves its lines to its foot from 700px (`align-content: flex-end` under
+`.evs:has(> .has-img)`), so the two texts end level; below 700px its link
+already sits at the bottom. In edit mode the pills (`.ed-flag`, `.ed-img`,
+`.ed-img-x`) stack at the top of a photo card. Info band
 `.info-grid`: radno vrijeme table, `.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).

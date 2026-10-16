@@ -408,6 +408,26 @@
     body.editing .ed-flag[aria-pressed="true"]::before { content: "●"; content: "●" / ""; }
     body.editing .ed-flag[aria-pressed="true"]:hover { color: var(--good-ink);
                                                        background: color-mix(in srgb, var(--good-fill) 86%, var(--text)); }
+    /* a photo behind a box (copy.ImageSlot: the landing's announcements):
+       "Dodaj sliku" / "Promijeni sliku" opens the file picker, "Ukloni
+       sliku" removes it at a second tap ("Ukloni?", as an item's ✕). Pills
+       like .ed-flag, in edit mode only. On a photo ([data-photo]) they are
+       the editor's controls, not text on a photograph: a solid --surface
+       pill with --text ink, readable on any picture; armed, the ✕'s accent
+       tint over that same solid ground. */
+    .ed-img, .ed-img-x { display: none; }
+    body.editing .ed-img, body.editing .ed-img-x {
+      display: inline-flex; align-self: flex-start; align-items: center; min-height: 32px; margin-bottom: 14px;
+      padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); box-shadow: none;
+      font: 700 .8rem var(--font-body); background: var(--surface-2); color: var(--muted); }
+    body.editing .ed-img:hover, body.editing .ed-img-x:hover { transform: none; color: var(--text);
+                                                               background: color-mix(in srgb, var(--text) 10%, var(--surface-2)); }
+    body.editing [data-photo] .ed-img, body.editing [data-photo] .ed-img-x { background: var(--surface); color: var(--text); }
+    body.editing [data-photo] .ed-img:hover, body.editing [data-photo] .ed-img-x:hover {
+      background: color-mix(in srgb, var(--text) 10%, var(--surface)); }
+    body.editing .ed-img-x.armed, body.editing .ed-img-x.armed:hover {
+      color: var(--accent-tint-ink); border-color: transparent;
+      background: linear-gradient(var(--accent-dim), var(--accent-dim)) var(--surface); }
     /* width: max-content: centred by left: 50%, the bar would otherwise
        shrink to half the window and wrap its buttons long before max-width */
     .copy-bar { position: fixed; top: calc(72px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
@@ -692,6 +712,7 @@
   <button type="button" class="act act-quiet" id="cbReset" title="Vrati izvorni tekst">Zadano</button>
   <button type="button" class="act act-quiet" id="cbCancel">Odustani</button>
 </div>
+<input type="file" id="edImgFile" accept="image/jpeg,image/png,image/webp" hidden>
 <script>
   // Edit mode: every .ed becomes a text box on click. Enter is a new line (the
   // box is contenteditable="plaintext-only", and that is its own Enter);
@@ -706,6 +727,11 @@
   // and the items are redrawn from it, so indexes always match the database.
   // A flag's toggle (.ed-flag, copy.FlagSlot) saves "on" or "off" at a click,
   // no confirm: hiding loses no text. Its box and group follow (flag below).
+  // A photo (copy.ImageSlot) is the third thing: "Dodaj sliku" / "Promijeni
+  // sliku" (.ed-img) opens the file picker, the file goes to
+  // /copy/<key>/slika, and the server's answer puts the photo behind its
+  // card. "Ukloni sliku" (.ed-img-x) asks first, as an item's ✕ does, then
+  // reset=1 removes photo and row (pick and unpick below).
   (function () {
     var mode = false, cur = null, orig = "";
     var tog = document.getElementById("copyToggle"), bar = document.getElementById("copyBar");
@@ -790,8 +816,8 @@
     // removing something a person wrote asks first: the first tap arms the ✕
     // into "Ukloni?", the second within four seconds removes, anything else disarms
     var armed = null, armTimer = null;
-    function disarm() {
-      if (armed) { armed.textContent = "✕"; armed.classList.remove("armed"); armed.setAttribute("aria-label", armed.dataset.label); }
+    function disarm() {     // back to "✕", or to the words a photo's ✕ had (data-text)
+      if (armed) { armed.textContent = armed.dataset.text || "✕"; armed.classList.remove("armed"); armed.setAttribute("aria-label", armed.dataset.label); }
       armed = null; clearTimeout(armTimer);
     }
     function remove(x) {
@@ -806,7 +832,7 @@
       }
       disarm(); begin(sp, true); sp.textContent = ""; save(false);
     }
-    document.addEventListener("click", function (e) { if (armed && !e.target.closest(".ed-x")) disarm(); }, true);
+    document.addEventListener("click", function (e) { if (armed && !e.target.closest(".ed-x, .ed-img-x")) disarm(); }, true);
     function add(btn) {
       var ul = btn.previousElementSibling;
       if (cur) end(false);
@@ -842,6 +868,70 @@
         if (!cur) bar.hidden = true;                 // an earlier failure's message goes
       }).catch(function () { fail("Nije spremljeno — provjeri vezu."); });
     }
+    // A photo. The bar says what is going on under the slot's label while no
+    // text is open ("Šaljem sliku…", or why it failed; Odustani closes it).
+    // The answer is the photo's URL: it goes first in its card (img.bg), the
+    // card turns .has-img and data-photo, and the card's pills follow. The
+    // picker's value is cleared at every pick, so the same file can be sent
+    // again.
+    var imgFile = document.getElementById("edImgFile");
+    function says(name, text) {
+      if (!cur) { label.textContent = name; count.textContent = ""; bar.hidden = false; }
+      msg.textContent = text;
+    }
+    function pick(btn) {
+      end(false);
+      imgFile.dataset.key = btn.dataset.copy; imgFile.dataset.card = btn.closest("[data-image]").dataset.image;
+      imgFile.dataset.label = btn.dataset.label;
+      imgFile.click();
+    }
+    imgFile.addEventListener("change", function () {
+      var file = imgFile.files[0], key = imgFile.dataset.key, name = imgFile.dataset.label;
+      var card = document.querySelector('[data-image="' + imgFile.dataset.card + '"]');
+      imgFile.value = "";
+      if (!file || !card) return;
+      end(false); says(name, "Šaljem sliku…");
+      var form = new FormData(); form.append("slika", file);
+      fetch("/copy/" + encodeURIComponent(key) + "/slika", {method: "POST", body: form, credentials: "same-origin"})
+        .then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.ok) { says(name, d.error || "Slika nije spremljena."); return; }
+          var img = card.querySelector("img.bg"), btn = card.querySelector(".ed-img");
+          if (!img) { img = document.createElement("img"); img.className = "bg"; img.alt = ""; card.insertBefore(img, card.firstChild); }
+          img.src = d.url;
+          card.classList.add("has-img"); card.setAttribute("data-photo", "");
+          btn.textContent = "Promijeni sliku";
+          if (!card.querySelector(".ed-img-x")) {
+            var x = document.createElement("button");
+            x.type = "button"; x.className = "ed-img-x"; x.textContent = "Ukloni sliku";
+            x.setAttribute("aria-label", "Ukloni sliku"); x.setAttribute("data-copy", key);
+            btn.insertAdjacentElement("afterend", x);
+          }
+          if (!cur) bar.hidden = true;
+        }).catch(function () { says(name, "Nije spremljeno — provjeri vezu."); });
+    });
+    // removing the owner's photo asks first, as an item's ✕: the first tap
+    // arms it into "Ukloni?", the second within four seconds removes
+    function unpick(x) {
+      if (cur) end(false);
+      if (armed !== x) {
+        disarm(); armed = x; x.dataset.label = x.getAttribute("aria-label") || ""; x.dataset.text = x.textContent;
+        x.textContent = "Ukloni?"; x.classList.add("armed"); x.setAttribute("aria-label", "Potvrdi uklanjanje");
+        armTimer = setTimeout(disarm, 4000); return;
+      }
+      disarm();
+      var card = x.closest("[data-image]"), btn = card.querySelector(".ed-img"), name = btn.dataset.label;
+      fetch("/copy/" + encodeURIComponent(x.dataset.copy), {
+        method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: "reset=1", credentials: "same-origin"
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) { says(name, d.error || "Slika nije uklonjena."); return; }
+        var img = card.querySelector("img.bg");
+        if (img) img.remove();
+        card.classList.remove("has-img"); card.removeAttribute("data-photo");
+        btn.textContent = "Dodaj sliku"; x.remove();
+        if (!cur) bar.hidden = true;
+      }).catch(function () { says(name, "Nije spremljeno — provjeri vezu."); });
+    }
     tog.addEventListener("click", function () {
       end(false);
       mode = !mode; document.body.classList.toggle("editing", mode);
@@ -849,8 +939,11 @@
     });
     document.addEventListener("click", function (e) {
       if (!mode) return;
-      var f = e.target.closest(".ed-flag"), x = e.target.closest(".ed-x"), a = e.target.closest(".ed-add"), el = e.target.closest(".ed");
+      var f = e.target.closest(".ed-flag"), im = e.target.closest(".ed-img"), ix = e.target.closest(".ed-img-x");
+      var x = e.target.closest(".ed-x"), a = e.target.closest(".ed-add"), el = e.target.closest(".ed");
       if (f) { e.preventDefault(); e.stopPropagation(); flag(f); }
+      else if (im) { e.preventDefault(); e.stopPropagation(); pick(im); }
+      else if (ix) { e.preventDefault(); e.stopPropagation(); unpick(ix); }
       else if (x) { e.preventDefault(); e.stopPropagation(); remove(x); }
       else if (a) { e.preventDefault(); e.stopPropagation(); add(a); }
       else if (el) { e.preventDefault(); e.stopPropagation(); begin(el); }

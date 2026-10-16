@@ -1,22 +1,24 @@
 """In-place editable copy: src/qmt/copy.py (the slots and their caps),
 POST /copy/{key} (the save), _copy.html (the macros), the editor in base.html,
-and the migration that turned the offer cards' bullets into lists.
+the announcements' photos (POST /copy/{key}/slika, GET /slika/{name}), and
+the migration that turned the offer cards' bullets into lists.
 
 The browser half is the net under the texts. Their design limits were lifted
 on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
 slot with a long text — once with words, once with one unbreakable word —
-gives the first announcement's text three lines, and measures the pages at
-four widths.
+gives the first announcement's text three lines and a photo behind it, and
+measures the pages at four widths.
 Nothing may overflow or be cut, and the cards' prices stay level. It proves
 no design; that pass comes once the copy is final. On the way it walks the
 landing's rows of cards, the announcements' among them (on a phone they move
-on by themselves, and hold still when they must), and the install banner's
-week between asks.
+on by themselves, and hold still when they must), the editor's switch and
+photo pills, and the install banner's week between asks.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import pathlib
@@ -32,8 +34,9 @@ os.environ["OWNER_EMAIL"] = "trener@test.local"
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
-from qmt import auth, copy, db
+from qmt import auth, config, copy, db
 from qmt.models import Base, User
 from qmt.web.app import app
 
@@ -41,9 +44,15 @@ PAGES = ("/", "/cjenik", "/prehrana")          # every page that has editable te
 
 
 @pytest.fixture(autouse=True)
-def clean_db():
+def clean_db(tmp_path, monkeypatch):
     Base.metadata.drop_all(db.engine)
     Base.metadata.create_all(db.engine)
+    # Photos land in a throwaway dir, never the real data/uploads, and never
+    # the real R2 bucket: a developer's .env may carry live R2_* keys (as in
+    # tests/test_programs.py). The browser test's server is a thread of this
+    # process, and storage reads config at every call: it sees these too.
+    monkeypatch.setattr(config, "MEDIA_DIR", tmp_path / "uploads")
+    monkeypatch.setattr(config, "R2_ACCOUNT_ID", "")
     yield
 
 
@@ -200,7 +209,7 @@ def test_the_announcements_show_what_is_on_and_the_editor_keeps_what_is_off():
         assert 'is-off"' not in page
     page = client_for("trener@test.local").get("/").text                    # the editor has it, marked off
     assert two in page and 'data-flag-group' in page and 'class="evs swipe-row single"' in page
-    assert '<article class="card event is-off" data-flag="event2.show">' in page
+    assert '<article class="card event is-off" data-flag="event2.show" data-image="event2.image">' in page
 
     db.set_copy("event1.show", "off", None)                                 # both off: not even their box
     page = TestClient(app).get("/").text
@@ -209,6 +218,129 @@ def test_the_announcements_show_what_is_on_and_the_editor_keeps_what_is_off():
     assert '<div class="evs swipe-row is-off" id="aktualno"' in page and one in page and two in page
     assert page.count('<article class="card event is-off" data-flag="') == 2
     assert page.count('aria-pressed="false">Skriveno</button>') == 2
+
+
+# ---------- the announcements' photos ----------
+
+URL = "/copy/event1.image/slika"
+UNSUPPORTED = {"ok": False, "error": "Nepodržan format — dozvoljeno: jpg, png, webp."}
+
+
+def picture(w: int, h: int, fmt: str = "JPEG", orientation: int | None = None, mode: str = "RGB") -> bytes:
+    """A real image, made here: Pillow has to open what is posted. A JPEG
+    carries EXIF, a camera's make and, when given, the orientation a phone
+    stores instead of turning the pixels."""
+    im, buf, extra = Image.new(mode, (w, h), (180, 60, 40, 128)[:len(mode)]), io.BytesIO(), {}
+    if fmt == "JPEG":
+        exif = Image.Exif()
+        exif[0x010F] = "QMT testna kamera"                                 # Make
+        if orientation:
+            exif[0x0112] = orientation                                      # Orientation
+        extra["exif"] = exif.tobytes()
+    im.save(buf, fmt, **extra)
+    return buf.getvalue()
+
+
+def stored(r) -> str:
+    """The name a good upload to the first card answers with."""
+    d = r.json()
+    m = re.fullmatch(r"/slika/(aktualno-1-[0-9a-f]{16}\.jpg)", d.get("url") or "")
+    assert r.status_code == 200 and d["ok"] is True and m, d
+    return m.group(1)
+
+
+def test_a_photo_goes_up_only_from_an_editor_and_only_as_a_real_image():
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    good = {"slika": ("foto.jpg", picture(300, 200), "image/jpeg")}
+
+    r = TestClient(app).post(URL, files=good)
+    assert r.status_code == 401 and r.json()["ok"] is False
+    assert client_for("ivan@test.local").post(URL, files=good).status_code == 403
+
+    t = client_for("trener@test.local")
+    assert t.post("/copy/no.such.slot/slika", files=good).status_code == 404
+    r = t.post("/copy/event1.title/slika", files=good)                     # a text takes no photo
+    assert r.status_code == 400 and r.json() == {"ok": False, "error": "Ovdje ne ide slika."}
+    for name, data in (("foto.txt", b"samo tekst"), ("foto.gif", picture(30, 20, "GIF")),   # by the name,
+                       ("foto.jpg", b"ovo nije slika"), ("foto.jpg", picture(30, 20, "GIF")),  # and by what is in it:
+                       ("foto.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 64), ("foto.jpg", b"")):  # Pillow must open it
+        r = t.post(URL, files={"slika": (name, data, "image/jpeg")})
+        assert r.status_code == 400 and r.json() == UNSUPPORTED, name
+    r = t.post(URL)                                                         # no file at all
+    assert r.status_code == 400 and r.json() == UNSUPPORTED
+    r = t.post(URL, files={"slika": ("velika.jpg", b"\0" * (16 * 1024 * 1024), "image/jpeg")})
+    assert r.status_code == 400 and r.json() == {"ok": False, "error": "Slika je veća od 15 MB."}
+    assert "event1.image" not in db.copy_texts()                           # nothing recorded, nothing stored
+    assert not config.MEDIA_DIR.exists() or not any(config.MEDIA_DIR.iterdir())
+
+
+def test_a_photo_is_stored_upright_small_and_bare_and_its_card_shows_it_to_everyone():
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    t = client_for("trener@test.local")
+    # a phone's photo, its pixels on their side and EXIF orientation 6 to turn them
+    name = stored(t.post(URL, files={"slika": ("IMG_0001.JPG", picture(2400, 1600, orientation=6), "image/jpeg")}))
+    path = config.MEDIA_DIR / name
+    assert db.copy_texts()["event1.image"] == name and path.is_file()
+    with Image.open(path) as im:
+        assert im.format == "JPEG" and im.size == (1067, 1600)             # upright, its long side 1600
+        assert im.info.get("progressive") and not im.getexif() and "exif" not in im.info   # no camera, no place
+
+    for c in (TestClient(app), client_for("ivan@test.local")):             # a visitor and a client: card 1 on the photo
+        page = c.get("/").text
+        assert re.search(r'<article class="card event has-img" data-photo>\s*<img class="bg" src="/slika/'
+                         + re.escape(name) + r'" alt="" loading="eager" decoding="async">\s*<span class="tag">', page)
+        assert page.count('class="card event has-img"') == 1 and page.count('<article class="card event">') == 1
+        for mark in ("data-image", 'class="ed-img"', 'class="ed-img-x"', 'id="edImgFile"'):
+            assert mark not in page, mark
+    page = t.get("/").text                                                  # the editor: both cards take a photo
+    assert '<article class="card event has-img" data-photo data-flag="event1.show" data-image="event1.image">' in page
+    assert '<article class="card event" data-flag="event2.show" data-image="event2.image">' in page
+    assert re.search(r'<button type="button" class="ed-img" data-copy="event1.image" data-label="Događanje 1: slika">'
+                     r'Promijeni sliku</button>\s*<button type="button" class="ed-img-x" aria-label="Ukloni sliku" '
+                     r'data-copy="event1.image">Ukloni sliku</button>', page)
+    assert ('<button type="button" class="ed-img" data-copy="event2.image" data-label="Događanje 2: slika">'
+            'Dodaj sliku</button>') in page
+    assert page.count('class="ed-img-x"') == 1 and page.count('id="edImgFile"') == 1
+
+    r = TestClient(app).get(f"/slika/{name}")                              # anyone gets it, to keep for a year
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content == path.read_bytes()
+    assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
+    (config.MEDIA_DIR / "3f9a1c2b4d5e6f70.jpg").write_bytes(path.read_bytes())   # a programme's media: in no image slot
+    for other in ("nema.jpg", "3f9a1c2b4d5e6f70.jpg", "../x", "..%2Fx", "..jpg"):
+        assert TestClient(app).get(f"/slika/{other}").status_code == 404, other
+
+
+def test_a_new_photo_replaces_the_old_and_ukloni_takes_photo_and_row():
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    t = client_for("trener@test.local")
+    names = [stored(t.post(URL, files={"slika": (f, data, kind)})) for f, data, kind in (
+        ("prva.jpeg", picture(2400, 1600), "image/jpeg"),
+        ("druga.webp", picture(800, 600, "WEBP"), "image/webp"),
+        ("treca.png", picture(300, 200, "PNG", mode="RGBA"), "image/png"))]   # small, with transparency
+    assert len(set(names)) == 3 and db.copy_texts()["event1.image"] == names[2]
+    assert [n for n in names if (config.MEDIA_DIR / n).exists()] == names[2:]   # each one replaced the one before
+    assert [TestClient(app).get(f"/slika/{n}").status_code for n in names] == [404, 404, 200]   # nor is it served
+    with Image.open(config.MEDIA_DIR / names[2]) as im:
+        assert im.format == "JPEG" and im.mode == "RGB" and im.size == (300, 200)   # a JPEG, never enlarged
+
+    r = t.post("/copy/event1.image", data={"text": names[2]})               # no text ever lands in an image slot
+    assert r.status_code == 400 and r.json() == {"ok": False, "error": "Sliku šalje /copy/event1.image/slika."}
+    assert TestClient(app).post("/copy/event1.image", data={"reset": "1"}).status_code == 401
+    assert client_for("ivan@test.local").post("/copy/event1.image", data={"reset": "1"}).status_code == 403
+    assert db.copy_texts()["event1.image"] == names[2] and (config.MEDIA_DIR / names[2]).is_file()
+
+    r = t.post("/copy/event1.image", data={"reset": "1"})                   # Ukloni sliku: the row and the file go
+    assert r.status_code == 200 and r.json() == {"ok": True, "url": None, "default": True}
+    assert "event1.image" not in db.copy_texts() and not any(config.MEDIA_DIR.iterdir())
+    page = TestClient(app).get("/").text                                    # and the card is plain again
+    assert 'class="card event has-img"' not in page and "/slika/" not in page
+    assert page.count('<article class="card event">') == 2
+    page = t.get("/").text
+    assert 'data-label="Događanje 1: slika">Dodaj sliku</button>' in page and 'class="ed-img-x"' not in page
+
+    db.set_copy("event1.image", "../../.env", None)                         # a row naming a path is no photo
+    assert copy.image_name("event1.image", db.copy_texts()) is None
+    assert "/slika/" not in TestClient(app).get("/").text
 
 
 def _migration():
@@ -258,12 +390,16 @@ def test_every_slot_is_on_exactly_one_page_and_only_editors_see_the_editor():
                     assert page.count(f'data-copy="{key}"') == len(slot.default), key
                 if isinstance(slot, copy.FlagSlot):     # a switch: its toggle, once
                     assert page.count(f'data-copy="{key}"') == 1 and f'class="ed-flag" data-copy="{key}"' in page, key
+                if isinstance(slot, copy.ImageSlot):    # a photo: its "Dodaj sliku", once (none is set here;
+                    # with one, "Ukloni sliku" carries the key as well)
+                    assert page.count(f'data-copy="{key}"') == 1 and f'class="ed-img" data-copy="{key}"' in page, key
     assert set(seen) == set(copy.SLOTS), f"slots on no page: {set(copy.SLOTS) - set(seen)}"
     for c in (TestClient(app), client_for("ivan@test.local")):
         for path in PAGES:
             page = c.get(path).text
             if c.get(path, follow_redirects=False).status_code == 200:
-                for mark in ("data-copy", "copyToggle", "data-list", 'class="ed-x"', 'ed-add"', 'class="ed-flag"', "data-flag"):
+                for mark in ("data-copy", "copyToggle", "data-list", 'class="ed-x"', 'ed-add"', 'class="ed-flag"', "data-flag",
+                             'class="ed-img"', "data-image"):
                     assert mark not in page, (path, mark)
 
 
@@ -275,13 +411,15 @@ def test_every_slot_is_on_exactly_one_page_and_only_editors_see_the_editor():
 # texts (300 characters, lists of 12 items of 60) and line breaks may make a
 # box tall, but nothing may widen a page or leave the topbar's pill, an
 # editable span never changes a font, nothing is cut by a box that hides its
-# overflow, and the cards' prices stay level across each row.
+# overflow, and the cards' prices stay level across each row. The first
+# announcement sits on a photo all along: a long text makes it taller too.
 
 WORDS = ("trening snaga pokret zdravlje tehnika grupa trener dvorana program "
          "ravnoteža mobilnost izdržljivost oporavak sprava").split()
 
 LONG, ITEMS, ITEM = 300, 12, 60     # a long text; a list of 12 items, 60 characters each
 LINES = "Male grupe do 8 polaznika.\nIndividualni rad 1:1.\nPovratak nakon ozljede."   # a text in three lines
+PHOTO_NAME = "aktualno-1-0123456789abcdef.jpg"                     # the first announcement's photo (fill())
 IPHONE = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
           "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")   # the install banner's iOS steps
 
@@ -324,8 +462,8 @@ MEASURE = r"""(strict) => {
   if (tb) { const cs = getComputedStyle(tb), r = tb.getBoundingClientRect(), l = r.left + px(cs.borderLeftWidth) + px(cs.paddingLeft), rr = r.right - px(cs.borderRightWidth) - px(cs.paddingRight);
     for (const k of [...tb.children].filter(k => vis(k) && getComputedStyle(k).position !== 'absolute')) { const b = k.getBoundingClientRect(); if (b.right - rr > 0.5 || l - b.left > 0.5) out.problems.push('topbar child leaves the pill'); } }
   // typography: an editable span never changes the font of what it sits in
-  // (a flag's toggle is a button of its own, not a text)
-  for (const el of document.querySelectorAll('[data-copy]:not(.ed-flag)')) { const a = getComputedStyle(el), b = getComputedStyle(el.parentElement);
+  // (a flag's toggle and a photo's pills are buttons of their own, not texts)
+  for (const el of document.querySelectorAll('[data-copy]:not(.ed-flag):not(.ed-img):not(.ed-img-x)')) { const a = getComputedStyle(el), b = getComputedStyle(el.parentElement);
     if (a.fontFamily !== b.fontFamily || a.fontSize !== b.fontSize || a.fontWeight !== b.fontWeight) out.problems.push(`${el.dataset.copy} changes the font`); }
   // nothing is cut: a text (span.t, every viewer's, editor or not) never
   // reaches past an ancestor that hides its overflow. The one clamp on
@@ -404,17 +542,21 @@ LANDING = r"""([w, strict]) => {
 }"""
 
 # The announcements (#aktualno, in the hero), both on in every walk (fill()
-# leaves the flags alone). Below 900px a swipe row exactly as wide as the
-# screen (it runs to the edges like the tiers' row; the hero keeps its gutter
-# for the rest) with a dot per card under it, the first lit on load. From
-# 900px two cards side by side and no dots, each card a header line (chip,
-# title over when, the link) with its text on a line of its own under it.
+# leaves the flags alone), the first over a photo. Below 900px a swipe row
+# exactly as wide as the screen (it runs to the edges like the tiers' row; the
+# hero keeps its gutter for the rest) with a dot per card under it, the first
+# lit on load. From 900px two cards side by side and no dots, a plain card a
+# header line (chip, title over when, the link) with its text on a line of its
+# own under it (the photo card is a column: PHOTO). At every width the two are
+# one height: a row of two cards, not a tall one beside a short one.
 AKTUALNO = r"""(w) => {
   const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().width > 0; };
   const out = [], row = document.querySelector('#aktualno');
   if (!row) return ['no announcements'];
   const cards = [...row.querySelectorAll('.event')].filter(vis), dots = [...document.querySelectorAll('#aktualno + .dots button')].filter(vis);
   if (cards.length !== 2) out.push(`${cards.length} announcements shown`);
+  const hs = cards.map(c => c.getBoundingClientRect().height);
+  if (Math.max(...hs) - Math.min(...hs) > 1) out.push(`the announcements are not one height: ${hs.map(Math.round).join(', ')}`);
   if (w < 900) {
     const r = row.getBoundingClientRect();
     if (!row.classList.contains('swipe-row') || getComputedStyle(row).overflowX !== 'auto') out.push('the announcements are not a swipe row');
@@ -431,10 +573,42 @@ AKTUALNO = r"""(w) => {
     if (cols !== 2) out.push(`the announcements are in ${cols} columns`);
     const t = cards.map(c => c.getBoundingClientRect().top);
     if (Math.max(...t) - Math.min(...t) > 1) out.push(`the announcements are not side by side: ${t.join(', ')}`);
-    for (const c of cards)
+    for (const c of cards.filter(c => !c.classList.contains('has-img')))
       if (c.querySelector('.text').getBoundingClientRect().top < c.querySelector('.foot').getBoundingClientRect().bottom - 1)
         out.push("an announcement's text is not on a line of its own under the link");
   }
+  return out;
+}"""
+
+# The first announcement over a photo (fill() gives it one, written into this
+# test's own MEDIA_DIR). The photo loaded (so the server thread read the same
+# patched config) and covers the card; every text, the chip and the link sit
+# inside the card, which a long text makes taller: nothing in it is clamped,
+# unlike the stage's caption (MEASURE allows no cut here). A column at every
+# width, at least its min-height tall: the chip at the top, then the title,
+# the text and the link, which sits at the bottom. The type is white.
+PHOTO = r"""() => {
+  const out = [], card = document.querySelector('#aktualno .event.has-img'), box = el => el.getBoundingClientRect();
+  if (!card) return ['no announcement over a photo'];
+  if (!card.hasAttribute('data-photo')) out.push('the photo card carries no data-photo');
+  const img = card.firstElementChild, c = box(card), cs = getComputedStyle(card);
+  if (!img || !img.matches('img.bg')) return [...out, "the photo is not the card's first child"];
+  if (!img.complete || !img.naturalWidth) out.push(`the photo did not load: ${img.getAttribute('src')}`);
+  const r = box(img), at = b => [b.left, b.top, b.width, b.height].map(Math.round).join(',');
+  if (['left', 'top', 'right', 'bottom'].some(k => Math.abs(r[k] - c[k]) > 1)) out.push(`the photo (${at(r)}) does not cover its card (${at(c)})`);
+  if (c.height < (innerWidth < 900 ? 300 : 280) - 1) out.push(`the photo card is ${Math.round(c.height)}px tall`);
+  for (const el of card.querySelectorAll('span.t, .tag, .act')) { const b = box(el);
+    if (b.width && (b.left < c.left - 1 || b.top < c.top - 1 || b.right > c.right + 1 || b.bottom > c.bottom + 1))
+      out.push(`"${el.textContent.trim().slice(0, 12)}…" leaves the photo card`); }
+  const [tag, head, text, foot] = ['.tag', '.head', '.text', '.foot'].map(s => box(card.querySelector(s)));
+  if (Math.abs(tag.top - c.top - parseFloat(cs.paddingTop)) > 2) out.push(`the photo card's chip is ${Math.round(tag.top - c.top)}px from its top`);
+  if (Math.abs(c.bottom - parseFloat(cs.paddingBottom) - foot.bottom) > 2) out.push(`the photo card's link is ${Math.round(c.bottom - foot.bottom)}px from its bottom`);
+  if (!(tag.bottom <= head.top + 1 && head.bottom <= text.top + 1 && text.bottom <= foot.top + 1))
+    out.push("the photo card is not a column of chip, title, text and link");
+  // the room is above the title (its auto margin), not in a text box grown under the words
+  const words = card.querySelector('.text span.t');
+  if (words && text.bottom - words.getBoundingClientRect().bottom > 4) out.push("the photo card's text box grows: its title is not at the bottom");
+  for (const s of ['h2', '.when']) if (getComputedStyle(card.querySelector(s)).color !== 'rgb(255, 255, 255)') out.push(`the photo card's ${s} is not white`);
   return out;
 }"""
 
@@ -476,12 +650,75 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
 
     def fill(make):
         for key, slot in copy.SLOTS.items():
-            if isinstance(slot, copy.FlagSlot):         # a switch, not a text: left on, both announcements show
-                continue
+            if isinstance(slot, (copy.FlagSlot, copy.ImageSlot)):   # a switch and a photo, not texts: the flags
+                continue                                            # left on (both show), the photo below
             if isinstance(slot, copy.ListSlot):         # every list 12 items long, each item 60 characters
                 db.set_copy(key, copy.dump_items([make(min(slot.max_chars, ITEM))] * min(slot.max_items, ITEMS)), None)
             else:                                       # every text 300 characters
                 db.set_copy(key, make(min(slot.max, LONG)), None)
+        photo_on()
+
+    def photo_on():
+        """The first announcement over a photo, the second plain: every walk
+        measures a photo card beside a plain one, or among them in a phone's
+        row. Written where the server thread will look for it, this test's
+        own MEDIA_DIR (the autouse fixture)."""
+        config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (1600, 900), (70, 92, 112)).save(config.MEDIA_DIR / PHOTO_NAME, "JPEG", quality=82)
+        db.set_copy("event1.image", PHOTO_NAME, None)
+
+    def photo_edit(pg):
+        """The editor's photo pills in a browser (base.html), on the first
+        card in edit mode. "Promijeni sliku" opens the file picker; the
+        chosen file goes up, and the card shows the new photo at once (first
+        in the card, .has-img, data-photo) with its pills, the photo it
+        replaced deleted. "Ukloni sliku" asks first ("Ukloni?"), and its
+        second tap leaves the card plain, row and file gone. "Dodaj sliku"
+        then puts a photo on the plain card. The walks' photo is put back,
+        the page reloaded, for what follows."""
+        out, card = [], pg.locator('#aktualno [data-image="event1.image"]')
+
+        def send(before):
+            """A file picked with the card's .ed-img: the problems seen, and the stored name."""
+            with pg.expect_file_chooser() as chooser:
+                card.locator(".ed-img").click()
+            chooser.value.set_files({"name": "nova.jpg", "mimeType": "image/jpeg", "buffer": picture(1200, 800)})
+            try:
+                pg.wait_for_function("""(before) => { const i = document.querySelector('[data-image="event1.image"]').firstElementChild;
+                  return i.matches('img.bg') && i.getAttribute('src') !== before && i.complete && i.naturalWidth > 0; }""",
+                                     arg=before, timeout=10000)
+            except PlaywrightTimeout:
+                return ["a photo sent from the editor did not show first in its card"], ""
+            name = db.copy_texts().get("event1.image", "")
+            seen = pg.evaluate("""() => { const c = document.querySelector('[data-image="event1.image"]');
+              return [c.classList.contains('has-img'), c.hasAttribute('data-photo'), c.firstElementChild.getAttribute('src'),
+                      [...c.querySelectorAll('.ed-img, .ed-img-x')].map(b => b.textContent), document.getElementById('copyBar').hidden]; }""")
+            if seen != [True, True, f"/slika/{name}", ["Promijeni sliku", "Ukloni sliku"], True] or not name.startswith("aktualno-1-"):
+                return [f"after an upload the card is {seen}, the row {name!r}"], name
+            return [], name
+
+        pg.click("#copyToggle")
+        problems, name = send(f"/slika/{PHOTO_NAME}")                  # Promijeni sliku
+        out += problems
+        if (config.MEDIA_DIR / PHOTO_NAME).exists():
+            out.append("the photo an upload replaced is still stored")
+        x = card.locator(".ed-img-x")
+        x.click()
+        if x.text_content() != "Ukloni?" or db.copy_texts().get("event1.image") != name:
+            out.append(f"one tap on Ukloni sliku: {x.text_content()!r}, the row {db.copy_texts().get('event1.image')!r}")
+        x.click()
+        try:
+            pg.wait_for_function("""() => { const c = document.querySelector('[data-image="event1.image"]');
+              return !c.classList.contains('has-img') && !c.hasAttribute('data-photo') && !c.querySelector('img.bg, .ed-img-x')
+                     && c.querySelector('.ed-img').textContent === 'Dodaj sliku'; }""", timeout=10000)
+        except PlaywrightTimeout:
+            out.append("the second tap on Ukloni sliku did not leave the card plain")
+        if "event1.image" in db.copy_texts() or (config.MEDIA_DIR / name).exists():
+            out.append("after Ukloni sliku its row or its file is still there")
+        problems, name = send(None)                                    # Dodaj sliku, on the plain card
+        out += [f"onto a plain card: {p}" for p in problems]
+        photo_on(); pg.reload(); pg.wait_for_load_state("networkidle")
+        return out
 
     def flip(pg, w):
         """The editor's switch in a browser: in edit mode the first
@@ -583,7 +820,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         ctx.browser.close()
         return [f"[install banner 390px] {p}" for p in out]
 
-    def walk(pw, email, widths, label, strict=True, lines=False, switch=(), auto=None):
+    def walk(pw, email, widths, label, strict=True, lines=False, switch=(), auto=None, photos=()):
         problems = []
         for w in widths:
             phone = w < 600
@@ -602,6 +839,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                     problems += [f"{where} {p}" for p in pg.evaluate(EVENT_TEXT)]
                 problems += [f"{where} {p}" for p in pg.evaluate(LANDING, [w, strict])]
                 problems += [f"{where} {p}" for p in pg.evaluate(AKTUALNO, w)]
+                problems += [f"{where} {p}" for p in pg.evaluate(PHOTO)]
                 if w == auto:                               # the announcements moving by themselves, once
                     problems += [f"{where} {p}" for p in advance(pg)]
                 if not all(pg.locator(f"{sec} .period").is_visible() for sec in ("#usluge", "#dvorana")):
@@ -615,6 +853,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                     problems += [f"{did} {p}" for p in pg.evaluate(PERIOD, period)]
                     problems += [f"{did} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
                     problems += [f"{did} {p}" for p in pg.evaluate(LANDING, [w, strict])]
+                if w in photos:                             # the editor's photo pills, on a phone
+                    problems += [f"{where} photo: {p}" for p in photo_edit(pg)]
                 if w in switch:                             # the editor's switch, on a phone and a wide screen
                     problems += [f"{where} switch: {p}" for p in flip(pg, w)]
             problems += [f"[{label} {w}px] js: {e}" for e in errs]
@@ -625,7 +865,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         fill(words)                                   # long texts: 300 characters, lists of 12
         problems = walk(pw, None, (360, 390, 900, 1280), "words", auto=390)
         problems += still(pw)                         # under reduced motion: never by themselves
-        problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280))
+        problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280), photos=(390,))
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")
         problems += banner(pw)                        # the install banner's week between asks
         db.set_copy("event1.text", LINES, None)       # line breaks: the first announcement's text in three lines
