@@ -366,10 +366,7 @@ def landing(request: Request):
         request, user, gallery=gallery, my_plans=plans,
         show_prices=show_prices,
         offer_prices=_offer_prices(payments.price_table()) if show_prices else {},
-        addon=MOJIMAKROSI_ADDON,
-        # the hero only offers booking to someone who can actually book
-        can_book=bool(plans & {"grupni", "individualni", "poluindividualni",
-                               "rehabilitacija"})))
+        addon=MOJIMAKROSI_ADDON))
 
 
 @app.get("/cjenik", response_class=HTMLResponse)

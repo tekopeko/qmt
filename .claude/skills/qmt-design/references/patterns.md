@@ -42,7 +42,7 @@ than a page.
 
 **Map to QMT** (`.fb-modal` already has the dialog idiom):
 - `<dialog id="authDlg" class="fb-modal">` opened by the topbar Prijava /
-  Registriraj se buttons and by the hero CTAs; the current `/login` and `/signup`
+  Registriraj se buttons (the hero has no buttons since 16.10.2026); the current `/login` and `/signup`
   pages stay as the no-JS / deep-link fallback (`?next=` keeps working).
 - Backdrop: `rgba(0,0,0,.55)` + `backdrop-filter: blur(6px)` — add the blur to
   `.fb-modal::backdrop`, it is the part that makes it feel premium.

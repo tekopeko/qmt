@@ -27,6 +27,8 @@ the rest are copy slots the owner types. Dvorana and Individualno sit in
 
 16.10.2026, second task (Opus draft, reviewed, live): the landing has an announcements section, `#aktualno`, between the gym and the gallery: the owner's two cards for the month ("Treninzi za penziće" and "Pilates za cure" as examples to retype: chip, title, when, text, a grey "Javi nam se" to the contact), each switched off in edit mode by a new slot type, `FlagSlot` ("on" / "off" stored as copy, no schema change). A hidden card is not on a visitor's page, and with both hidden neither is the section; the editor sees it dimmed in edit mode only. Same task: on phones the three tiers' swipe row opens on PRO, the featured middle card.
 
+16.10.2026, third task (Opus draft, reviewed, live): the announcements are the first thing on the page (the owner: "more horizontal", "even before the first photo"). `#aktualno` is two wide strips in the hero, between the headline and the photo: chip, title over when, text and a grey "Javi nam se" in one row that wraps when a text is long (a column below 700px). They take the place of the hero's lead, its member button ("Rezerviraj termin" / "Pogledaj cjenik") and the note under it, gone for everyone; a member's way in is the tabs and the offer cards' buttons. The section head went too, and with it the slots `hero.lead`, `hero.note`, `events.kicker` and `events.h2` (any rows for them in prod's `site_copy` are harmless, nothing reads them; no migration). The strip's title is an `h2`, not the card's `h3`: it sits straight under the `h1` (the audit's heading order).
+
 ## 5.10.2026 — the redesign is live; work continues on `master`
 
 `redesign` was merged into `master` (one merge commit, so the whole redesign

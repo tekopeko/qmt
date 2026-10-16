@@ -23,17 +23,61 @@
   .hero .kicker::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
   .hero h1 { font-size: clamp(2rem, 5vw, 3.4rem); color: var(--text); margin: 0 auto; max-width: 22ch; }
   .hero h1 .red { color: var(--accent); }
-  .hero p.lead {
-    max-width: 52ch; margin: 16px auto 26px; font-size: clamp(1rem, 1.5vw, 1.15rem);
-    color: var(--muted);
+
+  /* ---- aktualno: the owner's announcements for the month (a new group, a
+     course), the first thing on the page since 16.10.2026, his call: under
+     the headline, above the photo, where the lead and a member's button
+     were. Two wide strips, one under the other, each read left to right in
+     the centred hero: a chip, the title over when, a few lines, one grey
+     link to the contact (the page's one red button stays on the featured
+     tier). The .card surface at the 20px radius: a shallow strip, not the
+     stage's 28px. Flex WRAP on purpose: a long text makes a strip taller,
+     never wider. No piece is ever wider than the strip (a max-width, or a
+     basis it shrinks from), so a long one wraps onto a line of its own;
+     tests/test_copy.py's 300-character texts rely on it. Below 700px a
+     strip is a column. ---- */
+  .evs { display: grid; gap: 12px; max-width: 1100px; margin: clamp(24px, 4vw, 36px) auto 0; text-align: left; }
+  .event { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 16px 22px;
+           border-radius: var(--r-lg); }
+  /* not the glass chip on the photo below: the accent tint on the card, with
+     the ink that is AA on it in both themes */
+  .event .tag { flex: none; display: inline-block; max-width: 100%; margin: 0; padding: 5px 12px; border: 0;
+                border-radius: 999px; background: var(--accent-dim); color: var(--accent-tint-ink);
+                font: 700 .74rem var(--font-body); letter-spacing: .06em; text-transform: uppercase;
+                white-space: pre-line; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .event .head { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+  /* the offer cards' italic title (.offer h3, further down), smaller: a
+     strip is shallow. Its own rule, not a size on top of that one, which
+     comes later in the file and would win. An h2, where the card had an h3:
+     it sits straight under the page's h1 now (the audit's heading order). */
+  .event h2 { font: 700 italic 1.15rem/1.15 var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
+  /* the kicker's dot; on the baseline, so a line that wraps keeps the dot
+     beside its first line */
+  .event .when { display: inline-flex; align-items: baseline; gap: 8px; margin-top: 3px;
+                 font: 600 .86rem var(--font-body); color: var(--text); }
+  .event .when::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  /* the text takes the room the others leave, and its own line below 280px */
+  .event .text { flex: 1 1 280px; min-width: 0; margin: 0; color: var(--muted); font-size: .92rem; line-height: 1.45; }
+  /* at the right end of the strip, or of its own line when it wraps; at
+     most the strip's width, so a long link text wraps inside it */
+  .event .foot { flex: none; max-width: 100%; margin-left: auto; display: flex; }
+  /* A strip the editor switched off (copy.FlagSlot) is on his page only, as
+     .is-off, and so is their box when both are: hidden, so outside edit mode
+     he sees the visitor's page. Edit mode shows them, the strip's content
+     dimmed but not its toggle, which stays readable to switch it back on.
+     The toggle is the strip's first item, centred on it like the rest:
+     base.html gives it the margin and the alignment of a column. */
+  .evs.is-off, .event.is-off { display: none; }
+  body.editing .evs.is-off { display: grid; }
+  body.editing .event.is-off { display: flex; }
+  body.editing .event.is-off > :not(.ed-flag) { opacity: .55; }
+  body.editing .event .ed-flag { margin: 0; align-self: center; }
+  @media (max-width: 699px) {
+    .event { flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 20px; }
+    .event .text { flex-basis: auto; }
+    .event .foot { margin-left: 0; margin-top: 4px; }
+    body.editing .event .ed-flag { align-self: flex-start; }
   }
-  .hero .cta-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-  .hero .btn-hero { padding: 14px 26px; font-size: .98rem; border-radius: 999px; }
-  .hero .btn-hero.secondary {
-    background: var(--surface); color: var(--text); box-shadow: none; border: 1px solid var(--line);
-  }
-  .hero .btn-hero.secondary:hover { background: var(--surface-2); transform: none; }
-  .hero-note { margin-top: 14px; font-size: .9rem; color: var(--muted); }
 
   /* ---- the photo card: one image, chips in the corners, title over a gradient ---- */
   /* The whole card is a link to the offer below, the way Shape's hero cards
@@ -167,7 +211,7 @@
      are a swipe row like the tiers (.swipe-row) */
   @media (min-width: 900px) { .gym-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
                                           max-width: 760px; margin-inline: auto; } }
-  .offer h3, .event h3 { font: 700 italic 1.5rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
+  .offer h3 { font: 700 italic 1.5rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
   /* two lines kept free, so the three lists start level when a lead wraps */
   .offer .lead { color: var(--muted); font-size: .95rem; margin-top: 6px; min-height: 2.9em; }
   .offer ul { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
@@ -217,45 +261,6 @@
   .offer .owned { background: var(--good-fill); color: var(--good-ink); border: 1px solid transparent; box-shadow: none; }
   .offer .owned:hover { background: var(--good-strong); color: var(--good-ink); }
 
-  /* ---- aktualno: the owner's announcements for the month (a new group, a
-     course), between the gym and the gallery. Two cards as wide as the gym's
-     row above, the .offer shape without a price: a chip, the title, when, a
-     few lines, one grey link to the contact (the page's one red button stays
-     on the featured tier). Below 700px a stack, not a swipe row: two short
-     cards read better one under the other. With one card shown (.single)
-     the row is one narrower column. ---- */
-  .ev-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
-             max-width: 760px; margin-inline: auto; }
-  .ev-grid.single { grid-template-columns: minmax(0, 1fr); max-width: 560px; }
-  .event { position: relative; display: flex; flex-direction: column; padding: 30px 28px 26px;
-           border-radius: var(--r-xl); }
-  /* not the glass chip above, which sits on a photo: the accent tint on the
-     card, with the ink that is AA on it in both themes */
-  .event .tag { display: inline-block; align-self: flex-start; max-width: 100%; margin-bottom: 14px;
-                padding: 5px 12px; border: 0; border-radius: 999px; background: var(--accent-dim);
-                color: var(--accent-tint-ink); font: 700 .74rem var(--font-body); letter-spacing: .06em;
-                text-transform: uppercase; white-space: pre-line;
-                backdrop-filter: none; -webkit-backdrop-filter: none; }
-  /* the hero kicker's dot; on the baseline, so a line that wraps keeps the
-     dot beside its first line */
-  .event .when { display: inline-flex; align-items: baseline; gap: 8px; margin-top: 8px;
-                 font: 600 .92rem var(--font-body); color: var(--text); }
-  .event .when::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-  .event .text { margin-top: 10px; color: var(--muted); font-size: .95rem; line-height: 1.5; }
-  /* the link pinned to the bottom, so the two cards' links sit level */
-  .event .foot { margin-top: auto; padding-top: 22px; display: flex; }
-  /* A card the editor switched off (copy.FlagSlot) is on his page only, as
-     .is-off, and so is the section when both are: hidden, so outside edit
-     mode he sees the visitor's page. Edit mode shows them, the card's content
-     dimmed but not its toggle, which stays readable to switch it back on, and
-     both columns come back, since both cards show. */
-  .event.is-off, section.is-off { display: none; }
-  body.editing section.is-off { display: block; }
-  body.editing .event.is-off { display: flex; }
-  body.editing .event.is-off > :not(.ed-flag) { opacity: .55; }
-  body.editing .ev-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 760px; }
-  @media (max-width: 699px) { .ev-grid, .ev-grid.single, body.editing .ev-grid { grid-template-columns: minmax(0, 1fr); } }
-
   /* gallery: the same photo-card shape as the stage */
   .gal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
   .gal-item { overflow: hidden; display: block; aspect-ratio: 4 / 3; text-decoration: none;
@@ -294,8 +299,8 @@
      rather than widening the page. Since the limits were lifted (16.10.2026)
      this is the net under every such text. The chips are in it because their
      text (span.t, pre-line) wraps now, where .tag alone would not. */
-  .hero h1, .hero .lead, .hero .kicker, .hero-note, .stage .copy, .stage .tags, .sec-kicker, section.band h2, .offer h3, .offer .lead,
-  .offer li, .offer .addon, .offer .price, .offer .price-note, .event h3, .event .tag, .event .when, .event .text,
+  .hero h1, .hero .kicker, .stage .copy, .stage .tags, .sec-kicker, section.band h2, .offer h3, .offer .lead,
+  .offer li, .offer .addon, .offer .price, .offer .price-note, .event h2, .event .tag, .event .when, .event .text,
   .event .act, .info h3, .info td, footer { overflow-wrap: anywhere; }
 </style>
 {% endblock %}
@@ -305,15 +310,36 @@
   <div class="hero-inner">
     <span class="kicker">{{ c.t("hero.kicker") }}</span>
     <h1>{{ c.t("hero.h1a") }} <span class="red">{{ c.t("hero.h1b") }}</span></h1>
-    <p class="lead">{{ c.t("hero.lead") }}</p>
-    {# A guest's hero has no buttons: the bar above carries Prijava and
-       Kontakt, and the photo below leads to the offer. A member gets the one
-       action that fits their membership. #}
-    {% if can_book %}
-    <div class="cta-row"><a class="btn btn-hero" href="/raspored">Rezerviraj termin</a></div>
-    {% elif user %}
-    <div class="cta-row"><a class="btn btn-hero" href="/cjenik">Pogledaj cjenik</a></div>
-    <p class="hero-note">{{ c.t("hero.note") }}</p>
+
+    {# Aktualno: the owner's announcements for the month, the first thing on
+       the page since 16.10.2026 (his call): two strips under the headline,
+       above the photo, where the lead, a member's button and its note were;
+       a member's way in is the bar's tabs and the offer cards' buttons. He
+       switches a strip off in edit mode when it is over (copy.FlagSlot: the
+       toggle at its start). A visitor gets only the strips that are on, and
+       not even their box when both are off. An editor gets both strips and
+       the box always, what is off marked .is-off (shown, dimmed, in edit
+       mode only); the data-flag marks are for the editor's script, which
+       keeps .is-off in step when a toggle is pressed (the .single it also
+       sets on the box has no rule here: the strips are one column whatever
+       shows). The link leads to the contact. #}
+    {% set ev_on = [copy_flag("event1.show", copy_texts), copy_flag("event2.show", copy_texts)] %}
+    {% set ev_shown = ev_on | select | list | length %}
+    {% if ev_shown or can_edit_copy %}
+    <div class="evs{% if not ev_shown %} is-off{% endif %}" id="aktualno"{% if can_edit_copy %} data-flag-group{% endif %}>
+      {% for on in ev_on %}{% set ev = "event" ~ loop.index %}
+      {% if on or can_edit_copy %}
+      <article class="card event{% if not on %} is-off{% endif %}"{% if can_edit_copy %} data-flag="{{ ev }}.show"{% endif %}>
+        {% if can_edit_copy %}<button type="button" class="ed-flag" data-copy="{{ ev }}.show" data-label="{{ COPY[ev ~ '.show'].label }}"
+                aria-pressed="{{ 'true' if on else 'false' }}">{{ "Prikazano" if on else "Skriveno" }}</button>{% endif %}
+        <span class="tag">{{ c.t(ev ~ ".tag") }}</span>
+        <div class="head"><h2>{{ c.t(ev ~ ".title") }}</h2><p class="when">{{ c.t(ev ~ ".when") }}</p></div>
+        <p class="text">{{ c.t(ev ~ ".text") }}</p>
+        <div class="foot"><a class="act" href="/#kontakt">{{ c.t(ev ~ ".cta") }}</a></div>
+      </article>
+      {% endif %}
+      {% endfor %}
+    </div>
     {% endif %}
 
     {# the stage: the studio itself. The whole card is a link to the offer. #}
@@ -436,41 +462,6 @@
     {{ period_switch() }}
   </div>
 </section>
-
-{# Aktualno: the owner's announcements for the month, two cards he switches
-   off in edit mode when one is over (copy.FlagSlot: the toggle on top of
-   each card). A visitor gets only the cards that are on, and no section at
-   all when both are off. An editor gets both cards and the section always,
-   what is off marked .is-off (shown, dimmed, in edit mode only); the
-   data-flag marks are for the editor's script, which keeps .is-off and
-   .single in step when a toggle is pressed. The link leads to the contact. #}
-{% set ev_on = [copy_flag("event1.show", copy_texts), copy_flag("event2.show", copy_texts)] %}
-{% set ev_shown = ev_on | select | list | length %}
-{% if ev_shown or can_edit_copy %}
-<section class="band{% if not ev_shown %} is-off{% endif %}" id="aktualno" style="padding-top:0;"{% if can_edit_copy %} data-flag-group{% endif %}>
-  <div class="band-inner">
-    <div class="sec-head">
-      <div class="sec-kicker">{{ c.t("events.kicker") }}</div>
-      <h2>{{ c.t("events.h2") }}</h2>
-    </div>
-    <div class="ev-grid{% if ev_shown == 1 %} single{% endif %}">
-      {% for on in ev_on %}{% set ev = "event" ~ loop.index %}
-      {% if on or can_edit_copy %}
-      <article class="card event{% if not on %} is-off{% endif %}"{% if can_edit_copy %} data-flag="{{ ev }}.show"{% endif %}>
-        {% if can_edit_copy %}<button type="button" class="ed-flag" data-copy="{{ ev }}.show" data-label="{{ COPY[ev ~ '.show'].label }}"
-                aria-pressed="{{ 'true' if on else 'false' }}">{{ "Prikazano" if on else "Skriveno" }}</button>{% endif %}
-        <span class="tag">{{ c.t(ev ~ ".tag") }}</span>
-        <h3>{{ c.t(ev ~ ".title") }}</h3>
-        <p class="when">{{ c.t(ev ~ ".when") }}</p>
-        <p class="text">{{ c.t(ev ~ ".text") }}</p>
-        <div class="foot"><a class="act" href="/#kontakt">{{ c.t(ev ~ ".cta") }}</a></div>
-      </article>
-      {% endif %}
-      {% endfor %}
-    </div>
-  </div>
-</section>
-{% endif %}
 
 {% if gallery | length > 1 %}
 <section class="band" id="galerija" style="padding-top:0;">

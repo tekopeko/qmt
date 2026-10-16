@@ -5,7 +5,8 @@ and the migration that turned the offer cards' bullets into lists.
 The browser half is the net under the texts. Their design limits were lifted
 on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
 slot with a long text — once with words, once with one unbreakable word —
-gives the hero lead three lines, and measures the pages at four widths.
+gives the first announcement's text three lines, and measures the pages at
+four widths.
 Nothing may overflow or be cut, and the cards' prices stay level. It proves
 no design; that pass comes once the copy is final.
 """
@@ -66,7 +67,7 @@ def client_for(email: str) -> TestClient:
 
 def test_only_a_trainer_saves_and_the_limit_and_reset_hold():
     make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
-    key, slot = "hero.lead", copy.SLOTS["hero.lead"]
+    key, slot = "hero.kicker", copy.SLOTS["hero.kicker"]
 
     assert TestClient(app).post(f"/copy/{key}", data={"text": "x"}).status_code == 401
     assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "x"}).status_code == 403
@@ -76,7 +77,7 @@ def test_only_a_trainer_saves_and_the_limit_and_reset_hold():
     assert r.status_code == 200 and r.json() == {"ok": True, "text": "Novi uvodni\ntekst.", "default": False}
     page = TestClient(app).get("/").text                                    # everyone reads the edit, in a .t span
     assert '<span class="t">Novi uvodni\ntekst.</span>' in page             # (span.t prints the line break)
-    assert 'data-copy="hero.lead"' not in page                              # ...without editor markup
+    assert 'data-copy="hero.kicker"' not in page                            # ...without editor markup
     assert (f'<span class="ed t" data-copy="{key}" data-max="2000" data-label="{slot.label}">'
             "Novi uvodni\ntekst.</span>") in t.get("/").text                 # the editor has it
     r = t.post(f"/copy/{key}", data={"text": " a \n\n\n\n b "})              # one empty line at most
@@ -182,27 +183,27 @@ def test_a_flag_slot_switches_on_and_off_and_takes_nothing_else():
 def test_the_announcements_show_what_is_on_and_the_editor_keeps_what_is_off():
     make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
     one, two = copy.SLOTS["event1.title"].default, copy.SLOTS["event2.title"].default
-    page = TestClient(app).get("/").text                                    # both by default, under the gym
-    assert 'id="aktualno"' in page and one in page and two in page and '<div class="ev-grid">' in page
-    assert page.index('id="dvorana"') < page.index('id="aktualno"') < page.index('id="kontakt"')
+    page = TestClient(app).get("/").text                                    # both by default, in the hero:
+    assert 'id="aktualno"' in page and one in page and two in page          # under the headline, above the photo
+    assert page.index("<h1") < page.index('id="aktualno"') < page.index('class="stage"')
     assert page.count('<a class="act" href="/#kontakt"><span class="t">Javi nam se</span></a>') == 2
 
     db.set_copy("event2.show", "off", None)                                 # one off: gone from a visitor's page
-    for c in (TestClient(app), client_for("ivan@test.local")):              # and a client's, the row one column
+    for c in (TestClient(app), client_for("ivan@test.local")):              # and a client's
         page = c.get("/").text
-        assert one in page and two not in page and '<div class="ev-grid single">' in page
+        assert one in page and two not in page
         assert 'is-off"' not in page
     page = client_for("trener@test.local").get("/").text                    # the editor has it, marked off
-    assert two in page and '<div class="ev-grid single">' in page and 'data-flag-group' in page
+    assert two in page and 'data-flag-group' in page
     assert '<article class="card event is-off" data-flag="event2.show">' in page
 
-    db.set_copy("event1.show", "off", None)                                 # both off: no section at all
+    db.set_copy("event1.show", "off", None)                                 # both off: not even their box
     page = TestClient(app).get("/").text
     assert 'id="aktualno"' not in page and one not in page and two not in page
-    page = client_for("trener@test.local").get("/").text                    # the editor keeps both, and the section
-    assert '<section class="band is-off" id="aktualno"' in page and one in page and two in page
+    page = client_for("trener@test.local").get("/").text                    # the editor keeps both, and the box
+    assert '<div class="evs is-off" id="aktualno"' in page and one in page and two in page
     assert page.count('<article class="card event is-off" data-flag="') == 2
-    assert page.count('aria-pressed="false">Skriveno</button>') == 2 and '<div class="ev-grid">' in page
+    assert page.count('aria-pressed="false">Skriveno</button>') == 2
 
 
 def _migration():
@@ -216,7 +217,7 @@ def test_the_migration_folds_the_old_bullet_slots_into_lists():
     mig = _migration(); uid = make_user("trener@test.local", is_trainer=True)
     for key, text in [("offer.online.p1", "Prva"), ("offer.online.p2", "Druga"), ("offer.online.p3", "Treća"),
                       ("offer.individualno.p2", "U paru"),             # only the middle one edited
-                      ("hero.lead", "Ostaje kakav jest.")]:
+                      ("hero.kicker", "Ostaje kakav jest.")]:
         db.set_copy(key, text, uid)
     with db.engine.begin() as conn:
         mig.fold_points(conn)
@@ -226,7 +227,7 @@ def test_the_migration_folds_the_old_bullet_slots_into_lists():
     assert json.loads(texts["offer.individualno.points"]) == ["Rad 1:1, po dogovoru", "U paru", "Rehabilitacija"]
     assert "offer.dvorana.points" not in texts                              # never edited: no row, new defaults
     assert not [k for k in texts if re.fullmatch(r"offer\.\w+\.p\d", k)]   # the old rows are gone
-    assert texts["hero.lead"] == "Ostaje kakav jest."
+    assert texts["hero.kicker"] == "Ostaje kakav jest."
     page = TestClient(app).get("/").text
     assert "U paru" in page and "Treća" in page                             # and the page reads them
 
@@ -275,7 +276,7 @@ WORDS = ("trening snaga pokret zdravlje tehnika grupa trener dvorana program "
          "ravnoteža mobilnost izdržljivost oporavak sprava").split()
 
 LONG, ITEMS, ITEM = 300, 12, 60     # a long text; a list of 12 items, 60 characters each
-LINES = "Male grupe do 8 polaznika.\nIndividualni rad 1:1.\nPovratak nakon ozljede."   # a lead in three lines
+LINES = "Male grupe do 8 polaznika.\nIndividualni rad 1:1.\nPovratak nakon ozljede."   # a text in three lines
 
 
 def words(n: int) -> str:
@@ -414,14 +415,15 @@ PERIOD = r"""(p) => {
   return out;
 }"""
 
-# The hero lead in three lines (LINES): the line breaks show, so its span.t is
-# three lines tall, not the one line the same words take without them.
-LEAD = r"""() => {
-  const t = document.querySelector('.hero .lead span.t');
-  if (!t) return ['no span.t in the hero lead'];
+# The first announcement's text in three lines (LINES): the line breaks show,
+# so its span.t is three lines tall, not the one line the same words take
+# without them.
+EVENT_TEXT = r"""() => {
+  const t = document.querySelector('#aktualno .event .text span.t');
+  if (!t) return ['no span.t in the first announcement\'s text'];
   const cs = getComputedStyle(t), lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;
   const n = t.getBoundingClientRect().height / lh;
-  return n < 2.5 ? [`the three-line hero lead shows as ${n.toFixed(1)} lines`] : [];
+  return n < 2.5 ? [`the three-line announcement text shows as ${n.toFixed(1)} lines`] : [];
 }"""
 
 
@@ -449,9 +451,9 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         pg.wait_for_function("""() => { const b = document.querySelector('#aktualno .ed-flag');
           return b.getAttribute('aria-pressed') === 'false' && b.closest('.event').classList.contains('is-off'); }""", timeout=5000)
         seen = pg.evaluate("""() => { const c = document.querySelector('#aktualno .event'), o = el => +getComputedStyle(el).opacity;
-          return [c.getBoundingClientRect().height > 0, o(c.querySelector('h3')), o(c.querySelector('.ed-flag'))]; }""")
+          return [c.getBoundingClientRect().height > 0, o(c.querySelector('.head')), o(c.querySelector('.ed-flag'))]; }""")
         if seen != [True, 0.55, 1]:
-            out.append(f"a card switched off in edit mode (shown, its title's and its toggle's opacity): {seen}")
+            out.append(f"a strip switched off in edit mode (shown, its title block's and its toggle's opacity): {seen}")
         pg.reload(); pg.wait_for_load_state("networkidle")
         cards = pg.locator("#aktualno .event")
         if cards.nth(0).is_visible() or not cards.nth(1).is_visible():
@@ -462,7 +464,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         db.set_copy("event1.show", "on", None)
         return out
 
-    def walk(pw, email, widths, label, strict=True, lead=False, switch=None):
+    def walk(pw, email, widths, label, strict=True, lines=False, switch=None):
         problems = []
         for w in widths:
             phone = w < 600
@@ -477,8 +479,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 problems += [f"{where} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
                 if path != "/":
                     continue
-                if lead:
-                    problems += [f"{where} {p}" for p in pg.evaluate(LEAD)]
+                if lines:
+                    problems += [f"{where} {p}" for p in pg.evaluate(EVENT_TEXT)]
                 problems += [f"{where} {p}" for p in pg.evaluate(LANDING, [w, strict])]
                 if not all(pg.locator(f"{sec} .period").is_visible() for sec in ("#usluge", "#dvorana")):
                     problems.append(f"{where} no Mjesečno / Godišnje switch under each row"); continue
@@ -502,9 +504,9 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         problems = walk(pw, None, (360, 390, 900, 1280), "words")
         problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=390)
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")
-        db.set_copy("hero.lead", LINES, None)         # line breaks: the lead in three lines
-        problems += walk(pw, None, (390, 1280), "lines", lead=True)
-        problems += walk(pw, "trener@test.local", (390,), "lines", lead=True)
+        db.set_copy("event1.text", LINES, None)       # line breaks: the first announcement's text in three lines
+        problems += walk(pw, None, (390, 1280), "lines", lines=True)
+        problems += walk(pw, "trener@test.local", (390,), "lines", lines=True)
         fill(lambda n: "W" * n)                       # one unbreakable word: must wrap, never widen
         problems += walk(pw, "trener@test.local", (360, 1280), "one-word", strict=False)
     print("\n".join(problems))

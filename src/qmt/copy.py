@@ -23,7 +23,7 @@ means the default list. Its caps are a count (max_items) and a length per item
 (max_chars). Printed with `{{ c.points("the.key") }}`.
 
 A FlagSlot is a switch, not a text: whether a part of a page shows at all —
-the landing's two announcements for the month (#aktualno), each one the owner
+the hero's two announcements for the month (#aktualno), each one the owner
 switches off when it is over. It is stored like any slot, as the text "on" or
 "off"; no row means the default. Read with `copy_flag("the.key", copy_texts)`
 (flag_on below). In edit mode the editor flips it with a toggle (.ed-flag,
@@ -67,11 +67,6 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
     "hero.kicker": Slot("Zagreb · Dubrava", CAP, "Mala oznaka iznad naslova"),
     "hero.h1a": Slot("Kvaliteta pokreta", CAP, "Naslov, bijeli red"),
     "hero.h1b": Slot("prije svega", CAP, "Naslov, crveni red"),
-    "hero.lead": Slot("Male grupe do 8 polaznika, individualni rad 1:1 i programi povratka nakon ozljede "
-                      "— vođeni znanjem, ne trendovima.", CAP, "Uvodni tekst"),
-    # shown to a member without a bookable plan, under "Pogledaj cjenik"
-    "hero.note": Slot("Nemaš aktivnu članarinu za treninge — cjenik ti pokazuje sve opcije.", CAP,
-                      "Napomena članu bez članarine"),
     # ---- landing: the photo card ----
     "stage.title": Slot("Dvorana u Dubravi", CAP, "Naslov na fotografiji"),
     "stage.text": Slot("Jedan prostor za sve — grupni treninzi, individualni rad i rehabilitacija, "
@@ -125,14 +120,12 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
     "offer.individualno.year_price": Slot("na upit", CAP, "Individualno: godišnja cijena"),
     "offer.individualno.year_unit": Slot("", CAP, "Individualno: uz godišnju cijenu"),
     "offer.addon": Slot("MojiMakrosi prehrana", CAP, "Naziv dodatka za prehranu"),
-    # ---- landing: aktualno, between the gym and the gallery ----
+    # ---- landing: aktualno, in the hero between the headline and the photo ----
     # The owner's announcements for the month (a new group, a course): two
-    # cards, the defaults are examples to retype. Each one is switched off in
-    # edit mode when it is over (FlagSlot); a hidden card is not on a visitor's
-    # page at all, and with both hidden neither is the section. The card's
-    # link always leads to the contact (/#kontakt).
-    "events.kicker": Slot("Ovaj mjesec", CAP, "Mala oznaka iznad događanja"),
-    "events.h2": Slot("Aktualno u dvorani", CAP, "Naslov: događanja"),
+    # strips, the defaults are examples to retype. Each one is switched off in
+    # edit mode when it is over (FlagSlot); a hidden strip is not on a
+    # visitor's page at all, and with both hidden neither is their box. The
+    # strip's link always leads to the contact (/#kontakt).
     "event1.show": FlagSlot(True, "Događanje 1: prikazano"),
     "event1.tag": Slot("Novo", CAP, "Događanje 1: oznaka"),
     "event1.title": Slot("Treninzi za penziće", CAP, "Događanje 1: naslov"),

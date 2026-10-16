@@ -75,10 +75,11 @@ targets; do not introduce new uses.
 ## Page conventions
 
 **Landing (`landing.html`).** Hero: kicker with a red dash, uppercase PT Sans h1
-with `.red` on the last line, lead paragraph, `.cta-row` of `.btn-hero` (15px/28px,
-14px radius; `.secondary` = translucent white). Hero CTAs follow membership: member → Rezerviraj
-termin; plan-less client → Pogledaj cjenik (+ a `.hero-note`); guest → nothing,
-the compact pill above carries Prijava / Kontakt and the photo leads to the offer. The hero photo `.stage` is an `<a href="#usluge">`: the whole card leads to the
+with `.red` on the last line, then the owner's announcements (**Aktualno**,
+below), then the photo. No lead, no button and no note in the hero since
+16.10.2026, for anyone (the owner's call: the announcements come first): a
+guest has the compact pill's Prijava / Kontakt, a member the tabs and the
+offer cards' buttons, and the photo leads to the offer. The hero photo `.stage` is an `<a href="#usluge">`: the whole card leads to the
 offer, with a small `.go` arrow as the hint a phone needs (no hover there) and
 `data-photo` for the audit. **The offer** (`#usluge`): three tiers of the
 online plan as `.offer` cards in `.offer-grid` — italic uppercase title, one
@@ -116,18 +117,23 @@ pressing either sets every `.price[data-period]` on the page and
 neutral `.cta` beside it, green `.owned` for a plan the visitor has. Plan
 prices arrive from the route (`offer_prices`), are public unless
 `PUBLIC_PRICES=off` (which also hides both switches), and no public page links
-to `/cjenik`. **Aktualno** (`#aktualno`, between the gym and the
-gallery): the owner's two announcements for the month as `.event` cards in
-`.ev-grid` (two columns capped at 760px like the gym's row, a stack below
-700px, one 560px column when one card shows, `.single`): the `.card` shape at
-`--r-xl` with `.offer`'s padding, a `.tag` chip (accent tint +
-`--accent-tint-ink`; scoped `.event .tag`, not the photo's glass `.tag`), the
-italic uppercase `h3` of `.offer`, a `.when` line behind a 7px accent dot (on
-the baseline, so a wrapped line keeps it on its first), a muted `.text`, and
-one grey `.act` to `/#kontakt` in a `.foot` pinned to the bottom so the two
-links sit level (the red button stays on the featured tier). Each card is
-switched off with its `.ed-flag`; a visitor never gets a hidden one, nor the
-section when both are. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
+to `/cjenik`. **Aktualno** (`#aktualno`, in the hero since 16.10.2026,
+between the h1 and the photo: the first thing on the page): the owner's two
+announcements for the month as `.event` strips in `.evs` (one column, 12px
+apart, as wide as the photo, text left-aligned in the centred hero): the
+`.card` surface at `--r-lg` (a shallow strip, not the stage's `--r-xl`), one
+flex row that WRAPS, its items centred on their line: a `.tag` chip (accent
+tint + `--accent-tint-ink`; scoped `.event .tag`, not the photo's glass
+`.tag`), a `.head` holding the italic uppercase title of `.offer` at 1.15rem
+(an `h2`: it sits straight under the page's `h1`) over a `.when` line behind
+a 7px accent dot (on the baseline, so a wrapped line keeps it on its first),
+a muted `.text` that takes the free room (`flex: 1 1 280px`), and one grey
+`.act` to `/#kontakt` in a `.foot` at the right end (the red button stays on
+the featured tier). A long text makes a strip taller, never wider: no piece
+is wider than the strip, and a long one wraps onto a line of its own. Below
+700px a strip is a column. Each strip is switched off with its `.ed-flag`,
+its first item in edit mode; a visitor never gets a hidden one, nor the box
+when both are. Info band `.info-grid`: radno vrijeme table, `.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
 

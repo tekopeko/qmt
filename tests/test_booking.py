@@ -397,10 +397,11 @@ def test_template_delete_prunes_unbooked_keeps_booked():
 
 
 def test_landing_offers_only_what_the_visitor_can_actually_do():
-    """A guest can neither book nor see prices without an account (prices are
-    members-only), so while registration is open (the suite runs
-    SIGNUP_MODE=invite) the hero offers the account, never a booking they'd be
-    refused and never the cjenik."""
+    """A guest cannot book without an account, so while registration is open
+    (the suite runs SIGNUP_MODE=invite) the landing offers the account (the
+    offer cards' "Registriraj se"), never a booking they'd be refused and
+    never the members-only cjenik. The hero itself carries no button for
+    anyone (16.10.2026)."""
     c = TestClient(app)
     r = c.get("/")                               # no login required
     assert r.status_code == 200
@@ -415,16 +416,25 @@ def test_landing_offers_only_what_the_visitor_can_actually_do():
 
 
 def test_landing_hero_follows_the_membership():
+    """The hero has no button for anyone since 16.10.2026 (the owner's call:
+    his announcements are the first thing on the page). A member's way in is
+    the offer cards' buttons, which follow the membership: the card of a plan
+    he can book with leads to /raspored, a card he does not own to /cjenik."""
     make_user("ivan@test.local", plans=("grupni",))
     make_user("ana@test.local", plans=())
     make_user("sara@test.local", plans=("online",))      # not a bookable kind
 
-    page = client_for("ivan@test.local").get("/").text
-    assert "Rezerviraj termin" in page                   # can book, so it is offered
+    for c in (TestClient(app), *(client_for(e) for e in ("ivan@test.local", "ana@test.local", "sara@test.local"))):
+        page = c.get("/").text
+        assert "cta-row" not in page and "btn-hero" not in page    # no hero button, guest or member
+
+    gym = client_for("ivan@test.local").get("/").text.split('id="dvorana"')[1]
+    assert '<a class="btn btn-sm owned" href="/raspored"' in gym              # can book: his Dvorana card
+    assert 'title="Aktivna članarina">✓ Rezerviraj termin →</a>' in gym      # leads to the timetable
 
     for email in ("ana@test.local", "sara@test.local"):
         page = client_for(email).get("/").text
-        assert "Pogledaj cjenik" in page
+        assert 'href="/cjenik' in page, email            # the cards' "Odaberi plan"
         assert "Rezerviraj termin" not in page, email    # no bookable plan
 
 

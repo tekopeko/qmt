@@ -5,7 +5,7 @@
    the editor in base.html can open; everyone else a bare .t, so the public
    page carries no editor markup at all. The span and its text stay on one
    line here: a line break inside the span would print.
-   Use: {% import "_copy.html" as c with context %} … {{ c.t("hero.lead") }} #}
+   Use: {% import "_copy.html" as c with context %} … {{ c.t("hero.kicker") }} #}
 {% macro t(key) -%}
   {%- set slot = COPY[key] -%}
   {%- set text = copy_texts.get(key, slot.default) -%}
