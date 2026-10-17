@@ -200,7 +200,37 @@ Taken by the owner in the same device mode (iPhone 16 Pro Max, 440 px, DPR
 - `phone-14-billing-full.jpg` — the billing page (PAKET, period, status,
   the three buttons, PROMIJENI PAKET, RAČUNI).
 
-Still not captured at phone width: the menu sheet (☰ open), Social Club,
-Pogodnosti, Nagradna igra, TDEE Kalkulator, the trial-lock modal. Nice to
-have, not needed for QMT's design: the dashboard and the calendar above are
-the two screens worth learning from.
+- `phone-15-social-club-full.jpg` — Social Club: the photo cards with "n
+  novo" chips, one under another.
+- `phone-16-nagradna-igra-full.jpg` — the prize-game article page.
+- `phone-17-menu-open-over-billing.jpg` — the ☰ menu open on a phone: a white
+  sheet under the pill, the same items as on desktop, over the billing page.
+- `phone-18-crisp-chat-widget.jpg` — the chat widget ("Razgovor", Martina's
+  greeting, a message box): their "privatni chat".
+
+Still not captured at phone width: Pogodnosti, TDEE Kalkulator, the
+trial-lock modal, the training page. Not needed for QMT's design.
+
+## A training page (`/video/181?challenge=14`, opened 17.10.2026 22:5x, desktop; `app-19`, `app-20`)
+
+Opened with "Pokreni trening" on a challenge's first training (the second
+training the account has opened; nothing was played and "Završi trening" was
+not pressed — that button is what counts a training as done for the trial's
+limit of 5). What the page is:
+
+- **A native `<video>` across the whole width** (1440×605 at 1440 px, the
+  browser's own controls: play, 0:00, volume, fullscreen, ⋮), from
+  `cdn.shapeclub.app`, paused on open. No custom player, no exercise list,
+  no timer: a training is one video.
+- **Under it, two columns.** Left: "← Povratak na Challenge" (a link) and a
+  dark pill "✓ Završi trening" on one line, then a pale pink note box
+  "Rekviziti: stolica, mini elastična traka, bučice, pilates lopta
+  (neobavezno)". Right: "Komentari", a feed of comments (avatar or
+  initials, name in the brand purple, text, "oko 1 mjesec • Odgovori", a
+  heart with a like count), Martina answering in the thread ("Boss"
+  badge), and a "Pošalji komentar" box with a send icon pinned at the
+  bottom. The feed scrolls in its own box; the page itself is 1169 px.
+- The comments are the community: every training has its own thread.
+- For QMT's /treninzi: the video-first page with one note line under it is
+  the right amount of chrome; the comments are a Shape thing (Martina's
+  brand), not something a studio's programme page needs.
