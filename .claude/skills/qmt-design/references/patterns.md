@@ -142,6 +142,16 @@ what QMT needs for the same step: `data/design-reference/shape-club/README.md`.
 once the owner's Stripe account, prices, terms and fiscalization exist
 (roadmap item 4).
 
+## 9. The logged-in app — walked 17.10.2026
+
+**Theirs:** no class scheduler at all; a programme dashboard (a "continue"
+hero with a progress bar, a week accordion of three training cards), a
+client calendar under Moj napredak (week strip + daily goals + month grid +
+the day's activity), accordion profile pages, a billing page. Map and
+styles: `data/design-reference/shape-club/app/README.md`.
+**Map to QMT:** the month grid + day list is a client-side view for the
+karton/raspored; the "continue where you stopped" hero fits /treninzi.
+
 ## What not to borrow
 
 - Their body text and headline colours vary by section (black on gradient,

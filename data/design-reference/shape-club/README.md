@@ -63,3 +63,11 @@ plan, the period, and the two consents; its own "Ugovor o pretplatama" and
 "Uvjeti korištenja" pages written for Quality Movement Training by the
 owner's lawyer or accountant, versioned with a date; a decision on a trial
 and its limits; and the same facts shown once more by Stripe.
+
+## The logged-in app
+
+`app/README.md` and `app/app-01…18.jpg`: the map of every page behind the
+login (dashboard, programmes, Moj napredak's calendar, profile, billing,
+what the trial locks) and the measured styles. The finding that matters:
+**Shape Club has no class scheduler**; it is programme-based (week × 3
+video trainings), and its only calendar is the client's activity month grid.
