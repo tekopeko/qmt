@@ -178,3 +178,29 @@ Measured at 440×956 (DOM, computed styles):
 - Results: heading 700 30/36; a Flickity carousel, slides 400×400 radius 10.
 - Footer #171717, 396 px tall. The page is 4162 px tall: hero at 112, week
   card 450, banner 1282, FAQ 1655, results 3167, footer 3767.
+
+### The owner's full-page captures (DevTools "Capture full size screenshot", 17.10.2026, 22:23–22:34)
+
+Taken by the owner in the same device mode (iPhone 16 Pro Max, 440 px, DPR
+3, so 1320 px wide), whole pages in one image each, JPEG here from his PNGs:
+
+- `phone-10-dashboard-gym-program-full.jpg` — the Gym Program dashboard, all
+  4162 CSS px (hero, week card with three trainings, STAY CONSISTENT, FAQ,
+  results carousel, footer).
+- `phone-11-dashboard-home-challenge-full.jpg` — the Home Challenge view:
+  the "Challenge 18" hero, the weeks, then the challenge card rows
+  (PREPORUČENO ZA TEBE, OSTALI IZAZOVI: "Challenge 9", "Napredni", "3x
+  tjedno" chips, a round › button bottom right). The capture is cut at the
+  tool's 16384 px limit and the cards' photos are grey placeholders: they
+  load lazily and the full-page capture does not wait for them. The layout
+  is what matters here; the photos are in the owner's earlier phone shots.
+- `phone-12-moj-napredak-full.jpg` — the activity page: tabs, week strip,
+  daily goals, month grid, the Aktivnost card.
+- `phone-13-moj-profil-full.jpg` — the profile with every accordion open.
+- `phone-14-billing-full.jpg` — the billing page (PAKET, period, status,
+  the three buttons, PROMIJENI PAKET, RAČUNI).
+
+Still not captured at phone width: the menu sheet (☰ open), Social Club,
+Pogodnosti, Nagradna igra, TDEE Kalkulator, the trial-lock modal. Nice to
+have, not needed for QMT's design: the dashboard and the calendar above are
+the two screens worth learning from.
