@@ -76,10 +76,12 @@
      audit's tap rule); its hover is a faint wash, never the base button's red
      flood. Not `.sess form`'s 7px top margin: it is pinned to the corner. */
   .sess .unbook { position: absolute; top: 6px; right: 6px; margin: 0; }
-  .sess .unbook-x { width: 32px; height: 32px; padding: 0; border: none; border-radius: 50%;
+  .sess .unbook-x, .next-termin .unbook-x {
+                    width: 32px; height: 32px; padding: 0; border: none; border-radius: 50%;
                     background: none; box-shadow: none; color: var(--muted);
                     font: 600 .9rem var(--font-body); display: grid; place-items: center; }
-  .sess .unbook-x:hover, .sess .unbook-x:focus-visible {
+  .sess .unbook-x:hover, .sess .unbook-x:focus-visible,
+  .next-termin .unbook-x:hover, .next-termin .unbook-x:focus-visible {
     background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); transform: none; }
   /* the time never runs under the ✕, which reaches 27px into the card's
      content box (6px inset + 32px − the card's 11px padding). Not more: 36px
@@ -101,8 +103,133 @@
 
   @media (max-width: 860px) {
     .week, .mine-week { grid-template-columns: 1fr; }
-    .day-col.empty-day { display: none; }   /* phones: skip blank days, show a compact agenda */
     .week.all-empty { display: none; }      /* fully empty week: the message above stands alone */
+  }
+
+  /* ===== "Tvoj sljedeći termin" (clients, every width, 17.10.2026): the
+     soonest booking, answered before any scrolling. A shortcut, not a split:
+     "Moje rezervacije" below still lists it. Its left edge is .sess.mine's
+     inset bar; its ✕ is the list's (the unbook macro). ===== */
+  .sec-kicker { font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase;
+                color: var(--accent); }
+  .next-termin { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-bottom: 18px;
+                 box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .next-termin .nt-body { flex: 1 1 auto; min-width: 0; }
+  .next-termin .nt-when { margin-top: 3px; }
+  .next-termin .nt-at { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .next-termin .nt-rel { margin-left: 4px; color: var(--muted); font-size: .88rem; white-space: nowrap; }
+  .next-termin .nt-off { margin-left: 4px; color: var(--danger); font-size: .82rem; font-weight: 700; }
+  .next-termin .nt-title { font-size: .92rem; font-weight: 600; overflow-wrap: anywhere; }
+  .next-termin .nt-late { margin-top: 2px; color: var(--muted); font-size: .8rem; }
+  .next-termin .unbook { flex: none; margin: 0; }
+
+  /* ===== phones (≤860px): one day at a time (17.10.2026) =====
+     The day strip (Shape's "Moj napredak" week, patterns.md §9) picks the
+     day; the script marks the grid .one-day and the chosen column .is-on,
+     and each termin becomes one 56px row that opens the sheet below.
+     Without the script the strip stays hidden and the phone keeps the
+     agenda of cards (every column, the Rezerviraj / Otkaži forms). The
+     desktop never shows the strip or a row: its grid is unchanged. */
+  .day-strip, .sess-row { display: none; }
+  @media (max-width: 860px) {
+    /* seven days share the width: 44px each at most (390px), less at 360px */
+    .day-strip { display: flex; gap: 6px; justify-content: space-between; margin: 0 0 14px; }
+    .day-strip button {
+      flex: 1 1 0; min-width: 0; max-width: 44px; height: 52px; padding: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+      background: var(--surface); color: var(--text); border: 1px solid var(--line);
+      border-radius: var(--r-md); box-shadow: none; font: inherit;
+    }
+    .day-strip button:hover { background: var(--surface-2); transform: none; }
+    .day-strip .wd { font: 600 .72rem var(--font-body); text-transform: uppercase; letter-spacing: .04em;
+                     line-height: 1.1; color: var(--muted); }
+    .day-strip .dn { font: 700 1rem var(--font-body); line-height: 1.2; font-variant-numeric: tabular-nums; }
+    .day-strip .dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 2px; }
+    .day-strip .has-mine .dot { background: var(--accent); }           /* a booking of mine that day */
+    /* no termini: muted, still a day to pick. The fade is on the label, not
+       the button, so today's ring keeps its full strength */
+    .day-strip .is-empty .dn { color: var(--muted); }
+    .day-strip .is-empty:not([aria-pressed="true"]) > span { opacity: .6; }
+    .day-strip .today:not([aria-pressed="true"]) {                     /* today: a 2px accent ring */
+      border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+    .day-strip button[aria-pressed="true"],
+    .day-strip button[aria-pressed="true"]:hover { background: var(--accent-fill); border-color: transparent; }
+    .day-strip [aria-pressed="true"] .wd,
+    .day-strip [aria-pressed="true"] .dn { color: var(--accent-ink); }
+    .day-strip [aria-pressed="true"].has-mine .dot { background: var(--accent-ink); }
+
+    .week.one-day .day-col:not(.is-on) { display: none; }
+    .week.one-day .day-head { display: none; }                         /* the strip says the day */
+    .week.one-day .sess { display: none; }                             /* the cards give way to rows */
+
+    /* one termin = one row: time · title (one line) + 1:1 · the state at
+       the right end. The row is the tap target (a button when it opens the
+       sheet, the trainer's link to the roster, else a plain div). */
+    .week.one-day .sess-row {
+      display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 10px 14px;
+      border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent;
+      box-shadow: none; color: var(--text); font: 400 .9rem var(--font-body); text-align: left;
+      text-decoration: none;
+    }
+    .week.one-day .sess-row:last-child { border-bottom: 0; }
+    .week.one-day button.sess-row:hover, .week.one-day a.sess-row:hover {
+      background: color-mix(in srgb, var(--text) 5%, transparent); transform: none; }
+    .week.one-day .sess-row:focus-visible { outline-offset: -3px; }   /* the column clips anything outside */
+    .sess-row .rt { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
+    /* one line: a long title ends in "…". A vertical clamp (the rest wraps
+       out of sight, break-all so the line runs to the edge) rather than
+       nowrap + ellipsis, which overflows sideways; the 1:1 chip stays
+       outside it, always seen */
+    .sess-row .rn { flex: 0 1 auto; min-width: 0; font-weight: 600; overflow: hidden; word-break: break-all;
+                    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+    .sess-row .tag-11 { flex: none; margin-left: -6px; }
+    .sess-row .rs { flex: none; margin-left: auto; display: flex; align-items: center; gap: 6px;
+                    font-size: .8rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .sess-row .rs .ok { color: var(--good); font-weight: 700; }
+    .sess-row .rs .no { color: var(--danger); font-weight: 700; }
+    .sess-row .rs .need { white-space: normal; text-align: right; max-width: 6.2em; line-height: 1.2; }
+    .sess-row .chev { font-size: 1.15rem; line-height: 1; color: var(--muted); }
+    .week.one-day .sess-row.mine { box-shadow: inset 3px 0 0 var(--accent); }   /* .sess.mine's bar */
+    .sess-row.past, .sess-row.canceled { opacity: .45; }
+    .sess-row.canceled .rn { text-decoration: line-through; }
+
+    /* "Moje rezervacije" in the same row style: the day as a kicker line,
+       one row per booking, the ✕ at its right end (no longer pinned to a
+       corner) and "Otkazivanje do 12 h …" on a line of its own under it */
+    .mine-week .day-head, .mine-week .day-col.today .day-head {
+      background: none; color: var(--accent); padding: 12px 14px 2px; justify-content: flex-start; gap: .5em;
+      font: 700 .74rem var(--font-body); letter-spacing: .16em; }
+    .mine-week .day-head .num, .mine-week .day-col.today .day-head .num { color: inherit; font-weight: 700; }
+    .mine-week .day-head .long { display: none; }
+    .mine-week .day-head .short { display: inline; }
+    .mine-week .sess { display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; row-gap: 0;
+                       min-height: 56px; padding: 8px 8px 8px 14px; }
+    .mine-week .day-head + .sess { border-top: 0; }
+    .mine-week .sess > .t { flex: none; padding-right: 0; font-size: .9rem; font-weight: 700;
+                            font-variant-numeric: tabular-nums; }
+    .mine-week .sess > .name { flex: 1 1 0; min-width: 0; margin: 0; font-size: .9rem; overflow-wrap: anywhere; }
+    .mine-week .sess > .cap { flex: none; }
+    .mine-week .sess > .cap:last-child { flex-basis: 100%; padding-bottom: 2px; }
+    .mine-week .sess .unbook { position: static; flex: none; }
+  }
+
+  /* ===== the sheet (#sheet, clients): one termin's facts and ONE action,
+     the .fb-modal idiom. On a phone it is docked to the bottom edge; the
+     desktop never opens it (its cards carry their own forms). ===== */
+  .sheet .fb-kicker { font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase;
+                      color: var(--accent); margin-bottom: 6px; padding-right: 36px; }
+  .sheet h2 { font-variant-numeric: tabular-nums; }
+  .sheet h2 .tag-11 { font-family: var(--font-body); vertical-align: 2px; }
+  /* a whole-row label (the global label is an uppercase caption) */
+  .sheet .sheet-series { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 12px 0 0;
+                         font: 500 .9rem var(--font-body); text-transform: none; letter-spacing: 0;
+                         color: var(--text); cursor: pointer; }
+  .sheet .sheet-series input { flex: none; width: 20px; height: 20px; margin: 0; padding: 0;
+                               accent-color: var(--accent-fill); }
+  @media (pointer: coarse) { .sheet .fb-x button { min-width: 36px; min-height: 36px; } }
+  @media (max-width: 860px) {
+    .fb-modal.sheet { margin: auto 0 0; width: 100%; max-width: none; border-width: 1px 0 0;
+                      border-radius: var(--r-lg) var(--r-lg) 0 0; padding-bottom: env(safe-area-inset-bottom); }
   }
 </style>
 {% endblock %}
@@ -115,12 +242,25 @@
   <span>Rezervirano ✓</span>
   <form class="series-offer" method="post" action="/book/{{ series_offer.session_id }}/series">
     <input type="hidden" name="week" value="{{ monday.isoformat() }}">
+    <input type="hidden" name="day" value="{{ selected_day.isoformat() }}" data-shown-day>
     <button class="act" type="submit">Isti termin svaki tjedan do&nbsp;{{ series_offer.until.strftime("%-d.%-m.") }}&nbsp;— još&nbsp;{{ series_offer.n }}&nbsp;{{ series_offer.noun }}&nbsp;→</button>
   </form>
 </div>
 {% else %}{{ super() }}{% endif %}
 {% endblock %}
 {% block content %}
+{# a booking's ✕ (the next-termin card and "Moje rezervacije"): asks first,
+   then cancels; `day` is the day a phone is showing, kept by the script #}
+{% macro unbook(s) %}
+        <form method="post" action="/cancel/{{ s.id }}" class="unbook"
+              data-confirm-title="{{ 'Maknuti otkazani termin?' if s.canceled else 'Otkazati rezervaciju?' }}"
+              data-confirm="{{ s.title }}, {{ weekdays_short[s.date.weekday()] | lower }} {{ s.date.strftime('%-d.%-m.') }} u {{ s.time }}–{{ s.end }}.{% if not s.canceled %} Mjesto se oslobađa za druge.{% endif %}"
+              data-confirm-cta="{{ 'Makni' if s.canceled else 'Otkaži rezervaciju' }}">
+          <input type="hidden" name="week" value="{{ monday.isoformat() }}">
+          <input type="hidden" name="day" value="{{ selected_day.isoformat() }}" data-shown-day>
+          <button type="submit" class="unbook-x" aria-label="{{ 'Makni' if s.canceled else 'Otkaži' }} {{ s.title }} {{ s.date.strftime('%-d.%-m.') }} u {{ s.time }}">✕</button>
+        </form>
+{% endmacro %}
 
 <div class="week-head">
   <div>
@@ -134,14 +274,42 @@
   </div>
 </div>
 
+{% if next_booking and not user.is_trainer %}
+{% set nb = next_booking %}
+{# the most common question, answered before any scrolling #}
+<section class="card next-termin" aria-labelledby="ntKicker">
+  <div class="nt-body">
+    <div class="sec-kicker" id="ntKicker">Tvoj sljedeći termin</div>
+    <div class="nt-when"><span class="nt-at">{{ weekdays_short[nb.date.weekday()] }} {{ nb.date.strftime("%-d.%-m.") }} · {{ nb.time }}–{{ nb.end }}</span>
+      {% if nb.canceled %}<span class="nt-off">OTKAZANO</span>{% else %}<span class="nt-rel">{{ nb.relative }}</span>{% endif %}</div>
+    <div class="nt-title">{{ nb.title }}{% if nb.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
+    {% if not nb.can_cancel %}<div class="nt-late">Otkazivanje do {{ cutoff_hours }} h prije termina</div>{% endif %}
+  </div>
+  {% if nb.can_cancel %}{{ unbook(nb) }}{% endif %}
+</section>
+{% endif %}
+
 {% set week_empty = days | map(attribute="sessions") | map("length") | sum == 0 %}
+{% if not week_empty %}
+{# phones: the week as seven days to pick from (hidden until the script runs:
+   without it the phone shows every day, and a strip would do nothing) #}
+<nav class="day-strip" aria-label="Dani u tjednu" hidden>
+  {% for day in days %}
+  <button type="button" data-day="{{ day.date.isoformat() }}"
+          class="{% if day.is_today %}today{% endif %}{% if not day.sessions %} is-empty{% endif %}{% if day.has_mine %} has-mine{% endif %}"
+          aria-pressed="{{ 'true' if day.date == selected_day else 'false' }}"{% if day.is_today %} aria-current="date"{% endif %}
+          aria-label="{{ weekdays_short[day.date.weekday()] }} {{ day.date.strftime('%-d.%-m.') }}"><span class="wd">{{ weekdays_short[day.date.weekday()] }}</span><span class="dn">{{ day.date.day }}</span><span class="dot"></span></button>
+  {% endfor %}
+</nav>
+{% endif %}
 {% if week_empty %}
   <p class="hint" style="padding: 30px 0 10px;">Ovaj tjedan nema termina.
   {% if user.is_trainer %}<a class="act act-quiet" href="/admin">Dodaj ih u rasporedu →</a>{% endif %}</p>
 {% endif %}
-<div class="week{% if week_empty %} all-empty{% endif %}">
+<div class="week{% if week_empty %} all-empty{% endif %}" data-selected="{{ selected_day.isoformat() }}"
+     data-week="{{ monday.isoformat() }}" data-prev="{{ prev_week }}" data-next="{{ next_week }}">
   {% for day in days %}
-  <div class="day-col {% if day.is_today %}today{% endif %} {% if not day.sessions %}empty-day{% endif %}">
+  <div class="day-col {% if day.is_today %}today{% endif %} {% if not day.sessions %}empty-day{% endif %}" data-day="{{ day.date.isoformat() }}">
     <div class="day-head"><span class="long">{{ day.name }}</span><span class="short">{{ weekdays_short[day.date.weekday()] }}</span><span class="num">{{ day.date.strftime("%-d.%-m.") }}</span></div>
     {% for s in day.sessions %}
       <div class="sess {% if s.mine %}mine{% endif %} {% if s.full %}full{% endif %}
@@ -173,6 +341,7 @@
                 data-confirm="{{ s.title }}, {{ day.name | lower }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}. Mjesto se oslobađa za druge."
                 data-confirm-cta="Otkaži rezervaciju">
             <input type="hidden" name="week" value="{{ monday.isoformat() }}">
+            <input type="hidden" name="day" value="{{ day.date.isoformat() }}">
             <button class="btn-sm btn-ghost" type="submit"
                     aria-label="Otkaži {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">Otkaži</button>
           </form>
@@ -182,11 +351,48 @@
         {% elif not s.full %}
           <form method="post" action="/book/{{ s.id }}">
             <input type="hidden" name="week" value="{{ monday.isoformat() }}">
+            <input type="hidden" name="day" value="{{ day.date.isoformat() }}">
             <button class="btn-sm btn-signal" type="submit"
                     aria-label="Rezerviraj {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">Rezerviraj</button>
           </form>
         {% endif %}
       </div>
+      {# the same termin as a phone's row (shown only in the one-day view) #}
+      {% if user.is_trainer %}
+      <a class="sess-row{% if s.past %} past{% endif %}{% if s.canceled %} canceled{% endif %}" href="/admin/session/{{ s.id }}">
+        <span class="rt">{{ s.time }}–{{ s.end }}</span>
+        <span class="rn">{{ s.title }}</span>{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}
+        <span class="rs">{% if s.canceled %}<span class="no">otkazano</span>{% else %}<span>Polaznici <b class="{{ 'no' if s.full else 'ok' }}">{{ s.booked }}</b>/{{ s.capacity }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></span>
+      </a>
+      {% else %}
+      {# what a tap does: book (free, allowed), mine (cancel while allowed), mine-late (say until when); nothing otherwise #}
+      {%- if s.canceled or s.past %}{% set act = "" %}
+      {%- elif s.mine %}{% set act = "mine" if s.can_cancel else "mine-late" %}
+      {%- elif s.allowed and not s.full %}{% set act = "book" %}
+      {%- else %}{% set act = "" %}{% endif %}
+      {%- set when = weekdays_short[day.date.weekday()] ~ " " ~ day.date.strftime("%-d.%-m.") %}
+      {% if act %}
+      <button type="button" class="sess-row{% if s.mine %} mine{% endif %}" aria-haspopup="dialog"
+              aria-label="{{ s.title }}, {{ when }} u {{ s.time }}–{{ s.end }}: {{ 'slobodno' if act == 'book' else 'rezervirano' }}"
+              data-id="{{ s.id }}" data-title="{{ s.title }}" data-date="{{ day.date.isoformat() }}" data-day="{{ when }}"
+              data-time="{{ s.time }}" data-end="{{ s.end }}" data-booked="{{ s.booked }}" data-capacity="{{ s.capacity }}"
+              data-state="{{ act }}" data-weekly="{{ '1' if s.weekly else '0' }}" data-oneonone="{{ '1' if s.one_on_one else '0' }}">
+      {% else %}
+      <div class="sess-row{% if s.mine %} mine{% endif %}{% if s.past %} past{% endif %}{% if s.canceled %} canceled{% endif %}">
+      {% endif %}
+        <span class="rt">{{ s.time }}–{{ s.end }}</span>
+        <span class="rn">{{ s.title }}</span>{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}
+        <span class="rs">
+          {%- if s.canceled %}<span class="no">otkazano</span>
+          {%- elif s.mine %}<span class="ok">rezervirano ✓</span>
+          {%- elif not s.past and not s.allowed %}<span class="need">potrebna članarina</span>
+          {%- elif s.one_on_one %}{% if s.full %}<span class="no">zauzeto</span>{% else %}<span>slobodno</span>{% endif %}
+          {%- elif s.full %}<span class="no">puno</span>
+          {%- else %}<span><b class="ok">{{ s.booked }}</b>/{{ s.capacity }}</span>{% endif %}
+          {%- if act %}<span class="chev" aria-hidden="true">›</span>{% endif -%}
+        </span>
+      {% if act %}</button>{% else %}</div>{% endif %}
+      {% endif %}
     {% endfor %}
     {% if not day.sessions %}<div class="none" style="color:var(--muted); font-size:.8rem; padding:12px 11px;">Nema termina</div>{% endif %}
   </div>
@@ -233,14 +439,7 @@
         <div class="t">{{ s.time }}–{{ s.end }}</div>
         <div class="name">{{ s.title }}{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
         {% if s.canceled %}<div class="cap" style="color:var(--danger); font-weight:700;">OTKAZANO</div>{% endif %}
-        {% if s.can_cancel %}
-        <form method="post" action="/cancel/{{ s.id }}" class="unbook"
-              data-confirm-title="{{ 'Maknuti otkazani termin?' if s.canceled else 'Otkazati rezervaciju?' }}"
-              data-confirm="{{ s.title }}, {{ weekdays_short[s.date.weekday()] | lower }} {{ s.date.strftime('%-d.%-m.') }} u {{ s.time }}–{{ s.end }}.{% if not s.canceled %} Mjesto se oslobađa za druge.{% endif %}"
-              data-confirm-cta="{{ 'Makni' if s.canceled else 'Otkaži rezervaciju' }}">
-          <input type="hidden" name="week" value="{{ monday.isoformat() }}">
-          <button type="submit" class="unbook-x" aria-label="{{ 'Makni' if s.canceled else 'Otkaži' }} {{ s.title }} {{ s.date.strftime('%-d.%-m.') }} u {{ s.time }}">✕</button>
-        </form>
+        {% if s.can_cancel %}{{ unbook(s) }}
         {% else %}<div class="cap">Otkazivanje do {{ cutoff_hours }} h prije termina</div>{% endif %}
       </div>
       {% endfor %}
@@ -250,4 +449,131 @@
 </div>
 {% endif %}
 
+{% if not user.is_trainer %}
+{# the phone's bottom sheet: ONE dialog, filled by the script from the row
+   tapped (its data-*): the termin's facts and one action. The sheet is the
+   confirmation, so its forms carry no data-confirm. #}
+<dialog id="sheet" class="fb-modal sheet" aria-labelledby="sheetTitle">
+  <div class="fb-box">
+    <form method="dialog" class="fb-x"><button type="submit" aria-label="Zatvori">✕</button></form>
+    <p class="fb-kicker" id="sheetDay"></p>
+    <h2 id="sheetTitle"><span id="sheetWhat"></span><span class="tag-11" id="sheetChip" hidden>1:1</span></h2>
+    <p class="fb-lead" id="sheetLead"></p>
+    <form id="sheetBook" method="post" hidden>
+      <input type="hidden" name="week" value="{{ monday.isoformat() }}">
+      <input type="hidden" name="day" value="{{ selected_day.isoformat() }}">
+      <label class="sheet-series" id="sheetSeries"><input type="checkbox" name="series" value="1"> Isti termin svaki tjedan do kraja plaćenog razdoblja</label>
+      <div class="fb-actions">
+        <button type="button" class="btn-ghost btn-sm" data-sheet-close>Odustani</button>
+        <button type="submit" class="btn btn-sm" autofocus>Rezerviraj</button>
+      </div>
+    </form>
+    <form id="sheetCancel" method="post" hidden>
+      <input type="hidden" name="week" value="{{ monday.isoformat() }}">
+      <input type="hidden" name="day" value="{{ selected_day.isoformat() }}">
+      <div class="fb-actions">
+        <button type="button" class="btn-ghost btn-sm" data-sheet-close>Odustani</button>
+        <button type="submit" class="btn btn-sm" autofocus>Otkaži rezervaciju</button>
+      </div>
+    </form>
+    <div id="sheetLate" hidden>
+      <p class="fb-note">Otkazivanje je moguće do {{ cutoff_hours }} h prije termina.</p>
+      <div class="fb-actions"><button type="button" class="btn btn-sm" data-sheet-close autofocus>U redu</button></div>
+    </div>
+  </div>
+</dialog>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+  // Phones (≤860px): one day at a time. The strip picks the day; the URL
+  // keeps it (?week=&day=, so a reload comes back on it), and so do the
+  // forms that carry the shown day (data-shown-day). A sideways swipe on the
+  // list moves one day, past Sunday / before Monday into the next / previous
+  // week. The desktop grid ignores all of it: the CSS acts only ≤860px.
+  (function () {
+    var week = document.querySelector(".week[data-selected]"), strip = document.querySelector(".day-strip");
+    if (!week || !strip) return;
+    var btns = strip.querySelectorAll("button[data-day]"), cols = week.querySelectorAll(".day-col[data-day]");
+    var phone = window.matchMedia ? window.matchMedia("(max-width: 860px)") : null;
+    function show(day, remember) {
+      var i, kept = document.querySelectorAll("input[data-shown-day]");
+      for (i = 0; i < cols.length; i++) cols[i].classList.toggle("is-on", cols[i].getAttribute("data-day") === day);
+      for (i = 0; i < btns.length; i++) btns[i].setAttribute("aria-pressed", btns[i].getAttribute("data-day") === day ? "true" : "false");
+      for (i = 0; i < kept.length; i++) kept[i].value = day;
+      week.setAttribute("data-selected", day);
+      if (remember && window.history && history.replaceState) {
+        history.replaceState(null, "", location.pathname + "?week=" + week.getAttribute("data-week") + "&day=" + day);
+      }
+    }
+    function shift(iso, n) {                    // "2026-10-12" + n days, in the local calendar
+      var p = iso.split("-"), d = new Date(+p[0], +p[1] - 1, +p[2] + n);
+      return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+    }
+    function step(n) {
+      var cur = week.getAttribute("data-selected"), i = 0;
+      while (i < btns.length && btns[i].getAttribute("data-day") !== cur) i++;
+      i += n;
+      if (i >= 0 && i < btns.length) { show(btns[i].getAttribute("data-day"), true); return; }
+      // over the week's edge: the idući / prošli tjedan link, on the day next to this one
+      var to = week.getAttribute(n > 0 ? "data-next" : "data-prev");
+      location.href = location.pathname + "?week=" + to + "&day=" + (n > 0 ? to : shift(to, 6));
+    }
+    for (var b = 0; b < btns.length; b++) {
+      btns[b].addEventListener("click", function () { show(this.getAttribute("data-day"), true); });
+    }
+    var x0 = null, y0 = 0;
+    week.addEventListener("touchstart", function (e) {
+      x0 = e.touches.length === 1 ? e.touches[0].clientX : null;
+      y0 = e.touches.length === 1 ? e.touches[0].clientY : 0;
+    }, {passive: true});
+    week.addEventListener("touchend", function (e) {
+      if (x0 === null || (phone && !phone.matches)) return;
+      var t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+      x0 = null;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) step(dx < 0 ? 1 : -1);
+    }, {passive: true});
+    show(week.getAttribute("data-selected"), false);
+    week.classList.add("one-day");
+    strip.hidden = false;
+  })();
+
+  // The sheet: a row that has something to do opens it, filled from the
+  // row's data-*. Escape and the ✕ close it natively, the backdrop and
+  // Odustani / U redu here.
+  (function () {
+    var sheet = document.getElementById("sheet");
+    if (!sheet || !sheet.showModal) return;
+    function el(id) { return document.getElementById(id); }
+    var book = el("sheetBook"), cancel = el("sheetCancel"), late = el("sheetLate");
+    function open(row) {
+      var d = row.dataset, one = d.oneonone === "1", i;
+      el("sheetDay").textContent = d.day;
+      el("sheetWhat").textContent = d.time + "–" + d.end + " · " + d.title;
+      el("sheetChip").hidden = !one;
+      el("sheetLead").textContent = d.state !== "book" ? "Rezervirano"
+        : one ? "Termin je slobodan." : d.booked + " od " + d.capacity + " mjesta zauzeto";
+      book.hidden = d.state !== "book";
+      cancel.hidden = d.state !== "mine";
+      late.hidden = d.state !== "mine-late";
+      book.setAttribute("action", "/book/" + d.id);
+      cancel.setAttribute("action", "/cancel/" + d.id);
+      var days = sheet.querySelectorAll("input[name=day]");
+      for (i = 0; i < days.length; i++) days[i].value = d.date;
+      el("sheetSeries").hidden = d.weekly !== "1";
+      book.querySelector("input[name=series]").checked = false;
+      sheet.showModal();
+      var go = d.state === "book" ? book.querySelector("[type=submit]")
+             : d.state === "mine" ? cancel.querySelector("[type=submit]") : late.querySelector("button");
+      if (go) go.focus();
+    }
+    document.addEventListener("click", function (e) {
+      var row = e.target.closest("button.sess-row[data-state]");
+      if (row) { open(row); return; }
+      if (e.target.closest("#sheet [data-sheet-close]")) sheet.close();
+    });
+    sheet.addEventListener("click", function (e) { if (e.target === sheet) sheet.close(); });
+  })();
+</script>
 {% endblock %}

@@ -1206,3 +1206,235 @@ def test_guest_pages_carry_the_auth_modal_and_clients_the_install_banner():
 
     make_user("trener@test.local", is_trainer=True)
     assert 'id="a2hs"' not in client_for("trener@test.local").get("/raspored").text
+
+
+# ---------- /raspored on a phone: one day at a time (17.10.2026) ----------
+# The day strip, the rows and the sheet are the phone's; the route decides
+# which day shows (?day=), carries it through every form and redirect, and
+# answers "Tvoj sljedeći termin" at the top. The browser half (one column
+# visible, the strip's taps, the sheet) is tests/test_raspored_ui.py.
+
+def _at(day: date, hour: int = 18) -> datetime:
+    return datetime(day.year, day.month, day.day, hour, tzinfo=config.TZ)
+
+
+def _tag(page: str, start: str) -> str:
+    """The opening tag that starts with `start` (attributes may wrap lines)."""
+    i = page.index(start)
+    return page[i:page.index(">", i) + 1]
+
+
+def _row(page: str, sid: int) -> str:
+    """The phone row (a <button>) that opens the sheet for session `sid`."""
+    i = page.index(f'data-id="{sid}"')
+    return page[page.rfind("<button", 0, i):page.index(">", i) + 1]
+
+
+NEXT = '<section class="card next-termin"'
+
+
+def test_day_param_picks_the_shown_day_else_today_else_the_first_day_with_termini():
+    make_user("ivan@test.local")
+    c = client_for("ivan@test.local")
+    today = config.today()
+    monday = today - timedelta(days=today.weekday())
+    other = monday + timedelta(days=(today.weekday() + 3) % 7)      # another day of this week
+    db.add_oneoff_session("Grupni trening", _at(other), 60, 8, None)   # a week with termini has a strip
+
+    page = c.get(f"/raspored?week={monday}&day={other}").text
+    assert f'data-selected="{other}"' in page
+    assert 'aria-pressed="true"' in _tag(page, f'<button type="button" data-day="{other}"')
+    assert 'aria-pressed="false"' in _tag(page, f'<button type="button" data-day="{today}"')
+    assert 'aria-current="date"' in _tag(page, f'<button type="button" data-day="{today}"')
+    strip = page[page.index('<nav class="day-strip"'):]
+    assert strip[:strip.index("</nav>")].count('aria-pressed="true"') == 1
+
+    for junk in (monday + timedelta(days=7), "nije-datum", ""):     # outside the week, garbage: today
+        page = c.get(f"/raspored?week={monday}&day={junk}").text
+        assert f'data-selected="{today}"' in page, junk
+        assert 'aria-pressed="true"' in _tag(page, f'<button type="button" data-day="{today}"')
+
+    nxt = monday + timedelta(days=7)                    # a week without today: its first day with termini
+    db.add_oneoff_session("Grupni trening", _at(nxt + timedelta(days=2)), 60, 8, None)
+    assert f'data-selected="{nxt + timedelta(days=2)}"' in c.get(f"/raspored?week={nxt}").text
+    empty = monday + timedelta(days=14)                 # ...and without termini: its Monday, and no strip
+    page = c.get(f"/raspored?week={empty}").text
+    assert f'data-selected="{empty}"' in page and 'class="day-strip"' not in page
+
+
+def test_the_strip_has_seven_days_a_dot_on_booked_ones_and_the_grid_forms_carry_their_day():
+    from qmt.web.app import WEEKDAYS_SHORT
+    uid = make_user("ivan@test.local")
+    monday = config.today() - timedelta(days=config.today().weekday()) + timedelta(days=7)   # next week
+    wed, fri = monday + timedelta(days=2), monday + timedelta(days=4)
+    mine = db.add_oneoff_session("Grupni trening", _at(wed), 60, 8, None)
+    free = db.add_oneoff_session("Grupni trening", _at(fri), 60, 8, None)
+    db.book(uid, mine)
+    page = client_for("ivan@test.local").get(f"/raspored?week={monday}").text
+
+    strip = page[page.index('<nav class="day-strip"'):]
+    strip = strip[:strip.index("</nav>")]
+    assert 'aria-label="Dani u tjednu" hidden' in strip     # shown by the script only
+    days = [monday + timedelta(days=i) for i in range(7)]
+    tags = {d: _tag(strip, f'<button type="button" data-day="{d}"') for d in days}
+    assert strip.count("<button") == 7
+    for d, tag in tags.items():
+        assert f'aria-label="{WEEKDAYS_SHORT[d.weekday()]} {d:%-d.%-m.}"' in tag
+        assert ("has-mine" in tag) == (d == wed), d          # the dot: a booking of mine that day
+        assert ("is-empty" in tag) == (d not in (wed, fri)), d
+    assert f'data-selected="{wed}"' in page                 # next week: its first day with termini
+    assert f'data-week="{monday}"' in page
+
+    # each grid form posts its own day; the shown-day forms (the ✕) the selected one
+    grid = page[page.index('<div class="week" data-selected'):page.index("<h2>Moje rezervacije</h2>")]
+    form = grid[grid.index(f'action="/book/{free}"'):]
+    assert f'<input type="hidden" name="day" value="{fri}">' in form[:form.index("</form>")]
+    form = grid[grid.index(f'action="/cancel/{mine}"'):]
+    assert f'<input type="hidden" name="day" value="{wed}">' in form[:form.index("</form>")]
+    unbook = page[page.index(f'<form method="post" action="/cancel/{mine}" class="unbook"'):]
+    assert f'<input type="hidden" name="day" value="{wed}" data-shown-day>' in unbook[:unbook.index("</form>")]
+
+
+def test_phone_rows_open_the_sheet_for_clients_and_link_the_trainer_to_the_roster():
+    tr = make_user("trener@test.local", is_trainer=True)
+    uid = make_user("ivan@test.local", plans=("grupni",))
+    tid, weekly, day = _weekly(days_ahead=9)                 # next week or the one after: all ahead
+    monday = day - timedelta(days=day.weekday())
+    one_off = db.add_oneoff_session("Jutarnji trening", _at(day, 7), 60, 8, None)
+    solo = db.add_oneoff_session("Individualni trening", _at(day, 20), 60, 1, None, kind="individualni")
+    db.book(uid, one_off)
+    db.book(tr, weekly)                                      # the trainer's own booking changes nothing
+
+    page = client_for("ivan@test.local").get(f"/raspored?week={monday}").text
+    assert page.count('<dialog id="sheet" class="fb-modal sheet"') == 1
+    row = _row(page, weekly)
+    assert row.startswith('<button type="button" class="sess-row" aria-haspopup="dialog"')
+    assert 'data-state="book"' in row and 'data-weekly="1"' in row and 'data-title="Tjedni trening"' in row
+    assert f'data-date="{day}"' in row and 'data-time="18:00" data-end="19:00"' in row
+    assert 'data-booked="1" data-capacity="8"' in row and 'data-oneonone="0"' in row
+    row = _row(page, one_off)
+    assert row.startswith('<button type="button" class="sess-row mine"')
+    assert 'data-state="mine"' in row and 'data-weekly="0"' in row
+    # no plan for a 1:1: a plain row that says so, nothing to tap
+    i = page.index('<span class="rn">Individualni trening</span>')
+    assert page.rfind('<div class="sess-row">', 0, i) > page.rfind("<button", 0, i)
+    assert '<span class="need">potrebna članarina</span>' in page[i:i + 300]
+
+    page = client_for("trener@test.local").get(f"/raspored?week={monday}").text
+    for sid in (weekly, one_off, solo):
+        assert f'<a class="sess-row" href="/admin/session/{sid}">' in page
+    assert 'id="sheet"' not in page and "sess-row mine" not in page and 'data-state=' not in page
+
+
+def test_book_with_series_books_the_following_weeks_at_once():
+    """The sheet's checkbox: POST /book with series=1 books the termin and
+    runs the weekly repeat in one go; the alert says both and offers nothing
+    more. Without it the flow is the old one (the offer in the alert)."""
+    from urllib.parse import unquote
+    uid = make_user("ivan@test.local")
+    tid, sid, day = _weekly()
+    _due(uid, day + timedelta(days=24))
+    monday = (day - timedelta(days=day.weekday())).isoformat()
+    weeks = _weeks(day, 1, 2, 3)
+    c = client_for("ivan@test.local")
+
+    r = c.post(f"/book/{sid}", data={"week": monday, "day": day.isoformat(), "series": "1"},
+               follow_redirects=False)
+    loc = unquote(r.headers["location"])
+    assert loc == (f"/raspored?week={monday}&day={day}&ok=Rezervirano ✓ — rezervirano još 3 termina: "
+                   + ", ".join(f"{d:%-d.%-m.}" for d in weeks))
+    assert "series=" not in loc
+    ids = [_occurrence(tid, d, open_week=False) for d in weeks]
+    assert db.user_booking_ids(uid, [sid, *ids]) == {sid, *ids}
+    page = c.get(loc).text
+    assert 'class="series-offer"' not in page and page.count('class="alert ok"') == 1
+
+    # a termin with no weekly slot: the booking stands, the alert says why the rest did not
+    one = future_session(hours_from_now=30)
+    loc = unquote(c.post(f"/book/{one}", data={"series": "1"}, follow_redirects=False).headers["location"])
+    assert loc == "/raspored?error=Rezervirano ✓, ali ovaj termin nema tjedni raspored."
+    assert db.user_booking_ids(uid, [one]) == {one}
+
+    # without the box: exactly the flow before, one booking and the offer
+    ana = make_user("ana@test.local")
+    _due(ana, day + timedelta(days=24))
+    r = client_for("ana@test.local").post(f"/book/{sid}", data={"week": monday, "series": ""},
+                                          follow_redirects=False)
+    assert r.headers["location"].endswith(f"&series={sid}")
+    assert db.user_booking_ids(ana, [sid, *ids]) == {sid}
+
+
+def test_the_shown_day_survives_book_cancel_and_refusals():
+    uid = make_user("ivan@test.local")
+    sid = future_session(hours_from_now=48)
+    c = client_for("ivan@test.local")
+    week, day = "2026-10-19", "2026-10-21"
+    for path in (f"/book/{sid}", f"/cancel/{sid}"):         # done: ok, on the same day
+        loc = c.post(path, data={"week": week, "day": day}, follow_redirects=False).headers["location"]
+        assert loc.startswith(f"/raspored?week={week}&day={day}&ok="), loc
+    loc = c.post(f"/cancel/{sid}", data={"week": week, "day": day},     # nothing to cancel: the error, same day
+                 follow_redirects=False).headers["location"]
+    assert loc.startswith(f"/raspored?week={week}&day={day}&error="), loc
+    for junk in ("<script>", "2026-13-45", "21.10.2026"):  # not a date: dropped, never echoed
+        loc = c.post(f"/book/{sid}", data={"week": week, "day": junk}, follow_redirects=False).headers["location"]
+        assert "day=" not in loc and loc.startswith(f"/raspored?week={week}&ok="), loc
+        c.post(f"/cancel/{sid}", data={"week": week})
+    assert db.user_booking_ids(uid, [sid]) == set()
+
+
+def test_relative_day_hint():
+    from qmt.web.app import _relative_day
+    d = date(2026, 10, 17)
+    assert [_relative_day(d + timedelta(days=n), d) for n in (0, 1, 2, 3, 4, 5, 11, 21, 22)] == [
+        "danas", "sutra", "za 2 dana", "za 3 dana", "za 4 dana", "za 5 dana", "za 11 dana",
+        "za 21 dan", "za 22 dana"]
+
+
+def test_next_termin_card_shows_the_soonest_booking_to_clients_only():
+    from qmt.web.app import WEEKDAYS_SHORT
+    uid = make_user("ivan@test.local")
+    c = client_for("ivan@test.local")
+    assert NEXT not in c.get("/raspored").text              # no booking: no card, no empty state
+
+    today = config.today()
+    tomorrow, later = today + timedelta(days=1), today + timedelta(days=3)
+    first = db.add_oneoff_session("Grupni trening", _at(tomorrow), 60, 8, None)
+    second = db.add_oneoff_session("Individualni trening", _at(later), 60, 1, None)
+    db.book(uid, first)
+    db.book(uid, second)
+
+    def card(page):
+        i = page.index(NEXT)
+        return page[i:page.index("</section>", i)]
+
+    page = c.get("/raspored").text                          # right under the week's head, above the days
+    assert page.index('<div class="week-head">') < page.index(NEXT) < page.index("data-selected=")
+    nt = card(page)
+    assert "Tvoj sljedeći termin" in nt and "Grupni trening" in nt and "Individualni" not in nt
+    assert f"{WEEKDAYS_SHORT[tomorrow.weekday()]} {tomorrow:%-d.%-m.} · 18:00–19:00" in nt
+    assert '<span class="nt-rel">sutra</span>' in nt
+    assert f'<form method="post" action="/cancel/{first}" class="unbook"' in nt     # the list's ✕, asking first
+    assert 'data-confirm-title="Otkazati rezervaciju?"' in nt and 'data-confirm-cta="Otkaži rezervaciju"' in nt
+    assert (f'data-confirm="Grupni trening, {WEEKDAYS_SHORT[tomorrow.weekday()]} {tomorrow:%-d.%-m.} '
+            'u 18:00–19:00. Mjesto se oslobađa za druge."') in nt
+    mine = page.split("<h2>Moje rezervacije</h2>")[1]       # a shortcut, not a split: the list keeps it
+    assert f'action="/cancel/{first}" class="unbook"' in mine and f'action="/cancel/{second}"' in mine
+
+    db.cancel_booking(uid, first)                           # the next one: in three days, 1:1
+    nt = card(c.get("/raspored").text)
+    assert '<span class="nt-rel">za 3 dana</span>' in nt and '<span class="tag-11">1:1</span>' in nt
+
+    db.set_session_canceled(second, True)                   # called off by the trainer: said, and removable
+    nt = card(c.get("/raspored").text)
+    assert '<span class="nt-off">OTKAZANO</span>' in nt and "nt-rel" not in nt
+    assert 'data-confirm-title="Maknuti otkazani termin?"' in nt and 'data-confirm-cta="Makni"' in nt
+
+    soon = future_session(hours_from_now=5, title="Kasni trening")   # inside the 12 h: no ✕, says until when
+    db.book(uid, soon)
+    nt = card(c.get("/raspored").text)
+    assert "Kasni trening" in nt and "unbook" not in nt
+    assert '<div class="nt-late">Otkazivanje do 12 h prije termina</div>' in nt
+
+    tid = make_user("trener@test.local", is_trainer=True)   # a trainer with a booking: no card
+    db.book(tid, soon)
+    assert NEXT not in client_for("trener@test.local").get("/raspored").text

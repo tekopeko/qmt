@@ -24,6 +24,10 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
 | `#a2hs` `.card.a2hs` | base (clients) | install banner: phones only (`pointer: coarse`, plus a `pointer: fine` CSS kill-switch), not in standalone mode, not on the first page load, back a week after each dismissal until installed (`localStorage qmt-a2hs`: when it was dismissed, or `installed` once the native prompt was accepted; the owner's call, 16.10.2026); iOS gets share-sheet steps, Chrome gets a real "Instaliraj" via `beforeinstallprompt` |
+| `.next-termin` | calendar (clients) | "Tvoj sljedeći termin", every width, right under `.week-head`: a `.card` (padding 14px 16px) with `.sess.mine`'s inset accent bar on its left edge; a `.sec-kicker` caption (700 .74rem uppercase, letter-spaced, `--accent`), the day and time (700, tabular) with a muted "danas" / "sutra" / "za N dana" (or "OTKAZANO" in `--danger`), the title + `.tag-11`; at the right end the list's `.unbook` ✕ (the same `unbook` macro), or "Otkazivanje do 12 h prije termina" under the title. No booking, no card (no empty state) |
+| `.day-strip` | calendar (≤860px) | the week as seven `<button data-day>` (Shape's "Moj napredak" strip): `pon` (.72rem, uppercase, muted) over `12` (1rem 700, tabular), 52px tall, `flex: 1 1 0` up to 44px wide so seven fit 360px, `--r-md`, hairline on `--surface`. Chosen: `aria-pressed="true"`, `--accent-fill` with `--accent-ink`; today (not chosen): a 2px `--accent` ring, `aria-current="date"`; no termini: muted label at .6 (still tappable: "Nema termina"); `.has-mine`: a 6px dot under the number. `aria-label="pon 12.10."`. Rendered `hidden`; the script shows it, so without JS there is no dead strip. Absent for an empty week |
+| `.sess-row` | calendar (≤860px, one-day view) | one termin as one row, min-height 56px (the row is the tap target): time (700, tabular) · title on one line (a `-webkit-line-clamp: 1` clamp, so a long title ends in "…" without widening the row) + `.tag-11` outside the clamp · the state at the right end in .8rem: `n/8 ›` (count `--good`), "slobodno ›" (1:1), "rezervirano ✓ ›" (`--good`, inset accent bar), "puno" / "zauzeto" (`--danger`), "potrebna članarina" (muted, may break in two), "otkazano" (`--danger`, title struck). A `<button>` when a tap does something for a client (`data-state` book / mine / mine-late opens `#sheet`), the trainer's `<a>` to `/admin/session/{id}` ("Polaznici n/8 ›"), else a plain `div`; past and canceled at .45. Shown instead of the `.sess` cards only once the script marks the week `.one-day` |
+| `#sheet` `.fb-modal.sheet` | calendar (clients) | the bottom sheet a row opens: ONE dialog filled from the row's `data-*` (kicker day, h2 "07:00–08:00 · Grupni trening" + chip, `.fb-lead` "0 od 8 mjesta zauzeto" / "Termin je slobodan." / "Rezervirano"), then ONE action: Odustani + "Rezerviraj" (`POST /book/{id}`, with the "Isti termin svaki tjedan do kraja plaćenog razdoblja" checkbox, `series=1`, on weekly slots), Odustani + "Otkaži rezervaciju" (`POST /cancel/{id}`; the sheet is the confirmation, no `data-confirm`), or, inside the 12 h, the sentence and "U redu". ≤860px it is docked to the bottom (full width, top corners `--r-lg`, `env(safe-area-inset-bottom)`); the ✕, Escape, the backdrop and Odustani close it; the primary action takes the focus |
 
 ## Buttons and links
 
@@ -38,7 +42,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.act-absent` (karton) | amber tint + amber border | deeper tint, **not** a flood | "Nisam bio/la" — the only non-brand hue |
 | `.tlink` | accent, 600, no underline | colour → `--accent-strong` | link inside prose |
 | `.redo` (karton) | hairline pill, hover-revealed on pointer devices only | takes the razina colour | "Ispuni ponovno" |
-| `.unbook-x` in `form.unbook` (calendar) | 32px round ✕ at every pointer, no fill, `--muted`; pinned 6px into the top-right corner of a "Moje rezervacije" card (the card's `.t` line reserves 28px for it and never wraps) | faint `--text` wash, ink → `--text`; never the red flood | cancel a booking: asks first via `data-confirm` ("Otkazati rezervaciju?" / "Otkaži rezervaciju"; "Maknuti otkazani termin?" / "Makni" for a termin the trainer canceled, whose ✕ stays unfaded on the faded card). Only while cancelling is allowed (`db.cancel_deadline`); after that the card says "Otkazivanje do 12 h prije termina" |
+| `.unbook-x` in `form.unbook` (calendar) | 32px round ✕ at every pointer, no fill, `--muted`; pinned 6px into the top-right corner of a "Moje rezervacije" card (the card's `.t` line reserves 28px for it and never wraps); on phones at the right end of the booking's row, and at the right end of `.next-termin` | faint `--text` wash, ink → `--text`; never the red flood | cancel a booking: asks first via `data-confirm` ("Otkazati rezervaciju?" / "Otkaži rezervaciju"; "Maknuti otkazani termin?" / "Makni" for a termin the trainer canceled, whose ✕ stays unfaded on the faded card). Only while cancelling is allowed (`db.cancel_deadline`); after that the card says "Otkazivanje do 12 h prije termina" |
 
 `a.btn, a.btn-sm, a.btn-ghost, a.btn-quiet, a.act` get `text-decoration: none;
 display: inline-flex` — an anchor with only `.btn-sm` otherwise keeps the
@@ -209,8 +213,15 @@ green- or accent-tinted border, state word top-right, plan CTA pinned bottom.
 are `--r-xl`; `.log-entry` rows are `--r-md` and keep the accent inset bar for
 `.fresh` — at 12px the bar still reads as a bar.
 
-**Calendar (`calendar.html`).** Seven `.day-col` on desktop → single agenda on
-phones (`.empty-day` hidden). "Moja članarina" is `.mtable` in a `.mtable-wrap`
+**Calendar (`calendar.html`).** Seven `.day-col` on desktop → on phones one day
+at a time (17.10.2026): the `.day-strip` picks it, the grid gets `.one-day` and
+the chosen column `.is-on` (its `.day-head` hidden, the strip says the day), and
+each termin shows as a `.sess-row` that opens `#sheet`. `?day=` carries the day
+through reloads, forms (`input[name=day]`, `data-shown-day` where the script
+keeps it current) and redirects. Without the script the phone shows every
+column as an agenda of cards, empty days saying "Nema termina". "Moje
+rezervacije" uses the row style there too (the day as a kicker line, the ✕ at
+the row's right end). "Moja članarina" is `.mtable` in a `.mtable-wrap`
 (scrolls as a last resort): four columns that fit 360px through tighter gutters
 and a smaller face below 420px. `.sess.mine` = accent tint + inset bar,
 `.past`/`.canceled` at .45 opacity, `.today .day-head` red. "Moja članarina" table

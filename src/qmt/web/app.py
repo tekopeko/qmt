@@ -594,8 +594,28 @@ async def stripe_webhook(request: Request):
     return PlainTextResponse(outcome, status_code=200)
 
 
+def _relative_day(d: date, today: date) -> str:
+    """The next-termin card's hint: "danas", "sutra", "za 3 dana" (21, 31:
+    "za 21 dan", like _termin's count)."""
+    n = (d - today).days
+    if n <= 0:
+        return "danas"
+    if n == 1:
+        return "sutra"
+    return f"za {n} {'dan' if n % 10 == 1 and n % 100 != 11 else 'dana'}"
+
+
+def _iso_day(value: str | None) -> date | None:
+    """A ?day= / form `day` as a date; anything else is None (dropped)."""
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
+
+
 @app.get("/raspored", response_class=HTMLResponse)
-def calendar(request: Request, week: str | None = None, series: str | None = None):
+def calendar(request: Request, week: str | None = None, series: str | None = None,
+             day: str | None = None):
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
@@ -638,9 +658,25 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
                 "one_on_one": sess.capacity == 1,
                 # may this client book this kind? (trainer never books via UI)
                 "allowed": user.is_trainer or sess.kind in my_plans,
+                # from the weekly timetable: the phone's sheet offers the
+                # "isti termin svaki tjedan" checkbox only for these
+                "weekly": sess.template_id is not None,
             })
         # key is "sessions", NOT "items" — Jinja resolves dict.items to the builtin method
-        days.append({"date": d, "name": WEEKDAYS[i], "is_today": d == today, "sessions": sessions})
+        days.append({"date": d, "name": WEEKDAYS[i], "is_today": d == today, "sessions": sessions,
+                     # the day strip's dot: a booking of the client's own that day
+                     "has_mine": any(s["mine"] for s in sessions)})
+
+    # The day a phone shows (one day at a time, chosen on the day strip):
+    # ?day= when it falls in this week, else today when the week holds it,
+    # else the week's first day with termini, else its Monday.
+    picked = _iso_day(day)
+    if any(d["date"] == picked for d in days):
+        selected_day = picked
+    elif any(d["is_today"] for d in days):
+        selected_day = today
+    else:
+        selected_day = next((d["date"] for d in days if d["sessions"]), monday)
 
     # "Moje rezervacije" as day columns mirroring the week grid. my_upcoming()
     # is chronological, so grouping consecutive rows by local date suffices —
@@ -663,6 +699,14 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
             "can_cancel": sess.canceled or now < db.cancel_deadline(sess),
         })
 
+    # "Tvoj sljedeći termin": the soonest booking (a trainer-canceled one
+    # included, it says so), answered at the top of the page. Clients only.
+    next_booking = None
+    if mine_days and not user.is_trainer:
+        first = mine_days[0]
+        next_booking = dict(first["sessions"][0], name=first["name"],
+                            relative=_relative_day(first["date"], today))
+
     # Right after a booking (POST /book adds ?series=<id>): offer the same slot
     # on every following week of the paid period. Only on the client's own
     # booking; trainers do not book. A garbage id simply offers nothing (and
@@ -680,10 +724,10 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
 
     return templates.TemplateResponse(request, "calendar.html", _ctx(
         request, user,
-        days=days, monday=monday, series_offer=series_offer,
+        days=days, monday=monday, series_offer=series_offer, selected_day=selected_day,
         prev_week=(monday - timedelta(days=7)).isoformat(),
         next_week=(monday + timedelta(days=7)).isoformat(),
-        mine_days=mine_days, cutoff_hours=config.CANCEL_CUTOFF_HOURS,
+        mine_days=mine_days, next_booking=next_booking, cutoff_hours=config.CANCEL_CUTOFF_HOURS,
         memberships=[{"label": PLAN_LABELS.get(m.plan, m.plan),
                       "usage": db.cycle_usage(user.id, m.plan),
                       "next_payment": m.next_payment, "dospijece": m.dospijece,
@@ -693,25 +737,30 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
 
 
 def _redirect_back(week: str, error: str | None = None, ok: str | None = None,
-                   cta: str | None = None, series: int | None = None) -> RedirectResponse:
+                   cta: str | None = None, series: int | None = None,
+                   day: str = "") -> RedirectResponse:
     """Back to the calendar, on the right week, with feedback visible.
     The separator depends on whether `back` already has a query string —
     "/&error=..." is not a query string and the message silently vanishes.
     `cta` turns a refusal into an offer: it carries a PLAN KIND, never a URL —
     the alert builds the link itself, so a crafted ?cta= cannot become an
     off-site href. `series` (a session id) asks the calendar to offer that
-    booking's weekly repeat."""
+    booking's weekly repeat. `day` is the day a phone was showing (ISO; any
+    other value is dropped), so the page comes back on it."""
     from urllib.parse import quote
 
     back = f"/raspored?week={week}" if week else "/raspored"
-    for key, val in (("error", error), ("ok", ok), ("cta", cta), ("series", series)):
+    shown = _iso_day(day)
+    for key, val in (("day", shown and shown.isoformat()), ("error", error), ("ok", ok),
+                     ("cta", cta), ("series", series)):
         if val:
             back += ("&" if "?" in back else "?") + f"{key}=" + quote(str(val))
     return RedirectResponse(back, status_code=303)
 
 
 @app.post("/book/{session_id}")
-def book(request: Request, session_id: int, week: str = Form("")):
+def book(request: Request, session_id: int, week: str = Form(""), series: str = Form(""),
+         day: str = Form("")):
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -719,10 +768,31 @@ def book(request: Request, session_id: int, week: str = Form("")):
         db.book(user.id, session_id)
     except db.MembershipRequired as e:
         # the one refusal with a fix: send the price of the plan they just tried
-        return _redirect_back(week, str(e), cta=e.kind)
+        return _redirect_back(week, str(e), cta=e.kind, day=day)
     except db.BookingError as e:
-        return _redirect_back(week, str(e))
-    return _redirect_back(week, ok="Rezervirano ✓", series=session_id)
+        return _redirect_back(week, str(e), day=day)
+    if series == "1":
+        # the phone's sheet: "Isti termin svaki tjedan" ticked, so the repeat
+        # runs now (db.book_series' rules) and there is nothing left to offer.
+        # The booking above stands whatever the series says.
+        try:
+            res = db.book_series(user.id, session_id)
+        except db.BookingError as e:
+            return _redirect_back(week, "Rezervirano ✓, ali " + _lower_first(str(e)), day=day)
+        text, any_more = _series_feedback(res)
+        if not any_more:
+            # the booking stands, the repeat found nothing to add: say so
+            # without contradicting the ✓ ("nijedan termin nije rezerviran")
+            why = text.split(" — ", 1)[1] if " — " in text else ""
+            return _redirect_back(week, ok="Rezervirano ✓ — samo ovaj termin" + (", " + why if why else "."), day=day)
+        return _redirect_back(week, ok="Rezervirano ✓ — " + _lower_first(text), day=day)
+    return _redirect_back(week, ok="Rezervirano ✓", series=session_id, day=day)
+
+
+def _lower_first(text: str) -> str:
+    """A message continued after "Rezervirano ✓ — " / ", ali ": the
+    _series_feedback style, lower case after the dash."""
+    return text[:1].lower() + text[1:]
 
 
 def _termin(n: int) -> str:
@@ -752,7 +822,7 @@ def _series_feedback(res: dict) -> tuple[str, bool]:
 
 
 @app.post("/book/{session_id}/series")
-def book_series(request: Request, session_id: int, week: str = Form("")):
+def book_series(request: Request, session_id: int, week: str = Form(""), day: str = Form("")):
     """"Isti termin svaki tjedan": the slot just booked, on every following
     week of the paid period (the rules are db.book_series')."""
     user = current_user(request)
@@ -760,27 +830,27 @@ def book_series(request: Request, session_id: int, week: str = Form("")):
         return RedirectResponse("/login", status_code=303)
     if not db.user_booking_ids(user.id, [session_id]):
         # the offer only ever follows the client's own booking
-        return _redirect_back(week, "Nemaš rezervaciju za ovaj termin.")
+        return _redirect_back(week, "Nemaš rezervaciju za ovaj termin.", day=day)
     try:
         res = db.book_series(user.id, session_id)
     except db.MembershipRequired as e:
-        return _redirect_back(week, str(e), cta=e.kind)
+        return _redirect_back(week, str(e), cta=e.kind, day=day)
     except db.BookingError as e:
-        return _redirect_back(week, str(e))
+        return _redirect_back(week, str(e), day=day)
     text, ok = _series_feedback(res)
-    return _redirect_back(week, ok=text) if ok else _redirect_back(week, text)
+    return _redirect_back(week, ok=text, day=day) if ok else _redirect_back(week, text, day=day)
 
 
 @app.post("/cancel/{session_id}")
-def cancel(request: Request, session_id: int, week: str = Form("")):
+def cancel(request: Request, session_id: int, week: str = Form(""), day: str = Form("")):
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     try:
         db.cancel_booking(user.id, session_id)
     except db.BookingError as e:
-        return _redirect_back(week, str(e))
-    return _redirect_back(week, ok="Rezervacija je otkazana.")
+        return _redirect_back(week, str(e), day=day)
+    return _redirect_back(week, ok="Rezervacija je otkazana.", day=day)
 
 
 @app.get("/auth/verify")
