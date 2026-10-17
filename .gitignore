@@ -6,7 +6,7 @@ __pycache__/
 .DS_Store
 
 # uploaded programme media (personal content, ephemeral)
-data/
+data/uploads/
 
 # subagent worktrees (harness-managed, never part of the repo)
 .claude/worktrees/

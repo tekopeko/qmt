@@ -120,6 +120,16 @@ described, these sell. The hero photo links to them, as Shape's do.
 plain dark background, no cards. **Map to QMT:** the landing's gallery band is the
 slot; the owner supplies photos with consent. Keep captions optional.
 
+## 7. Onboarding questionnaire — reference saved 17.10.2026
+
+**Theirs:** `/onboarding/preferences`, one question per screen: a narrow
+centred column, a thin progress bar, the question as a big h1, answers as
+full-width rows with an A / B / C letter badge, the chosen one inverted to
+white with a ✓, a muted "Nazad" under them, choosing advances. Screenshots
+and the measured notes: `data/design-reference/shape-club/README.md`.
+**Map to QMT:** the upitnik (`/upitnik`, five scored questions + a goal) is
+the same shape; a redesign to this pattern is the owner's wish (17.10.2026).
+
 ## What not to borrow
 
 - Their body text and headline colours vary by section (black on gradient,
