@@ -10,9 +10,10 @@ gives the first announcement's text three lines and a photo behind it, and
 measures the pages at four widths.
 Nothing may overflow or be cut, and the cards' prices stay level. It proves
 no design; that pass comes once the copy is final. On the way it walks the
-landing's rows of cards, the announcements' among them (on a phone they move
-on by themselves, and hold still when they must), the editor's switch and
-photo pills, and the install banner's week between asks.
+landing's rows of cards, the announcements' among them (one card per view;
+they move on by themselves, on a phone and on a desktop, and hold still when
+they must), the editor's switch and photo pills, and the install banner's
+week between asks.
 """
 
 from __future__ import annotations
@@ -499,13 +500,14 @@ MEASURE = r"""(strict) => {
 
 # The landing's two offer sections, each a row of cards (.swipe-row): the three
 # online tiers and the gym's two. On a wide screen the tiers are three columns
-# and the gym two; below 900px each is a swipe row with a dot per card (made
-# by the script, so the count and the labels follow the cards) and starts on
-# its featured card, centred, with that card's dot lit: the tiers on QMove PRO
-# in the middle, the gym (no featured card) on its first. The shown prices are
-# level across a row either way, at their bottom edge as in MEASURE (the
-# featured tier hangs 16px past its neighbours on a desktop, so the row check
-# above can miss it; this one cannot).
+# and the gym two; below 900px each is a swipe row of cards 92% as wide as its
+# content (a card and a sliver of the next, the owner's call of 17.10.2026)
+# with a dot per card (made by the script, so the count and the labels follow
+# the cards), and starts on its featured card, centred, with that card's dot
+# lit: the tiers on QMove PRO in the middle, the gym (no featured card) on its
+# first. The shown prices are level across a row either way, at their bottom
+# edge as in MEASURE (the featured tier hangs 16px past its neighbours on a
+# desktop, so the row check above can miss it; this one cannot).
 LANDING = r"""([w, strict]) => {
   const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().width > 0; };
   const out = [], top = el => el.getBoundingClientRect().top, price = card => [...card.querySelectorAll('.price')].find(vis);
@@ -521,6 +523,9 @@ LANDING = r"""([w, strict]) => {
       if (getComputedStyle(row).overflowX !== 'auto' || row.scrollWidth <= row.clientWidth) out.push(`the ${what} cards do not scroll sideways`);
       const snaps = cards.filter(c => getComputedStyle(c).scrollSnapAlign.includes('center'));
       if (snaps.length !== n) out.push(`${snaps.length} ${what} cards snap`);
+      const rcs = getComputedStyle(row), room = row.clientWidth - parseFloat(rcs.paddingLeft) - parseFloat(rcs.paddingRight);
+      cards.forEach((c, i) => { const cw = c.getBoundingClientRect().width;
+        if (Math.abs(cw - .92 * room) > 1) out.push(`${what} card ${i + 1} is ${Math.round(cw)}px, not 92% of its row's ${Math.round(room)}px`); });
       if (dots.length !== n) out.push(`${dots.length} dots under the ${what} cards`);
       dots.forEach((d, i) => { const r = d.getBoundingClientRect();
         if (r.width < 32 || r.height < 32) out.push(`a ${what} dot is ${r.width}x${r.height}`);
@@ -542,14 +547,22 @@ LANDING = r"""([w, strict]) => {
 }"""
 
 # The announcements (#aktualno, in the hero), both on in every walk (fill()
-# leaves the flags alone), the first over a photo. Below 900px a swipe row
-# exactly as wide as the screen (it runs to the edges like the tiers' row; the
-# hero keeps its gutter for the rest) with a dot per card under it, the first
-# lit on load. From 900px two cards side by side and no dots, a plain card a
-# header line (chip, title over when, the link) with its text on a line of its
-# own under it (the photo card is a column: PHOTO). At every width the two are
-# one height: a row of two cards, not a tall one beside a short one.
-AKTUALNO = r"""(w) => {
+# leaves the flags alone), the first over a photo. One card per view at every
+# width: a scroller whose card is as wide as its content box, the second card
+# on the same line one content width and one gap further (none of it in
+# view), a dot per card under it (32px or more, labelled), the first lit on
+# load. Below 900px the row is exactly as wide as the screen (it runs to the
+# edges like the tiers' row; the hero keeps its gutter for the rest). From
+# 900px the card is the hero's column, at most 1100px (the row's border box is
+# wider by the padding that keeps the card's shadow), and exactly 1100px at
+# 1280px. At every width the card is as wide as the photo under it, and the
+# two are one height, so the row does not change height as they change.
+# one_line: from 900px a plain card is one line again (chip, title over when,
+# the text taking the room, the link at the right end), so its text sits on
+# its title's line: their middles level, as the strip centres what is on a
+# line. Checked with the default texts only: the 300-character ones wrap
+# every piece onto a line of its own, as they should.
+AKTUALNO = r"""([w, oneLine]) => {
   const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().width > 0; };
   const out = [], row = document.querySelector('#aktualno');
   if (!row) return ['no announcements'];
@@ -557,25 +570,34 @@ AKTUALNO = r"""(w) => {
   if (cards.length !== 2) out.push(`${cards.length} announcements shown`);
   const hs = cards.map(c => c.getBoundingClientRect().height);
   if (Math.max(...hs) - Math.min(...hs) > 1) out.push(`the announcements are not one height: ${hs.map(Math.round).join(', ')}`);
+  const cs = getComputedStyle(row), r = row.getBoundingClientRect(), box = cards.map(c => c.getBoundingClientRect());
+  const room = row.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), gap = parseFloat(cs.columnGap) || 0;
+  if (!row.classList.contains('swipe-row') || cs.overflowX !== 'auto' || row.scrollWidth <= row.clientWidth) out.push('the announcements are not a scroller');
+  box.forEach((b, i) => { if (Math.abs(b.width - room) > 1) out.push(`announcement ${i + 1} is ${b.width}px wide, its row's content ${room}px`); });
+  if (box.length === 2) {
+    if (Math.abs(box[0].top - box[1].top) > 1) out.push(`the announcements are not on one line: ${box[0].top}, ${box[1].top}`);
+    if (Math.abs(box[1].left - box[0].left - (room + gap)) > 1)
+      out.push(`the second announcement is ${box[1].left - box[0].left}px after the first, not one per view (${room} + ${gap})`);
+    if (box[1].left < r.right - 1) out.push(`${Math.round(r.right - box[1].left)}px of the second announcement show beside the first`);
+  }
+  const photo = document.querySelector('.stage').getBoundingClientRect();
+  if (box.length && (Math.abs(box[0].left - photo.left) > 1 || Math.abs(box[0].right - photo.right) > 1))
+    out.push(`the announcement (${box[0].left}-${box[0].right}) is not as wide as the photo under it (${photo.left}-${photo.right})`);
+  if (dots.length !== 2) out.push(`${dots.length} dots under the announcements`);
+  dots.forEach((d, i) => { const b = d.getBoundingClientRect();
+    if (b.width < 32 || b.height < 32) out.push(`an announcement dot is ${b.width}x${b.height}`);
+    if (d.getAttribute('aria-label') !== `Kartica ${i + 1} od 2`) out.push(`announcement dot ${i + 1} says "${d.getAttribute('aria-label')}"`); });
+  const lit = dots.findIndex(d => d.getAttribute('aria-current') === 'true');
+  if (lit !== 0) out.push(`the announcements start on card ${lit + 1}, not 1`);
   if (w < 900) {
-    const r = row.getBoundingClientRect();
-    if (!row.classList.contains('swipe-row') || getComputedStyle(row).overflowX !== 'auto') out.push('the announcements are not a swipe row');
     if (Math.abs(r.width - innerWidth) > 1 || Math.abs(r.left) > 1) out.push(`the announcements' row is ${r.width}px wide at ${r.left}, the screen ${innerWidth}px`);
-    if (dots.length !== 2) out.push(`${dots.length} dots under the announcements`);
-    dots.forEach((d, i) => { const b = d.getBoundingClientRect();
-      if (b.width < 32 || b.height < 32) out.push(`an announcement dot is ${b.width}x${b.height}`);
-      if (d.getAttribute('aria-label') !== `Kartica ${i + 1} od 2`) out.push(`announcement dot ${i + 1} says "${d.getAttribute('aria-label')}"`); });
-    const lit = dots.findIndex(d => d.getAttribute('aria-current') === 'true');
-    if (lit !== 0) out.push(`the announcements start on card ${lit + 1}, not 1`);
   } else {
-    if (dots.length) out.push('dots under the announcements on a wide screen');
-    const cols = getComputedStyle(row).gridTemplateColumns.split(' ').length;
-    if (cols !== 2) out.push(`the announcements are in ${cols} columns`);
-    const t = cards.map(c => c.getBoundingClientRect().top);
-    if (Math.max(...t) - Math.min(...t) > 1) out.push(`the announcements are not side by side: ${t.join(', ')}`);
-    for (const c of cards.filter(c => !c.classList.contains('has-img')))
-      if (c.querySelector('.text').getBoundingClientRect().top < c.querySelector('.foot').getBoundingClientRect().bottom - 1)
-        out.push("an announcement's text is not on a line of its own under the link");
+    if (room > 1100.5) out.push(`an announcement is ${room}px wide, past the hero's 1100px column`);
+    if (w >= 1280) box.forEach((b, i) => { if (Math.abs(b.width - 1100) > 1) out.push(`announcement ${i + 1} is ${b.width}px wide, not the column's 1100px`); });
+    if (oneLine) for (const c of cards.filter(c => !c.classList.contains('has-img'))) {
+      const mid = sel => { const b = c.querySelector(sel).getBoundingClientRect(); return (b.top + b.bottom) / 2; };
+      if (Math.abs(mid('.text') - mid('.head')) > 2) out.push("a plain announcement's text is not on its title's line");
+    }
   }
   return out;
 }"""
@@ -585,8 +607,9 @@ AKTUALNO = r"""(w) => {
 # patched config) and covers the card; every text, the chip and the link sit
 # inside the card, which a long text makes taller: nothing in it is clamped,
 # unlike the stage's caption (MEASURE allows no cut here). A column at every
-# width, at least its min-height tall: the chip at the top, then the title,
-# the text and the link, which sits at the bottom. The type is white.
+# width, at least its min-height tall (300px; from 900px a wide banner's
+# 320px): the chip at the top, then the title, the text and the link, which
+# sits at the bottom. The type is white.
 PHOTO = r"""() => {
   const out = [], card = document.querySelector('#aktualno .event.has-img'), box = el => el.getBoundingClientRect();
   if (!card) return ['no announcement over a photo'];
@@ -596,7 +619,7 @@ PHOTO = r"""() => {
   if (!img.complete || !img.naturalWidth) out.push(`the photo did not load: ${img.getAttribute('src')}`);
   const r = box(img), at = b => [b.left, b.top, b.width, b.height].map(Math.round).join(',');
   if (['left', 'top', 'right', 'bottom'].some(k => Math.abs(r[k] - c[k]) > 1)) out.push(`the photo (${at(r)}) does not cover its card (${at(c)})`);
-  if (c.height < (innerWidth < 900 ? 300 : 280) - 1) out.push(`the photo card is ${Math.round(c.height)}px tall`);
+  if (c.height < (innerWidth < 900 ? 300 : 320) - 1) out.push(`the photo card is ${Math.round(c.height)}px tall`);
   for (const el of card.querySelectorAll('span.t, .tag, .act')) { const b = box(el);
     if (b.width && (b.left < c.left - 1 || b.top < c.top - 1 || b.right > c.right + 1 || b.bottom > c.bottom + 1))
       out.push(`"${el.textContent.trim().slice(0, 12)}…" leaves the photo card`); }
@@ -720,13 +743,16 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         photo_on(); pg.reload(); pg.wait_for_load_state("networkidle")
         return out
 
-    def flip(pg, w):
+    def flip(pg):
         """The editor's switch in a browser: in edit mode the first
         announcement, switched off, stays on the page with its content dimmed
-        (not its toggle), and on a wide screen both columns stay; after a
-        reload it is gone and the second is alone (.single on their box): the
-        whole row on a phone, one column of at most 760px on a wide screen.
-        Switched back on for the walks after this one."""
+        (not its toggle), and both cards show one under the other, each the
+        row's width: a grid, not a scroller, so the editor reaches the one
+        that is off (it has no dot), and no dots under them; the row's
+        negative margins widen neither the page nor the hero. After a reload it
+        is gone and the second is alone (.single on their box), as wide as the
+        row's content, with no dots. The same at every width. Switched back on
+        for the walks after this one."""
         out = []
         pg.click("#copyToggle"); pg.locator("#aktualno .ed-flag").first.click()
         pg.wait_for_function("""() => { const b = document.querySelector('#aktualno .ed-flag');
@@ -735,9 +761,18 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
           return [c.getBoundingClientRect().height > 0, o(c.querySelector('.head')), o(c.querySelector('.ed-flag'))]; }""")
         if seen != [True, 0.55, 1]:
             out.append(f"a strip switched off in edit mode (shown, its title block's and its toggle's opacity): {seen}")
-        cols = "() => getComputedStyle(document.querySelector('#aktualno')).gridTemplateColumns.split(' ').length"
-        if w >= 900 and pg.evaluate(cols) != 2:
-            out.append(f"in edit mode, one announcement off, they are in {pg.evaluate(cols)} columns, not both")
+        stacked = pg.evaluate("""() => { const row = document.querySelector('#aktualno'), cs = getComputedStyle(row);
+          const [a, b] = [...row.querySelectorAll('.event')].map(c => c.getBoundingClientRect());
+          const de = document.documentElement, hero = row.parentElement;
+          return {grid: cs.display, scrolls: row.scrollWidth !== row.clientWidth, dots: getComputedStyle(row.nextElementSibling).display,
+                  room: row.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), widths: [a.width, b.width],
+                  under: b.top >= a.bottom - 1, lefts: [a.left, b.left],
+                  overflow: [de.scrollWidth - de.clientWidth, hero.scrollWidth - hero.clientWidth]}; }""")
+        if (stacked["grid"] != "grid" or stacked["scrolls"] or stacked["dots"] != "none" or not stacked["under"]
+                or abs(stacked["lefts"][0] - stacked["lefts"][1]) > 1 or any(abs(x - stacked["room"]) > 1 for x in stacked["widths"])
+                or stacked["overflow"] != [0, 0]):
+            out.append(f"in edit mode, one announcement off, they are not one under the other, each the row's width, without dots "
+                       f"and without overflow (the page's, the hero's): {stacked}")
         pg.reload(); pg.wait_for_load_state("networkidle")
         cards = pg.locator("#aktualno .event")
         if cards.nth(0).is_visible() or not cards.nth(1).is_visible():
@@ -745,13 +780,13 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         alone = pg.evaluate("""() => { const row = document.querySelector('#aktualno'), cs = getComputedStyle(row), [a, b] = row.querySelectorAll('.event');
           return {single: row.classList.contains('single'), off: getComputedStyle(a).display, width: b.getBoundingClientRect().width,
                   room: row.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight),
-                  cols: cs.gridTemplateColumns.split(' ').length, row: row.getBoundingClientRect().width}; }""")
+                  dots: document.querySelectorAll('#aktualno + .dots button').length, hidden: row.nextElementSibling.hidden}; }""")
         if not alone["single"] or alone["off"] != "none":
             out.append(f"after a reload their box is not .single, or the card switched off is not display: none: {alone}")
-        if w < 900 and abs(alone["width"] - alone["room"]) > 1:
+        if abs(alone["width"] - alone["room"]) > 1:
             out.append(f"the one announcement left is {alone['width']}px of the row's {alone['room']}px")
-        if w >= 900 and (alone["cols"] != 1 or alone["row"] > 761):
-            out.append(f"the one announcement left is in {alone['cols']} columns, {alone['row']}px wide")
+        if alone["dots"] or not alone["hidden"]:
+            out.append(f"one announcement left, and {alone['dots']} dots under it (their box hidden: {alone['hidden']})")
         if db.copy_texts().get("event1.show") != "off":
             out.append("the switch was not stored")
         out += pg.evaluate(MEASURE, True)["problems"]
@@ -762,13 +797,18 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     STATE = f"() => [{ROW}.scrollLeft, [...document.querySelectorAll('#aktualno + .dots button')].map(d => d.getAttribute('aria-current')).join()]"
     IN_VIEW = f"() => window.scrollTo({{top: scrollY + {ROW}.getBoundingClientRect().top - 60, behavior: 'instant'}})"
 
-    def advance(pg):
-        """The announcements move on by themselves on a phone (the landing's
-        script): with their row on the screen (the long texts push it below
-        the fold, and off the screen it holds still), the second card is in
-        and its dot lit within one tick (5 s) and the glide. A touch starts
-        the whole delay again: tapped about a second before the next tick
-        was due, nothing moves for the 2 s after the finger lifts."""
+    def advance(pg, touch):
+        """The announcements move on by themselves (the landing's script), on
+        a phone and on a desktop: with their row on the screen (the long texts
+        push it below the fold, and off the screen it holds still), the second
+        card is in and its dot lit within one tick (5 s) and the glide. A
+        person on the row holds it, about a second before the next tick was
+        due: on a phone a touch starts the whole delay again, so nothing moves
+        for the 2 s after the finger lifts; on a desktop the mouse over the
+        row keeps it still, the same 2 s. The mouse starts away from the row,
+        or it would hold the row from the start."""
+        if not touch:
+            pg.mouse.move(0, 0)
         pg.evaluate(IN_VIEW)
         try:
             t = pg.wait_for_function(f"""() => {{ const d = document.querySelectorAll('#aktualno + .dots button');
@@ -778,9 +818,14 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             return [f"the announcements did not move on by themselves in 8 s: {pg.evaluate(STATE)}"]
         pg.wait_for_function(f"() => performance.now() > {t + 3500}")      # the next tick about a second away
         h = pg.locator("#aktualno .event").nth(1).locator("h2").bounding_box()
-        pg.touchscreen.tap(h["x"] + h["width"] / 2, h["y"] + h["height"] / 2)
+        x, y = h["x"] + h["width"] / 2, h["y"] + h["height"] / 2
+        if touch:
+            pg.touchscreen.tap(x, y)
+        else:
+            pg.mouse.move(x, y)
         before = pg.evaluate(STATE); pg.wait_for_timeout(2000); after = pg.evaluate(STATE)
-        return [] if after == before else [f"the announcements moved within 2 s of a touch: {before} -> {after}"]
+        how = "a touch" if touch else "the mouse came over them"
+        return [] if after == before else [f"the announcements moved within 2 s of {how}: {before} -> {after}"]
 
     def still(pw):
         """Under reduced motion the announcements never move by themselves
@@ -820,7 +865,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         ctx.browser.close()
         return [f"[install banner 390px] {p}" for p in out]
 
-    def walk(pw, email, widths, label, strict=True, lines=False, switch=(), auto=None, photos=()):
+    def walk(pw, email, widths, label, strict=True, lines=False, switch=(), auto=(), photos=(), one_line=False):
         problems = []
         for w in widths:
             phone = w < 600
@@ -838,10 +883,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 if lines:
                     problems += [f"{where} {p}" for p in pg.evaluate(EVENT_TEXT)]
                 problems += [f"{where} {p}" for p in pg.evaluate(LANDING, [w, strict])]
-                problems += [f"{where} {p}" for p in pg.evaluate(AKTUALNO, w)]
+                problems += [f"{where} {p}" for p in pg.evaluate(AKTUALNO, [w, one_line])]
                 problems += [f"{where} {p}" for p in pg.evaluate(PHOTO)]
-                if w == auto:                               # the announcements moving by themselves, once
-                    problems += [f"{where} {p}" for p in advance(pg)]
+                if w in auto:                               # the announcements moving by themselves, on a phone and a desktop
+                    problems += [f"{where} {p}" for p in advance(pg, phone)]
                 if not all(pg.locator(f"{sec} .period").is_visible() for sec in ("#usluge", "#dvorana")):
                     problems.append(f"{where} no Mjesečno / Godišnje switch under each row"); continue
                 problems += [f"{where} on load: {p}" for p in pg.evaluate(PERIOD, "month")]   # monthly first
@@ -856,14 +901,16 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 if w in photos:                             # the editor's photo pills, on a phone
                     problems += [f"{where} photo: {p}" for p in photo_edit(pg)]
                 if w in switch:                             # the editor's switch, on a phone and a wide screen
-                    problems += [f"{where} switch: {p}" for p in flip(pg, w)]
+                    problems += [f"{where} switch: {p}" for p in flip(pg)]
             problems += [f"[{label} {w}px] js: {e}" for e in errs]
             ctx.browser.close()
         return problems
 
     with sync_playwright() as pw:
+        photo_on()                                    # the default texts, the first announcement over a photo:
+        problems = walk(pw, None, (900, 1280), "defaults", one_line=True)   # a plain one is one line on a wide screen
         fill(words)                                   # long texts: 300 characters, lists of 12
-        problems = walk(pw, None, (360, 390, 900, 1280), "words", auto=390)
+        problems += walk(pw, None, (360, 390, 900, 1280), "words", auto=(390, 1280))
         problems += still(pw)                         # under reduced motion: never by themselves
         problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280), photos=(390,))
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")

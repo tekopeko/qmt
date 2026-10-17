@@ -8,12 +8,19 @@
      Small centred copy, one enormous photo card carrying the drama, contained
      rounded cards on a near-black page, generous air between sections. Red is
      spent on actions and one soft glow behind the hero, nowhere else. */
+  /* The hero's side gutter is .hero-inner's padding, not the hero's: the
+     announcements' row (.evs, below) reaches into it with negative margins,
+     never past it (past the box's own padding the row left .hero-inner
+     wider than its box: overflow, to the audit and to tests/test_copy.py).
+     Its content box is the column it always was: 1100px at most, the
+     screen less the gutter below that. */
   .hero {
     position: relative;
-    padding: clamp(28px, 5vw, 56px) clamp(16px, 4vw, 40px) 0;
+    padding: clamp(28px, 5vw, 56px) 0 0;
     background: radial-gradient(60% 45% at 50% -8%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 65%);
   }
-  .hero-inner { max-width: 1100px; margin: 0 auto; text-align: center; }
+  .hero-inner { max-width: calc(1100px + 2 * clamp(16px, 4vw, 40px)); margin: 0 auto;
+                padding-inline: clamp(16px, 4vw, 40px); text-align: center; }
   .hero .kicker {
     display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px;
     border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
@@ -27,19 +34,42 @@
   /* ---- aktualno: the owner's announcements for the month (a new group, a
      course), the first thing on the page since 16.10.2026, his call: under
      the headline, above the photo, where the lead and a member's button
-     were. Two cards, side by side on a desktop and a swipe row on a phone
-     (both further down), each read left to right in the centred hero: a
-     chip, the title over when, a few lines, one grey link to the contact
-     (the page's one red button stays on the featured tier). The .card
-     surface at the 20px radius: a shallow strip, not the stage's 28px. Flex
-     WRAP on purpose: a long text makes a strip taller, never wider. No
-     piece is ever wider than the strip (a max-width, or a basis it shrinks
-     from), so a long one wraps onto a line of its own; tests/test_copy.py's
-     300-character texts rely on it. Below 700px a strip is a column. ---- */
-  .evs { display: grid; gap: 12px; max-width: 1100px; margin: clamp(24px, 4vw, 36px) auto 0; text-align: left; }
-  /* align-content: the lines stay at the top. The swipe row and the grid
-     stretch a card to its neighbour's height, and stretched lines would set
-     its chip and title lower than the neighbour's. */
+     were. Two cards, one in view at a time (the row, just below), each
+     read left to right in the centred hero: a chip, the title over when, a
+     few lines, one grey link to the contact (the page's one red button
+     stays on the featured tier). The .card surface at the 20px radius: a
+     shallow strip, not the stage's 28px. Flex WRAP on purpose: a long text
+     makes a strip taller, never wider. No piece is ever wider than the
+     strip (a max-width, or a basis it shrinks from), so a long one wraps
+     onto a line of its own; tests/test_copy.py's 300-character texts rely
+     on it. Below 700px a strip is a column. ---- */
+  /* The row: one card per view at every width, as Shape's "Novo" cards (the
+     owner's call, 17.10.2026: the announcement covers the screen, not half
+     of it, and a desktop shows one over the whole width). A snap scroller
+     whose card is as wide as its content box, a dot per card under it at
+     every width (.dots, further down) and the next card gliding in by
+     itself every 5 s (the script at the end). The content box is the
+     hero's column: the screen less the gutter on a phone, the 1100px of the
+     photo under it on a desktop. The negative margins reach into
+     .hero-inner's padding (the gutter, above) and the row's own padding
+     gives it back: on a phone the row runs to the screen's edges like the
+     tiers' while its card keeps the gutter, and on a desktop the card's
+     shadow is not cut at its sides. The 12px on top and the 20px below are
+     the shadow's room too; the 12px come off the margin, so the card sits
+     where the strip sat. The gap is the gutter, never less: the next card
+     starts where the row's padding ends, so none of it shows. Gap, padding
+     and margins are set on .evs.swipe-row, over .swipe-row's own rule
+     (further down, phones), whose 12px gap would show 4px of the next card. */
+  .evs { display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory;
+         scrollbar-width: none; text-align: left; }
+  .evs::-webkit-scrollbar { display: none; }
+  .evs.swipe-row { gap: clamp(16px, 4vw, 40px); padding: 12px clamp(16px, 4vw, 40px) 20px;
+                   margin: calc(clamp(24px, 4vw, 36px) - 12px) calc(-1 * clamp(16px, 4vw, 40px)) 0; }
+  /* the whole row, over .swipe-row's 92% (a tier and a sliver of the next) */
+  .evs > .event { flex: 0 0 100%; scroll-snap-align: center; }
+  /* align-content: the lines stay at the top. The row stretches a card to
+     its neighbour's height (one height, so the dots under it never move),
+     and stretched lines would spread down the card. */
   .event { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; gap: 10px 22px;
            padding: 16px 22px; border-radius: var(--r-lg); }
   /* not the glass chip on the photo below: the accent tint on the card, with
@@ -76,48 +106,17 @@
   body.editing .event.is-off { display: flex; }
   body.editing .event.is-off > :not(.ed-flag) { opacity: .55; }
   body.editing .event .ed-flag, body.editing .event .ed-img, body.editing .event .ed-img-x { margin: 0; align-self: center; }
+  /* Edit mode: the two one under the other, each the row's width, so the
+     editor reaches a card that is off, which has no dot (the script makes
+     dots for the cards a visitor sees). Not a scroller then, and no dots:
+     the auto-advance's glide moves nothing in a box that does not scroll. */
+  body.editing .evs { display: grid; grid-template-columns: minmax(0, 1fr); overflow: visible; }
+  body.editing .evs + .dots { display: none; }
   @media (max-width: 699px) {
     .event { flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 20px; }
     .event .text { flex-basis: auto; }
     .event .foot { margin-left: 0; margin-top: 4px; }
     body.editing .event .ed-flag, body.editing .event .ed-img, body.editing .event .ed-img-x { align-self: flex-start; }
-  }
-  /* Desktop (900px and up): the two side by side, each half the hero's
-     1100px, not one under the other (the owner's call, 16.10.2026 evening:
-     "one next to the other, not under"). Half a hero has no room for a
-     strip read in one line, so a card is two lines: the chip, the title
-     over when and the link at the right end, then the text across the
-     whole card (order: it comes after the link). A header line over a text
-     line keeps each card shallow and the two level. One card alone
-     (.single) is one 760px column, centred by .evs's own auto margins; in
-     edit mode both show, the one that is off dimmed, so both columns stay. */
-  @media (min-width: 900px) {
-    .evs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    .evs.single { grid-template-columns: minmax(0, 1fr); max-width: 760px; }
-    body.editing .evs { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: none; }
-    .event .text { order: 1; flex-basis: 100%; }
-  }
-  /* Phones and tablets (below 900px): a swipe row like the tiers' (.swipe-row,
-     further down: a card and a bit of the next, snapping to the centre, a
-     dot per card under it) that moves on by itself every 5 s (the script at
-     the end). It runs to the screen's edges like theirs while the kicker,
-     the h1 and the photo keep the gutter: the hero's side padding moves
-     into .hero-inner, and the row's negative margins reach into that
-     padding, never past it (past the hero's own padding they left
-     .hero-inner wider than its box by the gutter: overflow, to the audit
-     and to tests/test_copy.py). The row's own padding carries the gutter;
-     its 12px on top (room for the cards' shadow) comes off the margin, so
-     the first card sits where the strip sat. One card shown takes the whole
-     row. In edit mode both show (the one that is off dimmed): both keep the
-     row's width, so a bit of the other stays in view, and with both off the
-     box is still the row, not the desktop's grid. */
-  @media (max-width: 899px) {
-    .hero { padding-inline: 0; }
-    .hero-inner { padding-inline: clamp(16px, 4vw, 40px); }
-    .evs.swipe-row { margin: calc(clamp(24px, 4vw, 36px) - 12px) calc(-1 * clamp(16px, 4vw, 40px)) 0; }
-    .evs.single > .event, .evs > .event:only-child { flex-basis: 100%; }
-    body.editing .evs.single > .event { flex-basis: 86%; }
-    body.editing .evs.is-off { display: flex; }
   }
   /* An announcement over a photo (.has-img: the owner's upload, a
      copy.ImageSlot): Shape's photo cards, in the stage's language (.stage,
@@ -143,22 +142,16 @@
   .event.has-img .head { margin-top: auto; }
   .event.has-img h2, .event.has-img .when { color: #fff; }
   /* in its place in the column: it does not grow (the head's margin takes
-     the room) and is not a line of its own after the link (900px and up) */
-  .event.has-img .text { order: 0; flex: 0 1 auto; max-width: 48ch; color: rgba(255,255,255,.85); }
+     the room) */
+  .event.has-img .text { flex: 0 1 auto; max-width: 48ch; color: rgba(255,255,255,.85); }
   .event.has-img .foot { margin-left: 0; margin-top: 4px; }
   /* Shape's white pill on a photo; its hover a light grey, never the red of button:hover */
   .event.has-img .act { background: #fff; color: #111; border-color: transparent; }
   .event.has-img .act:hover { background: #e2e2e2; color: #111; border-color: transparent; }
   body.editing .event.has-img .ed-flag, body.editing .event.has-img .ed-img,
   body.editing .event.has-img .ed-img-x { align-self: flex-start; }
-  @media (min-width: 900px) { .event.has-img { min-height: 280px; } }
-  /* Beside a photo card (a desktop's grid) or after it (a tablet's row) the
-     plain card stretches to its height, and its lines, packed at the top,
-     left most of it empty under them while the photo card's text sits at
-     its bottom: the plain card's lines go to the bottom too, so the two
-     texts end level. From 700px, where the plain card is lines of a strip;
-     below, it is a column whose link already sits at the bottom. */
-  @media (min-width: 700px) { .evs:has(> .has-img) > .event:not(.has-img) { align-content: flex-end; } }
+  /* a wide banner on a desktop, the whole column across */
+  @media (min-width: 900px) { .event.has-img { min-height: 320px; } }
 
   /* ---- the photo card: one image, chips in the corners, title over a gradient ---- */
   /* The whole card is a link to the offer below, the way Shape's hero cards
@@ -201,6 +194,9 @@
   .stage .copy p { max-width: 48ch; color: rgba(255,255,255,.82); font-size: clamp(.92rem, 1.3vw, 1.05rem); }
   /* phones: a wide band, not a tall one — a 4:5 window on a landscape photo
      shows its whole height, wall print included; 16:11 keeps the equipment */
+  /* under the announcements' dots the photo needs less air than under a
+     headline: the row's own 20px and the dots are already between them */
+  .dots + .stage { margin-top: clamp(14px, 2.5vw, 26px); }
   @media (max-width: 720px) { .stage { aspect-ratio: 16 / 11; } .stage .tags.r { display: none; }
                               .stage .copy p { display: none; } }
 
@@ -256,13 +252,19 @@
                  padding: 12px clamp(16px, 4vw, 40px) 20px; margin-top: -12px; }
     .swipe-row::-webkit-scrollbar { display: none; }
     /* no scroll-snap-stop: always — it also halts a smooth programmatic scroll
-       at the first snap point, so a tapped third dot stopped on the second card */
-    .swipe-row > * { flex: 0 0 86%; scroll-snap-align: center; }
+       at the first snap point, so a tapped third dot stopped on the second card.
+       92%: a card a little bigger, a sliver of the next beside it (the
+       owner's call, 17.10.2026, after Shape's cards: about 90% of the
+       screen, a sliver of the next showing; it was 86%). The announcements'
+       row takes 100% (.evs > .event): one card per view. */
+    .swipe-row > * { flex: 0 0 92%; scroll-snap-align: center; }
   }
   /* the dots: 32px tap targets around an 8px dot, one per card of the row
      above; the lit one is the card in view. The landing's script makes them
      and only then shows their box, so without it there are no dots that do
-     nothing. Phones only — on a desktop every card is seen. */
+     nothing. The tiers' and the gym's on a phone only, where their row is
+     a swipe row: on a desktop every card is seen. The announcements' at
+     every width, where one card is seen at a time (.evs, above). */
   .dots { display: none; justify-content: center; }
   .dots[hidden] { display: none; }
   .dots button { width: 32px; height: 32px; padding: 0; border: none; background: none; box-shadow: none;
@@ -272,6 +274,7 @@
   .dots button:hover { background: none; transform: none; }
   .dots button[aria-current="true"]::before { background: var(--accent); }
   @media (max-width: 899px) { .dots { display: flex; margin-top: -4px; } }
+  .evs + .dots:not([hidden]) { display: flex; margin-top: -4px; }
   /* Mjesečno / Godišnje: the .auth-tabs idiom (base.html), the chosen half in
      the accent tint with its own ink. The track is --surface with a hairline,
      not .auth-tabs' --surface-2: in dark the tint over --surface-2 leaves the
@@ -395,18 +398,20 @@
     {# Aktualno: the owner's announcements for the month, the first thing on
        the page since 16.10.2026 (his call): two strips under the headline,
        above the photo, where the lead, a member's button and its note were;
-       a member's way in is the bar's tabs and the offer cards' buttons. Side
-       by side on a desktop; on a phone a swipe row (.swipe-row) with a dot
-       per card under it, made by the script, which also moves the row on
-       by itself every 5 s (data-auto, in ms). He switches a strip off in
-       edit mode when it is over (copy.FlagSlot: the toggle at its start). A
-       visitor gets only the strips that are on, and not even their box when
-       both are off. An editor gets both strips and the box always, what is
-       off marked .is-off (shown, dimmed, in edit mode only); the data-flag
-       marks are for the editor's script, which keeps .is-off in step when a
-       toggle is pressed, and .single on the box, set here too when one
-       strip shows: it takes the whole row on a phone, and is one centred
-       column on a desktop. The link leads to the contact.
+       a member's way in is the bar's tabs and the offer cards' buttons. One
+       card per view at every width, as wide as the row: a swipe row
+       (.swipe-row) with a dot per card under it everywhere, made by the
+       script, which also moves the row on by itself every 5 s (data-auto,
+       in ms); edit mode stacks the two, one under the other. He switches a
+       strip off in edit mode when it is over (copy.FlagSlot: the toggle at
+       its start). A visitor gets only the strips that are on, and not even
+       their box when both are off. An editor gets both strips and the box
+       always, what is off marked .is-off (shown, dimmed, in edit mode
+       only); the data-flag marks are for the editor's script, which keeps
+       .is-off in step when a toggle is pressed, and .single on the box, set
+       here too when one strip shows: one card, so no dots and no moving on
+       (the script makes neither for fewer than two). The link leads to the
+       contact.
        A card may carry the owner's photo behind it (copy.ImageSlot): then
        it is .has-img with the photo as its first child, served by /slika,
        and data-photo, which tells the audit its text sits on a photograph.
@@ -634,23 +639,26 @@
 {% block scripts %}
 <script>
   // The rows of cards (.swipe-row: the announcements, the online tiers, the
-  // gym). On a phone each is a swipe row with a dot per card under it, made
-  // here from the row's cards: the dot of the card in view is lit, a tapped
-  // dot brings its card to the centre. A row starts on its .featured card when
-  // it has one (the tiers: QMove PRO in the middle, START a swipe to the left,
-  // ELITE to the right), else on its first card (the announcements, the gym's
-  // two). At once, not gliding there: the page opens on it. Only where the row
-  // scrolls, so a desktop grid (900px and up) is left alone; without the
-  // script a row starts on its first card.
+  // gym). Each is a swipe row with a dot per card under it where it scrolls
+  // (the announcements at every width, one card per view; the tiers and the
+  // gym on a phone), the dots made here from the row's cards: the dot of the
+  // card in view is lit, a tapped dot brings its card to the centre. A row
+  // starts on its .featured card when it has one (the tiers: QMove PRO in the
+  // middle, START a swipe to the left, ELITE to the right), else on its first
+  // card (the announcements, the gym's two). At once, not gliding there: the
+  // page opens on it. Only where the row scrolls, so a desktop grid (900px
+  // and up: the tiers, the gym) is left alone; without the script a row
+  // starts on its first card.
   (function () {
     [].forEach.call(document.querySelectorAll(".swipe-row"), function (row) {
       var box = row.nextElementSibling;
       if (!box || !box.classList.contains("dots")) return;
       // A dot for each card a visitor sees, and dots only for two or more. An
       // announcement the editor switched off is still in his row, as .is-off
-      // (display: none outside edit mode), so it gets none; in edit mode it
-      // shows in the row without one, which a management view can live with.
-      // One card has nothing to slide to: no dots, and their box stays hidden.
+      // (display: none outside edit mode), so it gets none; edit mode stacks
+      // both cards, one under the other, and hides the dots (the landing's
+      // CSS). One card has nothing to slide to: no dots, and their box stays
+      // hidden.
       var cards = [].slice.call(row.children).filter(function (c) { return c.getClientRects().length > 0; });
       if (cards.length < 2) return;
       function bring(card) {                 // to the row's centre, gliding
@@ -693,15 +701,26 @@
       // he cannot see it, and it goes on by itself once the row is back.
       // Never under reduced motion: a card moving by itself is the motion
       // that setting asks to be spared (a swipe and the dots still work).
-      // Only where the row scrolls, i.e. on a phone: a desktop sees both.
+      // Only where the row scrolls, which the announcements' row does at
+      // every width (one card per view, a desktop's too; hover holds it
+      // there). In edit mode it is a grid that does not scroll: the timer
+      // goes on, and its glide moves nothing.
       var ms = +row.dataset.auto;
       if (!ms || row.scrollWidth <= row.clientWidth || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       var timer, held = {}, hover = matchMedia("(hover: hover)").matches;
       function tick() {
         var g = row.getBoundingClientRect();
         if (document.hidden || g.bottom <= 0 || g.top >= innerHeight) return;
-        var lit = dots.map(function (d) { return d.getAttribute("aria-current") === "true"; }).indexOf(true);
-        bring(cards[(lit + 1) % cards.length]);
+        // the card in view is the one nearest the row's centre, not the lit
+        // dot: after edit mode (the grid, then the row again) the browser
+        // keeps the old scroll position and the observer, seeing no change,
+        // leaves the dot where it was
+        var mid = g.left + g.width / 2, cur = 0, best = Infinity;
+        cards.forEach(function (c, i) {
+          var r = c.getBoundingClientRect(), d = Math.abs(r.left + r.width / 2 - mid);
+          if (d < best) { best = d; cur = i; }
+        });
+        bring(cards[(cur + 1) % cards.length]);
       }
       function run() {                       // the whole delay again, unless a person is still on it
         clearInterval(timer);

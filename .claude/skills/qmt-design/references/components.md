@@ -99,8 +99,10 @@ and stay level whatever is typed. `.featured` (tier 2) is taller, not shifted
 `.featured-tag`; `.mine` gets the green-tinted border. **Below 900px each row
 of cards is a carousel** (`.swipe-row`, on `.offer-grid` and `.gym-grid`):
 the band drops its side padding, the row becomes a flex scroller
-(`scroll-snap-type: x mandatory`, cards `flex: 0 0 86%` snapping to the
-centre, scrollbar hidden, the gutter as its own padding) and the `.dots`
+(`scroll-snap-type: x mandatory`, cards `flex: 0 0 92%` snapping to the
+centre, scrollbar hidden, the gutter as its own padding: a card a little
+bigger and a sliver of the next, about 18px at 390px, as Shape's; the
+owner's call, 17.10.2026, it was 86%) and the `.dots`
 under it are 32px buttons around an 8px dot (`--line`, lit `--accent`,
 `aria-current`), one per card, made by the script (no script, no dots; it
 skips a card with no box, `display: none`, and makes none for fewer than
@@ -108,7 +110,9 @@ two), that follow the scroll (IntersectionObserver) and bring their card in
 on tap.
 A row opens on its `.featured` card, centred at once (the tiers: PRO, START
 a swipe to the left, ELITE to the right), else on its first; the script does
-it only where the row scrolls, so the desktop grid is untouched.
+it only where the row scrolls, so the desktop grid is untouched. The
+announcements' `.evs` is a `.swipe-row` too, at every width and one card per
+view (**Aktualno**, below).
 **The gym** (`#dvorana`, below): the same `.offer` cards in `.gym-grid` (two
 columns ≥900px, capped at 760px so each is about a tier's width; the swipe
 row, two dots, below), not featured; Individualno's other
@@ -126,32 +130,44 @@ between the h1 and the photo: the first thing on the page): the owner's two
 announcements for the month as `.event` cards in `.evs` (text left-aligned
 in the centred hero): the `.card` surface at `--r-lg` (a shallow card, not
 the stage's `--r-xl`), one flex row that WRAPS, its items centred on their
-line and its lines at the top (`align-content: flex-start`: a card stretched
-to its neighbour's height keeps its chip and title level with the
-neighbour's): a `.tag` chip (accent tint + `--accent-tint-ink`; scoped
-`.event .tag`, not the photo's glass `.tag`), a `.head` holding the italic
+line and its lines at the top (`align-content: flex-start`: a card the row
+stretches to its neighbour's height keeps its lines at the top): a `.tag`
+chip (accent tint + `--accent-tint-ink`; scoped `.event .tag`, not the
+photo's glass `.tag`), a `.head` holding the italic
 uppercase title of `.offer` at 1.15rem (an `h2`: it sits straight under the
 page's `h1`) over a `.when` line behind a 7px accent dot (on the baseline,
 so a wrapped line keeps it on its first), a muted `.text` that takes the
 free room (`flex: 1 1 280px`), and one grey `.act` to `/#kontakt` in a
 `.foot` at the right end (the red button stays on the featured tier). A long
 text makes a card taller, never wider: no piece is wider than the card, and
-a long one wraps onto a line of its own. **From 900px** the two sit side by
-side (two columns 16px apart, together as wide as the photo; the owner's
-call, 16.10.2026), each in two lines: chip, title and link, then the text
-across the card (`order: 1; flex-basis: 100%`); one card alone (`.single`)
-is one 760px column, centred, and edit mode keeps both columns. **Below
-900px** `.evs` is a `.swipe-row` with its `.dots`, like the tiers: it runs to
-the screen's edges (the hero's side padding moves into `.hero-inner`, and the
-row's negative margins reach into it, never past it, which would be
-overflow), cards 86% wide, a column below 700px; one card alone takes the
-whole row (`.single`, `:only-child`; 86% again in edit mode, where both
-show). It **moves on by itself** (`data-auto="5000"`, the owner's 5 s): the
-next card glides in as its dot would bring it, after the last the first, and
+a long one wraps onto a line of its own. From 700px a plain card is the
+one-line strip (chip, title over when, the text taking the room, the link
+at the right end), wrapping only when a text is long; below 700px a column.
+**One card per view at every width** (the
+owner's call, 17.10.2026, as Shape's "Novo" cards; side by side on a desktop
+before): `.evs` is a snap scroller (a `.swipe-row`, `scroll-snap-type: x
+mandatory`, scrollbar hidden) whose `.event` is `flex: 0 0 100%` of its
+content box, and that box is the hero's column: the screen less the gutter
+on a phone, the photo's 1100px on a desktop, so the card is exactly as wide
+as the photo under it. The hero's side gutter is `.hero-inner`'s padding at
+every width; the row's negative margins reach into it, never past it (that
+would be overflow), and its own padding gives it back: on a phone the row
+runs to the screen's edges, and the card's shadow is not cut (12px over,
+20px under, the gutter at the sides). Its gap is the gutter, never less, so
+none of the next card shows. Its `.dots` show at every width (`.evs +
+.dots`; the tiers' and the gym's stay phone-only). One card shown
+(`.single`) has no dots and does not move: the script makes neither for
+fewer than two. **Edit mode stacks the two** (`body.editing .evs`: a
+one-column grid, not a scroller, its dots hidden), so the editor reaches a
+card that is off, which has no dot. It **moves on by itself**
+(`data-auto="5000"`, the owner's 5 s): the next card glides in as its dot
+would bring it, after the last the first, and
 the lit dot follows. Quiet whenever a person is on the row or its dots (a
 finger, a mouse where the device can hover, the focus), with the whole delay
 again once they leave; no tick while the tab is hidden or the row is off the
-screen; never under `prefers-reduced-motion`; only where the row scrolls.
+screen; never under `prefers-reduced-motion`; only where the row scrolls,
+which the announcements' row does at every width (in edit mode its glide
+moves nothing: the grid does not scroll).
 Each card is switched off with its `.ed-flag`, its first item in edit mode;
 a visitor never gets a hidden one, nor the box when both are.
 **A card over a photo** (`.has-img`: the owner's upload, a `copy.ImageSlot`;
@@ -164,12 +180,11 @@ down by the head's `margin-top: auto`, the white title and `.when` (its dot
 stays `--accent`), the text at `rgba(255,255,255,.85)` (48ch at most, never
 clamped: a long text makes the card taller) and Shape's white pill (`.act` in
 `#fff` / `#111`, a light grey on hover) at the bottom. At least 300px tall on
-a phone, 280px from 900px. `data-photo` makes the audit count its text
-instead of scoring it. The plain card beside it, stretched to its height,
-moves its lines to its foot from 700px (`align-content: flex-end` under
-`.evs:has(> .has-img)`), so the two texts end level; below 700px its link
-already sits at the bottom. In edit mode the pills (`.ed-flag`, `.ed-img`,
-`.ed-img-x`) stack at the top of a photo card. Info band
+a phone, 320px from 900px (a wide banner across the column). `data-photo`
+makes the audit count its text instead of scoring it. The plain card in the
+same row is stretched to its height, its lines at the top: the row keeps one
+height, so its dots stay put as the cards change. In edit mode the pills
+(`.ed-flag`, `.ed-img`, `.ed-img-x`) stack at the top of a photo card. Info band
 `.info-grid`: radno vrijeme table, `.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
