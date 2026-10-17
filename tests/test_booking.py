@@ -186,13 +186,44 @@ def test_book_and_cancel_roundtrip():
     assert "error" not in r.headers["location"]
     assert db.user_booking_ids(uid, [sid]) == set()
 
+    # the 12 h cutoff through the route the calendar's ✕ posts to
+    from urllib.parse import unquote
+    early, late = future_session(hours_from_now=13), future_session(hours_from_now=11)
+    db.book(uid, early)
+    db.book(uid, late)
+    r = c.post(f"/cancel/{early}", data={"week": ""}, follow_redirects=False)
+    assert r.status_code == 303 and "ok=" in r.headers["location"]
+    assert db.user_booking_ids(uid, [early]) == set()
+    r = c.post(f"/cancel/{late}", data={"week": ""}, follow_redirects=False)
+    assert r.status_code == 303 and "error=" in r.headers["location"]
+    assert "najkasnije 12 h prije termina" in unquote(r.headers["location"])
+    assert db.user_booking_ids(uid, [late]) == {late}       # the booking stays
+
 
 def test_cancel_cutoff_enforced():
+    """A client cancels until 12 h before the termin (CANCEL_CUTOFF_HOURS, the
+    owner's call of 17.10.2026); after that the place is the trainer's to plan."""
     uid = make_user("ivan@test.local")
-    sid = future_session(hours_from_now=1)      # inside the 3h cutoff
-    db.book(uid, sid)
-    with pytest.raises(db.BookingError, match="najkasnije"):
-        db.cancel_booking(uid, sid)
+    late = future_session(hours_from_now=11)    # inside the 12 h cutoff
+    db.book(uid, late)
+    with pytest.raises(db.BookingError, match="najkasnije 12 h prije termina"):
+        db.cancel_booking(uid, late)
+    assert db.user_booking_ids(uid, [late]) == {late}
+    early = future_session(hours_from_now=13)   # outside it
+    db.book(uid, early)
+    db.cancel_booking(uid, early)
+    assert db.user_booking_ids(uid, [early]) == set()
+
+
+def test_cancel_deadline_is_twelve_hours_before_the_termin():
+    """One rule, one place: cancel_booking(), the grid's Otkaži and the list's
+    ✕ all ask db.cancel_deadline, so the button and the refusal agree."""
+    assert config.CANCEL_CUTOFF_HOURS == 12
+    sid = future_session(hours_from_now=30)
+    with db.session_scope() as s:
+        sess = s.get(TrainingSession, sid)
+        assert db.cancel_deadline(sess) == sess.starts_at - timedelta(hours=12)
+        assert db.cancel_deadline(sess).tzinfo is not None
 
 
 def test_past_and_canceled_sessions_refuse_booking():
@@ -310,11 +341,77 @@ def test_materialize_clamped_to_booking_window():
 def test_canceled_session_booking_can_be_dropped_inside_cutoff():
     """The cutoff protects the trainer's planning — meaningless once THEY canceled."""
     uid = make_user("ivan@test.local")
-    sid = future_session(hours_from_now=1)      # inside the 3h cutoff
+    sid = future_session(hours_from_now=1)      # inside the 12 h cutoff
     db.book(uid, sid)
     db.set_session_canceled(sid, True)
     db.cancel_booking(uid, sid)                 # must NOT raise
     assert db.user_booking_ids(uid, [sid]) == set()
+
+
+def test_moje_rezervacije_x_asks_first_and_only_while_cancelling_is_allowed():
+    """Each card in "Moje rezervacije" carries a ✕ that asks before it cancels
+    (data-confirm → base.html's #confirmDlg), only while cancelling is allowed;
+    inside the 12 h the card says so instead. A termin the trainer canceled can
+    always be removed. The week grid's Otkaži asks the same way."""
+    from qmt.web.app import WEEKDAYS, WEEKDAYS_SHORT
+    uid = make_user("ivan@test.local")
+    early = future_session(hours_from_now=13, title="Grupni trening")
+    late = future_session(hours_from_now=11, title="Jutarnji trening")
+    gone = future_session(hours_from_now=5, title="Večernji trening")
+    for sid in (early, late, gone):
+        db.book(uid, sid)
+    db.set_session_canceled(gone, True)          # the trainer called it off
+
+    def local(sid):
+        with db.session_scope() as s:
+            sess = s.get(TrainingSession, sid)
+            start = sess.starts_at.astimezone(config.TZ)
+            return start, start + timedelta(minutes=sess.duration_min)
+
+    start, end = local(early)
+    monday = (start.date() - timedelta(days=start.weekday())).isoformat()
+    page = client_for("ivan@test.local").get(f"/raspored?week={monday}").text
+    assert 'id="confirmDlg"' in page             # the dialog the forms open
+    grid, mine = page.split("<h2>Moje rezervacije</h2>")
+    cards = {card.split('<div class="name">')[1].split("<")[0]: card
+             for card in mine.split('<div class="sess')[1:]}
+
+    card = cards["Grupni trening"]               # 13 h ahead: the ✕
+    assert f'<form method="post" action="/cancel/{early}" class="unbook"' in card
+    assert 'data-confirm-title="Otkazati rezervaciju?"' in card
+    assert (f'data-confirm="Grupni trening, {WEEKDAYS_SHORT[start.weekday()]} {start:%-d.%-m.} '
+            f'u {start:%H:%M}–{end:%H:%M}. Mjesto se oslobađa za druge."') in card
+    assert 'data-confirm-cta="Otkaži rezervaciju"' in card
+    assert f'<input type="hidden" name="week" value="{monday}">' in card
+    assert (f'<button type="submit" class="unbook-x" aria-label="Otkaži Grupni trening '
+            f'{start:%-d.%-m.} u {start:%H:%M}">✕</button>') in card
+    assert "Otkazivanje do" not in card
+
+    card = cards["Jutarnji trening"]             # 11 h ahead: no ✕, the state instead
+    assert 'class="unbook"' not in card and f"/cancel/{late}" not in card
+    assert '<div class="cap">Otkazivanje do 12 h prije termina</div>' in card
+
+    card = cards["Večernji trening"]             # canceled by the trainer: always removable
+    start, end = local(gone)
+    assert f'action="/cancel/{gone}" class="unbook"' in card
+    assert 'data-confirm-title="Maknuti otkazani termin?"' in card
+    assert 'data-confirm-cta="Makni"' in card
+    assert (f'data-confirm="Večernji trening, {WEEKDAYS_SHORT[start.weekday()]} {start:%-d.%-m.} '
+            f'u {start:%H:%M}–{end:%H:%M}."') in card     # no place to free up
+    assert f'aria-label="Makni Večernji trening {start:%-d.%-m.} u {start:%H:%M}">✕</button>' in card
+
+    start, _ = local(early)                      # the grid's Otkaži asks too
+    form = grid[grid.index(f'action="/cancel/{early}"'):]
+    form = form[:form.index("</form>")]
+    assert 'data-confirm-title="Otkazati rezervaciju?"' in form
+    assert (f'data-confirm="Grupni trening, {WEEKDAYS[start.weekday()].lower()} {start:%-d.%-m.} '
+            f'u {start:%H:%M}. Mjesto se oslobađa za druge."') in form
+    assert 'data-confirm-cta="Otkaži rezervaciju"' in form and ">Otkaži</button>" in form
+
+    # a trainer's calendar has no list, so no ✕, even with a booking of their own
+    tid = make_user("trener@test.local", is_trainer=True)
+    db.book(tid, early)
+    assert 'class="unbook"' not in client_for("trener@test.local").get(f"/raspored?week={monday}").text
 
 
 def test_malformed_week_param_falls_back():

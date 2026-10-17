@@ -426,6 +426,14 @@ def cycle_usage(user_id: int, plan: str, on: date | None = None) -> dict | None:
                 "quota": m.sessions_per_cycle, "start": start, "end": end}
 
 
+def cancel_deadline(sess: TrainingSession) -> datetime:
+    """When cancelling `sess` closes for a client (tz-aware, like starts_at):
+    CANCEL_CUTOFF_HOURS before it starts. cancel_booking() refuses from that
+    moment on and the calendar offers its Otkaži / ✕ only before it, so the
+    button and the refusal can never disagree."""
+    return sess.starts_at - timedelta(hours=config.CANCEL_CUTOFF_HOURS)
+
+
 def cancel_booking(user_id: int, session_id: int) -> None:
     now = datetime.now(config.TZ)
     with session_scope() as s:
@@ -436,8 +444,7 @@ def cancel_booking(user_id: int, session_id: int) -> None:
         sess = s.get(TrainingSession, session_id)
         # The cutoff protects the trainer's planning — meaningless for a session
         # the trainer already canceled, so dropping those is always allowed.
-        if sess and not sess.canceled \
-                and sess.starts_at - timedelta(hours=config.CANCEL_CUTOFF_HOURS) <= now:
+        if sess and not sess.canceled and cancel_deadline(sess) <= now:
             raise BookingError(
                 f"Otkazivanje je moguće najkasnije {config.CANCEL_CUTOFF_HOURS} h prije termina."
             )

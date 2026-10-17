@@ -172,8 +172,11 @@ def stripe_enabled() -> bool:
     return bool(STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET)
 
 
-# Booking rules.
-CANCEL_CUTOFF_HOURS = int(os.environ.get("CANCEL_CUTOFF_HOURS", "3"))
+# Booking rules. A client may cancel a booking until CANCEL_CUTOFF_HOURS before
+# the termin (12 h, the owner's call of 17.10.2026; db.cancel_deadline); a termin
+# the trainer canceled can always be dropped. Booking itself stays open until
+# the termin starts, up to BOOKING_HORIZON_DAYS ahead.
+CANCEL_CUTOFF_HOURS = int(os.environ.get("CANCEL_CUTOFF_HOURS", "12"))
 BOOKING_HORIZON_DAYS = int(os.environ.get("BOOKING_HORIZON_DAYS", "28"))
 
 

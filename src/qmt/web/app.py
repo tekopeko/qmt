@@ -625,7 +625,6 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
             local = sess.starts_at.astimezone(config.TZ)
             if local.date() != d:
                 continue
-            cutoff = sess.starts_at - timedelta(hours=config.CANCEL_CUTOFF_HOURS)
             sessions.append({
                 "id": sess.id, "title": sess.title,
                 "time": local.strftime("%H:%M"),
@@ -635,7 +634,7 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
                 "canceled": sess.canceled,
                 "past": sess.starts_at <= now,
                 "mine": sess.id in mine,
-                "can_cancel": sess.id in mine and now < cutoff,
+                "can_cancel": sess.id in mine and now < db.cancel_deadline(sess),
                 "one_on_one": sess.capacity == 1,
                 # may this client book this kind? (trainer never books via UI)
                 "allowed": user.is_trainer or sess.kind in my_plans,
@@ -653,11 +652,15 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
             mine_days.append({"date": local.date(), "name": WEEKDAYS[local.weekday()],
                               "is_today": local.date() == today, "sessions": []})
         mine_days[-1]["sessions"].append({
+            "id": sess.id, "date": local.date(),
             "time": local.strftime("%H:%M"),
             "end": (local + timedelta(minutes=sess.duration_min)).strftime("%H:%M"),
             "title": sess.title,
             "canceled": sess.canceled,
             "one_on_one": sess.capacity == 1,
+            # the card's ✕: cancel_booking()'s own rule (a termin the trainer
+            # canceled can always be dropped), so the two never disagree
+            "can_cancel": sess.canceled or now < db.cancel_deadline(sess),
         })
 
     # Right after a booking (POST /book adds ?series=<id>): offer the same slot
@@ -680,7 +683,7 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
         days=days, monday=monday, series_offer=series_offer,
         prev_week=(monday - timedelta(days=7)).isoformat(),
         next_week=(monday + timedelta(days=7)).isoformat(),
-        mine_days=mine_days,
+        mine_days=mine_days, cutoff_hours=config.CANCEL_CUTOFF_HOURS,
         memberships=[{"label": PLAN_LABELS.get(m.plan, m.plan),
                       "usage": db.cycle_usage(user.id, m.plan),
                       "next_payment": m.next_payment, "dospijece": m.dospijece,

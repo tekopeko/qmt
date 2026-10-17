@@ -69,6 +69,29 @@
      the same width as the week grid's instead of stretching across the page */
   .mine-week { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
                gap: 12px; }
+  /* "Moje rezervacije": each booking's ✕ in its card's top-right corner. It
+     asks first (data-confirm, base.html's dialog), then cancels, and is there
+     only while cancelling is allowed (db.cancel_deadline); after that the card
+     says until when it was. Muted and round, 32px at every pointer (the
+     audit's tap rule); its hover is a faint wash, never the base button's red
+     flood. Not `.sess form`'s 7px top margin: it is pinned to the corner. */
+  .sess .unbook { position: absolute; top: 6px; right: 6px; margin: 0; }
+  .sess .unbook-x { width: 32px; height: 32px; padding: 0; border: none; border-radius: 50%;
+                    background: none; box-shadow: none; color: var(--muted);
+                    font: 600 .9rem var(--font-body); display: grid; place-items: center; }
+  .sess .unbook-x:hover, .sess .unbook-x:focus-visible {
+    background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); transform: none; }
+  /* the time never runs under the ✕, which reaches 27px into the card's
+     content box (6px inset + 32px − the card's 11px padding). Not more: 36px
+     wrapped "08:00–09:00" (98px) in the narrowest list card, 148px wide just
+     above 860px. A time range never breaks. */
+  .sess:has(> .unbook) .t { padding-right: 28px; white-space: nowrap; }
+  /* a termin the trainer canceled stays faded, but its ✕ is the one thing the
+     card still offers: fade the content, not the control (at the card's .45 the
+     muted ✕ fell to 1.9–2.3:1). The list's cards are untinted, so this looks
+     the same as fading the whole card. */
+  .mine-week .sess.canceled { opacity: 1; }
+  .mine-week .sess.canceled > :not(.unbook) { opacity: .45; }
 
   /* "Isti termin svaki tjedan …" rides in the booking's ok alert, the way the
      error alert carries "Pogledaj cjenik →". Its label is a whole sentence,
@@ -145,7 +168,10 @@
         {% elif s.canceled or s.past %}
         {% elif s.mine %}
           {% if s.can_cancel %}
-          <form method="post" action="/cancel/{{ s.id }}">
+          <form method="post" action="/cancel/{{ s.id }}"
+                data-confirm-title="Otkazati rezervaciju?"
+                data-confirm="{{ s.title }}, {{ day.name | lower }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}. Mjesto se oslobađa za druge."
+                data-confirm-cta="Otkaži rezervaciju">
             <input type="hidden" name="week" value="{{ monday.isoformat() }}">
             <button class="btn-sm btn-ghost" type="submit"
                     aria-label="Otkaži {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">Otkaži</button>
@@ -207,6 +233,15 @@
         <div class="t">{{ s.time }}–{{ s.end }}</div>
         <div class="name">{{ s.title }}{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
         {% if s.canceled %}<div class="cap" style="color:var(--danger); font-weight:700;">OTKAZANO</div>{% endif %}
+        {% if s.can_cancel %}
+        <form method="post" action="/cancel/{{ s.id }}" class="unbook"
+              data-confirm-title="{{ 'Maknuti otkazani termin?' if s.canceled else 'Otkazati rezervaciju?' }}"
+              data-confirm="{{ s.title }}, {{ weekdays_short[s.date.weekday()] | lower }} {{ s.date.strftime('%-d.%-m.') }} u {{ s.time }}–{{ s.end }}.{% if not s.canceled %} Mjesto se oslobađa za druge.{% endif %}"
+              data-confirm-cta="{{ 'Makni' if s.canceled else 'Otkaži rezervaciju' }}">
+          <input type="hidden" name="week" value="{{ monday.isoformat() }}">
+          <button type="submit" class="unbook-x" aria-label="{{ 'Makni' if s.canceled else 'Otkaži' }} {{ s.title }} {{ s.date.strftime('%-d.%-m.') }} u {{ s.time }}">✕</button>
+        </form>
+        {% else %}<div class="cap">Otkazivanje do {{ cutoff_hours }} h prije termina</div>{% endif %}
       </div>
       {% endfor %}
     </div>
