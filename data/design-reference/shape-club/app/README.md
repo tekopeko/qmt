@@ -33,17 +33,17 @@ and the Social Club feed.
 
 - Left: a big "Nastavi gdje si stala" photo card: `BOK TANAMANA!` (Inter 36px
   700 italic uppercase), the current training's name, a thin progress bar
-  with "0%" and "0/12 treninga odrađeno", a white pill "Kreni na trening".
+  with "0%" and "0/12 treninga odrađeno", a dark pill "Kreni na trening" (#171717 with a light gradient hairline; it reads white in a small capture).
 - Right: a dark card (`#141414`, 24px radius, 1px `#372a34` border) headed
   "TJEDAN 4 - TRENUTNI TJEDAN ˅ ——— 3 TRENINGA" (an accordion: the chevron
   collapses the week, `app-16`), holding three photo cards "TRENING 1/2/3"
-  (chip top-right), "Tjedan 4", the name, a white pill "Pokreni trening".
+  (chip top-right), "Tjedan 4", the name, the same dark pill "Pokreni trening".
 - Home Challenge mode (`app-17`, text only): the same hero for "Challenge 18",
   "Završi challenge", weeks 1–4 as accordions with "1. TRENING Gluteus i
   noge" etc., then two rows of photo cards: PREPORUČENO ZA TEBE ("3x tjedno",
   "Challenge 18", "Napredni") and OSTALI IZAZOVI ("Summer Quick Workouts",
   "Početnik"), each with "Vidi sve". These are the "Novo" cards from the
-  owner's phone screenshots (chips, italic title, white pill).
+  owner's phone screenshots (chips, italic title, a dark pill).
 - Then a purple gradient banner "STAY CONSISTENT!", the FAQ in two columns,
   "Rezultati govore sami za sebe" (before/after photo carousel), footer.
 - Pages load slowly (3–30 s) behind a skeleton (`app-18`) and fade in.
@@ -100,3 +100,81 @@ For QMT this maps onto `/profil`'s članarina block + `/placanje/portal`.
   `#f6e7f2`; a magenta `rgb(241,29,100)` card for promos.
 - Modals: white, 16–24px radius, title 20px 700, one dark primary + one
   ghost button, ✕ top right; the page blurred behind.
+
+## Phone width (iPhone 16 Pro Max, 440 px, walked 17.10.2026 evening)
+
+**Cut short after the dashboard's first screen.** The owner's tab was in
+DevTools device mode (440×956, DPR 3, iPhone UA). The dashboard was measured
+there and its top captured; then the emulated size fell back to the real tab
+area (330×689, DPR 2; the iPhone UA stayed) and the tab went hidden, so the
+menu walk was never started. Not captured at phone width: the menu sheet,
+Home Challenge, Moj napredak, Moj profil, Billing, Social Club, Pogodnosti,
+Nagradna igra, TDEE and the two trial-lock modals. The fall-back most likely
+came from the capture tool itself: Claude in Chrome's `zoom` (and, once the
+tab was hidden, its plain screenshot) sets the same device metrics DevTools
+sets. A retry needs the Chrome window visible throughout and plain
+screenshots only.
+
+Files in `phone/`:
+
+- `phone-01-dashboard-gym-top.jpg`: the first screen at 440 px (only
+  220×459, half the CSS width: the size a plain capture of the device-mode
+  view comes out at).
+- `phone-02-dashboard-gym-header-hero-detail.jpg`: the header and the hero
+  card at 440 px, sharp (660×690).
+- `phone-330px-01-dashboard-stay-consistent.jpg`,
+  `phone-330px-02-dashboard-faq.jpg`: **not** the phone, the page at 330 px
+  after the fall-back; kept for the banner's and the FAQ's detail and for the
+  header running off both edges.
+
+What changes from the desktop layout (dashboard):
+
+- The header is the same centred row (the frosted pill with the two tabs,
+  the bell, ☰), smaller: the pill 257×46, the bell a 44 px and ☰ a 40 px
+  circle, 11–12 px apart, fixed 24 px from the top. Its parts add up to
+  364 px and do not shrink: at 330 px the row runs off both edges (the 330px
+  shots), so a 360 px phone would lose 2 px a side (inferred, not seen).
+- One column, 408 px wide with a 16 px gutter: the hero card (408×306) above
+  the week card (desktop: side by side, ≈640 px each). The training cards
+  (374×224) stay one under another as on desktop, 16 px apart, but the
+  "Pokreni trening" pill drops under the training's name (desktop: beside it).
+- Type shrinks: the greeting is 18 px (desktop 36).
+- The FAQ is one column (desktop: two), every answer open; the results
+  carousel shows one 400×400 photo per view.
+- The pills "Kreni na trening" / "Pokreni trening" are dark (#171717 with a
+  white-to-clear gradient hairline), on the desktop capture `app-10` too; the
+  desktop notes above call them white.
+- The Crisp chat bubble (54 px, 14 px from the corner) sits over the cards.
+
+Measured at 440×956 (DOM, computed styles):
+
+- Page: a gradient #191819 → #372a34 (50%) → #171717 over black; body Inter
+  16/24; Rubik only for the footer's "Shape Club" (italic 800, 24 px).
+- Header pill: rgba(255,255,255,.9), 1 px #e5e5e5, fully round, padding 8,
+  backdrop blur 16 px, shadow `0 10px 15px -3px, 0 4px 6px -4px` at 10%
+  black. Tabs 28 px tall, padding 8/16, Inter 600 12 px; inactive #525252,
+  active white on a sliding #171717 pill 121×32. Bell rgba(255,255,255,.9)
+  with a #404040 icon, ☰ white; both 1 px #e5e5e5 and the same shadow.
+- Hero card: radius 24, overflow hidden, the photo under a bottom gradient
+  (60% black → clear), padding 32. Greeting italic 700 18/28 uppercase;
+  "Nastavi gdje si stala:" 14/20 at 80% white; the training's name 700
+  20/28; the progress track 8 px, 20% white, fully round.
+- Primary pill: a 150×34 wrapper, fully round, its 1 px transparent border
+  painted by `background: padding-box #171717, border-box
+  linear-gradient(to bottom, …)` (white at 50% → 30% → 14% → 0% opacity);
+  the button inside 148×32, padding 8/28, Inter 600 12/16, white.
+  "Pokreni trening" is the same at 146×34, its gradient starting at 100%.
+- Week card: #141414, 1 px #372a34, radius 24, padding 16, the same shadow;
+  its header "TJEDAN 4 - TRENUTNI TJEDAN" 12/16 uppercase, 0.6 px tracking,
+  70% white.
+- Training card: radius 16, overflow hidden, the same shadow; the chip
+  "TRENING 1" 16 px in from the top right, 102×32, #171717, fully round,
+  padding 8/20, 600 12/16 uppercase; the name 500 18/28.
+- STAY CONSISTENT: 408×252, radius 24, padding 64/32, a gradient to the
+  right #1e3a8a → #581c87 over a photo; the title italic 700 36/40
+  uppercase, the line under it 20 px.
+- FAQ: heading 500 20/28; lead 16 px #737373; questions 500 16/24 white;
+  answers 16 px weight 300 #a3a3a3.
+- Results: heading 700 30/36; a Flickity carousel, slides 400×400 radius 10.
+- Footer #171717, 396 px tall. The page is 4162 px tall: hero at 112, week
+  card 450, banner 1282, FAQ 1655, results 3167, footer 3767.
