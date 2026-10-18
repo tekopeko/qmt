@@ -41,7 +41,7 @@ from qmt import auth, config, copy, db
 from qmt.models import Base, User
 from qmt.web.app import app
 
-PAGES = ("/", "/cjenik", "/prehrana")          # every page that has editable text
+PAGES = ("/", "/moja-clanarina", "/prehrana")  # every page that has editable text
 
 
 @pytest.fixture(autouse=True)
@@ -487,8 +487,8 @@ MEASURE = r"""(strict) => {
   // rows of cards: the prices sit level across each row. A price is text the
   // owner may make any length, so it may wrap: it is measured at its bottom
   // edge, which the foot pinned to the bottom of a landing card keeps level
-  // whatever is typed (the cjenik's featured card is raised by a transform on
-  // purpose; measure as if it were not)
+  // whatever is typed (a card raised by a transform on purpose is measured
+  // as if it were not)
   const ty = el => { const m = getComputedStyle(el).transform.match(/matrix\(([^)]+)\)/); return m ? px(m[1].split(',')[5]) : 0; };
   // a tier card holds a monthly and a yearly price; the one shown is measured
   const price = card => [...card.querySelectorAll('.price')].find(vis);

@@ -461,14 +461,14 @@
       <h2>{{ c.t("offer.h2") }}</h2>
     </div>
     {# What a card's button does depends on who is looking: an owner of the plan
-       goes into the app, a member picks the plan on /cjenik, a guest registers
+       goes into the app, a member picks the plan on /moja-clanarina, a guest registers
        when registration is open to anyone and otherwise gets the studio's
        contact (closed, or invite-only: the trainer is who hands out invites). #}
     {% macro offer_cta(keys, featured) -%}
       {% set owned = keys | select("in", my_plans) | list %}
       {% if owned %}<a class="btn btn-sm owned" href="{{ plan_links[owned[0]][0] }}"
          title="Aktivna članarina">✓ {{ plan_links[owned[0]][1] }} →</a>
-      {%- elif user %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="/cjenik#plan-{{ keys[0] }}">Odaberi plan →</a>
+      {%- elif user %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="/moja-clanarina#plan-{{ keys[0] }}">Odaberi plan →</a>
       {%- elif signup_mode == 'open' %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="/signup" data-auth="signup">Registriraj se →</a>
       {%- else %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="#kontakt">Javi nam se →</a>{% endif %}
     {%- endmacro %}

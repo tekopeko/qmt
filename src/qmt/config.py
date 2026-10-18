@@ -75,8 +75,8 @@ def signup_mode() -> str:
     is not an invitation to the whole internet either.
 
     Closed by default since 28.9.2026: the owner was advised that prices may be
-    shown only to people who already have an account until the cjenik carries a
-    prior price beside the current one, the way shop shelves do. So /cjenik is
+    shown only to people who already have an account until the price list carries a
+    prior price beside the current one, the way shop shelves do. So the members' price list (/moja-clanarina) is
     members-only and no new accounts are opened; existing accounts log in as
     always. Reopening is SIGNUP_MODE=invite on Railway, no code change.
     """
@@ -96,7 +96,7 @@ def prices_public() -> bool:
     the homepage, reversing the members-only rule of 28.9. (see signup_mode).
     That rule existed on legal advice, so the way back is kept to one variable:
     PUBLIC_PRICES=off hides every price from guests again, no code change.
-    /cjenik stays members-only either way; it is where plans are bought and
+    /moja-clanarina (the old /cjenik) stays members-only either way; it is where plans are bought and
     managed, not the shop window.
     """
     v = os.environ.get("PUBLIC_PRICES", "").strip().strip("\"'").lower()
@@ -153,7 +153,7 @@ def email_enabled() -> bool:
 # Stripe — card payments as monthly subscriptions. Secret key + webhook secret
 # switch the feature on; one Price id per plan (created in the Stripe
 # dashboard, pasted here). Any plan without a price simply keeps the manual
-# "javi se treneru" path, so a half-configured Stripe never breaks /cjenik.
+# "javi se treneru" path, so a half-configured Stripe never breaks /moja-clanarina.
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
 STRIPE_PRICES = {

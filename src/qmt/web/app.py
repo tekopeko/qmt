@@ -71,7 +71,7 @@ PLAN_LINKS = {
 }
 
 # Reference prices from the owner's Shopify shop (read 6.9.2026) — shown on
-# /cjenik until a Stripe Price exists for the plan; Stripe always wins. Units
+# /moja-clanarina until a Stripe Price exists for the plan; Stripe always wins. Units
 # are the shop's own: most of the business is per trening / per paket, only
 # Online is a monthly plan. (amount text, unit, note) — None amount = "na upit".
 REFERENCE_PRICES = {
@@ -86,13 +86,13 @@ REFERENCE_PRICES = {
 # MojiMakrosi (the prehrana app) as a monthly add-on, as the owner set it on
 # 5.10.2026: cheaper beside a plan in the dvorana, dearer for online-only
 # clients. The landing's offer cards print these; REFERENCE_PRICES["prehrana"]
-# above says the same thing for /cjenik.
+# above says the same thing for /moja-clanarina.
 MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
 
 
 def _offer_prices(table: dict) -> dict[str, tuple[str, str]]:
     """Plan -> (amount, unit) the way the landing's offer cards print it. Same
-    sources and order as /cjenik: the Stripe Price when one exists (that is what
+    sources and order as /moja-clanarina: the Stripe Price when one exists (that is what
     a subscription charges), else the shop's reference price. A range collapses
     to its floor ("od 60 €") because a card has room for one number. A plan with
     no price at all is left out and the card says "na upit"."""
@@ -498,22 +498,93 @@ def landing(request: Request):
         addon=MOJIMAKROSI_ADDON))
 
 
-@app.get("/cjenik", response_class=HTMLResponse)
+@app.get("/cjenik")
 def cjenik(request: Request):
-    """Plan pricing — MEMBERS ONLY since 28.9.2026 (see config.signup_mode):
-    prices may be shown only to people with an account, so a guest is sent to
-    log in, like every other members' page. Also the card-payment entry point."""
+    """The old price list's address. Its plans and prices moved to
+    /moja-clanarina on 18.10.2026; links to it live on in emails already sent
+    (mailer.send_membership_reminder) and old bookmarks. A member is sent on,
+    the query kept (a ?error= / ?ok= still shows) and the #plan-<key> fragment
+    kept by the browser (the new page's cards carry the same ids); a guest is
+    sent to log in as before (members only since 28.9.2026)."""
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/cjenik')}", status_code=303)
-    subs = ({m.plan: m for m in db.memberships_for(user.id) if m.stripe_subscription_id}
-            if user else {})
-    return templates.TemplateResponse(request, "cjenik.html", _ctx(
-        request, user, plans=PLAN_TYPES, plan_labels=PLAN_LABELS,
-        my_plans=db.active_plan_kinds(user.id) if user else set(),
-        prices=payments.price_table(), sellable=payments.sellable_plans(),
-        reference=REFERENCE_PRICES, subs=subs))
+    query = request.url.query
+    return RedirectResponse("/moja-clanarina" + (f"?{query}" if query else ""), status_code=303)
+
+
+def _subscribed_tier(m, table: dict) -> dict | None:
+    """The tier ({"sessions", "amount"}) a card subscription of a tiered plan
+    pays for, from Stripe's prices; None for cash, a flat plan, or no prices.
+    The plan's card shows ITS price rather than the range, and the tier
+    switch offers the others."""
+    pr = table.get(m.plan)
+    if not (m.stripe_subscription_id and pr and pr.get("tiers")):
+        return None
+    return next((t for t in pr["tiers"] if t["sessions"] == m.sessions_per_cycle), None)
+
+
+@app.get("/moja-clanarina", response_class=HTMLResponse)
+def moja_clanarina(request: Request):
+    """The member's plans and money in one place (18.10.2026, Shape Club's
+    billing page in QMT's look; it took over /cjenik's price list and
+    /profil's članarina and payment history). "Tvoji planovi": a card per
+    plan held, active or lapsed, that says its state in words and offers
+    what fits how it is paid; "Dodaj plan": the plans not held, with their
+    prices; "Računi": the ledger. Card actions render only while Stripe is
+    configured. The trainer and the owner (who manage members on /clanarine)
+    see it with no plans of their own: the plans' texts are edited here."""
+    user = current_user(request)
+    if user is None:
+        from urllib.parse import quote
+        return RedirectResponse(f"/login?next={quote('/moja-clanarina')}", status_code=303)
+    # the trainer and the owner see it too, with no plans of their own: it is
+    # where they edit the plans' texts in place (copy slots cjenik.*)
+    today = config.today()
+    table = payments.price_table()
+    memberships = db.memberships_for(user.id)
+    order = {p: i for i, p in enumerate(PLAN_TYPES)}
+    plans = []
+    # active plans first, lapsed after, each in PLAN_TYPES order
+    for m in sorted(memberships, key=lambda m: (not m.is_active(today), order.get(m.plan, len(order)))):
+        active = m.is_active(today)
+        cancelling = bool(m.stripe_subscription_id) and m.cancel_at_period_end
+        days_left = (m.dospijece - today).days
+        # the state in words; the colour only reinforces it
+        if not active:
+            chip = ("istekla", "lapsed")
+        elif cancelling:
+            chip = ("otkazana · vrijedi do kraja", "off")
+        elif days_left <= 7:
+            chip = (f"dospijeva {_relative_day(m.dospijece, today)}", "due")
+        else:
+            chip = ("aktivna", "ok")
+        plans.append({"key": m.plan, "label": PLAN_LABELS.get(m.plan, m.plan),
+                      "active": active, "chip": chip,
+                      # the grace week: next_payment has passed, dospijeće has not
+                      "overdue": active and today > m.next_payment,
+                      "paid_on": m.paid_on, "next_payment": m.next_payment, "dospijece": m.dospijece,
+                      "sessions": m.sessions_per_cycle,
+                      # "n od N u ovom ciklusu" means something only while the plan runs
+                      "usage": db.cycle_usage(user.id, m.plan) if active else None,
+                      "subscribed": bool(m.stripe_subscription_id),
+                      "auto_renew": m.auto_renew, "cancelling": cancelling,
+                      "tier": _subscribed_tier(m, table)})
+    held = {m.plan for m in memberships}
+    ledger = [{"paid_on": p.paid_on, "label": PLAN_LABELS.get(p.plan, p.plan),
+               "method": PAYMENT_METHODS.get(p.method, p.method), "amount": p.amount_eur}
+              for p in db.payments_for(user.id)]
+    return templates.TemplateResponse(request, "moja_clanarina.html", _ctx(
+        request, user, plans=plans,
+        add_plans=[p for p in PLAN_TYPES if p not in held],
+        plan_labels=PLAN_LABELS, prices=table, reference=REFERENCE_PRICES,
+        sellable=payments.sellable_plans(),
+        ledger=ledger, show_amounts=any(r["amount"] is not None for r in ledger),
+        # the portal manages a subscription — a customer record alone (a
+        # checkout that was abandoned) has nothing to show there
+        has_portal=payments.enabled() and bool(user.stripe_customer_id)
+                   and any(p["auto_renew"] or p["cancelling"] for p in plans)))
 
 
 @app.post("/placanje/portal")
@@ -523,12 +594,12 @@ def placanje_portal(request: Request):
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if not payments.enabled() or not user.stripe_customer_id:
-        return RedirectResponse("/profil?error=Nemaš+aktivnu+pretplatu+karticom.", status_code=303)
+        return RedirectResponse("/moja-clanarina?error=Nemaš+aktivnu+pretplatu+karticom.", status_code=303)
     try:
         return RedirectResponse(payments.portal_url(user), status_code=303)
     except Exception as e:
         print(f"[stripe] portal failed for user {user.id}: {e}")
-        return RedirectResponse("/profil?error=Portal+trenutno+nije+dostupan.", status_code=303)
+        return RedirectResponse("/moja-clanarina?error=Portal+trenutno+nije+dostupan.", status_code=303)
 
 
 @app.post("/placanje/{plan}/promjena")
@@ -541,13 +612,13 @@ def placanje_promjena(request: Request, plan: str, sessions: int = Form(...)):
     try:
         payments.change_tier(user, plan, sessions)
     except ValueError as e:
-        return RedirectResponse(f"/cjenik?error={quote(str(e))}#plan-{plan}", status_code=303)
+        return RedirectResponse(f"/moja-clanarina?error={quote(str(e))}#plan-{plan}", status_code=303)
     except Exception as e:
         print(f"[stripe] tier change failed for user {user.id}/{plan}: {e}")
-        return RedirectResponse("/cjenik?error=Promjena+trenutno+nije+moguća+—+pokušaj+kasnije.",
+        return RedirectResponse("/moja-clanarina?error=Promjena+trenutno+nije+moguća+—+pokušaj+kasnije.",
                                 status_code=303)
     return RedirectResponse(
-        f"/cjenik?ok={quote(f'Paket promijenjen na {sessions} treninga mjesečno.')}#plan-{plan}",
+        f"/moja-clanarina?ok={quote(f'Paket promijenjen na {sessions} treninga mjesečno.')}#plan-{plan}",
         status_code=303)
 
 
@@ -558,21 +629,21 @@ def placanje(request: Request, plan: str, sessions: int | None = Form(None)):
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
-        return RedirectResponse(f"/login?next={quote('/cjenik')}", status_code=303)
+        return RedirectResponse(f"/login?next={quote('/moja-clanarina')}", status_code=303)
     if plan not in PLAN_TYPES or plan not in payments.sellable_plans():
-        return RedirectResponse("/cjenik?error=Ovaj+plan+se+ne+može+platiti+karticom.",
+        return RedirectResponse("/moja-clanarina?error=Ovaj+plan+se+ne+može+platiti+karticom.",
                                 status_code=303)
     if any(m.plan == plan and m.stripe_subscription_id for m in db.memberships_for(user.id)):
-        return RedirectResponse("/cjenik?error=Pretplata+za+ovaj+plan+već+postoji.",
+        return RedirectResponse("/moja-clanarina?error=Pretplata+za+ovaj+plan+već+postoji.",
                                 status_code=303)
     try:
         return RedirectResponse(payments.checkout_url(user, plan, sessions), status_code=303)
     except ValueError as e:                      # no tier picked on a tiered plan
         from urllib.parse import quote
-        return RedirectResponse(f"/cjenik?error={quote(str(e))}#plan-{plan}", status_code=303)
+        return RedirectResponse(f"/moja-clanarina?error={quote(str(e))}#plan-{plan}", status_code=303)
     except Exception as e:
         print(f"[stripe] checkout failed for user {user.id}/{plan}: {e}")   # never silent again
-        return RedirectResponse("/cjenik?error=Plaćanje+trenutno+nije+dostupno+—+pokušaj+kasnije.",
+        return RedirectResponse("/moja-clanarina?error=Plaćanje+trenutno+nije+dostupno+—+pokušaj+kasnije.",
                                 status_code=303)
 
 
@@ -785,8 +856,7 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
         mine_days=mine_days, next_booking=next_booking, cutoff_hours=config.CANCEL_CUTOFF_HOURS,
         memberships=[{"label": PLAN_LABELS.get(m.plan, m.plan),
                       "usage": db.cycle_usage(user.id, m.plan),
-                      "next_payment": m.next_payment, "dospijece": m.dospijece,
-                      "active": m.is_active(today)}
+                      "dospijece": m.dospijece, "active": m.is_active(today)}
                      for m in plans],
         view="month" if month_view else "week", **overview,
     ))
@@ -1149,33 +1219,9 @@ def profil_page(request: Request):
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/profil')}", status_code=303)
-    today = config.today()
-    # "how long am I paid up for": the plan admits booking until dospijeće
-    # (next payment + the grace week), so that date is the honest expiry.
-    memberships = [{"label": PLAN_LABELS.get(m.plan, m.plan),
-                    "usage": db.cycle_usage(user.id, m.plan),
-                    "plan": m.plan,
-                    "paid_on": m.paid_on,
-                    "next_payment": m.next_payment,
-                    "dospijece": m.dospijece,
-                    "active": m.is_active(today),
-                    "days_left": (m.dospijece - today).days,
-                    "auto_renew": m.auto_renew,
-                    "cancelling": bool(m.stripe_subscription_id) and m.cancel_at_period_end}
-                   for m in db.memberships_for(user.id)]
-    payment_rows = [{"paid_on": p.paid_on, "label": PLAN_LABELS.get(p.plan, p.plan),
-                     "method": PAYMENT_METHODS.get(p.method, p.method),
-                     "amount": p.amount_eur}
-                    for p in db.payments_for(user.id)]
+    # the person's own data only: plans, uplate and računi are /moja-clanarina's
     return templates.TemplateResponse(request, "profil.html", _ctx(
-        request, user,
-        first_login="dopuni" in request.query_params,
-        memberships=memberships, payments=payment_rows,
-        show_amounts=any(p["amount"] is not None for p in payment_rows),
-        # the portal manages a subscription — a customer record alone (a
-        # checkout that was abandoned) has nothing to show there
-        has_portal=payments.enabled() and bool(user.stripe_customer_id)
-                   and any(m["auto_renew"] or m["cancelling"] for m in memberships)))
+        request, user, first_login="dopuni" in request.query_params))
 
 
 @app.post("/profil")

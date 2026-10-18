@@ -498,12 +498,13 @@ def test_landing_offers_only_what_the_visitor_can_actually_do():
     """A guest cannot book without an account, so while registration is open
     (the suite runs SIGNUP_MODE=invite) the landing offers the account (the
     offer cards' "Registriraj se"), never a booking they'd be refused and
-    never the members-only cjenik. The hero itself carries no button for
+    never the members' plans page. The hero itself carries no button for
     anyone (16.10.2026)."""
     c = TestClient(app)
     r = c.get("/")                               # no login required
     assert r.status_code == 200
     assert "Pogledaj cjenik" not in r.text and 'href="/cjenik' not in r.text
+    assert 'href="/moja-clanarina' not in r.text
     assert "/signup" in r.text                   # the account they need first
     assert "Rezerviraj termin" not in r.text     # would dead-end at the plan gate
 
@@ -517,7 +518,8 @@ def test_landing_hero_follows_the_membership():
     """The hero has no button for anyone since 16.10.2026 (the owner's call:
     his announcements are the first thing on the page). A member's way in is
     the offer cards' buttons, which follow the membership: the card of a plan
-    he can book with leads to /raspored, a card he does not own to /cjenik."""
+    he can book with leads to /raspored, a card he does not own to its card
+    on /moja-clanarina."""
     make_user("ivan@test.local", plans=("grupni",))
     make_user("ana@test.local", plans=())
     make_user("sara@test.local", plans=("online",))      # not a bookable kind
@@ -532,20 +534,20 @@ def test_landing_hero_follows_the_membership():
 
     for email in ("ana@test.local", "sara@test.local"):
         page = client_for(email).get("/").text
-        assert 'href="/cjenik' in page, email            # the cards' "Odaberi plan"
+        assert 'href="/moja-clanarina#plan-' in page, email   # the cards' "Odaberi plan"
         assert "Rezerviraj termin" not in page, email    # no bookable plan
 
 
-def test_cjenik_is_reachable_without_hunting_for_it():
+def test_the_plans_page_is_reachable_without_hunting_for_it():
     make_user("ana@test.local", plans=())
     ca = client_for("ana@test.local")
-    assert '/cjenik"' in ca.get("/raspored").text        # nav tab + the empty state
+    assert 'href="/moja-clanarina"' in ca.get("/raspored").text   # nav tab + the empty state
     assert "Pogledaj cjenik" in ca.get("/raspored").text
-    assert 'href="/cjenik' not in TestClient(app).get("/").text   # never for a guest: members only
+    assert 'href="/moja-clanarina' not in TestClient(app).get("/").text   # never for a guest: members only
 
     # the trainer's nav is already full and they do not buy plans
     make_user("trener@test.local", is_trainer=True, plans=())
-    assert '/cjenik"' not in client_for("trener@test.local").get("/raspored").text
+    assert 'href="/moja-clanarina' not in client_for("trener@test.local").get("/raspored").text
 
 
 def test_plan_gate_offers_the_price_instead_of_a_dead_end():
@@ -557,8 +559,8 @@ def test_plan_gate_offers_the_price_instead_of_a_dead_end():
     assert "error=" in loc
     assert "cta=grupni" in loc                          # straight at that plan
     assert "javi+se+treneru" not in loc                  # the old dead end is gone
-    # and the alert renders it as a button
-    assert "Pogledaj cjenik" in ca.get(loc).text
+    # and the alert renders it as a button, to that plan's card and price
+    assert '<a class="act" href="/moja-clanarina#plan-grupni">Pogledaj cjenik →</a>' in ca.get(loc).text
 
 
 def test_login_returns_to_the_page_that_bounced_you():
@@ -714,15 +716,18 @@ def test_calendar_shows_membership_gate():
 
 
 def test_cjenik_is_members_only_and_landing_plan_cta_states():
-    """/cjenik is where plans are bought and managed, so it is for members: a
-    guest who opens it is sent to log in, and no public page links to it. The
-    one public place with prices is the landing's offer (since 5.10.2026)."""
+    """Plans are bought and managed on /moja-clanarina (the old /cjenik leads
+    there since 18.10.2026), so it is for members: a guest who opens either
+    is sent to log in, and no public page links to them. The one public
+    place with prices is the landing's offer (since 5.10.2026)."""
     guest = TestClient(app)
     r = guest.get("/cjenik", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/login?next=/cjenik"
+    r = guest.get("/moja-clanarina", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login?next=/moja-clanarina"
     for path in ("/", "/login", "/signup", "/prehrana", "/forgot"):
         page = guest.get(path).text
-        assert 'href="/cjenik' not in page, path
+        assert 'href="/cjenik' not in page and 'href="/moja-clanarina' not in page, path
         assert ("€" in page) == (path == "/"), path     # prices: the landing, nowhere else
     page = guest.get("/").text
     assert "Javi nam se" in page and 'id="kontakt"' in page   # cards point at the studio
@@ -734,7 +739,7 @@ def test_cjenik_is_members_only_and_landing_plan_cta_states():
     make_user("ivan@test.local")                        # default plan: grupni
     ci = client_for("ivan@test.local")
     assert "Aktivna članarina" in ci.get("/").text      # owned state on landing
-    assert "Aktivna članarina" in ci.get("/cjenik").text
+    assert '<span class="chip ok">aktivna</span>' in ci.get("/cjenik").text   # the old address, the new page
 
 
 def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
@@ -824,7 +829,9 @@ def test_payment_ledger_accumulates_and_stats():
     assert client_for("ivan@test.local").get("/statistika").status_code == 403
 
 
-def test_profil_shows_membership_overview_and_billing_history():
+def test_moja_clanarina_shows_membership_overview_and_billing_history():
+    """The overview and the history moved from /profil to /moja-clanarina
+    (18.10.2026); the profile keeps a way there."""
     uid = make_user("ivan@test.local", plans=("grupni",))   # 1st uplata: gotovina
     db.record_payment(uid, "grupni", "kartica")             # renewal
     from qmt.models import Membership
@@ -833,27 +840,33 @@ def test_profil_shows_membership_overview_and_billing_history():
         m = s.scalar(select(Membership).where(Membership.user_id == uid))
         due, expiry = m.next_payment, m.dospijece
 
-    page = client_for("ivan@test.local").get("/profil").text
-    assert "Moja članarina" in page and "Grupni trening" in page
-    assert "aktivna" in page
+    c = client_for("ivan@test.local")
+    page = c.get("/moja-clanarina").text
+    assert "Tvoji planovi" in page and "Grupni trening" in page
+    assert '<span class="chip ok">aktivna</span>' in page
     assert due.strftime("%-d.%-m.%Y.") in page              # sljedeća uplata
     assert expiry.strftime("%-d.%-m.%Y.") in page           # dospijeće
-    # billing history lists BOTH uplate with their methods
-    assert "Povijest plaćanja" in page
+    # the ledger lists BOTH uplate with their methods
+    assert "Računi" in page
     assert "Gotovina" in page and "Kartica" in page
     # an active plan is a door to what it unlocks
     assert 'href="/raspored">Rezerviraj termin' in page
 
     db.record_payment(uid, "online")
-    page = client_for("ivan@test.local").get("/profil").text
+    page = c.get("/moja-clanarina").text
     assert 'href="/treninzi">Otvori online treninge' in page
 
+    profil = c.get("/profil").text
+    assert "Povijest plaćanja" not in profil and 'href="/moja-clanarina"' in profil
 
-def test_profil_without_plan_points_to_cjenik():
+
+def test_profil_without_plan_points_to_moja_clanarina():
     make_user("ana@test.local", plans=())
-    page = client_for("ana@test.local").get("/profil").text
-    assert "Nemaš aktivnu članarinu" in page and "/cjenik" in page
-    assert "Još nema evidentiranih uplata" in page
+    c = client_for("ana@test.local")
+    assert 'href="/moja-clanarina"' in c.get("/profil").text
+    page = c.get("/moja-clanarina").text
+    assert "Nemaš aktivnu članarinu" in page
+    assert "Još nema zabilježenih uplata" in page
 
 
 # ---------- session quota (8/12/16 treninga a month) ----------
@@ -1587,7 +1600,7 @@ def test_month_view_without_a_plan_tints_nothing_and_points_to_the_cjenik():
     cells = _month_cells(page)
     assert len(cells) >= 28 and not any("covered" in x["classes"] for x in cells)
     assert ('<p class="hint month-note">Nemaš aktivnu članarinu za treninge u dvorani. '
-            '<a class="act" href="/cjenik">Pogledaj cjenik →</a></p>') in page
+            '<a class="act" href="/moja-clanarina">Pogledaj cjenik →</a></p>') in page
     assert "Članarina vrijedi do" not in page
 
 

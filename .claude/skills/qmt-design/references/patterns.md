@@ -101,7 +101,7 @@ title is PT Sans by default. Use once the owner's videos exist.
 price under it ("20 EUR / mj · 240 EUR / god"), named plans (Shape Home / Unlimited
 / Gym), the middle one visually preferred. No "na upit" anywhere.
 
-**Map to QMT:** already close (`/cjenik`). What to take: show the **annual** price
+**Map to QMT:** already close (`/moja-clanarina`, the members' plans and price list). What to take: show the **annual** price
 under the monthly the day annual Prices exist in Stripe — it is where the
 subscription margin is; and prefer one tier visually (the 12-treninga pill is
 already preselected — give it a "najpopularnije" chip).
@@ -138,7 +138,7 @@ segmented choice), two required consent checkboxes (the contract + terms,
 and the waiver of the 14-day withdrawal right for digital content), then
 hosted Stripe Checkout. Screenshots, their contract's text and the notes on
 what QMT needs for the same step: `data/design-reference/shape-club/README.md`.
-**Map to QMT:** between `/cjenik` and `POST /placanje/{plan}` (Checkout),
+**Map to QMT:** between `/moja-clanarina` and `POST /placanje/{plan}` (Checkout),
 once the owner's Stripe account, prices, terms and fiscalization exist
 (roadmap item 4).
 

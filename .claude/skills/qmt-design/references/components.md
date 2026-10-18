@@ -20,8 +20,8 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `ul[data-list]` / `.ed-x` / `.ed-add` | base (trainer, owner) | an editable list (`c.points`): each item an `.ed` with `data-index`, a 32px round `.ed-x` ✕ beside it (negative margin, so the line height holds) and an `.act.ed-add` "+ Dodaj stavku" after the list, hidden at the count limit; both only under `body.editing`. The bar names the item ("…: stavka 2") and its Zadano reads "Zadano (cijela lista)" |
 | `.ed-flag` / `.is-off` | base (trainer, owner) | the edit-mode toggle of a `copy.FlagSlot` (an on/off switch, the landing's announcements): the first child of the box it switches (`data-flag`), a 32px pill, green `--good-fill` "● Prikazano" / grey `--surface-2` "○ Skriveno", saved at a click, no confirm (hiding loses no text). A switched-off box is `.is-off`: hidden, shown only in edit mode with its content dimmed to .55 and the toggle at full strength; its `data-flag-group` follows its boxes (`.is-off` when none is on, `.single` on their row when one is). A visitor gets neither the toggle nor a hidden box |
 | `.ed-img` / `.ed-img-x` / `#edImgFile` | base (trainer, owner) | the edit-mode pills of a `copy.ImageSlot`, a photo behind a box (the landing's announcements; the box carries `data-image`): `.ed-img` "Dodaj sliku" / "Promijeni sliku" opens the hidden file picker (`#edImgFile`: jpg, png, webp) and posts to `/copy/<key>/slika`; the answer's URL becomes the box's first child, `img.bg`, and the box turns `.has-img` + `data-photo`. `.ed-img-x` "Ukloni sliku" (only with a photo) asks first, as an item's ✕ ("Ukloni?" for 4 s, then `reset=1`). 32px pills like `.ed-flag` (`--surface-2` / `--muted`), after it; on a photo (`[data-photo]`) a solid `--surface` pill with `--text` ink: the editor's controls, not text on a photograph. A failure is said in the bar |
-| `.featured-tag` | base | "Najpopularnije" chip in the top-right corner of a `position: relative` card: accent tint + `--accent-tint-ink`. Used by `/cjenik` and the landing's offer |
-| `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill |
+| `.featured-tag` | base | "Najpopularnije" chip in the top-right corner of a `position: relative` card: accent tint + `--accent-tint-ink`. Used by `/moja-clanarina`'s "Dodaj plan" and the landing's offer |
+| `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill to that plan's card on `/moja-clanarina` (`#plan-<key>`) |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
 | `#a2hs` `.card.a2hs` | base (clients) | install banner: phones only (`pointer: coarse`, plus a `pointer: fine` CSS kill-switch), not in standalone mode, not on the first page load, back a week after each dismissal until installed (`localStorage qmt-a2hs`: when it was dismissed, or `installed` once the native prompt was accepted; the owner's call, 16.10.2026); iOS gets share-sheet steps, Chrome gets a real "Instaliraj" via `beforeinstallprompt` |
 | `.next-termin` | calendar (clients) | "Tvoj sljedeći termin", every width, right under `.week-head`: a `.card` (padding 14px 16px) with `.sess.mine`'s inset accent bar on its left edge; a `.sec-kicker` caption (700 .74rem uppercase, letter-spaced, `--accent`), the day and time (700, tabular) with a muted "danas" / "sutra" / "za N dana" (or "OTKAZANO" in `--danger`), the title + `.tag-11`; at the right end the list's `.unbook` ✕ (the same `unbook` macro), or "Otkazivanje do 12 h prije termina" under the title. No booking, no card (no empty state) |
@@ -65,9 +65,9 @@ targets; do not introduce new uses.
 | element | rule |
 |---|---|
 | `input, select, textarea` | 12px radius, 1.5px hairline, `--surface`, 10px/13px; focus → accent border, no outline |
-| `label` | uppercase .76rem `--muted`, letter-spacing .06em — **every label**, so override it (`text-transform: none`) when a `<label>` is a pill, e.g. `.tiers label` on /cjenik |
+| `label` | uppercase .76rem `--muted`, letter-spacing .06em — **every label**, so override it (`text-transform: none`) when a `<label>` is a pill, e.g. `.tiers label` on /moja-clanarina |
 | `.field` | 14px bottom margin |
-| radio/checkbox pills | `.tiers` on /cjenik: `label:has(input:checked)` → accent border + tint; `accent-color: var(--accent)` |
+| radio/checkbox pills | `.tiers` on /moja-clanarina (`_tiers.html`): `label:has(input:checked)` → accent border + tint, `--accent-tint-ink` text; `accent-color: var(--accent)` |
 | confirm | form with `data-confirm` / `-title` / `-cta` → `#confirmDlg` opens before submit |
 
 ## Status text and chips
@@ -75,8 +75,9 @@ targets; do not introduce new uses.
 | class | what |
 |---|---|
 | `.hint` | secondary sentence, `--muted` |
-| `.owned` (cjenik/landing) | green bold state line "✓ Aktivna članarina"; muted variant for "otkazana" |
+| `.owned` (landing) | the offer card's green "✓ Rezerviraj termin →" for a plan the visitor has |
 | `.chip` (karton) | small grey label — "Nisam bio/la", "bez osvrta"; `.chip.off` uppercase for OTKAZANO |
+| `.chip` (moja_clanarina) | a plan's state in words, at the right of its name (999px, 700 .78rem, nowrap; it goes under the name when both do not fit): `.ok` "aktivna" (`--good-fill` / `--good-ink`), `.due` "dospijeva za N dana" / "sutra" / "danas", N ≤ 7 to dospijeće (`--accent-dim` / `--accent-tint-ink`), `.lapsed` "istekla" (`--accent-tint-ink` on `--surface-2`: plain `--danger` there is 4.3:1, under AA), `.off` "otkazana · vrijedi do kraja" (`--muted` on `--surface-2`) |
 | `.rpe` (karton) | grey numeric badge "napor 7/10"; `.rpe.feel` green for osjećaj, `.rpe.feel.low` grey for "slabo" (green "slabo" read as a contradiction) |
 | `.ramp` (karton) | three rungs, filled to the razina, captioned "Razina N od 3" — colour never alone |
 
@@ -131,7 +132,7 @@ pressing either sets every `.price[data-period]` on the page and
 neutral `.cta` beside it, green `.owned` for a plan the visitor has. Plan
 prices arrive from the route (`offer_prices`), are public unless
 `PUBLIC_PRICES=off` (which also hides both switches), and no public page links
-to `/cjenik`. **Aktualno** (`#aktualno`, in the hero since 16.10.2026,
+to `/moja-clanarina` (nor to the old `/cjenik`). **Aktualno** (`#aktualno`, in the hero since 16.10.2026,
 between the h1 and the photo: the first thing on the page): the owner's two
 announcements for the month as `.event` cards in `.evs` (text left-aligned
 in the centred hero): the `.card` surface at `--r-lg` (a shallow card, not
@@ -195,17 +196,51 @@ height, so its dots stay put as the cards change. In edit mode the pills
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
 
-**Cjenik (`cjenik.html`).** `.plan` cards (`--r-xl`, italic uppercase `.plan-h`), copy
-`min-height: 3.9em`, `.price` with `<small>` unit, `.foot` pinned bottom. Grupni is
-`.featured`: accent-tinted border, raised 8px on desktop, `.featured-tag`
-"Najpopularnije" chip top-right. Price source order: Stripe Price → shop
-reference (`REFERENCE_PRICES`, in the shop's own unit) → "na upit". Subscribed
-tier shows ITS price ("70 € / mjesečno · 12 treninga"), other tiers as `.act`
-switch buttons under a hairline `.switch`; `.plan.mine` gets a green-tinted border
-(the same move as `.featured`; `.mine` is declared later so it wins on grupni).
+**Moja članarina (`moja_clanarina.html`, 18.10.2026).** Shape Club's billing
+page in QMT's look; `/cjenik` leads here. Three `.mc-sec` sections under the
+page header, each a bare `h2` (1.05rem). **Tvoji planovi**: one `.plan-card`
+per plan held (`section.card`, `--r-xl`, padding 18px / 22px 24px from 700px,
+one column, two from 1000px), active first. Its state is a tinted border
+(`.is-active` green, `.is-lapsed` the accent, 45% into `--line`, never an inset
+bar) AND words: `.pc-head` is a wrapping row of `.pc-name` (the `.pc-kicker`
+caption "Paket": `.sec-kicker`'s 700 .74rem / .16em uppercase, in `--muted`
+here, over the italic uppercase `h3`) and the `.chip` (above). **The facts**
+(`dl.facts`): label over value, a 2-column grid on phones, 3 from 700px; `dt`
+700 .7rem uppercase `--muted`, `dd` 600 tabular-nums; Cijena (the
+`_plan_price.html` macro), Uplaćeno, Sljedeća uplata, Vrijedi do, and for a
+tiered plan Paket "12 treninga mjesečno" and, while it runs, Iskorišteno
+"5 od 12 u ovom ciklusu". **The status box** (`.pc-status`): `--surface-2`,
+`--r-md`, 12px 14px, .9rem, one plain sentence (cash: "Članarina vrijedi do …
+Sljedeću uplatu obavi do … — u dvorani, gotovinom ili karticom."; card: "Pretplata
+se obnavlja automatski … karticom."; cancelled, lapsed); a date ends in its own
+full stop. Then `.foot` (pinned to the bottom, wrapping pills), rendered only
+when it holds something: the plan's door `.btn.btn-sm` while it runs, a card
+subscriber's portal `.act` and the tier switch (`.switch`: a hairline, the
+`.pc-kicker` "Promijeni paket", the other tiers as `.act` forms with
+`data-confirm`), a cash member's "Prebaci na karticu" `.switch` form once Stripe
+is configured. **Dodaj plan**: `.plan` cards (`--r-xl`, padding 18px 20px 20px,
+italic uppercase `.plan-h`) in `.plan-grid` (1 column, 2 from 700px, 3 from
+1000px): the name, the `cjenik.<plan>` text (`.plan-desc`, `min-height: 3.9em`
+from 700px so the prices of a row sit level), the price (800 1.25rem, `<small>`
+unit, the muted `.price-hint`), the `.foot` pinned bottom. Grupni is
+`.featured` (accent-tinted border, `.featured-tag` top-right): on a phone its
+name keeps 128px clear beside the chip; from 700px, where the name would wrap
+and drop its price below the row's, the card stands 26px taller than its row
+(the landing's "taller, not shifted"), the chip in that room above the name,
+and the grid starts 38px under the heading so the card keeps 12px. Price source order (the macro): the subscribed tier's own
+("70 € / mjesečno · 12 treninga") → Stripe Price → shop reference
+(`REFERENCE_PRICES`, in the shop's own unit) → "na upit". Every card carries
+`id="plan-<key>"` (`scroll-margin-top: 90px`), so `#plan-<key>` links land on
+it in either section. **Računi**: a `.card.ledger` (max 640px) around an
+`.mtable`: date, the plan with the method as a muted second line (`.way`; four
+columns did not fit 360px once amounts show), the amount when any is known;
+`th` in the `dt` look; tighter below 420px; the wrapper scrolls only as a last
+resort. No membership at all: `.card.mc-none` with the calendar's sentence
+instead of Tvoji planovi.
 
-**Profil (`profil.html`).** Membership cards `.mcard.active` / `.mcard.lapsed`:
-green- or accent-tinted border, state word top-right, plan CTA pinned bottom.
+**Profil (`profil.html`).** The basic-info form, then for a client one
+`.card.mc-link` holding an `.act` to `/moja-clanarina` ("Moja članarina —
+planovi, uplate i računi →", allowed to wrap: it nearly fills a 360px card).
 
 **Karton (`karton.html`).** Upitnik block `.upitnik.lvl-*` tinted by razina
 (`--lvl`/`--lvl-soft` per theme), diary `.log-entry` rows in four states
@@ -223,11 +258,12 @@ through reloads, forms (`input[name=day]`, `data-shown-day` where the script
 keeps it current) and redirects. Without the script the phone shows every
 column as an agenda of cards, empty days saying "Nema termina". "Moje
 rezervacije" uses the row style there too (the day as a kicker line, the ✕ at
-the row's right end). "Moja članarina" is `.mtable` in a `.mtable-wrap`
-(scrolls as a last resort): four columns that fit 360px through tighter gutters
-and a smaller face below 420px. `.sess.mine` = accent tint + inset bar,
-`.past`/`.canceled` at .45 opacity, `.today .day-head` red. "Moja članarina" table
-+ usage line "3 od 12 treninga u ovom ciklusu" for tiered plans. A client's
+the row's right end). "Moja članarina" is `ul.mlines`, one line per plan
+("Grupni trening · aktivna do 1.11.2026. · 5/12" for a tiered plan, or
+"istekla …" in `--danger`), then an `.act` "Moja članarina →" to
+`/moja-clanarina` (18.10.2026; a four-column `.mtable` before, which moved to
+that page's ledger). `.sess.mine` = accent tint + inset bar,
+`.past`/`.canceled` at .45 opacity, `.today .day-head` red. A client's
 phone also has a month view (18.10.2026): `.view-switch` "Tjedan | Mjesec"
 opens `?view=month`, a page of its own (no grid, strip or sheet; the week's
 head keeps only its h1): the next-termin card, the switch, `.month-nav`, the

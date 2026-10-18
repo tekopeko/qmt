@@ -49,22 +49,12 @@
 
   .mine-list { margin-top: 34px; }
   .mine-list h2 { font-size: 1.05rem; margin-bottom: 10px; }
-  /* "Moja članarina": four columns that have to fit a 360px phone, which leaves
-     328px. At full size the table is 355px and pushed the whole page sideways
-     (found 5.10.2026, the first time the audit walked 360px). Tighter gutters
-     and a slightly smaller face below 420px; the wrapper scrolls as a last
-     resort, so a longer plan name can never widen the page again. */
-  .mtable-wrap { overflow-x: auto; }
-  .mtable { border-collapse: collapse; font-size: .9rem; }
-  .mtable th, .mtable td { padding: 7px 18px 7px 0; text-align: left; }
-  .mtable th { padding-block: 6px; }
-  .mtable th:last-child, .mtable td:last-child { padding-right: 0; }
-  .mtable tr { border-bottom: 1px solid var(--line); }
-  .mtable .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-  @media (max-width: 420px) {
-    .mtable { font-size: .84rem; }
-    .mtable th, .mtable td { padding-right: 10px; }
-  }
+  /* "Moja članarina": one line per plan and the way to the page that holds
+     the rest (/moja-clanarina, 18.10.2026; a four-column table before) */
+  .mlines { list-style: none; padding: 0; margin-bottom: 12px; display: grid; gap: 4px;
+            font-size: .92rem; overflow-wrap: anywhere; }
+  .mlines .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mlines .lapsed { color: var(--danger); font-weight: 700; }
   /* auto-fill (not auto-fit): keep the empty tracks so a few day columns stay
      the same width as the week grid's instead of stretching across the page */
   .mine-week { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -397,7 +387,7 @@
 {% if valid_until %}
 <p class="hint month-note">Članarina vrijedi do {{ valid_until.strftime("%-d.%-m.%Y.") }}</p>
 {% else %}
-<p class="hint month-note">Nemaš aktivnu članarinu za treninge u dvorani. <a class="act" href="/cjenik">Pogledaj cjenik →</a></p>
+<p class="hint month-note">Nemaš aktivnu članarinu za treninge u dvorani. <a class="act" href="/moja-clanarina">Pogledaj cjenik →</a></p>
 {% endif %}
 {% else %}
 {% set week_empty = days | map(attribute="sessions") | map("length") | sum == 0 %}
@@ -513,27 +503,20 @@
 
 {% if not user.is_trainer %}
 <div class="mine-list">
-  <h2>Moja članarina <a href="/profil" class="act act-quiet" style="text-transform:none; letter-spacing:0; vertical-align:middle;">povijest plaćanja →</a></h2>
+  <h2>Moja članarina</h2>
   {% if memberships %}
-  <div class="mtable-wrap"><table class="mtable">
-    <thead><tr><th>Plan</th><th>Sljedeća uplata</th><th>Dospijeće</th><th>Status</th></tr></thead>
-    <tbody>
+  <ul class="mlines">
     {% for m in memberships %}
-      <tr>
-        <td><strong>{{ m.label }}</strong>
-          {% if m.usage %}<div class="hint" style="font-size:.78rem;">{{ m.usage.used }} od {{ m.usage.quota }} treninga u ovom ciklusu</div>{% endif %}</td>
-        <td class="num">{{ m.next_payment.strftime("%-d.%-m.%Y.") }}</td>
-        <td class="num">{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</td>
-        <td>{% if m.active %}<span style="color:var(--good); font-weight:700;">aktivna</span>
-            {% else %}<span style="color:var(--danger); font-weight:700;">istekla</span>{% endif %}</td>
-      </tr>
+    <li><strong>{{ m.label }}</strong> ·
+      {% if m.active %}aktivna do <span class="num">{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</span>{% if m.usage %} · <span class="num">{{ m.usage.used }}/{{ m.usage.quota }}</span>{% endif %}
+      {%- else %}<span class="lapsed">istekla <span class="num">{{ m.dospijece.strftime("%-d.%-m.%Y.") }}</span></span>{% endif %}</li>
     {% endfor %}
-    </tbody>
-  </table></div>
+  </ul>
+  <a class="act" href="/moja-clanarina">Moja članarina →</a>
   {% else %}
   {# the moment they most want to know what a plan costs — so say it here #}
   <p class="hint" style="margin-bottom:10px;">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.</p>
-  <a class="btn btn-sm" href="/cjenik">Pogledaj cjenik →</a>
+  <a class="btn btn-sm" href="/moja-clanarina">Pogledaj cjenik →</a>
   <p class="hint" style="margin-top:10px; font-size:.84rem;">Za upis se javi treneru u dvorani — plaćanje gotovinom ili karticom.</p>
   {% endif %}
 </div>

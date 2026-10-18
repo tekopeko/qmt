@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}Moja članarina — QMT{% endblock %}
+{% import "_copy.html" as c with context %}
+{% import "_plan_price.html" as pp %}
+{% block head %}
+<style>
+  /* ===== Moja članarina (18.10.2026): Shape Club's billing page in QMT's
+     look. Phone first: each plan a card that says its state in words (the
+     chip), its facts as label-over-value pairs, one plain sentence in a grey
+     box, then only what this member can do. "Dodaj plan" is the old cjenik
+     for the plans not held; "Računi" the ledger. ===== */
+  .mc-sec + .mc-sec, .mc-none + .mc-sec { margin-top: 34px; }
+  .mc-sec > h2 { font-size: 1.05rem; margin-bottom: 12px; }
+
+  /* Tvoji planovi: one column, two from 1000px (as wide as "Dodaj plan") */
+  .plan-cards { display: grid; gap: 14px; max-width: 1000px; }
+  @media (min-width: 1000px) { .plan-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .plan-card { padding: 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0;
+               border-radius: var(--r-xl); scroll-margin-top: 90px; }
+  @media (min-width: 700px) { .plan-card { padding: 22px 24px; } }
+  /* the state on a large-radius card is a tinted border (an inset bar curves
+     along the 28px corner and reads as a glitch): green while the plan runs,
+     the accent once it has lapsed. The chip says it in words. */
+  .plan-card.is-active { border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+  .plan-card.is-lapsed { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  /* name and chip share a line while both fit; otherwise the chip goes under
+     the name rather than squeezing it into a mid-word break */
+  .pc-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 12px; }
+  .pc-name { min-width: 0; }
+  .pc-kicker { font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .plan-card h3, .plan-h { font: 700 italic 1.2rem var(--font-display); text-transform: uppercase;
+                           letter-spacing: .01em; overflow-wrap: anywhere; }
+  .plan-card h3 { margin-top: 2px; font-size: 1.3rem; }
+  .chip { flex: none; display: inline-flex; align-items: center; padding: 4px 11px; border-radius: 999px;
+          font: 700 .78rem var(--font-body); white-space: nowrap; }
+  .chip.ok { background: var(--good-fill); color: var(--good-ink); }
+  .chip.due { background: var(--accent-dim); color: var(--accent-tint-ink); }
+  /* not --danger: the accent on --surface-2 measures 4.3:1 in both themes,
+     under AA; --accent-tint-ink is the same red, a step stronger */
+  .chip.lapsed { background: var(--surface-2); color: var(--accent-tint-ink); }
+  .chip.off { background: var(--surface-2); color: var(--muted); }
+
+  /* the facts: label over value, two to a row on a phone, three from 700px */
+  .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+  @media (min-width: 700px) { .facts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .facts dt { font: 700 .7rem var(--font-body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .facts dd { margin-top: 2px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .facts .price { font: 700 1rem var(--font-body); }
+  .price small { font: 600 .78rem var(--font-body); color: var(--muted); }
+  .price-hint { font-size: .78rem; overflow-wrap: anywhere; }
+  .pc-status { background: var(--surface-2); border-radius: var(--r-md); padding: 12px 14px;
+               font-size: .9rem; overflow-wrap: anywhere; }
+
+  /* what can be done: pills that wrap; pinned to the bottom, so cards side
+     by side keep their buttons on one line */
+  .plan-card .foot { margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .plan-card .foot form { margin: 0; }
+  /* the tier switch, or "Prebaci na karticu": a line of its own under a hairline */
+  .switch { flex: 1 1 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+            padding-top: 12px; border-top: 1px solid var(--line); }
+  .switch .hint { font-size: .8rem; overflow-wrap: anywhere; max-width: 100%; }
+  .tiers { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tiers form { margin: 0; }
+  /* base.html styles every <label> as an uppercase form caption — these are
+     pills, so undo that: normal case, no tracking, one line each */
+  .tiers label { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px;
+                 margin: 0; border: 1px solid var(--line); border-radius: 999px;
+                 font: 600 .8rem var(--font-body); text-transform: none; letter-spacing: 0;
+                 white-space: nowrap; color: var(--text); cursor: pointer;
+                 background: var(--surface-2); }
+  .tiers label:has(input:checked) { border-color: var(--accent); color: var(--accent-tint-ink);
+                                    background: var(--accent-dim); }
+  .tiers input { accent-color: var(--accent); margin: 0; width: auto; }
+  @media (pointer: coarse) { .tiers label { padding: 8px 14px; } }
+
+  .mc-none { max-width: 640px; padding: 16px 20px; }
+  .mc-none p:first-child { font-weight: 600; }
+  .mc-none .hint { margin-top: 4px; }
+
+  /* Dodaj plan: the plans not held, smaller cards (the old cjenik's) */
+  .plan-grid { display: grid; gap: 14px; max-width: 1000px; }
+  @media (min-width: 700px) { .plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 1000px) { .plan-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .plan { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 8px; min-width: 0;
+          border-radius: var(--r-xl); position: relative; scroll-margin-top: 90px; }
+  /* the plan most people take, with a chip saying so (.featured-tag, base.html,
+     top-right). On a phone the name keeps clear of it beside it. Side by side
+     a card is too narrow for both on one line (the name wrapped at 1000px and
+     its price fell 25px below the row's), so there the card stands taller
+     than its row instead, the landing's move (taller, not shifted): the chip
+     sits in the extra room above the name, which keeps its full width, and
+     the grid makes room for it under the heading (38px: its margin collapses
+     with the heading's 12px, which the raised card keeps). Grupni comes
+     first, so the card is always in the first row. */
+  .plan.featured { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .plan.featured .plan-h { padding-right: 128px; }
+  @media (min-width: 700px) {
+    .plan-grid:has(> .featured) { margin-top: 38px; }
+    .plan.featured { margin-top: -26px; padding-top: 44px; }
+    .plan.featured .plan-h { padding-right: 0; }
+  }
+  .plan-desc { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+  /* side by side, the description reserves its block, so the prices of a
+     row sit on one line (tests/test_copy.py measures it) */
+  @media (min-width: 700px) { .plan-desc { min-height: 3.9em; } }
+  .plan .price { font: 800 1.25rem var(--font-body); }
+  .plan .price-hint { margin-top: -4px; }
+  .plan .foot { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start;
+                gap: 8px; padding-top: 6px; }
+  .plan .foot form { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+  .plan .foot .hint { font-size: .82rem; max-width: 100%; overflow-wrap: anywhere; }
+
+  /* Računi: the ledger. The .mtable idiom (the calendar's old "Moja
+     članarina" table, 5.10.2026): tighter gutters and a smaller face below
+     420px; the wrapper scrolls only as a last resort, so a long plan name
+     never widens the page. Date, plan and amount fit a 360px phone only
+     with the method under the plan (four columns were 350px for 297), so
+     it is a muted second line at every width. */
+  .mc-portal { margin-bottom: 12px; }
+  .ledger { max-width: 640px; padding: 4px 16px; }
+  .mtable-wrap { overflow-x: auto; }
+  .mtable { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  .mtable th, .mtable td { padding: 9px 18px 9px 0; text-align: left; vertical-align: baseline; }
+  .mtable th { padding-block: 10px 6px; font: 700 .7rem var(--font-body); letter-spacing: .1em;
+               text-transform: uppercase; color: var(--muted); }
+  .mtable th:last-child, .mtable td:last-child { padding-right: 0; }
+  .mtable tr { border-bottom: 1px solid var(--line); }
+  .mtable tbody tr:last-child { border-bottom: none; }
+  .mtable .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mtable .r { text-align: right; }
+  .mtable .way { display: block; color: var(--muted); font-size: .8rem; }
+  .mtable th:nth-child(2) { width: 100%; }      /* the plan takes the slack; date and amount hug */
+  @media (max-width: 420px) {
+    .mtable { font-size: .84rem; }
+    .mtable th, .mtable td { padding-right: 10px; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Moja članarina</h1>
+<p class="hint">{{ c.t("cjenik.hint") }}</p>
+
+{% if plans %}
+<section class="mc-sec" aria-labelledby="mcPlans">
+  <h2 id="mcPlans">Tvoji planovi</h2>
+  <div class="plan-cards">
+  {% for p in plans %}
+    {% set pr = prices.get(p.key) %}{% set cur = pp.currency(pr) %}
+    {% set paid_on, next_payment, dospijece = p.paid_on.strftime("%-d.%-m.%Y."), p.next_payment.strftime("%-d.%-m.%Y."), p.dospijece.strftime("%-d.%-m.%Y.") %}
+    <section class="card plan-card {{ 'is-active' if p.active else 'is-lapsed' }}" id="plan-{{ p.key }}" aria-labelledby="pc-{{ p.key }}">
+      <div class="pc-head">
+        <div class="pc-name">
+          <div class="pc-kicker">Paket</div>
+          <h3 id="pc-{{ p.key }}">{{ p.label }}</h3>
+        </div>
+        <span class="chip {{ p.chip[1] }}">{{ p.chip[0] }}</span>
+      </div>
+      <dl class="facts">
+        <div><dt>Cijena</dt><dd>{{ pp.price(p.key, prices, reference, p.tier) }}</dd></div>
+        <div><dt>Uplaćeno</dt><dd>{{ paid_on }}</dd></div>
+        <div><dt>Sljedeća uplata</dt><dd>{{ next_payment }}</dd></div>
+        <div><dt>Vrijedi do</dt><dd>{{ dospijece }}</dd></div>
+        {% if p.sessions %}<div><dt>Paket</dt><dd>{{ p.sessions }} treninga mjesečno</dd></div>{% endif %}
+        {% if p.usage %}<div><dt>Iskorišteno</dt><dd>{{ p.usage.used }} od {{ p.usage.quota }} u ovom ciklusu</dd></div>{% endif %}
+      </dl>
+      {# the state in one plain sentence; a date ends in its own full stop #}
+      <p class="pc-status">
+        {%- if not p.active %}Članarina je istekla {{ dospijece }} Nova uplata počinje od dana uplate.
+        {%- elif p.cancelling %}Pretplata je otkazana i vrijedi do {{ dospijece }}
+        {%- elif p.auto_renew %}Pretplata se obnavlja automatski {{ next_payment }} karticom.
+        {%- elif p.overdue %}Uplata je dospjela {{ next_payment }} — članarina vrijedi još do {{ dospijece }} Uplatu obavi u dvorani, gotovinom ili karticom.
+        {%- else %}Članarina vrijedi do {{ dospijece }} Sljedeću uplatu obavi do {{ next_payment }} — u dvorani, gotovinom ili karticom.
+        {%- endif -%}
+      </p>
+      {# only what this member can do: the door the plan opens while it runs;
+         a card subscriber's portal and tier switch; a cash member's way onto
+         the card while Stripe is configured. Nothing more without Stripe:
+         the sentence above says where to pay. #}
+      {% set foot %}
+        {% if p.active and p.key in plan_links %}
+        <a class="btn btn-sm" href="{{ plan_links[p.key][0] }}">{{ plan_links[p.key][1] }} →</a>
+        {% endif %}
+        {% if p.subscribed %}
+          {% if has_portal %}
+          <form method="post" action="/placanje/portal"><button type="submit" class="act">Kartica, računi, otkazivanje</button></form>
+          {% endif %}
+          {% set others = (pr.tiers | rejectattr("sessions", "equalto", p.tier.sessions) | list) if p.tier else [] %}
+          {% if others %}
+          {# the other tiers, one click each — Stripe prorates the difference #}
+          <div class="switch">
+            <div class="pc-kicker">Promijeni paket</div>
+            <div class="tiers">
+              {% for t in others %}
+              <form method="post" action="/placanje/{{ p.key }}/promjena"
+                    data-confirm-title="Promijeniti na {{ t.sessions }} treninga?"
+                    data-confirm="Novi paket vrijedi odmah — {{ "%.0f"|format(t.amount) }} {{ cur }} mjesečno. Razliku za ostatak ovog ciklusa Stripe obračuna na sljedećem računu."
+                    data-confirm-cta="Promijeni">
+                <input type="hidden" name="sessions" value="{{ t.sessions }}">
+                <button type="submit" class="act">{{ t.sessions }} treninga · {{ "%.0f"|format(t.amount) }} {{ cur }}</button>
+              </form>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+        {% elif p.key in sellable %}
+          {% if p.active %}
+          {# paid in cash so far — a subscription can take over from the due date #}
+          <form method="post" action="/placanje/{{ p.key }}" class="switch">
+            <div class="hint">Prebaci na karticu — obnavlja se automatski od sljedeće uplate:</div>
+            {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
+            <button type="submit" class="act">Prebaci na karticu</button>
+          </form>
+          {% else %}
+          {# lapsed: a subscription starts afresh, like a plan never held #}
+          <form method="post" action="/placanje/{{ p.key }}" class="switch">
+            {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
+            <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
+            <span class="hint">Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.</span>
+          </form>
+          {% endif %}
+        {% endif %}
+      {% endset %}
+      {% if foot | trim %}<div class="foot">{{ foot }}</div>{% endif %}
+    </section>
+  {% endfor %}
+  </div>
+</section>
+{% elif not user.is_trainer %}{# the trainer and the owner have no plans and need no membership talk: they are here for the texts #}
+<div class="card mc-none">
+  <p>Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.</p>
+  <p class="hint">Za upis se javi treneru u dvorani — plaćanje gotovinom ili karticom.</p>
+</div>
+{% endif %}
+
+{% if add_plans %}
+<section class="mc-sec" aria-labelledby="mcAdd">
+  <h2 id="mcAdd">Dodaj plan</h2>
+  <div class="plan-grid">
+  {% for key in add_plans %}
+    {% set pr = prices.get(key) %}{% set cur = pp.currency(pr) %}
+    <div class="card plan{% if key == 'grupni' %} featured{% endif %}" id="plan-{{ key }}">
+      {% if key == 'grupni' %}<span class="featured-tag">Najpopularnije</span>{% endif %}
+      <h3 class="plan-h">{{ plan_labels[key] }}</h3>
+      <p class="plan-desc">{{ c.t("cjenik." ~ key) }}</p>
+      {{ pp.price(key, prices, reference) }}
+      <div class="foot">
+      {% if key in sellable %}
+        <form method="post" action="/placanje/{{ key }}">
+          {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
+          <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
+        </form>
+        <span class="hint">Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.</span>
+      {% else %}
+        <span class="hint">{{ c.t("cjenik.note") }}</span>
+      {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="mc-sec" aria-labelledby="mcBills">
+  <h2 id="mcBills">Računi</h2>
+  {% if has_portal %}
+  {# Stripe's invoices, card and cancelling live in its portal: one door #}
+  <form method="post" action="/placanje/portal" class="mc-portal">
+    <button type="submit" class="act">Računi i kartica u Stripe portalu</button>
+  </form>
+  {% endif %}
+  {% if ledger %}
+  <div class="card ledger"><div class="mtable-wrap"><table class="mtable">
+    <thead><tr><th>Datum</th><th>Plan · način</th>{% if show_amounts %}<th class="r">Iznos</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in ledger %}
+      <tr>
+        <td class="num">{{ r.paid_on.strftime("%-d.%-m.%Y.") }}</td>
+        <td>{{ r.label }}<span class="way">{{ r.method }}</span></td>
+        {% if show_amounts %}<td class="num r">{% if r.amount is not none %}{{ "%.2f"|format(r.amount)|replace(".", ",") }} €{% else %}—{% endif %}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+  {% else %}
+  <p class="hint">Još nema zabilježenih uplata.</p>
+  {% endif %}
+</section>
+{% endblock %}

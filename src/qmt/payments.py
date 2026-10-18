@@ -2,7 +2,7 @@
 
 The contract with the rest of the app is deliberately thin:
 
-- /cjenik shows Stripe's own Price amounts (cached), "na upit" without them.
+- /moja-clanarina shows Stripe's own Price amounts (cached), "na upit" without them.
 - "Pretplati se" creates a Checkout Session in subscription mode; the user id
   and plan ride along as SUBSCRIPTION metadata, so every invoice Stripe ever
   raises for it can be traced back without trusting anything client-side.
@@ -60,7 +60,7 @@ def sellable_plans() -> set[str]:
     return {p for p in PLAN_TYPES if price_ids(p)}
 
 
-# ---------- prices for /cjenik ----------
+# ---------- prices for /moja-clanarina ----------
 
 def price_table() -> dict[str, dict]:
     """Per sellable plan, from Stripe, cached for PRICE_TTL_S:
@@ -132,8 +132,8 @@ def checkout_url(user, plan: str, sessions: int | None = None) -> str:
         mode="subscription",
         customer=ensure_customer(user),
         line_items=[{"price": ids[key], "quantity": 1}],
-        success_url=f"{base}/profil?ok={ok}",
-        cancel_url=f"{base}/cjenik#plan-{plan}",
+        success_url=f"{base}/moja-clanarina?ok={ok}",
+        cancel_url=f"{base}/moja-clanarina#plan-{plan}",
         locale="hr",
         metadata=meta,
         subscription_data={"metadata": meta},
@@ -145,7 +145,7 @@ def portal_url(user) -> str:
     """Stripe's hosted portal: change card, cancel, see invoices."""
     st = _stripe()
     session = st.billing_portal.Session.create(
-        customer=ensure_customer(user), return_url=f"{config.PUBLIC_BASE_URL}/profil")
+        customer=ensure_customer(user), return_url=f"{config.PUBLIC_BASE_URL}/moja-clanarina")
     return session["url"]
 
 

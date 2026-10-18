@@ -66,7 +66,7 @@ topbar is a floating dark-glass pill on every screen. Hairline borders
 (`1px var(--line)`) instead of heavy edges. One soft shadow (`--shadow`) on cards;
 the red glow (`--shadow-btn`) is the **hero's voice only** — a small button inside
 a card or table row carries no glow. State on a large-radius card is a **tinted
-border** (`color-mix(in srgb, var(--good) 45%, var(--line))` — cjenik `.plan.mine`,
+border** (`color-mix(in srgb, var(--good) 45%, var(--line))` — /moja-clanarina's `.plan-card` of a held plan,
 profil `.mcard.active`, `.plan.featured` with the accent), never an inset bar: a
 bar curves along a 28px corner and reads as a glitch. The 12px karton rows and the
 calendar's `.sess.mine` keep their inset bar; the accent is never a decoration on

@@ -1,0 +1,29 @@
+{# A plan's price, the way /moja-clanarina prints it in both its sections
+   (moved from the old cjenik.html, 18.10.2026). Source order: Stripe's Price
+   when one exists (that is what the card button charges), else the shop's
+   reference price in the shop's own unit (REFERENCE_PRICES), else "na upit".
+   `tier` is the tier a card subscription pays for ({sessions, amount}; the
+   route finds it): a subscriber sees ITS price, not the range, which is for
+   shoppers. Under the price a muted hint: the tiers on sale, or the
+   reference's note.
+   Use: {% import "_plan_price.html" as pp %} … {{ pp.price(key, prices, reference, tier) }} #}
+
+{# the currency sign of a Stripe price ("€" for EUR and for no price at all) #}
+{% macro currency(pr) -%}
+  {{- "€" if not pr or pr.currency == "EUR" else pr.currency -}}
+{%- endmacro %}
+
+{% macro price(key, prices, reference, tier=none) -%}
+  {%- set pr = prices.get(key) -%}{%- set ref = reference[key] -%}{%- set cur = currency(pr) -%}
+  <div class="price">
+    {%- if tier %}{{ "%.0f"|format(tier.amount) }} {{ cur }} <small>/ mjesečno · {{ tier.sessions }}&nbsp;treninga</small>
+    {%- elif pr and pr.tiers %}{{ "%.0f"|format(pr.tiers[0].amount) }}–{{ "%.0f"|format(pr.tiers[-1].amount) }} {{ cur }} <small>/ mjesečno</small>
+    {%- elif pr %}{{ "%.2f"|format(pr.amount)|replace(".", ",") }} {{ cur }} <small>/ mjesečno</small>
+    {%- elif ref[0] %}{{ ref[0] }} € <small>{{ ref[1] }}</small>
+    {%- else %}na upit <small>{{ ref[1] }}</small>{% endif -%}
+  </div>
+  {%- if tier %}
+  {%- elif pr and pr.tiers %}<div class="hint price-hint">{{ pr.tiers|map(attribute="sessions")|join(", ") }} treninga mjesečno</div>
+  {%- elif not pr and ref[2] %}<div class="hint price-hint">{{ ref[2] }}</div>
+  {%- endif %}
+{%- endmacro %}

@@ -70,6 +70,7 @@ def stripe_on(monkeypatch):
 
     def portal_create(**kw):
         calls["portals"] += 1
+        calls["portal_kw"] = kw
         return {"url": "https://billing.stripe.com/p/session/test"}
     monkeypatch.setattr(stripe.billing_portal.Session, "create", staticmethod(portal_create))
     return {"subs": subs, "calls": calls}
@@ -200,8 +201,9 @@ def test_cancel_and_delete_keep_paid_time_but_stop_renewing(stripe_on):
     assert r.text == "updated"
     m = db.memberships_for(ivan)[0]
     assert m.cancel_at_period_end and not m.auto_renew
-    page = client_for("ivan@test.local").get("/profil").text
-    assert "otkazana" in page
+    page = client_for("ivan@test.local").get("/moja-clanarina").text
+    assert '<span class="chip off">otkazana · vrijedi do kraja</span>' in page
+    assert f"Pretplata je otkazana i vrijedi do {m.dospijece:%-d.%-m.%Y.}</p>" in page
 
     r = post_event({"type": "customer.subscription.deleted", "data": {"object": {"id": "sub_1"}}})
     assert r.text == "deleted"
@@ -224,7 +226,7 @@ def test_unknown_user_or_plan_is_ignored(stripe_on):
         assert s.query(Payment).count() == 0 and s.query(Membership).count() == 0
 
 
-# ---------- checkout / portal / cjenik ----------
+# ---------- checkout / portal / moja-clanarina ----------
 
 def test_checkout_creates_one_customer_and_hands_off(stripe_on):
     ivan = make_user("ivan@test.local")
@@ -247,6 +249,10 @@ def test_checkout_creates_one_customer_and_hands_off(stripe_on):
     for key in ("success_url", "cancel_url"):
         assert kw[key].isascii(), kw[key]
         assert kw[key].startswith("http"), kw[key]
+    # back from Stripe: the member's plans page (paid: the ok flash; given up:
+    # the plan's card)
+    assert "/moja-clanarina?ok=" in kw["success_url"]
+    assert kw["cancel_url"].endswith("/moja-clanarina#plan-grupni")
 
     c.post("/placanje/online", follow_redirects=False)   # flat plan: no tier needed
     assert stripe_on["calls"]["customers"] == 1         # second plan reuses the customer
@@ -266,15 +272,16 @@ def test_no_double_subscription_and_portal_needs_a_customer(stripe_on):
     assert "postoji" in c.post("/placanje/grupni", follow_redirects=False).headers["location"]
 
     # never checked out through us → no customer → no portal
-    assert "/profil?error" in c.post("/placanje/portal", follow_redirects=False).headers["location"]
+    assert "/moja-clanarina?error" in c.post("/placanje/portal", follow_redirects=False).headers["location"]
     db.set_stripe_customer(ivan, "cus_7")
     r = c.post("/placanje/portal", follow_redirects=False)
     assert r.headers["location"].startswith("https://billing.stripe.com/")
+    assert stripe_on["calls"]["portal_kw"]["return_url"].endswith("/moja-clanarina")
 
 
-def test_cjenik_shows_stripe_prices_or_the_reference(stripe_on, monkeypatch):
+def test_dodaj_plan_shows_stripe_prices_or_the_reference(stripe_on, monkeypatch):
     make_user("ivan@test.local")
-    r = client_for("ivan@test.local").get("/cjenik")
+    r = client_for("ivan@test.local").get("/moja-clanarina")
     assert r.status_code == 200
     page = r.text
     assert "55,00 €" in page and "Pretplati se karticom" in page   # Stripe's price, per month
@@ -284,12 +291,92 @@ def test_cjenik_shows_stripe_prices_or_the_reference(stripe_on, monkeypatch):
 
     monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "")   # unconfigured: reference prices only
     payments._price_cache = (0.0, {})
-    r = client_for("ivan@test.local").get("/cjenik")
+    r = client_for("ivan@test.local").get("/moja-clanarina")
     assert r.status_code == 200, r.text[-400:]
     page = r.text
     assert "55,00 €" not in page and "Pretplati se" not in page
     assert "50 €" in page and "60–80 €" in page            # the shop's numbers
     assert "Za upis se javi treneru" in page              # the cash-only copy
+
+
+def _text(html: str) -> str:
+    import re
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+
+
+def _card(page: str, key: str) -> str:
+    """A plan's card on /moja-clanarina, up to the next card or section."""
+    start = page.rindex("<", 0, page.index(f'id="plan-{key}"'))
+    ends = [page.find(m, page.index(">", start)) for m in ('id="plan-', 'class="mc-sec"', "</main>")]
+    return page[start:min(i for i in ends if i > 0)]
+
+
+def test_moja_clanarina_follows_how_each_plan_is_paid(stripe_on):
+    """/moja-clanarina with Stripe configured (18.10.2026). A card
+    subscriber's plan shows the tier he pays for, says it renews by itself,
+    and offers the other tiers and the portal; a cancelled one says until
+    when it holds; a cash plan offers the move to the card; a plan not held,
+    sold by card, offers the subscription; the ledger shows amounts and the
+    portal's invoices."""
+    ivan = make_user("ivan@test.local")
+    db.set_stripe_customer(ivan, "cus_7")
+    stripe_on["subs"]["sub_1"] = {"id": "sub_1", "metadata": {"qmt_user_id": str(ivan), "qmt_plan": "grupni"}}
+    post_event(invoice_paid("in_1", "sub_1", cents=7000))          # grupni by card, 12 treninga
+    db.record_payment(ivan, "online")                              # online in cash
+    m = {x.plan: x for x in db.memberships_for(ivan)}
+    c = client_for("ivan@test.local")
+
+    page = c.get("/moja-clanarina").text
+    g = _card(page, "grupni")
+    assert '<span class="chip ok">aktivna</span>' in g
+    assert "Cijena 70 € / mjesečno · 12&nbsp;treninga" in _text(g)   # its own tier, not the range
+    assert f"Pretplata se obnavlja automatski {m['grupni'].next_payment:%-d.%-m.%Y.} karticom." in _text(g)
+    assert 'href="/raspored">Rezerviraj termin →</a>' in g
+    assert '<button type="submit" class="act">Kartica, računi, otkazivanje</button>' in g
+    assert "Promijeni paket" in g and g.count('action="/placanje/grupni/promjena"') == 2
+    assert ">8 treninga · 60 €</button>" in g and ">16 treninga · 80 €</button>" in g
+    assert 'data-confirm="Novi paket vrijedi odmah — 80 € mjesečno.' in g
+
+    o = _card(page, "online")                                      # cash, sellable: onto the card
+    assert "Sljedeću uplatu obavi do" in _text(o)
+    assert 'action="/placanje/online"' in o and ">Prebaci na karticu</button>" in o
+    assert "Kartica, računi, otkazivanje" not in o and "promjena" not in o
+
+    add = page[page.index('aria-labelledby="mcAdd"'):page.index('aria-labelledby="mcBills"')]
+    assert 'id="plan-grupni"' not in add and 'id="plan-online"' not in add
+    assert "Pretplati se karticom" not in add                      # what is left has no Stripe price
+    assert add.count("Za upis se javi treneru u dvorani.") == 4
+
+    bills = page[page.index('aria-labelledby="mcBills"'):]
+    assert "Računi i kartica u Stripe portalu" in bills            # the portal's invoices
+    assert "<th class=\"r\">Iznos</th>" in bills and "70,00 €" in bills and "Stripe" in bills
+    assert "—" in bills                                            # the cash uplata, no amount
+
+    # cancelled in the portal: it says so, and until when
+    post_event({"type": "customer.subscription.updated",
+                "data": {"object": {"id": "sub_1", "cancel_at_period_end": True}}})
+    g = _card(c.get("/moja-clanarina").text, "grupni")
+    assert '<span class="chip off">otkazana · vrijedi do kraja</span>' in g
+    assert f"Pretplata je otkazana i vrijedi do {m['grupni'].dospijece:%-d.%-m.%Y.}" in _text(g)
+
+
+def test_moja_clanarina_offers_the_card_for_a_cash_plan_a_lapsed_one_and_one_not_held(stripe_on):
+    ana = make_user("ana@test.local")
+    db.record_payment(ana, "grupni")                               # cash, running
+    db.record_payment(ana, "online")
+    with db.session_scope() as s:                                  # online lapsed a month ago
+        mm = s.query(Membership).filter_by(plan="online").one()
+        mm.next_payment = mm.next_payment - timedelta(days=70)
+    page = client_for("ana@test.local").get("/moja-clanarina").text
+    gr = _card(page, "grupni")                                     # cash, sold by card in tiers: onto the card
+    assert 'action="/placanje/grupni"' in gr and ">Prebaci na karticu</button>" in gr
+    assert 'name="sessions" value="12" checked' in gr             # the tier picker, the middle tier preselected
+    o = _card(page, "online")
+    assert '<span class="chip lapsed">istekla</span>' in o
+    assert ">Pretplati se karticom</button>" in o and "Prebaci na karticu" not in o
+    assert "Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani." in o
+    assert "Pretplati se karticom" not in page[page.index('aria-labelledby="mcAdd"'):]   # nothing else is sold by card
+    assert "Stripe portalu" not in page                            # no subscription: no portal
 
 
 def test_disabled_stripe_touches_nothing(monkeypatch):
@@ -308,14 +395,14 @@ def test_tier_change_goes_through_stripe_and_updates_the_quota(stripe_on):
     assert db.memberships_for(ivan)[0].sessions_per_cycle == 12
     c = client_for("ivan@test.local")
 
-    page = c.get("/cjenik").text
+    page = c.get("/moja-clanarina").text
     assert "70 €" in page and "12 treninga" in page            # its OWN price, not the range
     assert "60–80 €" not in page
     assert 'action="/placanje/grupni/promjena"' in page
     assert "16 treninga · 80 €" in page and "8 treninga · 60 €" in page
 
     r = c.post("/placanje/grupni/promjena", data={"sessions": "16"}, follow_redirects=False)
-    assert "ok=" in r.headers["location"]
+    assert r.headers["location"].startswith("/moja-clanarina?ok=") and r.headers["location"].endswith("#plan-grupni")
     sid, kw = stripe_on["calls"]["modify"][0]
     assert sid == "sub_1"
     assert kw["items"] == [{"id": "si_1", "price": "price_g16"}]

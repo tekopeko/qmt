@@ -349,8 +349,9 @@
       background: var(--surface); border: 1px solid var(--line);
       border-radius: var(--r-lg); box-shadow: var(--shadow);
     }
-    /* "Najpopularnije" on the plan most people take: /cjenik and the landing's
-       offer cards. Sits in the top-right corner of a position:relative card. */
+    /* "Najpopularnije" on the plan most people take: /moja-clanarina's "Dodaj
+       plan" and the landing's offer cards. Sits in the top-right corner of a
+       position:relative card. */
     .featured-tag { position: absolute; top: 14px; right: 14px; display: inline-flex; padding: 4px 10px;
                     border-radius: 999px; background: var(--accent-dim); color: var(--accent-tint-ink);
                     font: 700 .68rem var(--font-body); letter-spacing: .08em; text-transform: uppercase; }
@@ -573,7 +574,7 @@
       <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if request.url.path.startswith('/raspored') %}on{% endif %}">Raspored</a>
       {% if not user.is_trainer %}<a href="/karton" class="{% if request.url.path.startswith('/karton') or request.url.path.startswith('/upitnik') %}on{% endif %}">Karton</a>{% endif %}
-      {% if not user.is_trainer %}<a href="/cjenik" class="{% if request.url.path.startswith('/cjenik') %}on{% endif %}">Cjenik</a>{% endif %}
+      {% if not user.is_trainer %}<a href="/moja-clanarina" class="{% if request.url.path.startswith('/moja-clanarina') %}on{% endif %}">Članarina</a>{% endif %}
       {# a paid product: without an active online plan the tab doesn't exist #}
       {% if show_online %}<a href="/treninzi" class="{% if request.url.path.startswith('/treninzi') %}on{% endif %}">Online treninzi</a>{% endif %}
       <a href="/prehrana" class="{% if request.url.path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
@@ -614,6 +615,13 @@
           <circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>
         </svg><span>Profil</span>
       </a>
+      {# everyone: a member's plans and money; the trainer and the owner edit
+         the plans' texts there (they have no plans of their own) #}
+      <a href="/moja-clanarina" role="menuitem">
+        <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 14.5h4"/>
+        </svg><span>Moja članarina</span>
+      </a>
       {# one row, no submenu: the click flips the theme and seeing it flip is the feedback #}
       <button type="button" onclick="qmtToggleTheme()" role="menuitem" aria-label="Promijeni temu">
         <svg class="mi mi-moon" viewBox="0 0 24 24" aria-hidden="true">
@@ -641,9 +649,10 @@
   {% if request.query_params.get("error") %}
     <div class="alert" role="alert">
       <span>{{ request.query_params.get("error") }}</span>
-      {# the param is a plan kind, so the href is always our own /cjenik #}
+      {# the param is a plan kind, so the href is always our own page: the
+         plan's card on /moja-clanarina, with its price #}
       {% if request.query_params.get("cta") %}
-      <a class="act" href="/cjenik#plan-{{ request.query_params.get('cta') }}">Pogledaj cjenik →</a>
+      <a class="act" href="/moja-clanarina#plan-{{ request.query_params.get('cta') }}">Pogledaj cjenik →</a>
       {% endif %}
     </div>
   {% endif %}
