@@ -327,7 +327,7 @@ start, not mid-session.
    `invoice.paid` webhook → `db.record_payment(method="stripe")`; portal at
    `/placanje/portal`. Everything is in `src/qmt/payments.py`, switched on by
    `STRIPE_*` vars (see DEPLOY.md). Still owed by the owner before LIVE keys: the
-   d.o.o.'s Stripe account, real prices (Stripe's Prices aligned to the price slots
+   d.o.o.'s Stripe account, real prices (Stripe's Prices aligned BY HAND to the price slots — a central price table that would push the owner's numbers into Stripe was designed and deferred by the owner on 18.10.2026, to be built only if asked;
    first: the site prints only the slots since 18.10.2026), and the accountant's
    Fiskalizacija 2.0 flow (mandatory since 1.1.2026, fiscalized račun per B2C charge).
 5. ⏳ Owner's own content: landing/service copy, exercise videos. The R2 storage
