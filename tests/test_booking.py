@@ -540,17 +540,34 @@ def test_landing_hero_follows_the_membership():
 
 
 def test_the_plans_page_is_reachable_without_hunting_for_it():
+    """The plans are on /moja-clanarina, the Članarina tab. The timetable
+    lists them no more (18.10.2026: its "Moja članarina" block went, that
+    page holds it all), so a client with a plan running finds no plan lines
+    and no link of their own there. One with no plan running keeps the
+    booking gate's one line and the way to the plans; how to join is that
+    page's to say."""
     make_user("ana@test.local", plans=())
     ca = client_for("ana@test.local")
-    assert 'href="/moja-clanarina"' in ca.get("/raspored").text   # nav tab + the empty state
-    assert "Pogledaj cjenik" in ca.get("/raspored").text
+    page = ca.get("/raspored").text
+    assert '<a href="/moja-clanarina" class="">Članarina</a>' in page   # the nav tab
+    assert ('<p class="hint gate-line">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća. '
+            '<a class="btn btn-sm" href="/moja-clanarina">Pogledaj cjenik →</a></p>') in page
+    assert "Za upis se javi treneru" not in page and "<h2>Moja članarina" not in page
     assert 'href="/moja-clanarina' not in TestClient(app).get("/").text   # never for a guest: members only
+
+    make_user("ivan@test.local")                                  # grupni, running
+    page = client_for("ivan@test.local").get("/raspored").text
+    assert '<a href="/moja-clanarina" class="">Članarina</a>' in page
+    for gone in ("<h2>Moja članarina", "Grupni trening · aktivna", 'class="mlines"', "Moja članarina →",
+                 'class="hint gate-line"', "Pogledaj cjenik →</a>"):
+        assert gone not in page, gone
 
     # the trainer's nav is already full and they do not buy plans: no tab;
     # the account menu keeps the item (they edit the plans' texts there)
     make_user("trener@test.local", is_trainer=True, plans=())
     page = client_for("trener@test.local").get("/raspored").text
     assert ">Članarina</a>" not in page and "<span>Moja članarina</span>" in page
+    assert 'class="hint gate-line"' not in page                  # no booking gate for him
 
 
 def test_plan_gate_offers_the_price_instead_of_a_dead_end():
@@ -1587,11 +1604,12 @@ def test_month_view_tints_the_paid_period_dots_my_bookings_and_links_every_day_t
     legend = legend[:legend.index("</div>")]
     assert all(t in legend for t in ("članarina aktivna", "tvoja rezervacija", "danas"))
     # the page is the month: no week buttons, grid, strip or sheet; the next
-    # termin above the switch, "Moja članarina" and "Moje rezervacije" below
-    for gone in ("← prošli tjedan</a>", 'data-selected="', 'class="day-strip"', 'id="sheet"'):
+    # termin above the switch, "Moje rezervacije" below (and no "Moja
+    # članarina" block between any more: /moja-clanarina holds the plans)
+    for gone in ("← prošli tjedan</a>", 'data-selected="', 'class="day-strip"', 'id="sheet"',
+                 "<h2>Moja članarina", 'class="hint gate-line"'):
         assert gone not in page, gone
-    assert page.index(NEXT) < page.index(SWITCH) < page.index(MONTH) < page.index("<h2>Moja članarina") \
-        < page.index("<h2>Moje rezervacije</h2>")
+    assert page.index(NEXT) < page.index(SWITCH) < page.index(MONTH) < page.index("<h2>Moje rezervacije</h2>")
     monday = today - timedelta(days=today.weekday())
     assert _switch(page) == {"week": (f"/raspored?week={monday}&day={today}", "false"),
                              "month": (f"/raspored?view=month&month={today:%Y-%m}", "true")}

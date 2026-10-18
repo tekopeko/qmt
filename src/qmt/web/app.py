@@ -644,14 +644,15 @@ def moja_clanarina(request: Request):
     what fits how it is paid; "Dodaj plan": the plans not held, with their
     prices; "Računi": the ledger. Card actions render only while Stripe is
     configured. The trainer and the owner (who manage members on /clanarine)
-    see it with no plans of their own: the plans' texts are edited here."""
+    see it with no plans of their own: the page's texts are edited here."""
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/moja-clanarina')}", status_code=303)
     # the trainer and the owner see it too, with no plans of their own: it is
-    # where they edit the plans' texts in place (copy slots cjenik.*, the
-    # prices, price.<plan>.*, and the add-on's amounts, addon.*)
+    # where they edit its texts in place (copy slots cjenik.* and clanarina.*,
+    # the plans' names here, plan.<plan>.name, the prices, price.<plan>.*,
+    # and the add-on's amounts, addon.*)
     today = config.today()
     # Stripe's Prices, for the forms that charge them only: the tier picker
     # in a checkout form and a subscriber's tier switch. Every price line
@@ -675,8 +676,8 @@ def moja_clanarina(request: Request):
             chip = (f"dospijeva {_relative_day(m.dospijece, today)}", "due")
         else:
             chip = ("aktivna", "ok")
-        plans.append({"key": m.plan, "label": PLAN_LABELS.get(m.plan, m.plan),
-                      "active": active, "chip": chip,
+        # the card's heading is the plan.<plan>.name slot (the template)
+        plans.append({"key": m.plan, "active": active, "chip": chip,
                       # the grace week: next_payment has passed, dospijeće has not
                       "overdue": active and today > m.next_payment,
                       "paid_on": m.paid_on, "next_payment": m.next_payment, "dospijece": m.dospijece,
@@ -692,8 +693,7 @@ def moja_clanarina(request: Request):
               for p in db.payments_for(user.id)]
     return templates.TemplateResponse(request, "moja_clanarina.html", _ctx(
         request, user, copy_texts=texts, plans=plans,
-        add_plans=[p for p in PLAN_TYPES if p not in held],
-        plan_labels=PLAN_LABELS, prices=table,
+        add_plans=[p for p in PLAN_TYPES if p not in held], prices=table,
         sellable=payments.sellable_plans(),
         ledger=ledger, show_amounts=any(r["amount"] is not None for r in ledger),
         # the portal manages a subscription — a customer record alone (a
@@ -969,10 +969,9 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
         prev_week=(monday - timedelta(days=7)).isoformat(),
         next_week=(monday + timedelta(days=7)).isoformat(),
         mine_days=mine_days, next_booking=next_booking, cutoff_hours=config.CANCEL_CUTOFF_HOURS,
-        memberships=[{"label": PLAN_LABELS.get(m.plan, m.plan),
-                      "usage": db.cycle_usage(user.id, m.plan),
-                      "dospijece": m.dospijece, "active": m.is_active(today)}
-                     for m in plans],
+        # with no plan running a client is told booking needs one (the plans
+        # themselves are on /moja-clanarina since 18.10.2026)
+        has_active_plan=any(m.is_active(today) for m in plans),
         view="month" if month_view else "week", **overview,
     ))
 

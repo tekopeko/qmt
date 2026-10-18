@@ -8,6 +8,14 @@
   <strong>tjedan</strong> nakon toga. Bez aktivne članarine polaznik ne može rezervirati
   termine tog tipa.
 </p>
+{# the members' page, where its texts and prices are edited in place: the
+   trainer's and the owner's nav has no Članarina tab (the account menu's
+   item is easy to miss), so the way there is said here. Under the lead,
+   not between it and the h1: main > h1 + .hint (base.html) sizes the lead. #}
+<p class="hint" style="display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin-bottom:18px;">
+  Stranica koju vide članovi — cjenik, tekstovi i cijene uređuju se tamo:
+  <a class="act" href="/moja-clanarina">Moja članarina →</a>
+</p>
 
 {% for row in rows %}
 <div class="card" style="padding:14px 18px; margin-bottom:14px; max-width:860px;">

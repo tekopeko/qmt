@@ -102,8 +102,9 @@ def test_members_only_the_trainer_has_his_own_page_and_the_old_address_leads_her
     r = guest.get("/moja-clanarina", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/login?next=/moja-clanarina"
     r = trener.get("/moja-clanarina")                                # the trainer and the owner see it too:
-    assert r.status_code == 200 and 'id="plan-grupni"' in r.text     # it is where the plans' texts are edited
-    assert "Nemaš aktivnu članarinu" not in r.text                   # (no membership talk for them)
+    assert r.status_code == 200 and 'id="plan-grupni"' in r.text     # it is where the page's texts are edited
+    assert r.text.count("Nemaš aktivnu članarinu") == 1              # no membership talk for them: only the
+    assert r.text.index("Ovo vidi član bez članarine:") < r.text.index("Nemaš aktivnu članarinu")   # preview
     assert 'data-copy="cjenik.hint"' in r.text
     r = ivan.get("/moja-clanarina")
     assert r.status_code == 200 and "<h1>Moja članarina</h1>" in r.text
@@ -137,7 +138,7 @@ def test_cash_member_sees_a_card_per_plan_the_plans_to_add_and_the_ledger():
 
     page = client_for("ivan@test.local").get("/moja-clanarina").text
     mine = section(page, "mcPlans")
-    assert "<h2 id=\"mcPlans\">Tvoji planovi</h2>" in mine
+    assert '<h2 id="mcPlans"><span class="t">Tvoji planovi</span></h2>' in mine   # a slot (clanarina.h.plans)
     # one card per plan, in PLAN_TYPES order, each saying it is active
     ids = re.findall(r'<section class="card plan-card is-active" id="plan-(\w+)"', mine)
     assert ids == ["grupni", "individualni", "online"]
@@ -236,18 +237,16 @@ def test_every_way_to_plans_and_money_leads_to_the_new_page():
     menu = page[page.index('id="userMenu"'):page.index('onclick="qmtToggleTheme()"')]
     assert menu.index('href="/profil"') < menu.index('href="/moja-clanarina"')
     assert "<span>Moja članarina</span>" in menu
-    # the timetable: one line per plan and a link, no table
-    m = db.memberships_for(uid)[0]
-    lines = page[page.index("<h2>Moja članarina</h2>"):]
-    lines = lines[:lines.index("</div>")]
-    assert f"Grupni trening · aktivna do {m.dospijece:{D}}" in text(lines)
-    assert '<a class="act" href="/moja-clanarina">Moja članarina →</a>' in lines
-    assert "mtable" not in page and "povijest plaćanja" not in page
-    set_membership(uid, "grupni", sessions_per_cycle=12)
-    assert "· 0/12" in text(ivan.get("/raspored").text)
+    # the timetable lists no plans since 18.10.2026 (the tab's page holds
+    # them): no block, no lines, no link of its own while a plan runs
+    for gone in ("<h2>Moja članarina", "Grupni trening · aktivna", "Moja članarina →",
+                 'class="hint gate-line"', "mtable", "povijest plaćanja"):
+        assert gone not in page, gone
+    # with none running, a lapsed plan's too, the booking gate's one line
     set_membership(uid, "grupni", next_payment=config.today() - timedelta(days=30))
-    lapsed = db.memberships_for(uid)[0]
-    assert f'<span class="lapsed">istekla <span class="num">{lapsed.dospijece:{D}}</span></span>' in ivan.get("/raspored").text
+    page = ivan.get("/raspored").text
+    assert '<p class="hint gate-line">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća. ' in page
+    assert "istekla" not in page                                      # the lapsed plan is the tab's to show
 
     # without a plan: the timetable, its month page and the plan gate's alert
     assert '<a class="btn btn-sm" href="/moja-clanarina">Pogledaj cjenik →</a>' in ana.get("/raspored").text
@@ -273,3 +272,99 @@ def test_every_way_to_plans_and_money_leads_to_the_new_page():
         assert ">Članarina</a>" not in page, path                          # the client's nav tab
         assert "Moja članarina →" not in page, path                        # the member links
         assert "<span>Moja članarina</span>" in page, path                 # the menu item
+
+
+# ---------- the page's own words (copy slots, 18.10.2026) ----------
+
+def test_the_headings_and_the_plans_names_are_the_owners_text_on_this_page_only():
+    """The page's own words are copy slots: its three headings and the
+    plans' names on its cards, a plan held and a plan to add. A name is this
+    page's own: edited to "Grupa", the cards here say it, while the pages
+    that name the app's records keep PLAN_LABELS, the trainer's /clanarine
+    and this page's ledger among them."""
+    make_user("ivan@test.local", plans=("grupni",))
+    make_user("sara@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    t = client_for("trener@test.local")
+    for key, txt in (("plan.grupni.name", "Grupa"), ("clanarina.h.plans", "Moji paketi"),
+                     ("clanarina.h.add", "Još planova"), ("clanarina.h.bills", "Uplate")):
+        assert t.post(f"/copy/{key}", data={"text": txt}).json() == {"ok": True, "text": txt, "default": False}, key
+
+    page = client_for("ivan@test.local").get("/moja-clanarina").text
+    assert '<h2 id="mcPlans"><span class="t">Moji paketi</span></h2>' in page
+    assert '<h3 id="pc-grupni"><span class="t">Grupa</span></h3>' in card(page, "grupni")   # his plan's card
+    assert '<h2 id="mcAdd"><span class="t">Još planova</span></h2>' in page
+    assert '<h2 id="mcBills"><span class="t">Uplate</span></h2>' in page
+    bills = section(page, "mcBills")
+    assert "Grupni trening" in bills and "Grupa<" not in bills       # the ledger names the record
+    sara = client_for("sara@test.local").get("/moja-clanarina").text
+    assert '<h3 class="plan-h"><span class="t">Grupa</span></h3>' in card(sara, "grupni")   # a plan to add
+    assert '<h3 class="plan-h"><span class="t">Individualni trening</span></h3>' in card(sara, "individualni")
+
+    clanarine = t.get("/clanarine").text                              # the app's own names stay
+    assert "<strong>Grupni trening</strong>" in clanarine and "Grupa<" not in clanarine
+    assert 'data-copy="plan.' not in clanarine                       # and are no slot there
+    editor = t.get("/moja-clanarina").text                           # the editor gets every one to open
+    for key in ("clanarina.h.plans", "clanarina.h.add", "clanarina.h.bills",
+                *(f"plan.{p}.name" for p in PLAN_TYPES)):
+        assert f'data-copy="{key}"' in editor, key
+
+
+def test_the_no_plan_card_is_the_owners_text_and_the_editor_sees_it_as_a_preview():
+    """A member without a plan sees the card in place of Tvoji planovi, its
+    two sentences the clanarina.none.* slots, and the empty ledger's line is
+    a slot too. The trainer and the owner hold no plans and are told no
+    membership talk, so the card would be on no page they open: an editor
+    gets it as a preview, in the section under its heading, after a caption
+    that says whose view it is (static, not a slot). The line under
+    "Pretplati se karticom" shows only while Stripe is configured; with card
+    payments off an editor gets it regardless, in every Dodaj plan card, and
+    a member never."""
+    make_user("sara@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    db.set_copy("clanarina.none.title", "Bez plana nema rezervacija.", None)
+    db.set_copy("clanarina.none.text", "Javi se u dvorani.", None)
+    db.set_copy("clanarina.bills.empty", "Nema uplata.", None)
+
+    page = client_for("sara@test.local").get("/moja-clanarina").text
+    none = _until_next(page, _tag_start(page, 'class="card mc-none"'), 'class="mc-sec"')
+    assert '<p><span class="t">Bez plana nema rezervacija.</span></p>' in none
+    assert '<p class="hint"><span class="t">Javi se u dvorani.</span></p>' in none
+    assert "Ovo vidi član bez članarine" not in page and 'aria-labelledby="mcPlans"' not in page
+    assert '<p class="hint"><span class="t">Nema uplata.</span></p>' in section(page, "mcBills")
+    assert copy.SLOTS["clanarina.card_hint"].default not in page    # no card payments, no card's line
+
+    page = client_for("trener@test.local").get("/moja-clanarina").text
+    plans = section(page, "mcPlans")                                 # heading, caption, the card
+    assert 'data-copy="clanarina.h.plans"' in plans and 'class="plan-cards"' not in plans
+    caption = plans.index('<p class="hint mc-preview">Ovo vidi član bez članarine:</p>')
+    preview = plans[plans.index('<div class="card mc-none">'):]
+    assert caption < plans.index('<div class="card mc-none">')
+    for key, txt in (("clanarina.none.title", "Bez plana nema rezervacija."), ("clanarina.none.text", "Javi se u dvorani.")):
+        assert f'data-copy="{key}"' in preview and f">{txt}</span>" in preview, key
+    assert 'data-copy="clanarina.bills.empty"' in section(page, "mcBills")
+    add = section(page, "mcAdd")
+    assert add.count('data-copy="clanarina.card_hint"') == len(PLAN_TYPES)
+    assert "Pretplati se karticom" not in add                       # still no card payments for anyone
+
+
+def test_the_trainers_page_leads_to_the_members_page():
+    """The trainer's and the owner's nav has no Članarina tab, and the
+    account menu's item was easy to miss (the owner, 18.10.2026: "How will
+    my friend be able to even change the 'moja članarina' tab then?"). So
+    /clanarine, their page for the members' payments, says under its lead
+    where the members' page is and that its texts and prices are edited
+    there; the menu item stays for both. A client never reaches /clanarine."""
+    make_user("ivan@test.local", plans=("grupni",))
+    make_user("trener@test.local")                                   # the owner (OWNER_EMAIL), not a trainer
+    make_user("coach@test.local", is_trainer=True)                   # a trainer
+    link = '<a class="act" href="/moja-clanarina">Moja članarina →</a>'
+    for email in ("coach@test.local", "trener@test.local"):
+        page = client_for(email).get("/clanarine").text
+        assert "Stranica koju vide članovi — cjenik, tekstovi i cijene uređuju se tamo:" in text(page), email
+        assert page.index("<h1>Članarine</h1>") < page.index(link), email
+        assert page.index(link) < page.index('href="/karton/'), email   # above the roster
+        assert "<span>Moja članarina</span>" in page, email           # the account menu's item
+    assert client_for("ivan@test.local").get("/clanarine").status_code == 403
+    r = TestClient(app).get("/clanarine", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"

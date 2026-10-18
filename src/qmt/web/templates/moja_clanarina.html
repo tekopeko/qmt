@@ -11,6 +11,9 @@
      for the plans not held; "Računi" the ledger. ===== */
   .mc-sec + .mc-sec, .mc-none + .mc-sec { margin-top: 34px; }
   .mc-sec > h2 { font-size: 1.05rem; margin-bottom: 12px; }
+  /* the headings, the no-plan card and the empty ledger's line are the
+     owner's text (copy slots): a long word breaks rather than widen the page */
+  .mc-sec > h2, .mc-sec > .hint, .mc-none { overflow-wrap: anywhere; }
 
   /* Tvoji planovi: one column, two from 1000px (as wide as "Dodaj plan") */
   .plan-cards { display: grid; gap: 14px; max-width: 1000px; }
@@ -76,6 +79,10 @@
   .mc-none { max-width: 640px; padding: 16px 20px; }
   .mc-none p:first-child { font-weight: 600; }
   .mc-none .hint { margin-top: 4px; }
+  /* an editor's view of that card (he holds no plans): a small muted caption
+     above it says whose view it is */
+  .mc-preview { font-size: .82rem; margin-bottom: 8px; }
+  .plan-cards + .mc-preview { margin-top: 18px; }
 
   /* Dodaj plan: the plans not held, smaller cards (the old cjenik's) */
   .plan-grid { display: grid; gap: 14px; max-width: 1000px; }
@@ -142,9 +149,21 @@
 <h1>Moja članarina</h1>
 <p class="hint">{{ c.t("cjenik.hint") }}</p>
 
-{% if plans %}
+{# A member without a plan sees this card instead of Tvoji planovi. The
+   trainer and the owner hold no plans and need no membership talk, but its
+   two sentences are slots, so an editor sees it too: as a preview under a
+   caption, in the section whose heading (a slot as well) a member sees only
+   above the plans he holds. #}
+{% set none_card %}
+<div class="card mc-none">
+  <p>{{ c.t("clanarina.none.title") }}</p>
+  <p class="hint">{{ c.t("clanarina.none.text") }}</p>
+</div>
+{% endset %}
+{% if plans or can_edit_copy %}
 <section class="mc-sec" aria-labelledby="mcPlans">
-  <h2 id="mcPlans">Tvoji planovi</h2>
+  <h2 id="mcPlans">{{ c.t("clanarina.h.plans") }}</h2>
+  {% if plans %}
   <div class="plan-cards">
   {% for p in plans %}
     {% set pr = prices.get(p.key) %}{% set cur = pp.currency(pr) %}
@@ -153,7 +172,7 @@
       <div class="pc-head">
         <div class="pc-name">
           <div class="pc-kicker">Paket</div>
-          <h3 id="pc-{{ p.key }}">{{ p.label }}</h3>
+          <h3 id="pc-{{ p.key }}">{{ c.t("plan." ~ p.key ~ ".name") }}</h3>
         </div>
         <span class="chip {{ p.chip[1] }}">{{ p.chip[0] }}</span>
       </div>
@@ -219,7 +238,7 @@
           <form method="post" action="/placanje/{{ p.key }}" class="switch">
             {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
             <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
-            <span class="hint">Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.</span>
+            <span class="hint">{{ c.t("clanarina.card_hint") }}</span>
           </form>
           {% endif %}
         {% endif %}
@@ -228,23 +247,25 @@
     </section>
   {% endfor %}
   </div>
+  {% endif %}
+  {% if can_edit_copy %}
+  <p class="hint mc-preview">Ovo vidi član bez članarine:</p>
+  {{ none_card }}
+  {% endif %}
 </section>
-{% elif not user.is_trainer %}{# the trainer and the owner have no plans and need no membership talk: they are here for the texts #}
-<div class="card mc-none">
-  <p>Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.</p>
-  <p class="hint">Za upis se javi treneru u dvorani — plaćanje gotovinom ili karticom.</p>
-</div>
+{% else %}
+{{ none_card }}
 {% endif %}
 
 {% if add_plans %}
 <section class="mc-sec" aria-labelledby="mcAdd">
-  <h2 id="mcAdd">Dodaj plan</h2>
+  <h2 id="mcAdd">{{ c.t("clanarina.h.add") }}</h2>
   <div class="plan-grid">
   {% for key in add_plans %}
     {% set pr = prices.get(key) %}{% set cur = pp.currency(pr) %}
     <div class="card plan{% if key == 'grupni' %} featured{% endif %}" id="plan-{{ key }}">
       {% if key == 'grupni' %}<span class="featured-tag">Najpopularnije</span>{% endif %}
-      <h3 class="plan-h">{{ plan_labels[key] }}</h3>
+      <h3 class="plan-h">{{ c.t("plan." ~ key ~ ".name") }}</h3>
       <p class="plan-desc">{{ c.t("cjenik." ~ key) }}</p>
       {{ pp.price(key) }}
       <div class="foot">
@@ -253,9 +274,14 @@
           {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
           <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
         </form>
-        <span class="hint">Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.</span>
+        <span class="hint">{{ c.t("clanarina.card_hint") }}</span>
       {% else %}
         <span class="hint">{{ c.t("cjenik.note") }}</span>
+        {# the line under "Pretplati se karticom", which shows only while
+           Stripe is configured: an editor gets it regardless (as
+           _plan_price.html gives him an empty note), or with card payments
+           off it would be on no page he can open #}
+        {% if can_edit_copy %}<span class="hint">{{ c.t("clanarina.card_hint") }}</span>{% endif %}
       {% endif %}
       </div>
     </div>
@@ -265,7 +291,7 @@
 {% endif %}
 
 <section class="mc-sec" aria-labelledby="mcBills">
-  <h2 id="mcBills">Računi</h2>
+  <h2 id="mcBills">{{ c.t("clanarina.h.bills") }}</h2>
   {% if has_portal %}
   {# Stripe's invoices, card and cancelling live in its portal: one door #}
   <form method="post" action="/placanje/portal" class="mc-portal">
@@ -286,7 +312,7 @@
     </tbody>
   </table></div></div>
   {% else %}
-  <p class="hint">Još nema zabilježenih uplata.</p>
+  <p class="hint">{{ c.t("clanarina.bills.empty") }}</p>
   {% endif %}
 </section>
 {% endblock %}

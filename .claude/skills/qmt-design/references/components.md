@@ -249,8 +249,15 @@ it in either section. **Računi**: a `.card.ledger` (max 640px) around an
 `.mtable`: date, the plan with the method as a muted second line (`.way`; four
 columns did not fit 360px once amounts show), the amount when any is known;
 `th` in the `dt` look; tighter below 420px; the wrapper scrolls only as a last
-resort. No membership at all: `.card.mc-none` with the calendar's sentence
-instead of Tvoji planovi.
+resort. No membership at all: `.card.mc-none` (its two sentences the
+`clanarina.none.*` slots) instead of Tvoji planovi. An editor holds no plans,
+so he sees that card as a preview inside the Tvoji planovi section, under its
+heading and a small muted caption, `.mc-preview` "Ovo vidi član bez
+članarine:" (.82rem). The page's own words are copy slots (18.10.2026): the
+three headings, the plans' names (both kinds of card's `h3`), the no-plan
+card, the line under "Pretplati se karticom" and the empty ledger's line;
+`overflow-wrap: anywhere` is under each, so a long word breaks rather than
+widen the page.
 
 **Profil (`profil.html`).** The basic-info form, then for a client one
 `.card.mc-link` holding an `.act` to `/moja-clanarina` ("Moja članarina —
@@ -272,17 +279,20 @@ through reloads, forms (`input[name=day]`, `data-shown-day` where the script
 keeps it current) and redirects. Without the script the phone shows every
 column as an agenda of cards, empty days saying "Nema termina". "Moje
 rezervacije" uses the row style there too (the day as a kicker line, the ✕ at
-the row's right end). "Moja članarina" is `ul.mlines`, one line per plan
-("Grupni trening · aktivna do 1.11.2026. · 5/12" for a tiered plan, or
-"istekla …" in `--danger`), then an `.act` "Moja članarina →" to
-`/moja-clanarina` (18.10.2026; a four-column `.mtable` before, which moved to
-that page's ledger). `.sess.mine` = accent tint + inset bar,
+the row's right end). The plans are not listed here: the "Moja članarina"
+block (`ul.mlines`, one line per plan and an `.act` to `/moja-clanarina`)
+went on 18.10.2026, that page holds them. A client with no plan running gets
+`.gate-line` under the termini instead: the `.hint` "Nemaš aktivnu članarinu
+— bez nje rezervacija nije moguća." and a `.btn.btn-sm` "Pogledaj cjenik →"
+in one wrapping flex row (the month note's idiom, 24px under the grid).
+`.sess.mine` = accent tint + inset bar,
 `.past`/`.canceled` at .45 opacity, `.today .day-head` red. A client's
 phone also has a month view (18.10.2026): `.view-switch` "Tjedan | Mjesec"
 opens `?view=month`, a page of its own (no grid, strip or sheet; the week's
 head keeps only its h1): the next-termin card, the switch, `.month-nav`, the
 `.month` grid of `.mday` links, its legend and "Članarina vrijedi do …", then
-"Moja članarina" and "Moje rezervacije" as on the week page.
+the gate line (a client with no plan running) and "Moje rezervacije" as on
+the week page.
 
 ## Scripts
 

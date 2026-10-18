@@ -72,6 +72,8 @@ import json
 import re
 from dataclasses import dataclass
 
+from .models import PLAN_LABELS
+
 CAP = 2000       # characters per text or list item, counted after clean()
 CAP_ITEMS = 12   # items per list
 
@@ -223,6 +225,32 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     "cjenik.online": Slot("Programi po tvojoj razini i cilju, s video uputama — gdje god jesi.", CAP, "Cjenik: online"),
     "cjenik.prehrana": Slot("Vođenje prehrane uz aplikaciju MojiMakrosi i zdrave recepte.", CAP, "Cjenik: prehrana"),
     "cjenik.note": Slot("Za upis se javi treneru u dvorani.", CAP, "Cjenik: napomena uz plan koji nemaš"),
+    # ---- moja članarina (18.10.2026): the rest of the page's own words ----
+    # The lead, the plans' texts and the prices are the cjenik.* and price.*
+    # slots above. Not slots: the sentences built around a date or a number
+    # (the status box, the chips, the facts and their captions) and the
+    # ledger's headers.
+    "clanarina.h.plans": Slot("Tvoji planovi", CAP, "Članarina: naslov · Tvoji planovi"),
+    "clanarina.h.add": Slot("Dodaj plan", CAP, "Članarina: naslov · Dodaj plan"),
+    "clanarina.h.bills": Slot("Računi", CAP, "Članarina: naslov · Računi"),
+    # the card a member without a plan sees instead of Tvoji planovi; an
+    # editor sees it too, under a caption, so its two sentences are in reach
+    "clanarina.none.title": Slot("Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.", CAP,
+                                 "Članarina: bez plana, prva rečenica"),
+    "clanarina.none.text": Slot("Za upis se javi treneru u dvorani — plaćanje gotovinom ili karticom.", CAP,
+                                "Članarina: bez plana, druga rečenica"),
+    # under "Pretplati se karticom", which shows only while Stripe is
+    # configured; an editor gets it regardless (moja_clanarina.html)
+    "clanarina.card_hint": Slot("Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.", CAP,
+                                "Članarina: uz plaćanje karticom"),
+    "clanarina.bills.empty": Slot("Još nema zabilježenih uplata.", CAP, "Članarina: nema uplata"),
+    # The plans' names on /moja-clanarina and nowhere else: the headings of
+    # its cards, a plan held and a plan to add. Their defaults are
+    # PLAN_LABELS, which stay fixed everywhere else, this page's ledger
+    # included: the timetable's rows, /clanarine, the emails and the alerts
+    # name the app's own records, and those do not change with the copy.
+    **{f"plan.{plan}.name": Slot(label, CAP, f"Članarina: naziv plana · {plan}")
+       for plan, label in PLAN_LABELS.items()},
     # ---- prehrana ----
     "prehrana.h1": Slot("Prehrana ide uz trening", CAP, "Prehrana: naslov"),
     "prehrana.note": Slot("Pristup je na poziv — javi se treneru ako se ne možeš registrirati.", CAP, "Prehrana: napomena"),
