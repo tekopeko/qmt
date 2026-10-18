@@ -524,12 +524,11 @@
        monthly price is the plan's own, else the slot.price / slot.unit text.
        note: a muted line under the price (none: no line). room: the line
        of the card beside it, whose room this one keeps without showing it
-       (an invisible copy, see .price-note). A plan's own price is its
-       Stripe Price once it has one (offer_prices, the plans in
-       stripe_priced), printed as it comes; else its reference price, the
-       price.<plan>.amount and .unit slots, which the gym owner retypes in
-       place. A guest sees no price at all while PUBLIC_PRICES=off, which
-       also hides the add-on's amount. #}
+       (an invisible copy, see .price-note). A plan's own price is the
+       owner's text, the price.<plan>.amount and .unit slots, which the gym
+       owner retypes in place; no Stripe Price prints instead (18.10.2026,
+       the owner's call). A guest sees no price at all while
+       PUBLIC_PRICES=off, which also hides the add-on's amount. #}
     {% macro offer(keys, slot, addon_at, featured=false, tier=false, real=true, note=none, room=none) -%}
       <div class="card offer{% if featured %} featured{% endif %}{% if keys | select('in', my_plans) | list %} mine{% endif %}">
         {% if featured %}<span class="featured-tag">Najpopularnije</span>{% endif %}
@@ -541,7 +540,7 @@
           {% if not show_prices %}<div class="price quiet">Cijene nakon prijave</div>
           {% else %}
             {% if real %}{% set plan = keys[0] %}
-            <div class="price"{% if tier %} data-period="month"{% endif %}>{% if plan in stripe_priced %}<b>{{ offer_prices[plan][0] }}</b><span>{{ offer_prices[plan][1] }}</span>{% else %}<b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b><span>{{ c.t("price." ~ plan ~ ".unit") }}</span>{% endif %}</div>
+            <div class="price"{% if tier %} data-period="month"{% endif %}><b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b><span>{{ c.t("price." ~ plan ~ ".unit") }}</span></div>
             {% else %}{{ text_price(slot ~ ".price", slot ~ ".unit", "month") }}{% endif %}
             {% if tier %}{{ text_price(slot ~ ".year_price", slot ~ ".year_unit", "year") }}{% endif %}
             {% if note is not none %}<p class="price-note">{{ note }}</p>
@@ -581,16 +580,15 @@
    plan exists for it, and the switch under them is one choice with the tiers'.
    Individualno names its other two prices under its own, in both periods;
    they used to follow its bullets, which are free text now. Each is the
-   plan's Stripe Price once it has one, else its reference price, the
-   price.<plan>.amount and .unit slots the gym owner retypes in place. A
+   owner's text, the price.<plan>.amount and .unit slots the gym owner
+   retypes in place (no Stripe Price instead, 18.10.2026). A
    price and its unit never part at a line break ("od 30 €" over "/ tretman"
    read as two things): non-breaking spaces join the amount, "€" and the
    unit, and the three are one inline block (.whole), so no break falls
    inside the owner's own text either while the price fits its line. #}
 {% macro note_price(plan) -%}
   <span class="whole">
-  {%- if plan in stripe_priced %}{{ (offer_prices[plan][0] ~ " " ~ offer_prices[plan][1]) | replace(" ", "\u00a0") }}
-  {%- else %}{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %}&nbsp;€{% endif %}&nbsp;{{ c.t("price." ~ plan ~ ".unit") }}{% endif -%}
+  {{- c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %}&nbsp;€{% endif %}&nbsp;{{ c.t("price." ~ plan ~ ".unit") -}}
   </span>
 {%- endmacro %}
 {% set gym_note %}u dvoje ili troje {{ note_price("poluindividualni") }} · rehabilitacija {{ note_price("rehabilitacija") }}{% endset %}

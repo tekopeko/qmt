@@ -103,8 +103,8 @@
   /* side by side, the description reserves its block, so the prices of a
      row sit on one line (tests/test_copy.py measures it) */
   @media (min-width: 700px) { .plan-desc { min-height: 3.9em; } }
-  /* the amount and unit are the owner's text when no Stripe Price exists
-     (the price slots): a long word breaks rather than widen the card */
+  /* the amount and unit are the owner's text (the price slots): a long
+     word breaks rather than widen the card */
   .plan .price { font: 800 1.25rem var(--font-body); overflow-wrap: anywhere; }
   .plan .price-hint { margin-top: -4px; }
   .plan .foot { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start;
@@ -158,7 +158,7 @@
         <span class="chip {{ p.chip[1] }}">{{ p.chip[0] }}</span>
       </div>
       <dl class="facts">
-        <div><dt>Cijena</dt><dd>{{ pp.price(p.key, prices, reference, p.tier) }}</dd></div>
+        <div><dt>Cijena</dt><dd>{{ pp.price(p.key) }}</dd></div>
         <div><dt>Uplaćeno</dt><dd>{{ paid_on }}</dd></div>
         <div><dt>Sljedeća uplata</dt><dd>{{ next_payment }}</dd></div>
         <div><dt>Vrijedi do</dt><dd>{{ dospijece }}</dd></div>
@@ -188,7 +188,9 @@
           {% endif %}
           {% set others = (pr.tiers | rejectattr("sessions", "equalto", p.tier.sessions) | list) if p.tier else [] %}
           {% if others %}
-          {# the other tiers, one click each — Stripe prorates the difference #}
+          {# the other tiers, one click each — Stripe prorates the difference.
+             Their amounts are Stripe's, what the card is charged after the
+             switch (as in _tiers.html); the Cijena above is the owner's text #}
           <div class="switch">
             <div class="pc-kicker">Promijeni paket</div>
             <div class="tiers">
@@ -244,7 +246,7 @@
       {% if key == 'grupni' %}<span class="featured-tag">Najpopularnije</span>{% endif %}
       <h3 class="plan-h">{{ plan_labels[key] }}</h3>
       <p class="plan-desc">{{ c.t("cjenik." ~ key) }}</p>
-      {{ pp.price(key, prices, reference) }}
+      {{ pp.price(key) }}
       <div class="foot">
       {% if key in sellable %}
         <form method="post" action="/placanje/{{ key }}">

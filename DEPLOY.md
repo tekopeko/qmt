@@ -25,7 +25,7 @@ is: new project → paste variables → repoint DNS. Nothing else is account-bou
    | `R2_ACCOUNT_ID` + `R2_ACCESS_KEY_ID` + `R2_SECRET_ACCESS_KEY` + `R2_BUCKET` | Cloudflare R2 media storage — all four together move uploads off Railway's ephemeral disk; `/media` then serves via presigned URLs. After setting them run `python scripts/migrate_media_to_r2.py` once. The announcements' photos live in the same bucket (names `aktualno-*`), served publicly by `/slika`, which proxies the bytes |
    | `CANCEL_CUTOFF_HOURS` | leave unset: a client may cancel a booking until 12 h before the termin (the default, the owner's call of 17.10.2026); a number of hours overrides it. A termin the trainer canceled can always be dropped. Booking itself stays open until the termin starts, up to `BOOKING_HORIZON_DAYS` (default 28) ahead |
    | `REMINDER_DAYS_BEFORE` | days before dospijeće the članarina email goes out (default 3). Reminders run in-process every 6 h; `python scripts/send_reminders.py` forces a pass |
-   | `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` | switch card subscriptions on. Test-mode keys work end to end (card `4242 4242 4242 4242`) |
+   | `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` | switch card subscriptions on. Test-mode keys work end to end (card `4242 4242 4242 4242`). **18.10.2026: the six test variables were removed from Railway** (the owner's call) so every price on the site is the owner's text (the price slots; the code prints only them since that day, keys or not). Re-adding them switches checkout back on, and the Prices must then be aligned to the slots first: checkout charges the Price, the site shows the slot |
    | `STRIPE_PRICE_<PLAN>` | one recurring **monthly** Price id per flat plan (`INDIVIDUALNI`, `POLUINDIVIDUALNI`, `REHABILITACIJA`, `ONLINE`, `PREHRANA`). A plan without one keeps the cash-only path |
    | `STRIPE_PRICE_GRUPNI_8` / `_12` / `_16` | grupni is tiered like the shop — one monthly Price per tier (60/70/80 € as of 6.9.2026). Booking counts against the tier's quota per cycle |
    | `PUBLIC_BASE_URL` | `https://qmt.mojimakrosi.com` |
@@ -93,9 +93,11 @@ volume contents. Half a day, no code changes.
 1. In the Stripe dashboard create the **Products**, each with a **recurring monthly
    Price** in EUR: one Product per flat plan, and for Grupni one Product with three
    Prices (8 / 12 / 16 treninga). Copy each Price id (`price_...`) into the matching
-   `STRIPE_PRICE_<PLAN>` / `STRIPE_PRICE_GRUPNI_<N>`. Reference amounts: the owner's
-   Shopify shop (grupni 60/70/80, individualni 35/trening, poluindividualni 25/trening,
-   online 50/mj, rehab from 30/tretman).
+   `STRIPE_PRICE_<PLAN>` / `STRIPE_PRICE_GRUPNI_<N>`. Amounts: the price slots, what
+   the site shows (the gym owner's text on the landing and `/moja-clanarina`, the one
+   truth since 18.10.2026); their defaults are the owner's Shopify shop (grupni
+   60/70/80, individualni 35/trening, poluindividualni 25/trening, online 50/mj, rehab
+   from 30/tretman).
 2. **Developers → Webhooks → Add endpoint**: `https://<domain>/stripe/webhook`, events
    `invoice.paid`, `customer.subscription.updated`, `customer.subscription.deleted`.
    Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.

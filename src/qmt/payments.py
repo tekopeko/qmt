@@ -2,7 +2,9 @@
 
 The contract with the rest of the app is deliberately thin:
 
-- /moja-clanarina shows Stripe's own Price amounts (cached), "na upit" without them.
+- /moja-clanarina's checkout tier picker and tier switch show Stripe's own Price
+  amounts (cached); every other price is the owner's text (the price slots,
+  18.10.2026: the site never prints a Stripe Price instead).
 - "Pretplati se" creates a Checkout Session in subscription mode; the user id
   and plan ride along as SUBSCRIPTION metadata, so every invoice Stripe ever
   raises for it can be traced back without trusting anything client-side.

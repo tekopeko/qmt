@@ -77,18 +77,24 @@ PLAN_LINKS = {
     "prehrana": ("/prehrana", "Otvori prehranu"),
 }
 
-# The reference prices (what the site says a plan costs until a Stripe Price
-# exists for it) and the MojiMakrosi add-on's amounts are copy slots since
-# 18.10.2026, price.<plan>.* and addon.*, which the gym owner edits in place;
-# their defaults are copy.REFERENCE_PRICES and copy.MOJIMAKROSI_ADDON, the
-# shop's numbers. Code reads them through these two, over the edited texts
+# The prices (what the site says a plan costs) and the MojiMakrosi add-on's
+# amounts are copy slots since 18.10.2026, price.<plan>.* and addon.*, which
+# the gym owner edits in place; their defaults are copy.REFERENCE_PRICES and
+# copy.MOJIMAKROSI_ADDON, the shop's numbers. They are every price a page
+# shows: no Stripe Price overrides them (the owner's call, 18.10.2026: his
+# friend's numbers are the truth, and Stripe's Prices are to be aligned to
+# them). Code reads them through these two, over the edited texts
 # (db.copy_texts(), the dict _ctx puts in a template as copy_texts); a
 # template prints the same slots with c.t(), so an editor can open them.
 
 def reference_prices(texts: dict[str, str]) -> dict[str, tuple[str, str, str]]:
-    """Plan -> (amount, unit, note), the reference price as the site says it:
-    the edited price.<plan>.* slots, else their defaults (no note: "")."""
+    """Plan -> (amount, unit, note), the price as the site says it: the
+    edited price.<plan>.* slots, else their defaults (no note: ""). A plan
+    with no note slot (prehrana: its hint is the add-on's amounts) has ""
+    for one, whatever site_copy may still hold under that key."""
     def text(key: str) -> str:
+        if key not in copy.SLOTS:
+            return ""
         return texts.get(key, copy.SLOTS[key].default)
     return {plan: (text(f"price.{plan}.amount"), text(f"price.{plan}.unit"), text(f"price.{plan}.note"))
             for plan in copy.REFERENCE_PRICES}
@@ -100,30 +106,6 @@ def addon_amounts(texts: dict[str, str]) -> dict[str, str]:
     return {where: texts.get(f"addon.{where}", copy.SLOTS[f"addon.{where}"].default)
             for where in copy.MOJIMAKROSI_ADDON}
 
-
-def _offer_prices(table: dict, texts: dict[str, str]) -> tuple[dict[str, tuple[str, str]], set[str]]:
-    """Plan -> (amount, unit) the way the landing's offer cards print it, and
-    the set of plans whose price is Stripe's. Same sources and order as
-    /moja-clanarina: the Stripe Price when one exists (that is what a
-    subscription charges; a tiered one shows its floor, "od 60 €", because a
-    card has room for one number), else the reference price as typed
-    (reference_prices). The landing prints a reference price through its
-    slots, so the gym owner can retype it; a Stripe one as it is here."""
-    out, stripe_priced = {}, set()
-    for plan, (ref, unit, _note) in reference_prices(texts).items():
-        pr = table.get(plan)
-        cur = "€" if not pr or pr.get("currency", "EUR") == "EUR" else pr["currency"]
-        if pr and pr.get("tiers"):
-            out[plan] = (f"od {pr['tiers'][0]['amount']:.0f} {cur}", "/ mjesečno")
-            stripe_priced.add(plan)
-        elif pr:
-            amount = pr["amount"]
-            text = f"{amount:.0f}" if amount == int(amount) else f"{amount:.2f}".replace(".", ",")
-            out[plan] = (f"{text} {cur}", "/ mjesečno")
-            stripe_priced.add(plan)
-        else:
-            out[plan] = (f"{ref} €", unit)
-    return out, stripe_priced
 
 
 def _safe_next(nxt: str | None) -> str:
@@ -585,7 +567,6 @@ def landing(request: Request):
     # members always see prices; guests see them unless PUBLIC_PRICES=off
     show_prices = bool(user) or config.prices_public()
     texts = db.copy_texts()
-    offer_prices, stripe_priced = _offer_prices(payments.price_table(), texts) if show_prices else ({}, set())
     # the announcements (#aktualno): a visitor's are the shown ones; an
     # editor's every one, a hidden one marked off, and "+ Dodaj najavu"
     # while there is room for another
@@ -593,8 +574,7 @@ def landing(request: Request):
     news = db.announcements(all=editor)
     return templates.TemplateResponse(request, "landing.html", _ctx(
         request, user, copy_texts=texts, gallery=gallery, my_plans=plans,
-        show_prices=show_prices, offer_prices=offer_prices, stripe_priced=stripe_priced,
-        addon=addon_amounts(texts), announcements=news,
+        show_prices=show_prices, announcements=news,
         can_add=editor and len(news) < db.MAX_ANNOUNCEMENTS))
 
 
@@ -647,8 +627,8 @@ def cjenik(request: Request):
 def _subscribed_tier(m, table: dict) -> dict | None:
     """The tier ({"sessions", "amount"}) a card subscription of a tiered plan
     pays for, from Stripe's prices; None for cash, a flat plan, or no prices.
-    The plan's card shows ITS price rather than the range, and the tier
-    switch offers the others."""
+    The tier switch offers the others. The card's Cijena is the price slots
+    like every price since 18.10.2026; its Paket fact says the tier."""
     pr = table.get(m.plan)
     if not (m.stripe_subscription_id and pr and pr.get("tiers")):
         return None
@@ -670,9 +650,12 @@ def moja_clanarina(request: Request):
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/moja-clanarina')}", status_code=303)
     # the trainer and the owner see it too, with no plans of their own: it is
-    # where they edit the plans' texts in place (copy slots cjenik.*, and the
-    # reference prices, price.<plan>.*)
+    # where they edit the plans' texts in place (copy slots cjenik.*, the
+    # prices, price.<plan>.*, and the add-on's amounts, addon.*)
     today = config.today()
+    # Stripe's Prices, for the forms that charge them only: the tier picker
+    # in a checkout form and a subscriber's tier switch. Every price line
+    # prints the slots (_plan_price.html).
     table = payments.price_table()
     texts = db.copy_texts()
     memberships = db.memberships_for(user.id)
@@ -710,7 +693,7 @@ def moja_clanarina(request: Request):
     return templates.TemplateResponse(request, "moja_clanarina.html", _ctx(
         request, user, copy_texts=texts, plans=plans,
         add_plans=[p for p in PLAN_TYPES if p not in held],
-        plan_labels=PLAN_LABELS, prices=table, reference=reference_prices(texts),
+        plan_labels=PLAN_LABELS, prices=table,
         sellable=payments.sellable_plans(),
         ledger=ledger, show_amounts=any(r["amount"] is not None for r in ledger),
         # the portal manages a subscription — a customer record alone (a

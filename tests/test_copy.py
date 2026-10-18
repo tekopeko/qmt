@@ -585,8 +585,9 @@ def test_the_migration_folds_the_old_bullet_slots_into_lists():
 
 def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
     """Every slot is on a page the editor opens, so none is out of his reach.
-    It may be on more than one (18.10.2026): a reference price
-    (price.<plan>.*) prints on the landing's card and on /moja-clanarina,
+    It may be on more than one (18.10.2026): a price (price.<plan>.*)
+    prints on the landing's card and on /moja-clanarina, and so does an
+    add-on amount (addon.*: the landing's cards, the prehrana plan's hint),
     one fact in both places, and a save updates every copy of it on the
     page it is made on. A list, a switch and a photo keep their shape on
     each page they are on; a visitor and a client get no editor markup, the
@@ -622,14 +623,16 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
 
 # The reference table as app.py held it until 18.10.2026, when it became the
 # price slots' defaults (copy.REFERENCE_PRICES, no note as ""): what the site
-# said before anyone edited a price.
+# said before anyone edited a price. Less prehrana's note ("3 € uz dvoranu,
+# 5 € uz online"), which left the registry the same day: its hint is the
+# add-on's two amounts (the addon.* slots), so each is typed in one place.
 SHOP = {
     "grupni": ("60–80", "/ paket", "8, 12 ili 16 treninga"),
     "individualni": ("35", "/ trening", ""),
     "poluindividualni": ("25", "/ trening", ""),
     "rehabilitacija": ("od 30", "/ tretman", "paketi od 5 i 10 tretmana"),
     "online": ("50", "/ mjesečno", ""),
-    "prehrana": ("od 3", "/ mjesečno", "3 € uz dvoranu, 5 € uz online"),
+    "prehrana": ("od 3", "/ mjesečno", ""),
 }
 
 
@@ -644,19 +647,25 @@ def test_the_price_slots_start_as_the_shops_prices():
     editor opens like any other: per plan an amount, a unit and a note, and
     the MojiMakrosi add-on's amount beside online and beside the dvorana.
     Their defaults are the table the site printed before, so nothing says a
-    different price until someone edits one; the edited text wins."""
+    different price until someone edits one; the edited text wins. Prehrana
+    has no note slot: a row the old one may have left is never read."""
     assert set(SHOP) == set(PLAN_TYPES)
     for plan, parts in SHOP.items():
         for part, label, default in zip(("amount", "unit", "note"), ("iznos", "jedinica", "napomena"), parts):
+            if (plan, part) == ("prehrana", "note"):     # its hint is the add-on's amounts
+                assert f"price.{plan}.{part}" not in copy.SLOTS
+                continue
             slot = copy.SLOTS[f"price.{plan}.{part}"]
             assert type(slot) is copy.Slot and slot.max == copy.CAP, (plan, part)
             assert slot.default == default and slot.label == f"Cijena · {plan}: {label}", (plan, part)
     assert copy.SLOTS["addon.online"] == copy.Slot("5", copy.CAP, "MojiMakrosi dodatak uz online (€)")
     assert copy.SLOTS["addon.dvorana"] == copy.Slot("3", copy.CAP, "MojiMakrosi dodatak uz dvoranu (€)")
     assert reference_prices({}) == SHOP and addon_amounts({}) == {"dvorana": "3", "online": "5"}
-    edited = {"price.online.amount": "45", "price.grupni.note": "Paketi", "addon.dvorana": "4"}
+    edited = {"price.online.amount": "45", "price.grupni.note": "Paketi", "addon.dvorana": "4",
+              "price.prehrana.note": "3 € uz dvoranu"}
     assert reference_prices(edited)["online"] == ("45", "/ mjesečno", "")
     assert reference_prices(edited)["grupni"] == ("60–80", "/ paket", "Paketi")
+    assert reference_prices(edited)["prehrana"] == ("od 3", "/ mjesečno", "")
     assert addon_amounts(edited) == {"dvorana": "4", "online": "5"}
 
 
@@ -671,9 +680,10 @@ def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     """The gym owner retypes a price in place and it shows, as typed with
     " €" after it, wherever that plan's price does: QMove START's card on the
     landing and the online plan's card on /moja-clanarina. The add-on's
-    amount the same, on both gym cards; Individualno's line reads the two
-    other plans' slots. "Zadano" brings the shop's number back and leaves
-    no row."""
+    amount the same, on both gym cards and in the prehrana plan's hint on
+    /moja-clanarina (one slot, no number of its own there); Individualno's
+    line reads the two other plans' slots. "Zadano" brings the shop's number
+    back and leaves no row."""
     make_user("ivan@test.local", plans=("online",)); make_user("trener@test.local", is_trainer=True)
     t = client_for("trener@test.local")
     for key, text in (("price.online.amount", "45"), ("addon.dvorana", "4"),
@@ -689,8 +699,9 @@ def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     for c in (dvorana, individualno):
         assert '+<span class="t">4</span> € / mjesečno' in c
     assert "u dvoje ili troje 28 € / trening · rehabilitacija od 30 € / dolazak" in shown(individualno)
-    online = card_on(client_for("ivan@test.local").get("/moja-clanarina").text, "online")
-    assert "Cijena 45 € / mjesečno" in shown(online)
+    mine = client_for("ivan@test.local").get("/moja-clanarina").text
+    assert "Cijena 45 € / mjesečno" in shown(card_on(mine, "online"))
+    assert "od 3 € / mjesečno 4 € uz dvoranu, 5 € uz online" in shown(card_on(mine, "prehrana"))
 
     page = t.get("/").text                                                  # the editor gets them as slots
     start = page.split('id="usluge"')[1].split('class="card offer')[1]
@@ -699,7 +710,11 @@ def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     individualno = page.split('id="dvorana"')[1].split('class="card offer')[2]
     for key in ("poluindividualni.amount", "poluindividualni.unit", "rehabilitacija.amount", "rehabilitacija.unit"):
         assert f'data-copy="price.{key}"' in individualno.split('class="price-note"')[1], key
-    assert 'data-copy="price.online.amount"' in t.get("/moja-clanarina").text
+    mc = t.get("/moja-clanarina").text
+    assert 'data-copy="price.online.amount"' in mc
+    prehrana = card_on(mc, "prehrana")                                      # its hint: the two add-on slots
+    assert 'data-copy="addon.dvorana"' in prehrana and 'data-copy="addon.online"' in prehrana
+    assert "price.prehrana.note" not in mc
 
     r = t.post("/copy/price.online.amount", data={"reset": "1"})            # Zadano: the shop's 50, no row
     assert r.json() == {"ok": True, "text": "50", "default": True} and "price.online.amount" not in db.copy_texts()

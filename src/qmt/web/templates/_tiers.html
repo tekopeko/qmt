@@ -1,4 +1,10 @@
-{# tier picker for a plan sold in N treninga a month — used inside the /placanje form #}
+{# tier picker for a plan sold in N treninga a month — used inside the /placanje form.
+   Its amounts are Stripe's, what the card will be charged at checkout, and it
+   shows only inside the form that charges them. Every other price on the site
+   is the owner's text (the price slots, _plan_price.html; 18.10.2026). Until
+   the prices live in one place (the owner's plan: Stripe's Prices aligned to
+   the slots), this picker is the one spot that shows a Stripe amount, beside
+   a subscriber's tier switch on /moja-clanarina, which charges the same Prices. #}
 <div class="tiers" role="radiogroup" aria-label="Broj treninga mjesečno">
   {% for t in pr.tiers %}
   <label><input type="radio" name="sessions" value="{{ t.sessions }}" {% if loop.index == 2 %}checked{% endif %}>

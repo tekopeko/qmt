@@ -1,34 +1,31 @@
 {# A plan's price, the way /moja-clanarina prints it in both its sections
-   (moved from the old cjenik.html, 18.10.2026). Source order: Stripe's Price
-   when one exists (that is what the card button charges), else the
-   reference price in the shop's own unit: the price.<plan>.amount / .unit /
-   .note copy slots (src/qmt/copy.py, defaults REFERENCE_PRICES), printed
-   with c.t() so the gym owner retypes them in place, the amount as typed
-   with " €" after it. `reference` is app.reference_prices(): the same texts,
-   read here only to know whether a note is there.
-   `tier` is the tier a card subscription pays for ({sessions, amount}; the
-   route finds it): a subscriber sees ITS price, not the range, which is for
-   shoppers. Under the price a muted hint: the tiers on sale, or the
-   reference's note (for an editor an empty note too, so he can fill it).
-   Use: {% import "_plan_price.html" as pp with context %} … {{ pp.price(key, prices, reference, tier) }}
+   (moved from the old cjenik.html, 18.10.2026). It is the owner's text and
+   nothing else, Stripe configured or not, a card subscriber's own plan too
+   (his tier is the card's Paket fact): since 18.10.2026 no Stripe Price
+   prints instead (the owner's call: his friend's numbers are the truth).
+   The price.<plan>.amount / .unit copy slots (src/qmt/copy.py, defaults
+   REFERENCE_PRICES), printed with c.t() so the gym owner retypes them in
+   place, the amount as typed with " €" after it when it holds a number.
+   Under the price a muted hint: the price.<plan>.note slot (for an editor an
+   empty note too, so he can fill it). Prehrana has no note of its own: its
+   hint is the MojiMakrosi add-on's two amounts, the addon.* slots the
+   landing's offer cards print, so an edit to either shows here too. The only
+   Stripe amounts on the page are inside the forms that charge them: the
+   tier picker (_tiers.html) and a subscriber's tier switch.
+   Use: {% import "_plan_price.html" as pp with context %} … {{ pp.price(key) }}
    (with context: the slots need the page's copy_texts and can_edit_copy) #}
 {% import "_copy.html" as c with context %}
 
-{# the currency sign of a Stripe price ("€" for EUR and for no price at all) #}
+{# the currency sign of a Stripe price ("€" for EUR and for no price at all):
+   the tier picker's and the tier switch's (_tiers.html, moja_clanarina.html) #}
 {% macro currency(pr) -%}
   {{- "€" if not pr or pr.currency == "EUR" else pr.currency -}}
 {%- endmacro %}
 
-{% macro price(key, prices, reference, tier=none) -%}
-  {%- set pr = prices.get(key) -%}{%- set ref = reference[key] -%}{%- set cur = currency(pr) -%}
-  <div class="price">
-    {%- if tier %}{{ "%.0f"|format(tier.amount) }} {{ cur }} <small>/ mjesečno · {{ tier.sessions }}&nbsp;treninga</small>
-    {%- elif pr and pr.tiers %}{{ "%.0f"|format(pr.tiers[0].amount) }}–{{ "%.0f"|format(pr.tiers[-1].amount) }} {{ cur }} <small>/ mjesečno</small>
-    {%- elif pr %}{{ "%.2f"|format(pr.amount)|replace(".", ",") }} {{ cur }} <small>/ mjesečno</small>
-    {%- else %}{{ c.t("price." ~ key ~ ".amount") }}{% if copy_text("price." ~ key ~ ".amount", copy_texts) is priced %} €{% endif %} <small>{{ c.t("price." ~ key ~ ".unit") }}</small>{% endif -%}
-  </div>
-  {%- if tier %}
-  {%- elif pr and pr.tiers %}<div class="hint price-hint">{{ pr.tiers|map(attribute="sessions")|join(", ") }} treninga mjesečno</div>
-  {%- elif not pr and (ref[2] or can_edit_copy) %}<div class="hint price-hint">{{ c.t("price." ~ key ~ ".note") }}</div>
+{% macro price(key) -%}
+  {%- set amount = "price." ~ key ~ ".amount" -%}
+  <div class="price">{{ c.t(amount) }}{% if copy_text(amount, copy_texts) is priced %} €{% endif %} <small>{{ c.t("price." ~ key ~ ".unit") }}</small></div>
+  {%- if key == "prehrana" %}<div class="hint price-hint">{{ c.t("addon.dvorana") }} € uz dvoranu, {{ c.t("addon.online") }} € uz online</div>
+  {%- elif copy_text("price." ~ key ~ ".note", copy_texts) or can_edit_copy %}<div class="hint price-hint">{{ c.t("price." ~ key ~ ".note") }}</div>
   {%- endif %}
 {%- endmacro %}

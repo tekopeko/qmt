@@ -140,7 +140,8 @@ statement (green = have, grey = open, amber = absence, red = act) but never
 carries it alone — a razina badge says "Razina 2 od 3" under its colour ramp.
 Only offer what the user can actually do: a guest never sees "Rezerviraj termin",
 a plan-less client never sees a booking CTA, a subscribed client sees their own
-tier's price rather than the range.
+tier named (Paket "12 treninga mjesečno") and only the other tiers offered. A
+price is always the owner's text, a subscriber's too (18.10.2026).
 
 ## Modals and prompts
 

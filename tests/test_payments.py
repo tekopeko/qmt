@@ -279,22 +279,32 @@ def test_no_double_subscription_and_portal_needs_a_customer(stripe_on):
     assert stripe_on["calls"]["portal_kw"]["return_url"].endswith("/moja-clanarina")
 
 
-def test_dodaj_plan_shows_stripe_prices_or_the_reference(stripe_on, monkeypatch):
+def test_dodaj_plan_shows_the_owners_prices_stripe_or_not(stripe_on, monkeypatch):
+    """Dodaj plan's prices are the owner's text, the price slots, Stripe
+    configured or not (18.10.2026). Stripe has online at 55 € and grupni's
+    tiers at 60 / 70 / 80 €: online still says 50 € (sold by card all the
+    same) and 55 € is nowhere; grupni says its slot and its note, and only
+    the tier picker inside its checkout form, which charges the card, shows
+    Stripe's amounts."""
     make_user("ivan@test.local")
     r = client_for("ivan@test.local").get("/moja-clanarina")
     assert r.status_code == 200
     page = r.text
-    assert "55,00 €" in page and "Pretplati se karticom" in page   # Stripe's price, per month
-    assert "60–80 €" in page and 'name="sessions" value="12"' in page   # tiered: range + picker
-    assert "35 € / trening" in _text(page)                 # reference price where no Stripe price
+    online, grupni = _card(page, "online"), _card(page, "grupni")
+    assert "50 € / mjesečno" in _text(online) and ">Pretplati se karticom</button>" in online
+    assert "55 €" not in page and "55,00 €" not in page             # Stripe's online price: nowhere
+    assert "60–80 € / paket 8, 12 ili 16 treninga" in _text(grupni)  # the slot and its note
+    assert "8, 12, 16 treninga mjesečno" not in _text(page)          # not the hint built from Stripe's tiers
+    assert 'name="sessions" value="12"' in grupni and "12 treninga · 70 €" in _text(grupni)   # the picker, in the form
+    assert "35 € / trening" in _text(page)
     assert "od 3 € / mjesečno 3 € uz dvoranu, 5 € uz online" in _text(page)   # prehrana: the MojiMakrosi add-on, 3 or 5 €
 
-    monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "")   # unconfigured: reference prices only
+    monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "")   # unconfigured: the same prices, no card
     payments._price_cache = (0.0, {})
     r = client_for("ivan@test.local").get("/moja-clanarina")
     assert r.status_code == 200, r.text[-400:]
     page = r.text
-    assert "55,00 €" not in page and "Pretplati se" not in page
+    assert "Pretplati se" not in page and 'name="sessions"' not in page
     assert "50 € / mjesečno" in _text(page) and "60–80 € / paket" in _text(page)   # the shop's numbers
     assert "Za upis se javi treneru" in page              # the cash-only copy
 
@@ -329,7 +339,8 @@ def test_moja_clanarina_follows_how_each_plan_is_paid(stripe_on):
     page = c.get("/moja-clanarina").text
     g = _card(page, "grupni")
     assert '<span class="chip ok">aktivna</span>' in g
-    assert "Cijena 70 € / mjesečno · 12&nbsp;treninga" in _text(g)   # its own tier, not the range
+    assert "Cijena 60–80 € / paket" in _text(g) and "70 €" not in g   # the owner's price, not Stripe's tier
+    assert "Paket 12 treninga mjesečno" in _text(g)                # his tier: a fact of its own
     assert f"Pretplata se obnavlja automatski {m['grupni'].next_payment:%-d.%-m.%Y.} karticom." in _text(g)
     assert 'href="/raspored">Rezerviraj termin →</a>' in g
     assert '<button type="submit" class="act">Kartica, računi, otkazivanje</button>' in g
@@ -379,34 +390,52 @@ def test_moja_clanarina_offers_the_card_for_a_cash_plan_a_lapsed_one_and_one_not
     assert "Stripe portalu" not in page                            # no subscription: no portal
 
 
-def test_a_stripe_price_wins_over_the_editable_reference_on_the_landing(stripe_on, monkeypatch):
-    """The reference prices are copy the gym owner retypes in place since
-    18.10.2026 (the price.<plan>.* slots); once a plan has a Stripe Price,
-    that prints instead, as Stripe has it (it is what a subscription
-    charges), and nothing of it is editable. Only the online plan has one
-    at first: QMove START says 55 €, while PRO and ELITE keep their own
-    price texts and the gym's cards their reference slots. Then grupni's
-    tiers too: the Dvorana card shows their floor, "od 60 €" (a card has
-    room for one number), where the reference printed "60–80" as typed."""
-    monkeypatch.setattr(config, "STRIPE_TIER_PRICES", {"grupni": {8: "", 12: "", 16: ""}})   # online only
+def test_the_owners_prices_print_everywhere_even_with_stripe_prices(stripe_on, monkeypatch):
+    """Every price the site shows is the owner's text, the price.<plan>.*
+    slots the gym owner retypes in place, even for a plan with a Stripe
+    Price (18.10.2026, the owner's call, reversing that morning's "a Stripe
+    Price wins": "for now the absolute truth is what my friend adds";
+    Stripe's Prices are to be aligned to the slots later, in one place).
+    Stripe has online at 55 € and grupni's tiers at 60 / 70 / 80 €: the
+    landing never asks it, QMove START says the slot's 50 €, editable, the
+    Dvorana card its 60–80 €, and no 55 € or "od 60 €" is anywhere on it.
+    On /moja-clanarina a card subscriber's grupni says the slot too, his
+    tier its Paket fact; Stripe's amounts are only inside the forms that
+    charge them, his tier switch here (the checkout picker: Dodaj plan)."""
+    asked = []                                                     # every look at Stripe's prices
+    price_table = payments.price_table
+    monkeypatch.setattr(payments, "price_table", lambda: asked.append(1) or price_table())
     make_user("trener@test.local")                                 # the owner, who edits the texts
     t = client_for("trener@test.local")
-    page = t.get("/").text
-    offer, gym = page.split('id="usluge"')[1].split('id="dvorana"')
-    start, pro, elite = offer.split('class="card offer')[1:]
-    assert "55 € / mjesečno" in _text(start) and "50 €" not in _text(start)
-    assert 'data-copy="price.online.' not in page                  # Stripe's number: nothing to edit
-    assert 'data-copy="offer.online2.price"' in pro and 'data-copy="offer.online3.price"' in elite
+    for c in (t, TestClient(app)):                                 # the editor's landing, a visitor's
+        page = c.get("/").text
+        offer, gym = page.split('id="usluge"')[1].split('id="dvorana"')
+        start = offer.split('class="card offer')[1]
+        dvorana, individualno = gym.split('class="card offer')[1:3]
+        assert "50 € / mjesečno" in _text(start) and "60–80 € / paket" in _text(dvorana)
+        assert "35 € / trening" in _text(individualno)
+        assert "55 €" not in page and "od 60" not in page          # no Stripe number, no floor of its tiers
+    assert asked == []                                             # the public page asks Stripe nothing
+    start = page.split('id="usluge"')[1].split('class="card offer')[1]
+    assert '<b><span class="t">50</span> €</b>' in start           # a visitor's: the slot's text
+    page = t.get("/").text                                         # the editor's: every price a slot he opens
+    assert 'data-copy="price.online.amount"' in page.split('id="usluge"')[1].split('class="card offer')[1]
     for plan in ("grupni", "individualni", "poluindividualni", "rehabilitacija"):
-        assert f'data-copy="price.{plan}.amount"' in gym, plan      # the gym's: the reference, editable
-    assert "60–80 € / paket" in _text(gym)
+        assert f'data-copy="price.{plan}.amount"' in page.split('id="dvorana"')[1], plan
 
-    payments._price_cache = (0.0, {})                              # grupni sold by card in tiers too
-    monkeypatch.setattr(config, "STRIPE_TIER_PRICES", {"grupni": {8: "price_g8", 12: "price_g12", 16: "price_g16"}})
-    gym = t.get("/").text.split('id="dvorana"')[1]
-    dvorana, individualno = gym.split('class="card offer')[1:3]
-    assert "od 60 € / mjesečno" in _text(dvorana) and 'data-copy="price.grupni.' not in dvorana
-    assert 'data-copy="price.individualni.amount"' in individualno and "35 € / trening" in _text(individualno)
+    ivan = make_user("ivan@test.local")
+    stripe_on["subs"]["sub_1"] = {"id": "sub_1", "metadata": {"qmt_user_id": str(ivan), "qmt_plan": "grupni"}}
+    post_event(invoice_paid("in_1", "sub_1", cents=7000))          # grupni by card, 12 treninga at 70 €
+    page = client_for("ivan@test.local").get("/moja-clanarina").text
+    g = _card(page, "grupni")
+    cijena = g[g.index("<dt>Cijena</dt>"):g.index("<dt>Uplaćeno</dt>")]
+    assert '<span class="t">60–80</span> € <small><span class="t">/ paket</span></small>' in cijena
+    assert "Paket 12 treninga mjesečno" in _text(g) and "70 €" not in g
+    assert ">8 treninga · 60 €</button>" in g and ">16 treninga · 80 €</button>" in g   # the switch: Stripe's
+    assert asked                                                   # (read for those forms only)
+    online = _card(page, "online")                                 # not held, sold by card
+    assert "50 € / mjesečno" in _text(online) and ">Pretplati se karticom</button>" in online
+    assert "55 €" not in page and "55,00 €" not in page
 
 
 def test_disabled_stripe_touches_nothing(monkeypatch):
@@ -426,8 +455,8 @@ def test_tier_change_goes_through_stripe_and_updates_the_quota(stripe_on):
     c = client_for("ivan@test.local")
 
     page = c.get("/moja-clanarina").text
-    assert "70 €" in page and "12 treninga" in page            # its OWN price, not the range
-    assert "60–80 €" not in page
+    assert "Paket 12 treninga mjesečno" in _text(page)          # his tier: the Paket fact
+    assert "Cijena 60–80 € / paket" in _text(page) and "70 €" not in page   # the price: the owner's text
     assert 'action="/placanje/grupni/promjena"' in page
     assert "16 treninga · 80 €" in page and "8 treninga · 60 €" in page
 
