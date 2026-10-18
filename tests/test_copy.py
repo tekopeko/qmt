@@ -1,7 +1,8 @@
 """In-place editable copy: src/qmt/copy.py (the slots and their caps),
 POST /copy/{key} (the save), _copy.html (the macros), the editor in base.html,
-the announcements' photos (POST /copy/{key}/slika, GET /slika/{name}), and
-the migration that turned the offer cards' bullets into lists.
+the announcements' photos (POST /copy/{key}/slika, GET /slika/{name}), the
+reference prices (the price.<plan>.* and addon.* slots), and the migration
+that turned the offer cards' bullets into lists.
 
 The browser half is the net under the texts. Their design limits were lifted
 on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
@@ -27,6 +28,7 @@ import re
 import threading
 import time
 from datetime import date
+from html import unescape
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
 os.environ["ALLOWED_EMAILS"] = "ivan@test.local"
@@ -38,8 +40,8 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from qmt import auth, config, copy, db
-from qmt.models import Base, User
-from qmt.web.app import app
+from qmt.models import PLAN_TYPES, Base, User
+from qmt.web.app import addon_amounts, app, reference_prices
 
 PAGES = ("/", "/moja-clanarina", "/prehrana")  # every page that has editable text
 
@@ -376,16 +378,21 @@ def test_the_migration_folds_the_old_bullet_slots_into_lists():
     assert texts["offer.individualno.p2"] == "U paru" and not [k for k in texts if k.endswith(".points")]
 
 
-def test_every_slot_is_on_exactly_one_page_and_only_editors_see_the_editor():
+def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
+    """Every slot is on a page the editor opens, so none is out of his reach.
+    It may be on more than one (18.10.2026): a reference price
+    (price.<plan>.*) prints on the landing's card and on /moja-clanarina,
+    one fact in both places, and a save updates every copy of it on the
+    page it is made on. A list, a switch and a photo keep their shape on
+    each page they are on; a visitor and a client get no editor markup."""
     make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
-    t = client_for("trener@test.local"); seen: dict[str, str] = {}
+    t = client_for("trener@test.local"); seen: dict[str, list[str]] = {}
     for path in PAGES:
         page = t.get(path).text
         assert 'id="copyToggle"' in page, path
         for key, slot in copy.SLOTS.items():
             if f'data-copy="{key}"' in page:
-                assert key not in seen, f"{key} is on {seen[key]} and {path}"
-                seen[key] = path
+                seen.setdefault(key, []).append(path)
                 if isinstance(slot, copy.ListSlot):     # one list, an editable span per item
                     assert page.count(f'data-list="{key}"') == 1, key
                     assert page.count(f'data-copy="{key}"') == len(slot.default), key
@@ -402,6 +409,94 @@ def test_every_slot_is_on_exactly_one_page_and_only_editors_see_the_editor():
                 for mark in ("data-copy", "copyToggle", "data-list", 'class="ed-x"', 'ed-add"', 'class="ed-flag"', "data-flag",
                              'class="ed-img"', "data-image"):
                     assert mark not in page, (path, mark)
+
+
+# ---------- the reference prices ----------
+
+# The reference table as app.py held it until 18.10.2026, when it became the
+# price slots' defaults (copy.REFERENCE_PRICES, no note as ""): what the site
+# said before anyone edited a price.
+SHOP = {
+    "grupni": ("60–80", "/ paket", "8, 12 ili 16 treninga"),
+    "individualni": ("35", "/ trening", ""),
+    "poluindividualni": ("25", "/ trening", ""),
+    "rehabilitacija": ("od 30", "/ tretman", "paketi od 5 i 10 tretmana"),
+    "online": ("50", "/ mjesečno", ""),
+    "prehrana": ("od 3", "/ mjesečno", "3 € uz dvoranu, 5 € uz online"),
+}
+
+
+def shown(html: str) -> str:
+    """What a reader sees of some markup: tags dropped, entities read,
+    whitespace (a non-breaking space too) collapsed."""
+    return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html))).strip()
+
+
+def test_the_price_slots_start_as_the_shops_prices():
+    """The reference prices are copy slots since 18.10.2026, plain texts the
+    editor opens like any other: per plan an amount, a unit and a note, and
+    the MojiMakrosi add-on's amount beside online and beside the dvorana.
+    Their defaults are the table the site printed before, so nothing says a
+    different price until someone edits one; the edited text wins."""
+    assert set(SHOP) == set(PLAN_TYPES)
+    for plan, parts in SHOP.items():
+        for part, label, default in zip(("amount", "unit", "note"), ("iznos", "jedinica", "napomena"), parts):
+            slot = copy.SLOTS[f"price.{plan}.{part}"]
+            assert type(slot) is copy.Slot and slot.max == copy.CAP, (plan, part)
+            assert slot.default == default and slot.label == f"Cijena · {plan}: {label}", (plan, part)
+    assert copy.SLOTS["addon.online"] == copy.Slot("5", copy.CAP, "MojiMakrosi dodatak uz online (€)")
+    assert copy.SLOTS["addon.dvorana"] == copy.Slot("3", copy.CAP, "MojiMakrosi dodatak uz dvoranu (€)")
+    assert reference_prices({}) == SHOP and addon_amounts({}) == {"dvorana": "3", "online": "5"}
+    edited = {"price.online.amount": "45", "price.grupni.note": "Paketi", "addon.dvorana": "4"}
+    assert reference_prices(edited)["online"] == ("45", "/ mjesečno", "")
+    assert reference_prices(edited)["grupni"] == ("60–80", "/ paket", "Paketi")
+    assert addon_amounts(edited) == {"dvorana": "4", "online": "5"}
+
+
+def card_on(page: str, key: str) -> str:
+    """A plan's card on /moja-clanarina, up to the next card or section."""
+    start = page.rindex("<", 0, page.index(f'id="plan-{key}"'))
+    ends = [page.find(m, page.index(">", start)) for m in ('id="plan-', 'class="mc-sec"', "</main>")]
+    return page[start:min(i for i in ends if i > 0)]
+
+
+def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
+    """The gym owner retypes a price in place and it shows, as typed with
+    " €" after it, wherever that plan's price does: QMove START's card on the
+    landing and the online plan's card on /moja-clanarina. The add-on's
+    amount the same, on both gym cards; Individualno's line reads the two
+    other plans' slots. "Zadano" brings the shop's number back and leaves
+    no row."""
+    make_user("ivan@test.local", plans=("online",)); make_user("trener@test.local", is_trainer=True)
+    t = client_for("trener@test.local")
+    for key, text in (("price.online.amount", "45"), ("addon.dvorana", "4"),
+                      ("price.poluindividualni.amount", "28"), ("price.rehabilitacija.unit", "/ dolazak")):
+        assert t.post(f"/copy/{key}", data={"text": text}).json() == {"ok": True, "text": text, "default": False}, key
+
+    page = TestClient(app).get("/").text                                    # a visitor's landing
+    offer, gym = page.split('id="usluge"')[1].split('id="dvorana"')
+    start = offer.split('class="card offer')[1]
+    assert "45 € / mjesečno" in shown(start)
+    assert offer.count('+<span class="t">5</span> € / mjesečno') == 3      # the online tiers keep theirs
+    dvorana, individualno = gym.split('class="card offer')[1:3]
+    for c in (dvorana, individualno):
+        assert '+<span class="t">4</span> € / mjesečno' in c
+    assert "u dvoje ili troje 28 € / trening · rehabilitacija od 30 € / dolazak" in shown(individualno)
+    online = card_on(client_for("ivan@test.local").get("/moja-clanarina").text, "online")
+    assert "Cijena 45 € / mjesečno" in shown(online)
+
+    page = t.get("/").text                                                  # the editor gets them as slots
+    start = page.split('id="usluge"')[1].split('class="card offer')[1]
+    assert ('<b><span class="ed t" data-copy="price.online.amount" data-max="2000" '
+            'data-label="Cijena · online: iznos">45</span> €</b>') in start
+    individualno = page.split('id="dvorana"')[1].split('class="card offer')[2]
+    for key in ("poluindividualni.amount", "poluindividualni.unit", "rehabilitacija.amount", "rehabilitacija.unit"):
+        assert f'data-copy="price.{key}"' in individualno.split('class="price-note"')[1], key
+    assert 'data-copy="price.online.amount"' in t.get("/moja-clanarina").text
+
+    r = t.post("/copy/price.online.amount", data={"reset": "1"})            # Zadano: the shop's 50, no row
+    assert r.json() == {"ok": True, "text": "50", "default": True} and "price.online.amount" not in db.copy_texts()
+    assert "50 € / mjesečno" in shown(TestClient(app).get("/").text.split('id="usluge"')[1].split('class="card offer')[1])
 
 
 # ---------- the layout, measured in a browser ----------
@@ -922,3 +1017,17 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         problems += walk(pw, "trener@test.local", (360, 1280), "one-word", strict=False)
     print("\n".join(problems))
     assert not problems, f"{len(problems)} layout problems, listed above"
+
+
+def test_an_amount_without_a_number_prints_without_the_euro_sign():
+    """"na upit" is a price the owner may type; "na upit €" is not. A number
+    keeps its sign: "50 €"."""
+    make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
+    db.set_copy("price.rehabilitacija.amount", "na upit", None)
+    landing = TestClient(app).get("/").text
+    mine = client_for("ivan@test.local").get("/moja-clanarina").text
+    for page in (landing, mine):
+        assert "na upit</span>" in page                                      # printed
+        assert "na upit</span> €" not in page and "na upit</span>&nbsp;€" not in page   # bare
+    assert "50</span> €</b>" in landing                                     # a number keeps its €
+    assert "50</span> € <small>" in mine

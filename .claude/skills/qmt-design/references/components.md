@@ -123,14 +123,20 @@ view (**Aktualno**, below).
 **The gym** (`#dvorana`, below): the same `.offer` cards in `.gym-grid` (two
 columns ≥900px, capped at 760px so each is about a tier's width; the swipe
 row, two dots, below), not featured; Individualno's other
-prices are a muted `.price-note` under its `.price`, and an empty one in the
-Dvorana card holds the same two lines so both rows stay level. Both gym cards
+prices are a muted `.price-note` under its `.price` (each price in it one
+inline `.whole` block, so no break falls inside it), and the Dvorana card
+holds its room with an invisible copy of it (`.price-note.room`,
+`aria-hidden`): the line is the owner's text, any length, and both prices
+stay level, two lines at least. Both gym cards
 are tiers too (the plan's real monthly price, an editable yearly one) with
 their own `.period` under `.gym-grid`, and the two switches are one choice:
 pressing either sets every `.price[data-period]` on the page and
 `aria-selected` on both. Buttons: accent `.btn-sm` on the featured card,
-neutral `.cta` beside it, green `.owned` for a plan the visitor has. Plan
-prices arrive from the route (`offer_prices`), are public unless
+neutral `.cta` beside it, green `.owned` for a plan the visitor has. A
+plan's own price is its Stripe Price once it has one (`offer_prices`, the
+plans in `stripe_priced`), else its reference price, the
+`price.<plan>.amount` / `.unit` copy slots printed with `c.t()` and edited in
+place (the add-on's amount: `addon.<where>`). Prices are public unless
 `PUBLIC_PRICES=off` (which also hides both switches), and no public page links
 to `/moja-clanarina` (nor to the old `/cjenik`). **Aktualno** (`#aktualno`, in the hero since 16.10.2026,
 between the h1 and the photo: the first thing on the page): the owner's two
@@ -228,8 +234,10 @@ name keeps 128px clear beside the chip; from 700px, where the name would wrap
 and drop its price below the row's, the card stands 26px taller than its row
 (the landing's "taller, not shifted"), the chip in that room above the name,
 and the grid starts 38px under the heading so the card keeps 12px. Price source order (the macro): the subscribed tier's own
-("70 € / mjesečno · 12 treninga") → Stripe Price → shop reference
-(`REFERENCE_PRICES`, in the shop's own unit) → "na upit". Every card carries
+("70 € / mjesečno · 12 treninga") → Stripe Price → the reference price in
+the shop's own unit, the `price.<plan>.*` copy slots (defaults
+`REFERENCE_PRICES`) printed with `c.t()`, so the gym owner retypes them here
+(an editor also gets an empty note's slot to fill). Every card carries
 `id="plan-<key>"` (`scroll-margin-top: 90px`), so `#plan-<key>` links land on
 it in either section. **Računi**: a `.card.ledger` (max 640px) around an
 `.mtable`: date, the plan with the method as a muted second line (`.way`; four

@@ -10,6 +10,7 @@ import os
 import re
 import threading
 from datetime import date, datetime, timedelta
+from html import unescape
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
 os.environ["ALLOWED_EMAILS"] = "ivan@test.local,ana@test.local,treći@test.local"
@@ -744,6 +745,12 @@ def test_cjenik_is_members_only_and_landing_plan_cta_states():
     assert '<span class="chip ok">aktivna</span>' in ci.get("/cjenik").text   # the old address, the new page
 
 
+def shown(html: str) -> str:
+    """What a reader sees of some markup: tags dropped, entities read,
+    whitespace (a non-breaking space too) collapsed."""
+    return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html))).strip()
+
+
 def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
     """The homepage answers "what do you offer and what does it cost" by itself
     (5.10.2026): cards, each with its price and the MojiMakrosi add-on, visible
@@ -758,10 +765,17 @@ def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
         assert section.count('data-period="year" hidden>') == cards
     assert page.count('<span class="featured-tag">Najpopularnije</span>') == 1   # the chip, not the CSS comment naming it
     assert '<span class="featured-tag">' in offer       # on a tier, not in the gym
-    flat = page.replace("\u00a0", " ")                  # a price and its unit are held together
-    for price in ("50 €", "od 60 €", "35 €", "25 € / trening", "od 30 € / tretman"):
-        assert price in flat, price                     # the shop's reference prices
-    assert offer.count("+5 € / mjesečno") == 3 and gym.count("+3 € / mjesečno") == 2   # MojiMakrosi: online 5, dvorana 3
+    # the shop's reference prices as typed (the price slots' defaults), each
+    # with its unit: no range cut to its floor any more ("od 60 €")
+    assert "50 € / mjesečno" in shown(offer.split('class="card offer featured"')[0])   # QMove START
+    for price in ("60–80 € / paket", "35 € / trening",
+                  "u dvoje ili troje 25 € / trening · rehabilitacija od 30 € / tretman"):   # Individualno's line
+        assert price in shown(gym), price
+    assert "od 60" not in shown(offer + gym)
+    for amount, unit in (("25", "/ trening"), ("od 30", "/ tretman")):   # a price and its unit are held together
+        assert f'<span class="t">{amount}</span>&nbsp;€&nbsp;<span class="t">{unit}</span>' in gym, amount
+    assert offer.count('+<span class="t">5</span> € / mjesečno') == 3    # MojiMakrosi: online 5, dvorana 3
+    assert gym.count('+<span class="t">3</span> € / mjesečno') == 2
     assert "Zoom poziv" in page                         # what the online plan includes
     assert '<a class="stage" href="#usluge"' in page and 'id="usluge"' in page
     for chip in ("Grupni", "1:1", "Rehabilitacija"):    # the photo carries no service chips any more
@@ -792,7 +806,8 @@ def test_public_prices_switch_hides_them_from_guests_only(monkeypatch):
 
     make_user("ana@test.local", plans=())
     page = client_for("ana@test.local").get("/").text
-    assert "50 €" in page and "+3 € / mjesečno" in page and "Cijene nakon prijave" not in page
+    assert "50 € / mjesečno" in shown(page) and '+<span class="t">3</span> € / mjesečno' in page
+    assert "Cijene nakon prijave" not in page
     assert page.count('class="period"') == 2            # a member gets both switches
 
 

@@ -51,6 +51,10 @@ templates.env.globals["COPY"] = copy.SLOTS      # the editable texts and their l
 templates.env.globals["copy_items"] = copy.items_for   # a list slot's items (_copy.html, points)
 templates.env.globals["copy_flag"] = copy.flag_on      # a flag slot: on or off (landing.html, #aktualno)
 templates.env.globals["copy_image"] = copy.image_name  # an image slot: its file's name, or None (landing.html, #aktualno)
+# a price slot's text as the page prints it, and whether it is a number at
+# all: "€" follows "50" and "od 30", not "na upit" (landing.html, _plan_price.html)
+templates.env.globals["copy_text"] = lambda key, texts: texts.get(key, copy.SLOTS[key].default)
+templates.env.tests["priced"] = lambda text: any(ch.isdigit() for ch in str(text))
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 WEEKDAYS = ["Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota", "Nedjelja"]
@@ -70,45 +74,53 @@ PLAN_LINKS = {
     "prehrana": ("/prehrana", "Otvori prehranu"),
 }
 
-# Reference prices from the owner's Shopify shop (read 6.9.2026) — shown on
-# /moja-clanarina until a Stripe Price exists for the plan; Stripe always wins. Units
-# are the shop's own: most of the business is per trening / per paket, only
-# Online is a monthly plan. (amount text, unit, note) — None amount = "na upit".
-REFERENCE_PRICES = {
-    "grupni": ("60–80", "/ paket", "8, 12 ili 16 treninga"),
-    "individualni": ("35", "/ trening", None),
-    "poluindividualni": ("25", "/ trening", None),
-    "rehabilitacija": ("od 30", "/ tretman", "paketi od 5 i 10 tretmana"),
-    "online": ("50", "/ mjesečno", None),
-    "prehrana": ("od 3", "/ mjesečno", "3 € uz dvoranu, 5 € uz online"),
-}
+# The reference prices (what the site says a plan costs until a Stripe Price
+# exists for it) and the MojiMakrosi add-on's amounts are copy slots since
+# 18.10.2026, price.<plan>.* and addon.*, which the gym owner edits in place;
+# their defaults are copy.REFERENCE_PRICES and copy.MOJIMAKROSI_ADDON, the
+# shop's numbers. Code reads them through these two, over the edited texts
+# (db.copy_texts(), the dict _ctx puts in a template as copy_texts); a
+# template prints the same slots with c.t(), so an editor can open them.
 
-# MojiMakrosi (the prehrana app) as a monthly add-on, as the owner set it on
-# 5.10.2026: cheaper beside a plan in the dvorana, dearer for online-only
-# clients. The landing's offer cards print these; REFERENCE_PRICES["prehrana"]
-# above says the same thing for /moja-clanarina.
-MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
+def reference_prices(texts: dict[str, str]) -> dict[str, tuple[str, str, str]]:
+    """Plan -> (amount, unit, note), the reference price as the site says it:
+    the edited price.<plan>.* slots, else their defaults (no note: "")."""
+    def text(key: str) -> str:
+        return texts.get(key, copy.SLOTS[key].default)
+    return {plan: (text(f"price.{plan}.amount"), text(f"price.{plan}.unit"), text(f"price.{plan}.note"))
+            for plan in copy.REFERENCE_PRICES}
 
 
-def _offer_prices(table: dict) -> dict[str, tuple[str, str]]:
-    """Plan -> (amount, unit) the way the landing's offer cards print it. Same
-    sources and order as /moja-clanarina: the Stripe Price when one exists (that is what
-    a subscription charges), else the shop's reference price. A range collapses
-    to its floor ("od 60 €") because a card has room for one number. A plan with
-    no price at all is left out and the card says "na upit"."""
-    out = {}
-    for plan, (ref, unit, _note) in REFERENCE_PRICES.items():
+def addon_amounts(texts: dict[str, str]) -> dict[str, str]:
+    """Where ("dvorana", "online") -> the MojiMakrosi add-on's amount in €:
+    the edited addon.<where> slot, else its default."""
+    return {where: texts.get(f"addon.{where}", copy.SLOTS[f"addon.{where}"].default)
+            for where in copy.MOJIMAKROSI_ADDON}
+
+
+def _offer_prices(table: dict, texts: dict[str, str]) -> tuple[dict[str, tuple[str, str]], set[str]]:
+    """Plan -> (amount, unit) the way the landing's offer cards print it, and
+    the set of plans whose price is Stripe's. Same sources and order as
+    /moja-clanarina: the Stripe Price when one exists (that is what a
+    subscription charges; a tiered one shows its floor, "od 60 €", because a
+    card has room for one number), else the reference price as typed
+    (reference_prices). The landing prints a reference price through its
+    slots, so the gym owner can retype it; a Stripe one as it is here."""
+    out, stripe_priced = {}, set()
+    for plan, (ref, unit, _note) in reference_prices(texts).items():
         pr = table.get(plan)
         cur = "€" if not pr or pr.get("currency", "EUR") == "EUR" else pr["currency"]
         if pr and pr.get("tiers"):
             out[plan] = (f"od {pr['tiers'][0]['amount']:.0f} {cur}", "/ mjesečno")
+            stripe_priced.add(plan)
         elif pr:
             amount = pr["amount"]
             text = f"{amount:.0f}" if amount == int(amount) else f"{amount:.2f}".replace(".", ",")
             out[plan] = (f"{text} {cur}", "/ mjesečno")
-        elif ref:
-            out[plan] = (f"od {ref.split('–')[0]} €" if "–" in ref else f"{ref} €", unit)
-    return out
+            stripe_priced.add(plan)
+        else:
+            out[plan] = (f"{ref} €", unit)
+    return out, stripe_priced
 
 
 def _safe_next(nxt: str | None) -> str:
@@ -157,7 +169,7 @@ def _pop_feedback_prompt(request: Request, user):
             "when": f"{WEEKDAYS_SHORT[latest.weekday()]} {latest:%-d.%-m. %H:%M}"}
 
 
-def _ctx(request: Request, user, **extra):
+def _ctx(request: Request, user, copy_texts: dict[str, str] | None = None, **extra):
     return {"request": request, "user": user, "weekdays_short": WEEKDAYS_SHORT,
             "mojimakrosi_url": config.MOJIMAKROSI_URL,
             "max_media_mb": config.MAX_MEDIA_MB,
@@ -165,8 +177,9 @@ def _ctx(request: Request, user, **extra):
             "plan_links": PLAN_LINKS,
             "signup_open": config.signup_open(),
             "signup_mode": config.signup_mode(),
-            # in-place editable copy: the edited texts, and whether this viewer may edit
-            "copy_texts": db.copy_texts(),
+            # in-place editable copy: the edited texts (a route that has read
+            # them already passes its dict), and whether this viewer may edit
+            "copy_texts": db.copy_texts() if copy_texts is None else copy_texts,
             "can_edit_copy": bool(user and (user.is_trainer or _is_owner(user))),
             "feedback_prompt": _pop_feedback_prompt(request, user),
             "is_owner": _is_owner(user), **extra}
@@ -491,11 +504,12 @@ def landing(request: Request):
     plans = db.active_plan_kinds(user.id) if user else set()
     # members always see prices; guests see them unless PUBLIC_PRICES=off
     show_prices = bool(user) or config.prices_public()
+    texts = db.copy_texts()
+    offer_prices, stripe_priced = _offer_prices(payments.price_table(), texts) if show_prices else ({}, set())
     return templates.TemplateResponse(request, "landing.html", _ctx(
-        request, user, gallery=gallery, my_plans=plans,
-        show_prices=show_prices,
-        offer_prices=_offer_prices(payments.price_table()) if show_prices else {},
-        addon=MOJIMAKROSI_ADDON))
+        request, user, copy_texts=texts, gallery=gallery, my_plans=plans,
+        show_prices=show_prices, offer_prices=offer_prices, stripe_priced=stripe_priced,
+        addon=addon_amounts(texts)))
 
 
 @app.get("/cjenik")
@@ -540,9 +554,11 @@ def moja_clanarina(request: Request):
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/moja-clanarina')}", status_code=303)
     # the trainer and the owner see it too, with no plans of their own: it is
-    # where they edit the plans' texts in place (copy slots cjenik.*)
+    # where they edit the plans' texts in place (copy slots cjenik.*, and the
+    # reference prices, price.<plan>.*)
     today = config.today()
     table = payments.price_table()
+    texts = db.copy_texts()
     memberships = db.memberships_for(user.id)
     order = {p: i for i, p in enumerate(PLAN_TYPES)}
     plans = []
@@ -576,9 +592,9 @@ def moja_clanarina(request: Request):
                "method": PAYMENT_METHODS.get(p.method, p.method), "amount": p.amount_eur}
               for p in db.payments_for(user.id)]
     return templates.TemplateResponse(request, "moja_clanarina.html", _ctx(
-        request, user, plans=plans,
+        request, user, copy_texts=texts, plans=plans,
         add_plans=[p for p in PLAN_TYPES if p not in held],
-        plan_labels=PLAN_LABELS, prices=table, reference=REFERENCE_PRICES,
+        plan_labels=PLAN_LABELS, prices=table, reference=reference_prices(texts),
         sellable=payments.sellable_plans(),
         ledger=ledger, show_amounts=any(r["amount"] is not None for r in ledger),
         # the portal manages a subscription — a customer record alone (a

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Moja članarina — QMT{% endblock %}
 {% import "_copy.html" as c with context %}
-{% import "_plan_price.html" as pp %}
+{% import "_plan_price.html" as pp with context %}
 {% block head %}
 <style>
   /* ===== Moja članarina (18.10.2026): Shape Club's billing page in QMT's
@@ -103,7 +103,9 @@
   /* side by side, the description reserves its block, so the prices of a
      row sit on one line (tests/test_copy.py measures it) */
   @media (min-width: 700px) { .plan-desc { min-height: 3.9em; } }
-  .plan .price { font: 800 1.25rem var(--font-body); }
+  /* the amount and unit are the owner's text when no Stripe Price exists
+     (the price slots): a long word breaks rather than widen the card */
+  .plan .price { font: 800 1.25rem var(--font-body); overflow-wrap: anywhere; }
   .plan .price-hint { margin-top: -4px; }
   .plan .foot { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start;
                 gap: 8px; padding-top: 6px; }

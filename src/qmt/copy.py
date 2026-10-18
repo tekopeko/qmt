@@ -39,6 +39,18 @@ Read with `copy_image("the.key", copy_texts)` (image_name below). The photo is
 public, as the landing is: GET /slika/{name} serves the names an ImageSlot
 holds and nothing else. In edit mode the editor picks a file with "Dodaj sliku"
 / "Promijeni sliku" and removes it with "Ukloni sliku" (.ed-img, base.html).
+
+The price slots (18.10.2026) are plain Slots with one job: the reference
+prices, what the site says a plan costs until a Stripe Price exists for it
+(app.py, reference_prices and _offer_prices: a Stripe Price always wins, it
+is what a subscription charges). Per plan an amount, a unit and a note
+(price.<plan>.amount / .unit / .note), and the MojiMakrosi add-on's amount
+beside online and beside the dvorana (addon.online / addon.dvorana), so the
+gym owner retypes a price the way he retypes any text. The amount is text,
+printed as typed with " €" after it ("60–80", "od 30"). Their defaults are
+REFERENCE_PRICES and MOJIMAKROSI_ADDON below, the shop's numbers. Most of
+them print on two pages, the landing and /moja-clanarina, the only slots
+that do.
 """
 import json
 import re
@@ -77,6 +89,30 @@ class ImageSlot:
 # the online tiers' bullets: tier 1's own defaults, and placeholders for 2 and 3
 ONLINE_POINTS = ("Program po tvojoj razini i cilju", "Video upute za svaku vježbu",
                  "Mjesečni Zoom poziv ili susret s trenerom")
+
+# Reference prices from the owner's Shopify shop (read 6.9.2026): what the
+# site says a plan costs until a Stripe Price exists for it; Stripe always
+# wins. Units are the shop's own: most of the business is per trening / per
+# paket, only Online is a monthly plan. (amount text, unit, note). Since
+# 18.10.2026 they are the defaults of the price slots (price.<plan>.*, in
+# SLOTS below), which the gym owner edits in place: the pages print the
+# slots (app.py, reference_prices), so this table is what they say until
+# someone edits.
+REFERENCE_PRICES = {
+    "grupni": ("60–80", "/ paket", "8, 12 ili 16 treninga"),
+    "individualni": ("35", "/ trening", None),
+    "poluindividualni": ("25", "/ trening", None),
+    "rehabilitacija": ("od 30", "/ tretman", "paketi od 5 i 10 tretmana"),
+    "online": ("50", "/ mjesečno", None),
+    "prehrana": ("od 3", "/ mjesečno", "3 € uz dvoranu, 5 € uz online"),
+}
+
+# MojiMakrosi (the prehrana app) as a monthly add-on, as the owner set it on
+# 5.10.2026: cheaper beside a plan in the dvorana, dearer for online-only
+# clients. The defaults of the addon.* slots (below), which the landing's
+# offer cards print; REFERENCE_PRICES["prehrana"]'s note says the same thing
+# on /moja-clanarina, in a text of its own.
+MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
 
 SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     # ---- landing: hero ----
@@ -136,6 +172,17 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     "offer.individualno.year_price": Slot("na upit", CAP, "Individualno: godišnja cijena"),
     "offer.individualno.year_unit": Slot("", CAP, "Individualno: uz godišnju cijenu"),
     "offer.addon": Slot("MojiMakrosi prehrana", CAP, "Naziv dodatka za prehranu"),
+    # ---- prices: the reference prices, what the site says until a Stripe Price exists ----
+    # Per plan its amount, unit and note, the defaults REFERENCE_PRICES above:
+    # the landing prints the amount and the unit on a card (Individualno's
+    # muted line two more plans'), /moja-clanarina all three. A plan with a
+    # Stripe Price prints that instead, not editable (app.py, _offer_prices).
+    **{f"price.{plan}.{part}": Slot(text or "", CAP, f"Cijena · {plan}: {label}")
+       for plan, row in REFERENCE_PRICES.items()
+       for part, label, text in zip(("amount", "unit", "note"), ("iznos", "jedinica", "napomena"), row)},
+    # the MojiMakrosi add-on's amount in €: beside the online tiers, beside the gym's cards
+    "addon.online": Slot(MOJIMAKROSI_ADDON["online"], CAP, "MojiMakrosi dodatak uz online (€)"),
+    "addon.dvorana": Slot(MOJIMAKROSI_ADDON["dvorana"], CAP, "MojiMakrosi dodatak uz dvoranu (€)"),
     # ---- landing: aktualno, in the hero between the headline and the photo ----
     # The owner's announcements for the month (a new group, a course): two
     # strips, the defaults are examples to retype. Each one is switched off in
