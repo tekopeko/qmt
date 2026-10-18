@@ -7,6 +7,7 @@ Run:  createdb qmt_test  (once)
 from __future__ import annotations
 
 import os
+import re
 import threading
 from datetime import date, datetime, timedelta
 
@@ -1438,3 +1439,176 @@ def test_next_termin_card_shows_the_soonest_booking_to_clients_only():
     tid = make_user("trener@test.local", is_trainer=True)   # a trainer with a booking: no card
     db.book(tid, soon)
     assert NEXT not in client_for("trener@test.local").get("/raspored").text
+
+
+# ---------- /raspored's month view (18.10.2026) ----------
+# The phone's "Mjesec": the month as a grid, the paid period tinted
+# (db.covered_days), my bookings dotted, every day a link to its week on that
+# day. The browser half (the switch, a tap on a day, the tint's contrast) is
+# tests/test_raspored_ui.py.
+
+MONTH = '<div class="month card">'
+SWITCH = '<div class="view-switch"'
+MONTHS_HR = ["siječanj", "veljača", "ožujak", "travanj", "svibanj", "lipanj",
+             "srpanj", "kolovoz", "rujan", "listopad", "studeni", "prosinac"]
+
+
+def _days(a: date, b: date) -> set[date]:
+    """Every day from a to b, inclusive."""
+    return {a + timedelta(days=i) for i in range((b - a).days + 1)}
+
+
+def _attrs(tag: str) -> dict:
+    return dict(re.findall(r'([\w-]+)="([^"]*)"', tag))
+
+
+def _month_cells(page: str) -> list[dict]:
+    """The grid's cells in order: the <a>'s attributes, its classes as a set
+    and the day its link opens."""
+    cells = []
+    for tag in re.findall(r'<a class="mday[^>]*>', page):
+        a = _attrs(tag)
+        a["classes"], a["day"] = set(a["class"].split()), date.fromisoformat(a["href"].rsplit("day=", 1)[1])
+        cells.append(a)
+    return cells
+
+
+def _switch(page: str) -> dict:
+    """Tjedan | Mjesec: {"week" | "month": (href, "true" when it is the current page)}."""
+    i = page.index(SWITCH)
+    links = [_attrs(t) for t in re.findall(r"<a [^>]*>", page[i:page.index("</div>", i)])]
+    return {a["data-view"]: (a["href"], "true" if a.get("aria-current") == "page" else "false") for a in links}
+
+
+def test_covered_days_are_the_paid_periods_of_the_plans_that_book_termini(monkeypatch):
+    monkeypatch.setattr(config, "today", lambda: date(2026, 10, 18))
+    autumn = (date(2026, 8, 1), date(2026, 12, 31))
+    uid = make_user("ivan@test.local")                           # grupni
+    _due(uid, date(2026, 10, 25))                                # cycle 25.9.–24.10., dospijeće 1.11.
+    assert db.covered_days(uid, *autumn) == _days(date(2026, 9, 25), date(2026, 11, 1))
+    assert db.covered_days(uid, date(2026, 10, 1), date(2026, 10, 31)) == \
+        _days(date(2026, 10, 1), date(2026, 10, 31))             # only the days asked for
+    _due(uid, date(2026, 10, 15))                                # the grace week: the paid month stays in
+    assert db.covered_days(uid, *autumn) == _days(date(2026, 9, 15), date(2026, 10, 22))
+    _due(uid, date(2026, 10, 1))                                 # lapsed on 8.10.: its last period, nothing after
+    assert db.covered_days(uid, *autumn) == _days(date(2026, 9, 1), date(2026, 10, 8))
+    _due(uid, date(2026, 12, 20))                                # paid a month ahead: from the cycle today is in
+    assert db.covered_days(uid, *autumn) == _days(date(2026, 9, 20), date(2026, 12, 27))
+
+    ana = make_user("ana@test.local", plans=("online", "prehrana"))   # no termin to hold a day
+    assert db.covered_days(ana, *autumn) == set()
+
+    both = make_user("petra@test.local", plans=("grupni", "individualni"))
+    _due(both, date(2026, 9, 1))                                 # grupni: 1.8.–8.9., lapsed
+    _due(both, date(2026, 11, 5), plan="individualni")           # individualni: 5.10.–12.11.
+    assert db.covered_days(both, *autumn) == (_days(date(2026, 8, 1), date(2026, 9, 8))
+                                              | _days(date(2026, 10, 5), date(2026, 11, 12)))
+
+
+def test_month_view_tints_the_paid_period_dots_my_bookings_and_links_every_day_to_its_week():
+    from qmt.models import add_month, sub_month
+    from qmt.web.app import WEEKDAYS_SHORT
+    uid = make_user("ivan@test.local", plans=("grupni", "online"))
+    today = config.today()
+    due = today + timedelta(days=10)
+    _due(uid, due)                                               # grupni: sub_month(due) … due + 7 (dospijeće)
+    paid = _days(sub_month(due), due + timedelta(days=7))
+    booked = (today + timedelta(days=2), today + timedelta(days=9))
+    for d in booked:
+        db.book(uid, db.add_oneoff_session("Grupni trening", _at(d), 60, 8, None))
+    c = client_for("ivan@test.local")
+
+    def check(page: str, first: date):
+        """The grid of `first`'s month: Monday-first weeks of seven, every
+        cell's states and link, the label and the month links."""
+        grid = page[page.index(MONTH):page.index('<div class="month-legend')]
+        weeks = grid.split('<div class="mweek">')[1:]
+        assert weeks and all(w.count('<a class="mday') == 7 for w in weeks)
+        cells = _month_cells(page)
+        days = [x["day"] for x in cells]
+        last = add_month(first) - timedelta(days=1)
+        assert len(days) == 7 * len(weeks) and all(b - a == timedelta(days=1) for a, b in zip(days, days[1:]))
+        assert days[0].weekday() == 0 and first - timedelta(days=6) <= days[0] <= first
+        assert days[-1].weekday() == 6 and last <= days[-1] <= last + timedelta(days=6)
+        for x in cells:
+            d, cls = x["day"], x["classes"]
+            inside = d.month == first.month
+            assert x["href"] == f"/raspored?week={d - timedelta(days=d.weekday())}&day={d}", x
+            assert ("other" in cls) != inside and ("past" in cls) == (d < today), x
+            assert ("today" in cls) == (d == today) == (x.get("aria-current") == "date"), x
+            assert ("covered" in cls) == (inside and d in paid), x       # other months' days: context only
+            assert ("mine" in cls) == (inside and d in booked), x
+            assert x["aria-label"] == (f"{WEEKDAYS_SHORT[d.weekday()]} {d:%-d.%-m.}"
+                                       + (", danas" if d == today else "")
+                                       + (", članarina aktivna" if "covered" in cls else "")
+                                       + (", rezervacija" if "mine" in cls else "")), x
+        assert f'<span class="range">{MONTHS_HR[first.month - 1]} {first.year}.</span>' in page
+        assert f'<a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={sub_month(first):%Y-%m}">‹ prošli mjesec</a>' in page
+        assert f'<a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={add_month(first):%Y-%m}">idući mjesec ›</a>' in page
+        assert ('href="/raspored?view=month">danas</a>' in page) == (first != today.replace(day=1))
+        return cells
+
+    first = today.replace(day=1)
+    page = c.get("/raspored?view=month").text
+    cells = check(page, first)
+    assert sum("today" in x["classes"] for x in cells) == 1
+    assert "Članarina vrijedi do " + f"{due + timedelta(days=7):%-d.%-m.%Y.}" in page   # grupni's; online books nothing
+    legend = page[page.index('<div class="month-legend'):]
+    legend = legend[:legend.index("</div>")]
+    assert all(t in legend for t in ("članarina aktivna", "tvoja rezervacija", "danas"))
+    # the page is the month: no week buttons, grid, strip or sheet; the next
+    # termin above the switch, "Moja članarina" and "Moje rezervacije" below
+    for gone in ("← prošli tjedan</a>", 'data-selected="', 'class="day-strip"', 'id="sheet"'):
+        assert gone not in page, gone
+    assert page.index(NEXT) < page.index(SWITCH) < page.index(MONTH) < page.index("<h2>Moja članarina") \
+        < page.index("<h2>Moje rezervacije</h2>")
+    monday = today - timedelta(days=today.weekday())
+    assert _switch(page) == {"week": (f"/raspored?week={monday}&day={today}", "false"),
+                             "month": (f"/raspored?view=month&month={today:%Y-%m}", "true")}
+
+    later = add_month(first)                                     # next month: "danas" leads back, "Tjedan" to its 1st
+    page = c.get(f"/raspored?view=month&month={later:%Y-%m}").text
+    dots = [x["day"] for x in cells + check(page, later) if "mine" in x["classes"]]
+    assert dots and set(dots) <= set(booked)                     # each booking shows in its own month
+    assert _switch(page)["week"] == (f"/raspored?week={later - timedelta(days=later.weekday())}&day={later}", "false")
+
+    page = c.get("/raspored?view=month&month=2027-01").text      # over the year's edge
+    assert '<span class="range">siječanj 2027.</span>' in page
+    assert "month=2026-12" in page and "month=2027-02" in page
+    this = f'<span class="range">{MONTHS_HR[today.month - 1]} {today.year}.</span>'
+    for junk in ("", "nije-mjesec", "2026-13", "2026-1", "2026-10-05", "0001-01", "9999-12"):   # today's month
+        page = c.get(f"/raspored?view=month&month={junk}").text
+        assert this in page and 'href="/raspored?view=month">danas</a>' not in page, junk
+
+
+def test_month_view_without_a_plan_tints_nothing_and_points_to_the_cjenik():
+    make_user("ana@test.local", plans=())                        # no plan at all (sara in the demo)
+    page = client_for("ana@test.local").get("/raspored?view=month").text
+    cells = _month_cells(page)
+    assert len(cells) >= 28 and not any("covered" in x["classes"] for x in cells)
+    assert ('<p class="hint month-note">Nemaš aktivnu članarinu za treninge u dvorani. '
+            '<a class="act" href="/cjenik">Pogledaj cjenik →</a></p>') in page
+    assert "Članarina vrijedi do" not in page
+
+
+def test_the_switch_is_for_clients_and_the_trainer_keeps_the_week():
+    make_user("trener@test.local", is_trainer=True)
+    uid = make_user("ivan@test.local")
+    today = config.today()
+    monday = today - timedelta(days=today.weekday())
+    other = monday + timedelta(days=(today.weekday() + 3) % 7)   # another day of this week
+    db.add_oneoff_session("Grupni trening", _at(other), 60, 8, None)
+    db.book(uid, future_session(hours_from_now=30))              # the next-termin card
+
+    page = client_for("ivan@test.local").get(f"/raspored?week={monday}&day={other}").text
+    assert _switch(page) == {"week": (f"/raspored?week={monday}&day={other}", "true"),
+                             "month": (f"/raspored?view=month&month={other:%Y-%m}", "false")}
+    # under the week buttons, above the next-termin card (in the week's head)
+    assert page.index("idući tjedan →") < page.index(SWITCH) < page.index(NEXT) < page.index('data-selected="')
+    assert MONTH not in page
+
+    tr = client_for("trener@test.local")
+    for path in ("/raspored", "/raspored?view=month", f"/raspored?view=month&month={today:%Y-%m}"):
+        page = tr.get(path).text
+        assert SWITCH not in page and MONTH not in page, path
+        assert 'data-selected="' in page and "← prošli tjedan</a>" in page, path   # the week page

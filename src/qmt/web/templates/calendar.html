@@ -231,6 +231,65 @@
     .fb-modal.sheet { margin: auto 0 0; width: 100%; max-width: none; border-width: 1px 0 0;
                       border-radius: var(--r-lg) var(--r-lg) 0 0; padding-bottom: env(safe-area-inset-bottom); }
   }
+
+  /* ===== Tjedan | Mjesec (phones, clients; 18.10.2026): two views of the
+     raspored, each its own URL (?view=month), so they are links. The
+     landing's .period switch: two pills in a --surface track with a
+     hairline, the chosen one (aria-pressed) in the accent tint with its own
+     ink (AA there; over --surface-2 it was not). .view-row is the switch's
+     own line: in .week-head it takes the whole width under the week
+     buttons. The desktop keeps the week grid and never offers the month. */
+  .view-row { flex: 0 0 100%; }
+  .view-switch { display: flex; gap: 3px; width: fit-content; padding: 3px; border-radius: 999px;
+                 background: var(--surface); border: 1px solid var(--line); }
+  .view-switch a { display: inline-flex; align-items: center; min-height: 36px; padding: 8px 18px;
+                   border-radius: 999px; color: var(--muted); text-decoration: none;
+                   font: 600 .85rem var(--font-body); transition: background .15s, color .15s; }
+  .view-switch a:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .view-switch a[aria-current] { background: var(--accent-dim); color: var(--accent-tint-ink); }
+  @media (min-width: 861px) { .view-row { display: none; } }
+
+  /* ===== the month view (?view=month; 18.10.2026): Shape's "Moj napredak"
+     month grid, the page's own (no week grid, strip or sheet). Every day is
+     a link to its week on that day (?week=&day=). The days of the paid
+     period (db.covered_days) carry a light green tint, the --good family's
+     "you have this", light as the owner asked; my bookings the strip's dot,
+     today the strip's ring. Other months' days are context only: muted,
+     never tinted or dotted. ===== */
+  /* the nav is as wide as the grid under it (a tablet's 768px would push
+     its buttons far past the 480px card) */
+  .month-nav { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px;
+               flex-wrap: wrap; max-width: 480px; margin: 14px 0 12px; }
+  .month-nav .range { color: var(--muted); font-weight: 600; font-size: .95rem; }
+  .month { max-width: 480px; padding: 10px 8px 12px; }
+  .mhead, .mweek { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .mhead { margin-bottom: 4px; }
+  .mhead span { text-align: center; font: 600 .72rem var(--font-body); letter-spacing: .04em;
+                text-transform: uppercase; color: var(--muted); }
+  .mweek + .mweek { margin-top: 4px; }
+  .mday { height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+          gap: 2px; border-radius: var(--r-md); color: var(--text); text-decoration: none;
+          font: 700 .95rem var(--font-body); line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .mday .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .mday.past, .mday.other { color: var(--muted); }
+  .mday.other { font-weight: 400; }
+  /* 12% in both themes, not the 16 / 14 first planned: on those the past
+     days' muted numbers fell under AA (4.42:1 dark, 4.38:1 light); at 12%
+     they hold 4.87 / 4.51 and --text 12.4 / 14.5 */
+  .mday.covered, .month-legend .sw-covered { background: color-mix(in srgb, var(--good) 12%, transparent); }
+  .mday.mine .dot, .month-legend .sw-mine { background: var(--accent); }
+  /* a mouse's hover rings the cell: a deeper tint would take the muted
+     numbers under AA */
+  @media (hover: hover) {
+    .mday:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 30%, transparent); }
+  }
+  .mday.today, .month-legend .sw-today { box-shadow: inset 0 0 0 2px var(--accent); }
+  .month-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; padding: 10px 6px 0;
+                  border-top: 1px solid var(--line); }
+  .month-legend > span { display: inline-flex; align-items: center; gap: 7px; }
+  .month-legend .sw { flex: none; width: 16px; height: 16px; border-radius: 5px; }
+  .month-legend .sw-mine { width: 6px; height: 6px; border-radius: 50%; margin: 0 5px; }
+  .month-note { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: 12px; }
 </style>
 {% endblock %}
 {% block ok_alert %}
@@ -261,17 +320,32 @@
           <button type="submit" class="unbook-x" aria-label="{{ 'Makni' if s.canceled else 'Otkaži' }} {{ s.title }} {{ s.date.strftime('%-d.%-m.') }} u {{ s.time }}">✕</button>
         </form>
 {% endmacro %}
+{# Tjedan | Mjesec (phones, clients): "Tjedan" is the week of the shown day,
+   "Mjesec" that day's month; the script keeps both on the day the strip shows #}
+{% macro view_switch(current) %}
+<div class="view-row">
+  <div class="view-switch" role="group" aria-label="Prikaz rasporeda">
+    <a href="/raspored?week={{ monday.isoformat() }}&day={{ selected_day.isoformat() }}" data-view="week"
+      {% if current == 'week' %} aria-current="page"{% endif %}>Tjedan</a>
+    <a href="/raspored?view=month&month={{ selected_day.isoformat()[:7] }}" data-view="month"
+      {% if current == 'month' %} aria-current="page"{% endif %}>Mjesec</a>
+  </div>
+</div>
+{% endmacro %}
 
 <div class="week-head">
   <div>
     <h1>Raspored</h1>
-    <span class="range">{{ monday.strftime("%-d.%-m.") }} – {{ days[-1].date.strftime("%-d.%-m.%Y.") }}</span>
+    {% if view != "month" %}<span class="range">{{ monday.strftime("%-d.%-m.") }} – {{ days[-1].date.strftime("%-d.%-m.%Y.") }}</span>{% endif %}
   </div>
+  {% if view != "month" %}
   <div class="week-nav">
     <a class="btn btn-ghost btn-sm" href="/raspored?week={{ prev_week }}">← prošli tjedan</a>
     <a class="btn btn-ghost btn-sm" href="/raspored">danas</a>
     <a class="btn btn-ghost btn-sm" href="/raspored?week={{ next_week }}">idući tjedan →</a>
   </div>
+  {% if not user.is_trainer %}{{ view_switch("week") }}{% endif %}
+  {% endif %}
 </div>
 
 {% if next_booking and not user.is_trainer %}
@@ -289,6 +363,43 @@
 </section>
 {% endif %}
 
+{% if view == "month" %}
+{# the month overview (?view=month, clients): the page is the month, under
+   the next-termin card. A day's link opens its week on that day. #}
+{{ view_switch("month") }}
+<div class="month-nav">
+  <span class="range">{{ month_label }}</span>
+  <div class="week-nav">
+    <a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={{ prev_month }}">‹ prošli mjesec</a>
+    {% if not this_month %}<a class="btn btn-ghost btn-sm" href="/raspored?view=month">danas</a>{% endif %}
+    <a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={{ next_month }}">idući mjesec ›</a>
+  </div>
+</div>
+<div class="month card">
+  {# the cells' labels name the day: the header is for the eye only #}
+  <div class="mhead" aria-hidden="true">{% for wd in weekdays_short %}<span>{{ wd }}</span>{% endfor %}</div>
+  {% for wk in month_weeks %}
+  <div class="mweek">
+    {% for d in wk %}
+    {%- set tint = d.in_month and d.covered %}{% set dot = d.in_month and d.has_mine %}
+    <a class="mday{% if not d.in_month %} other{% endif %}{% if d.past %} past{% endif %}{% if d.is_today %} today{% endif %}{% if tint %} covered{% endif %}{% if dot %} mine{% endif %}"
+       href="/raspored?week={{ d.week }}&day={{ d.date.isoformat() }}"{% if d.is_today %} aria-current="date"{% endif %}
+       aria-label="{{ weekdays_short[d.date.weekday()] }} {{ d.date.strftime('%-d.%-m.') }}{% if d.is_today %}, danas{% endif %}{% if tint %}, članarina aktivna{% endif %}{% if dot %}, rezervacija{% endif %}">{{ d.date.day }}<span class="dot"></span></a>
+    {%- endfor %}
+  </div>
+  {% endfor %}
+  <div class="month-legend hint">
+    <span><span class="sw sw-covered" aria-hidden="true"></span>članarina aktivna</span>
+    <span><span class="sw sw-mine" aria-hidden="true"></span>tvoja rezervacija</span>
+    <span><span class="sw sw-today" aria-hidden="true"></span>danas</span>
+  </div>
+</div>
+{% if valid_until %}
+<p class="hint month-note">Članarina vrijedi do {{ valid_until.strftime("%-d.%-m.%Y.") }}</p>
+{% else %}
+<p class="hint month-note">Nemaš aktivnu članarinu za treninge u dvorani. <a class="act" href="/cjenik">Pogledaj cjenik →</a></p>
+{% endif %}
+{% else %}
 {% set week_empty = days | map(attribute="sessions") | map("length") | sum == 0 %}
 {% if not week_empty %}
 {# phones: the week as seven days to pick from (hidden until the script runs:
@@ -398,6 +509,7 @@
   </div>
   {% endfor %}
 </div>
+{% endif %}
 
 {% if not user.is_trainer %}
 <div class="mine-list">
@@ -449,7 +561,7 @@
 </div>
 {% endif %}
 
-{% if not user.is_trainer %}
+{% if not user.is_trainer and view != "month" %}
 {# the phone's bottom sheet: ONE dialog, filled by the script from the row
    tapped (its data-*): the termin's facts and one action. The sheet is the
    confirmation, so its forms carry no data-confirm. #}
@@ -489,7 +601,8 @@
 <script>
   // Phones (≤860px): one day at a time. The strip picks the day; the URL
   // keeps it (?week=&day=, so a reload comes back on it), and so do the
-  // forms that carry the shown day (data-shown-day). A sideways swipe on the
+  // forms that carry the shown day (data-shown-day) and the Tjedan | Mjesec
+  // switch (the shown day's week and month). A sideways swipe on the
   // list moves one day, past Sunday / before Monday into the next / previous
   // week. The desktop grid ignores all of it: the CSS acts only ≤860px.
   (function () {
@@ -499,9 +612,15 @@
     var phone = window.matchMedia ? window.matchMedia("(max-width: 860px)") : null;
     function show(day, remember) {
       var i, kept = document.querySelectorAll("input[data-shown-day]");
+      var views = document.querySelectorAll(".view-switch a[data-view]");
       for (i = 0; i < cols.length; i++) cols[i].classList.toggle("is-on", cols[i].getAttribute("data-day") === day);
       for (i = 0; i < btns.length; i++) btns[i].setAttribute("aria-pressed", btns[i].getAttribute("data-day") === day ? "true" : "false");
       for (i = 0; i < kept.length; i++) kept[i].value = day;
+      for (i = 0; i < views.length; i++) {
+        views[i].setAttribute("href", views[i].getAttribute("data-view") === "month"
+          ? "/raspored?view=month&month=" + day.slice(0, 7)
+          : "/raspored?week=" + week.getAttribute("data-week") + "&day=" + day);
+      }
       week.setAttribute("data-selected", day);
       if (remember && window.history && history.replaceState) {
         history.replaceState(null, "", location.pathname + "?week=" + week.getAttribute("data-week") + "&day=" + day);

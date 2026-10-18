@@ -10,6 +10,12 @@ with the right termin and action, Odustani and Escape close it, and the
 next-termin card is the first thing under the week's head. It never submits
 the sheet's forms: the route tests cover what they post. At 1280px the week
 is the seven-column grid it always was, with no strip and no rows.
+
+The month view (18.10.2026): the Tjedan | Mjesec switch under the week
+buttons follows the day the strip shows, "Mjesec" opens the month (no strip,
+no sheet), every number on the paid period's tint is AA in both themes, a
+tap on a day opens its week on that day, and "Tjedan" leads back. At 1280px
+there is no switch.
 """
 
 from __future__ import annotations
@@ -236,6 +242,174 @@ def test_phone_shows_one_day_switches_it_and_opens_the_sheet(server):
         if st["strip"] or len(st["cols"]) != 7 or st["rows"] or st["cards"] != 5 + (late_mon == mon) \
                 or st["overflow"]:                                          # 3 on Monday, 2 on Wednesday
             problems.append(f"[1280px] not the week grid: {st}")
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+# ---------- the month view (18.10.2026) ----------
+
+VIEW = r"""() => {
+  const shown = el => !!el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0;
+  const de = document.documentElement, sw = document.querySelector('.view-switch');
+  const cells = [...document.querySelectorAll('.month .mday')].map(c => c.getBoundingClientRect());
+  const strip = document.querySelector('.day-strip');
+  return {
+    overflow: de.scrollWidth - de.clientWidth, search: location.search,
+    switch: shown(sw),
+    pressed: sw ? [...sw.querySelectorAll('a[aria-current="page"]')].map(a => a.textContent.trim()) : [],
+    links: sw ? Object.fromEntries([...sw.querySelectorAll('a')].map(a => [a.dataset.view, a.getAttribute('href')])) : {},
+    month: shown(document.querySelector('.month')), grid: !!document.querySelector('.week[data-selected]'),
+    strip: !!strip, sheet: !!document.getElementById('sheet'),
+    day: strip ? ([...strip.querySelectorAll('button[aria-pressed="true"]')].map(b => b.dataset.day)[0] || null) : null,
+    cells: cells.length, rows: new Set(cells.map(r => Math.round(r.top))).size,
+    fit: cells.every(r => r.left >= 0 && r.right <= innerWidth && r.height >= 40 && r.width >= 32),
+  };
+}"""
+
+# the audit's colour arithmetic (audit.py CHECKS): each background is
+# alpha-composited down the ancestor chain, and a color-mix() computes to
+# color(srgb r g b / a), channels 0-1
+TINT = r"""() => {
+  const parse = c => { const m = c.match(/[\d.]+/g); if (!m) return null;
+    const k = c.startsWith('color(srgb') ? 255 : 1;
+    return {r: +m[0]*k, g: +m[1]*k, b: +m[2]*k, a: m.length > 3 ? parseFloat(m[3]) : 1}; };
+  const lum = ({r, g, b}) => { const f = x => { x = x/255; return x <= .03928 ? x/12.92 : Math.pow((x+.055)/1.055, 2.4); };
+    return .2126*f(r) + .7152*f(g) + .0722*f(b); };
+  const ground = el => { const chain = []; let n = el;
+    while (n && n !== document.documentElement) { chain.push(getComputedStyle(n).backgroundColor); n = n.parentElement; }
+    chain.push(getComputedStyle(document.body).backgroundColor);
+    let acc = {r: 255, g: 255, b: 255};
+    for (let i = chain.length - 1; i >= 0; i--) { const p = parse(chain[i]); if (!p || p.a === 0) continue;
+      acc = {r: p.r*p.a + acc.r*(1-p.a), g: p.g*p.a + acc.g*(1-p.a), b: p.b*p.a + acc.b*(1-p.a)}; }
+    return acc; };
+  const ratio = el => { const a = lum(parse(getComputedStyle(el).color)), b = lum(ground(el));
+    return (Math.max(a, b) + .05) / (Math.min(a, b) + .05); };
+  const days = [...document.querySelectorAll('.month .mday:not(.other)')];
+  return days.map(c => ({n: c.firstChild.textContent, covered: c.classList.contains('covered'),
+                         past: c.classList.contains('past'), ratio: +ratio(c).toFixed(2),
+                         bg: getComputedStyle(c).backgroundColor}));
+}"""
+
+
+def test_phone_switches_to_the_month_and_back(server):
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    from qmt.models import Membership, sub_month
+
+    uid = make_user("ivan@test.local", plans=("grupni",))
+    today = config.today()
+    with db.session_scope() as s:            # paid until 3 days from now: the period began about a month
+        m = s.scalar(db.select(Membership).where(Membership.user_id == uid))   # ago, so past days carry the tint too
+        m.next_payment = today + timedelta(days=3)
+    for wd in range(7):                       # a termin every day: every week opens with its strip
+        db.add_template("Grupni trening", wd, 18 * 60, 60, 8, None)
+    mon = today - timedelta(days=today.weekday())
+    other = mon + timedelta(days=(today.weekday() + 3) % 7)                  # another day of this week
+    first = today.replace(day=1)
+    this_month, last_month = f"{first:%Y-%m}", f"{sub_month(first):%Y-%m}"
+
+    def week_of(d: date) -> str:
+        return f"?week={d - timedelta(days=d.weekday())}&day={d}"
+
+    problems = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+
+        def phone(w: int, theme: str = "dark"):
+            ctx = browser.new_context(viewport={"width": w, "height": 800}, has_touch=True, is_mobile=True)
+            pg = ctx.new_page(); errs = []
+            pg.on("pageerror", lambda e: errs.append(str(e)))
+            pg.goto(server + "/login")
+            pg.evaluate("t => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-theme', t); }",
+                        theme)
+            pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+            pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+            return ctx, pg, errs
+
+        def go(pg, path: str):
+            pg.goto(server + path); pg.wait_for_load_state("networkidle")
+
+        def tap(pg, selector: str):
+            with pg.expect_navigation():
+                pg.click(selector)
+            pg.wait_for_load_state("networkidle")
+
+        # 390px, dark: the round trip
+        ctx, pg, errs = phone(390)
+        where = "[390px]"
+        go(pg, "/raspored")
+        st = pg.evaluate(VIEW)
+        if not st["switch"] or st["pressed"] != ["Tjedan"] or st["links"] != {
+                "week": f"/raspored{week_of(today)}", "month": f"/raspored?view=month&month={this_month}"}:
+            problems.append(f"{where} the week page's switch: {st}")
+        pg.click(f'.day-strip button[data-day="{other}"]')                    # the switch follows the strip
+        st = pg.evaluate(VIEW)
+        if st["links"] != {"week": f"/raspored{week_of(other)}", "month": f"/raspored?view=month&month={other:%Y-%m}"}:
+            problems.append(f"{where} the switch did not follow the strip to {other}: {st['links']}")
+        pg.click(f'.day-strip button[data-day="{today}"]')
+
+        tap(pg, '.view-switch a[data-view="month"]')                           # Mjesec
+        st = pg.evaluate(VIEW)
+        if st["search"] != f"?view=month&month={this_month}" or not st["month"] or st["strip"] or st["sheet"] \
+                or st["grid"] or st["pressed"] != ["Mjesec"] or not st["fit"] or st["cells"] != 7 * st["rows"] \
+                or st["overflow"]:
+            problems.append(f"{where} Mjesec did not open the month page: {st}")
+        target = pg.evaluate("""() => { const c = [...document.querySelectorAll('.month .mday.covered:not(.past)')];
+                                        return c.length ? c[c.length - 1].getAttribute('href') : null; }""")
+        day = date.fromisoformat(target.rsplit("day=", 1)[1]) if target else None
+        if day is None or not today <= day <= today + timedelta(days=10):
+            problems.append(f"{where} no paid day ahead in the month: {target}")
+        else:
+            tap(pg, f'.month a.mday[href="{target}"]')                         # a tap on a paid day: its week
+            st = pg.evaluate(VIEW)
+            if st["search"] != week_of(day) or st["day"] != str(day) or not st["grid"]:
+                problems.append(f"{where} a tap on {day} did not open its week on it: {st}")
+            tap(pg, '.view-switch a[data-view="month"]')
+            tap(pg, '.view-switch a[data-view="week"]')                        # Tjedan: back to the week
+            st = pg.evaluate(VIEW)
+            if st["search"] != week_of(today) or st["day"] != str(today) or st["pressed"] != ["Tjedan"] \
+                    or st["month"]:
+                problems.append(f"{where} Tjedan did not lead back to the week: {st}")
+        problems += [f"{where} js: {e}" for e in errs]
+        ctx.close()
+
+        # both themes: every number on the tint is AA, and the tint is a colour of its own
+        for theme in ("dark", "light"):
+            ctx, pg, errs = phone(390, theme)
+            days = []
+            for m in (this_month, last_month):                              # past paid days are in one of them
+                go(pg, f"/raspored?view=month&month={m}")
+                days += pg.evaluate(TINT)
+            tinted = [d for d in days if d["covered"]]
+            low = [d for d in tinted if d["ratio"] < 4.5]
+            if low or not any(d["past"] for d in tinted) or all(d["past"] for d in tinted):
+                problems.append(f"[390px {theme}] numbers on the tint under AA, or a state missing: {low or tinted}")
+            plain = {d["bg"] for d in days if not d["covered"]}
+            if not plain or plain & {d["bg"] for d in tinted}:
+                problems.append(f"[390px {theme}] the tint is not a colour of its own: {plain}")
+            print(f"[390px {theme}] lowest number on the tint: {min(d['ratio'] for d in tinted) if tinted else None}")
+            ctx.close()
+
+        # 360px: the grid fits the narrowest phone
+        ctx, pg, errs = phone(360)
+        go(pg, "/raspored?view=month")
+        st = pg.evaluate(VIEW)
+        if st["overflow"] or not st["fit"] or not st["switch"] or st["cells"] != 7 * st["rows"]:
+            problems.append(f"[360px] the month page: {st}")
+        ctx.close()
+
+        # the desktop never offers the month
+        ctx = browser.new_context(viewport={"width": 1280, "height": 900})
+        pg = ctx.new_page()
+        pg.goto(server + "/login")
+        pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        go(pg, "/raspored")
+        st = pg.evaluate(VIEW)
+        if st["switch"] or not st["grid"]:
+            problems.append(f"[1280px] the switch shows on the desktop: {st}")
         ctx.close()
         browser.close()
     print("\n".join(problems))

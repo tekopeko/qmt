@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import config
-from .models import (PLAN_LABELS, Base, Booking, Membership, OnboardingResponse,
+from .models import (PLAN_LABELS, SESSION_KINDS, Base, Booking, Membership, OnboardingResponse,
                      Payment, Program, ProgramItem, ReminderLog, SessionTemplate,
                      SiteCopy, TrainingLog, TrainingSession, User)
 
@@ -587,6 +587,35 @@ def memberships_for(user_id: int) -> list[Membership]:
     with session_scope() as s:
         return list(s.scalars(select(Membership).where(Membership.user_id == user_id)
                               .order_by(Membership.plan)))
+
+
+def covered_days(user_id: int, first: date, last: date) -> set[date]:
+    """The days in [first, last] that the client's paid period covers: the
+    days /raspored's month view tints ("članarina aktivna").
+
+    Only the plans that book termini count (SESSION_KINDS: grupni,
+    individualni, poluindividualni, rehabilitacija); online and prehrana hold
+    no termin, so they cover no day. Each such plan covers its paid period:
+    from the start of its cycle (Membership.cycle_bounds, anchored on
+    next_payment) through its dospijeće, inclusive, because the plan admits
+    booking until dospijeće passes (Membership.is_active): the grace week
+    counts. The cycle is the one today falls in, cycle_usage's "ovaj ciklus",
+    so a client who paid a month ahead is covered from the cycle they are in
+    now, not only the month just paid; once next_payment has passed (the
+    grace week, a lapsed plan) it is the last paid cycle. Days of the period
+    already behind count too: the overview shows the paid period as a whole.
+    A lapsed plan keeps its last period and covers nothing after dospijeće."""
+    today = config.today()
+    days: set[date] = set()
+    with session_scope() as s:
+        for m in s.scalars(select(Membership).where(Membership.user_id == user_id,
+                                                    Membership.plan.in_(SESSION_KINDS))):
+            start = m.cycle_bounds(min(today, m.next_payment - timedelta(days=1)))[0]
+            day, stop = max(start, first), min(m.dospijece, last)
+            while day <= stop:
+                days.add(day)
+                day += timedelta(days=1)
+    return days
 
 
 def memberships_expiring(within_days: int) -> list[tuple[User, Membership]]:

@@ -51,7 +51,7 @@ BASELINE = pathlib.Path(__file__).resolve().parent.parent / "references" / "audi
 # ?ok= / ?error= pages: the flash alerts are text nobody audits otherwise
 ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana",
         "/login?ok=Lozinka+je+promijenjena", "/login?error=Pogre%C5%A1an+email+ili+lozinka."]
-CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/karton", "/cjenik", "/prehrana", "/profil", "/treninzi", "/upitnik"]
+CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "/cjenik", "/prehrana", "/profil", "/treninzi", "/upitnik"]
 OWNER = ["/", "/raspored", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi", "/profil"]
 
 CHECKS = r"""
@@ -65,8 +65,12 @@ CHECKS = r"""
   // NOT solid red — it is 12% red over whatever sits behind it. Composite the
   // ancestor chain from the body outward, then measure. This is what turned the
   // old "ratio 1" false positives into real numbers.
+  // A color-mix() computes to "color(srgb r g b / a)" with channels 0–1,
+  // not rgb()'s 0–255: scaled here, or the month view's 12% green tint was
+  // measured as 12% black (18.10.2026).
   const parse = c => { const m = c.match(/[\d.]+/g); if (!m) return null;
-    return {r:+m[0], g:+m[1], b:+m[2], a: m.length > 3 ? parseFloat(m[3]) : 1}; };
+    const k = c.startsWith('color(srgb') ? 255 : 1;
+    return {r:+m[0]*k, g:+m[1]*k, b:+m[2]*k, a: m.length > 3 ? parseFloat(m[3]) : 1}; };
   const lumRGB = ({r,g,b}) => { const f = x => { x = x/255; return x <= .03928 ? x/12.92 : Math.pow((x+.055)/1.055, 2.4); };
     return .2126*f(r) + .7152*f(g) + .0722*f(b); };
   const lum = c => { const p = parse(c); return (!p || p.a === 0) ? null : lumRGB(p); };

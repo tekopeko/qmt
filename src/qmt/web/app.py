@@ -19,7 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .. import auth, config, copy, db, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, PAYMENT_METHODS, PLAN_ABBR, PLAN_LABELS,
-                      PLAN_TYPES, SESSION_KINDS)
+                      PLAN_TYPES, SESSION_KINDS, add_month, sub_month)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -55,6 +55,9 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 
 WEEKDAYS = ["Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota", "Nedjelja"]
 WEEKDAYS_SHORT = ["pon", "uto", "sri", "čet", "pet", "sub", "ned"]
+# the month view's label, "listopad 2026." (the nominative: it stands alone)
+MONTHS = ["siječanj", "veljača", "ožujak", "travanj", "svibanj", "lipanj",
+          "srpanj", "kolovoz", "rujan", "listopad", "studeni", "prosinac"]
 
 # Where an ACTIVE plan takes you — every "aktivna članarina" state is a door,
 # not a label. (path, button text)
@@ -613,70 +616,114 @@ def _iso_day(value: str | None) -> date | None:
         return None
 
 
+def _month_start(value: str | None, today: date) -> date:
+    """?month=YYYY-MM as that month's 1st. Missing or garbage is today's
+    month; so is a year the grid could not step past (1, 9999)."""
+    try:
+        first = date.fromisoformat(f"{value}-01") if value else None
+    except ValueError:
+        first = None
+    if first is None or not 1 < first.year < 9999:
+        return today.replace(day=1)
+    return first.replace(day=1)
+
+
+def _month_overview(user_id: int, first: date, today: date, booked: set[date]) -> dict:
+    """The month view (phones, clients): Monday-first weeks of seven days,
+    from the Monday on or before the 1st to the Sunday on or after the last
+    day. Each day carries what its cell says (the paid period's tint from
+    db.covered_days, the dot of a booking of mine, today's ring) and the
+    week a tap on it opens."""
+    nxt = add_month(first)
+    start, stop = _monday_of(first), nxt - timedelta(days=1)
+    stop += timedelta(days=6 - stop.weekday())                  # that week's Sunday
+    covered = db.covered_days(user_id, start, stop)
+    weeks = []
+    for w in range((stop - start).days // 7 + 1):
+        monday = start + timedelta(days=7 * w)
+        weeks.append([{"date": d, "in_month": d.month == first.month, "is_today": d == today,
+                       "past": d < today, "covered": d in covered, "has_mine": d in booked,
+                       "week": monday.isoformat()}
+                      for d in (monday + timedelta(days=i) for i in range(7))])
+    return {"month": first, "month_label": f"{MONTHS[first.month - 1]} {first.year}.",
+            "prev_month": sub_month(first).isoformat()[:7], "next_month": nxt.isoformat()[:7],
+            "this_month": first == today.replace(day=1), "month_weeks": weeks}
+
+
 @app.get("/raspored", response_class=HTMLResponse)
 def calendar(request: Request, week: str | None = None, series: str | None = None,
-             day: str | None = None):
+             day: str | None = None, view: str | None = None, month: str | None = None):
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/raspored')}", status_code=303)
 
     today = config.today()
-    try:
-        monday = _monday_of(date.fromisoformat(week)) if week else _monday_of(today)
-    except ValueError:
-        monday = _monday_of(today)               # garbage ?week= falls back to now
-    db.materialize_week(monday)
-
-    start = datetime(monday.year, monday.month, monday.day, tzinfo=config.TZ)
-    rows = db.sessions_between(start, start + timedelta(days=7))
-    mine = db.user_booking_ids(user.id, [r["session"].id for r in rows])
-    my_plans = db.active_plan_kinds(user.id)
     now = datetime.now(config.TZ)
-
-    # Group into 7 day columns; precompute everything the template needs so it
-    # stays logic-free.
-    days = []
-    for i in range(7):
-        d = monday + timedelta(days=i)
-        sessions = []
-        for r in rows:
-            sess = r["session"]
-            local = sess.starts_at.astimezone(config.TZ)
-            if local.date() != d:
-                continue
-            sessions.append({
-                "id": sess.id, "title": sess.title,
-                "time": local.strftime("%H:%M"),
-                "end": (local + timedelta(minutes=sess.duration_min)).strftime("%H:%M"),
-                "booked": r["booked"], "capacity": sess.capacity,
-                "full": r["booked"] >= sess.capacity,
-                "canceled": sess.canceled,
-                "past": sess.starts_at <= now,
-                "mine": sess.id in mine,
-                "can_cancel": sess.id in mine and now < db.cancel_deadline(sess),
-                "one_on_one": sess.capacity == 1,
-                # may this client book this kind? (trainer never books via UI)
-                "allowed": user.is_trainer or sess.kind in my_plans,
-                # from the weekly timetable: the phone's sheet offers the
-                # "isti termin svaki tjedan" checkbox only for these
-                "weekly": sess.template_id is not None,
-            })
-        # key is "sessions", NOT "items" — Jinja resolves dict.items to the builtin method
-        days.append({"date": d, "name": WEEKDAYS[i], "is_today": d == today, "sessions": sessions,
-                     # the day strip's dot: a booking of the client's own that day
-                     "has_mine": any(s["mine"] for s in sessions)})
-
-    # The day a phone shows (one day at a time, chosen on the day strip):
-    # ?day= when it falls in this week, else today when the week holds it,
-    # else the week's first day with termini, else its Monday.
-    picked = _iso_day(day)
-    if any(d["date"] == picked for d in days):
-        selected_day = picked
-    elif any(d["is_today"] for d in days):
-        selected_day = today
+    # ?view=month: a client's month overview (the phone's "Mjesec") in the
+    # week grid's place. A trainer has no month view: the week page it is.
+    month_view = view == "month" and not user.is_trainer
+    if month_view:
+        shown_month = _month_start(month, today)
+        # no grid, strip or sheet to fill: the week is only where "Tjedan"
+        # (and a ✕'s way back) leads, the month's today, else its 1st
+        selected_day = today if shown_month == today.replace(day=1) else shown_month
+        monday, days = _monday_of(selected_day), []
     else:
-        selected_day = next((d["date"] for d in days if d["sessions"]), monday)
+        try:
+            monday = _monday_of(date.fromisoformat(week)) if week else _monday_of(today)
+        except ValueError:
+            monday = _monday_of(today)               # garbage ?week= falls back to now
+        db.materialize_week(monday)
+
+        start = datetime(monday.year, monday.month, monday.day, tzinfo=config.TZ)
+        rows = db.sessions_between(start, start + timedelta(days=7))
+        mine = db.user_booking_ids(user.id, [r["session"].id for r in rows])
+        my_plans = db.active_plan_kinds(user.id)
+
+        # Group into 7 day columns; precompute everything the template needs so it
+        # stays logic-free.
+        days = []
+        for i in range(7):
+            d = monday + timedelta(days=i)
+            sessions = []
+            for r in rows:
+                sess = r["session"]
+                local = sess.starts_at.astimezone(config.TZ)
+                if local.date() != d:
+                    continue
+                sessions.append({
+                    "id": sess.id, "title": sess.title,
+                    "time": local.strftime("%H:%M"),
+                    "end": (local + timedelta(minutes=sess.duration_min)).strftime("%H:%M"),
+                    "booked": r["booked"], "capacity": sess.capacity,
+                    "full": r["booked"] >= sess.capacity,
+                    "canceled": sess.canceled,
+                    "past": sess.starts_at <= now,
+                    "mine": sess.id in mine,
+                    "can_cancel": sess.id in mine and now < db.cancel_deadline(sess),
+                    "one_on_one": sess.capacity == 1,
+                    # may this client book this kind? (trainer never books via UI)
+                    "allowed": user.is_trainer or sess.kind in my_plans,
+                    # from the weekly timetable: the phone's sheet offers the
+                    # "isti termin svaki tjedan" checkbox only for these
+                    "weekly": sess.template_id is not None,
+                })
+            # key is "sessions", NOT "items" — Jinja resolves dict.items to the builtin method
+            days.append({"date": d, "name": WEEKDAYS[i], "is_today": d == today, "sessions": sessions,
+                         # the day strip's dot: a booking of the client's own that day
+                         "has_mine": any(s["mine"] for s in sessions)})
+
+        # The day a phone shows (one day at a time, chosen on the day strip):
+        # ?day= when it falls in this week, else today when the week holds it,
+        # else the week's first day with termini, else its Monday.
+        picked = _iso_day(day)
+        if any(d["date"] == picked for d in days):
+            selected_day = picked
+        elif any(d["is_today"] for d in days):
+            selected_day = today
+        else:
+            selected_day = next((d["date"] for d in days if d["sessions"]), monday)
 
     # "Moje rezervacije" as day columns mirroring the week grid. my_upcoming()
     # is chronological, so grouping consecutive rows by local date suffices —
@@ -722,6 +769,14 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
         if preview:
             series_offer = dict(preview, session_id=series_id, noun=_termin(preview["n"]))
 
+    plans = db.memberships_for(user.id)
+    overview = {}
+    if month_view:
+        overview = _month_overview(user.id, shown_month, today, {d["date"] for d in mine_days})
+        # "Članarina vrijedi do …": the furthest dospijeće of an active plan that books termini
+        overview["valid_until"] = max((m.dospijece for m in plans
+                                       if m.plan in SESSION_KINDS and m.is_active(today)), default=None)
+
     return templates.TemplateResponse(request, "calendar.html", _ctx(
         request, user,
         days=days, monday=monday, series_offer=series_offer, selected_day=selected_day,
@@ -732,7 +787,8 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
                       "usage": db.cycle_usage(user.id, m.plan),
                       "next_payment": m.next_payment, "dospijece": m.dospijece,
                       "active": m.is_active(today)}
-                     for m in db.memberships_for(user.id)],
+                     for m in plans],
+        view="month" if month_view else "week", **overview,
     ))
 
 
