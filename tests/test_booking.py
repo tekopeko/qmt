@@ -545,9 +545,11 @@ def test_the_plans_page_is_reachable_without_hunting_for_it():
     assert "Pogledaj cjenik" in ca.get("/raspored").text
     assert 'href="/moja-clanarina' not in TestClient(app).get("/").text   # never for a guest: members only
 
-    # the trainer's nav is already full and they do not buy plans
+    # the trainer's nav is already full and they do not buy plans: no tab;
+    # the account menu keeps the item (they edit the plans' texts there)
     make_user("trener@test.local", is_trainer=True, plans=())
-    assert 'href="/moja-clanarina' not in client_for("trener@test.local").get("/raspored").text
+    page = client_for("trener@test.local").get("/raspored").text
+    assert ">Članarina</a>" not in page and "<span>Moja članarina</span>" in page
 
 
 def test_plan_gate_offers_the_price_instead_of_a_dead_end():
