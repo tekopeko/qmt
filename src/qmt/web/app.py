@@ -6,6 +6,7 @@ middleware — if this grows routes the way mojimakrosi did, promote it.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -49,8 +50,10 @@ app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=c
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["COPY"] = copy.SLOTS      # the editable texts and their limits (_copy.html)
 templates.env.globals["copy_items"] = copy.items_for   # a list slot's items (_copy.html, points)
-templates.env.globals["copy_flag"] = copy.flag_on      # a flag slot: on or off (landing.html, #aktualno)
-templates.env.globals["copy_image"] = copy.image_name  # an image slot: its file's name, or None (landing.html, #aktualno)
+templates.env.globals["copy_flag"] = copy.flag_on      # a flag slot: on or off
+templates.env.globals["copy_image"] = copy.image_name  # an image slot: its file's name, or None
+templates.env.globals["CAP"] = copy.CAP                # a text's cap, where no slot says it (_copy.html, field)
+templates.env.globals["ANNOUNCEMENT"] = copy.ANNOUNCEMENT_SLOTS   # an announcement's fields (landing.html, #aktualno)
 # a price slot's text as the page prints it, and whether it is a number at
 # all: "€" follows "50" and "od 30", not "na upit" (landing.html, _plan_price.html)
 templates.env.globals["copy_text"] = lambda key, texts: texts.get(key, copy.SLOTS[key].default)
@@ -144,6 +147,12 @@ def _is_owner(user) -> bool:
                 and (user.email or "").strip().lower() == config.OWNER_EMAIL)
 
 
+def _can_edit_copy(user) -> bool:
+    """May this viewer edit the public copy in place, the announcements
+    among it? The trainer and the owner."""
+    return bool(user and (user.is_trainer or _is_owner(user)))
+
+
 def _has_online(user) -> bool:
     """May this user see Online treninzi at all? Trainer always; clients only
     with an active `online` plan (the tab is a paid product, not a teaser)."""
@@ -180,7 +189,7 @@ def _ctx(request: Request, user, copy_texts: dict[str, str] | None = None, **ext
             # in-place editable copy: the edited texts (a route that has read
             # them already passes its dict), and whether this viewer may edit
             "copy_texts": db.copy_texts() if copy_texts is None else copy_texts,
-            "can_edit_copy": bool(user and (user.is_trainer or _is_owner(user))),
+            "can_edit_copy": _can_edit_copy(user),
             "feedback_prompt": _pop_feedback_prompt(request, user),
             "is_owner": _is_owner(user), **extra}
 
@@ -285,15 +294,20 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
     one item at a time (see _copy_save_list); a flag slot is switched, its
     text "on" or "off" and nothing else. An image slot takes only reset=1,
     which removes its photo; a photo goes up through POST /copy/{key}/slika,
-    so no text can ever land in an image slot."""
+    so no text can ever land in an image slot. An announcement's field (a
+    row, not a slot: aktualno.<id>.<field>) is edited the same way, by the
+    type its field has (see _copy_save_announcement)."""
     user = current_user(request)
     if user is None:
         return JSONResponse({"ok": False, "error": "Prijava je istekla — prijavi se ponovno."}, status_code=401)
-    if not (user.is_trainer or _is_owner(user)):
+    if not _can_edit_copy(user):
         return JSONResponse({"ok": False, "error": "Tekstove uređuje samo trener."}, status_code=403)
     slot = copy.SLOTS.get(key)
     if slot is None:
-        return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
+        found = _announcement_field(key)
+        if found is None:
+            return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
+        return _copy_save_announcement(key, *found, text, reset, user.id)
     if isinstance(slot, copy.ListSlot):
         return _copy_save_list(key, slot, text, index, reset, user.id)
     if isinstance(slot, copy.FlagSlot):
@@ -322,6 +336,56 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
         return JSONResponse({"ok": True, "text": slot.default, "default": True})
     db.set_copy(key, cleaned, user.id)
     return JSONResponse({"ok": True, "text": cleaned, "default": False})
+
+
+# An announcement's field as the editor names it: aktualno.<id>.<field>. At
+# most nine digits, so no id is past what the column can hold.
+_ANNOUNCEMENT_KEY = re.compile(r"aktualno\.([1-9][0-9]{0,8})\.([a-z]+)")
+
+
+def _announcement_field(key: str) -> tuple[int, str, copy.Slot | copy.FlagSlot | copy.ImageSlot] | None:
+    """A virtual key's card, field and slot (copy.ANNOUNCEMENT_SLOTS: how
+    the field is edited), or None: not such a key, a field a card does not
+    have, or a card that is not there."""
+    m = _ANNOUNCEMENT_KEY.fullmatch(key)
+    if m is None or m.group(2) not in copy.ANNOUNCEMENT_SLOTS or db.announcement(int(m.group(1))) is None:
+        return None
+    return int(m.group(1)), m.group(2), copy.ANNOUNCEMENT_SLOTS[m.group(2)]
+
+
+def _copy_save_announcement(key: str, ann_id: int, field: str, slot, text: str, reset: str,
+                            user_id: int) -> JSONResponse:
+    """One change to an announcement's field, answered as copy_save answers
+    for a slot of its type: the switch takes "on" or "off" (reset=1: on);
+    the photo only reset=1, which removes the row's name and the file; a text is
+    cleaned and capped, and an empty one (or reset=1) is the new card's
+    placeholder again (copy.ANNOUNCEMENT_BLANK), "default": true. A card
+    deleted meanwhile answers 404, as an unknown key does."""
+    try:
+        if isinstance(slot, copy.FlagSlot):
+            if reset == "1":
+                on = slot.default
+            elif text in ("on", "off"):
+                on = text == "on"
+            else:
+                return JSONResponse({"ok": False, "error": "Nepoznata vrijednost."}, status_code=400)
+            db.set_announcement_shown(ann_id, on, user_id)
+            return JSONResponse({"ok": True, "on": on, "default": reset == "1"})
+        if isinstance(slot, copy.ImageSlot):
+            if reset != "1":
+                return JSONResponse({"ok": False, "error": f"Sliku šalje /copy/{key}/slika."}, status_code=400)
+            old = db.set_announcement_image(ann_id, None, user_id)    # the row first, then the file
+            if old:
+                storage.delete(old)
+            return JSONResponse({"ok": True, "url": None, "default": True})
+        cleaned = "" if reset == "1" else copy.clean(text)
+        if len(cleaned) > slot.max:
+            return JSONResponse({"ok": False, "error": f"Najviše {slot.max} znakova — ovo ih ima {len(cleaned)}."},
+                                status_code=400)
+        stored = db.set_announcement_field(ann_id, copy.ANNOUNCEMENT_COLUMNS[field], cleaned, user_id)
+        return JSONResponse({"ok": True, "text": stored, "default": not cleaned})
+    except LookupError:
+        return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
 
 
 def _copy_save_list(key: str, slot: copy.ListSlot, text: str, index: str, reset: str,
@@ -388,15 +452,19 @@ def copy_image_upload(request: Request, key: str, slika: UploadFile | None = Fil
     EXIF at all: the camera, the place and the time stay off a public page.
     Each upload gets a new name, which is what lets /slika have browsers keep
     a photo for good; the slot's previous photo is deleted once the new one
-    is recorded. Removing it is reset=1 on POST /copy/{key}."""
+    is recorded. Removing it is reset=1 on POST /copy/{key}. An
+    announcement's photo (aktualno.<id>.image, a row's) goes the same way."""
     user = current_user(request)
     if user is None:
         return JSONResponse({"ok": False, "error": "Prijava je istekla — prijavi se ponovno."}, status_code=401)
-    if not (user.is_trainer or _is_owner(user)):
+    if not _can_edit_copy(user):
         return JSONResponse({"ok": False, "error": "Tekstove uređuje samo trener."}, status_code=403)
-    slot = copy.SLOTS.get(key)
+    slot, ann_id = copy.SLOTS.get(key), None
     if slot is None:
-        return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
+        found = _announcement_field(key)
+        if found is None:
+            return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
+        ann_id, _, slot = found
     if not isinstance(slot, copy.ImageSlot):
         return JSONResponse({"ok": False, "error": "Ovdje ne ide slika."}, status_code=400)
 
@@ -436,11 +504,20 @@ def copy_image_upload(request: Request, key: str, slika: UploadFile | None = Fil
             return bad(unsupported)
         photo.thumbnail((IMAGE_PX, IMAGE_PX))                         # never enlarges
         photo.save(out, "JPEG", quality=82, progressive=True)        # no exif= given: none is written
-        n = key.split(".")[0].removeprefix("event")      # the card's number: event1.image -> 1
-        name = f"aktualno-{n}-{secrets.token_hex(8)}.jpg"
+        # a new name at every upload: an announcement's carries its card's id
+        # (aktualno-3-…), a slot's its key
+        stem = f"aktualno-{ann_id}" if ann_id is not None else key.replace(".", "-")
+        name = f"{stem}-{secrets.token_hex(8)}.jpg"
         storage.save(name, out, "image/jpeg")
-    old = copy.image_name(key, db.copy_texts())
-    db.set_copy(key, name, user.id)
+    if ann_id is not None:
+        try:
+            old = db.set_announcement_image(ann_id, name, user.id)
+        except LookupError:                              # the card was deleted while its photo went up
+            storage.delete(name)
+            return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
+    else:
+        old = copy.image_name(key, db.copy_texts())
+        db.set_copy(key, name, user.id)
     if old:
         storage.delete(old)
     return JSONResponse({"ok": True, "url": f"/slika/{name}"})
@@ -450,7 +527,8 @@ def copy_image_upload(request: Request, key: str, slika: UploadFile | None = Fil
 def slika(name: str):
     """An announcement's photo, for anyone: the landing is public, and so is
     what is on it. The one exception to "media only through the auth-gated
-    /media": it serves a name only while an ImageSlot row holds it, so no
+    /media": it serves a name only while an announcement (or an ImageSlot
+    row) holds it, a hidden card's too (its editor sees it), so no
     programme's media (a client's content) can be reached through it, nor a
     photo once it is replaced or removed. A name is new with every upload, so
     the file may be cached for a year, immutable. On R2 the bytes are proxied,
@@ -460,7 +538,9 @@ def slika(name: str):
     if "/" in name or "\\" in name or ".." in name:
         raise HTTPException(status_code=404)
     texts = db.copy_texts()
-    if name not in {copy.image_name(k, texts) for k, s in copy.SLOTS.items() if isinstance(s, copy.ImageSlot)}:
+    held = {copy.image_name(k, texts) for k, s in copy.SLOTS.items() if isinstance(s, copy.ImageSlot)}
+    held |= {a.image for a in db.announcements(all=True) if a.image}
+    if name not in held:
         raise HTTPException(status_code=404)
     cache = {"Cache-Control": "public, max-age=31536000, immutable"}
     if storage.r2_enabled():
@@ -506,10 +586,46 @@ def landing(request: Request):
     show_prices = bool(user) or config.prices_public()
     texts = db.copy_texts()
     offer_prices, stripe_priced = _offer_prices(payments.price_table(), texts) if show_prices else ({}, set())
+    # the announcements (#aktualno): a visitor's are the shown ones; an
+    # editor's every one, a hidden one marked off, and "+ Dodaj najavu"
+    # while there is room for another
+    editor = _can_edit_copy(user)
+    news = db.announcements(all=editor)
     return templates.TemplateResponse(request, "landing.html", _ctx(
         request, user, copy_texts=texts, gallery=gallery, my_plans=plans,
         show_prices=show_prices, offer_prices=offer_prices, stripe_priced=stripe_priced,
-        addon=addon_amounts(texts)))
+        addon=addon_amounts(texts), announcements=news,
+        can_add=editor and len(news) < db.MAX_ANNOUNCEMENTS))
+
+
+# ---------- the announcements: add and delete (their fields: POST /copy/{key}) ----------
+
+@app.post("/aktualno/nova")
+def aktualno_nova(request: Request):
+    """The editor's "+ Dodaj najavu" (edit mode, a plain form): a new card
+    after the last one, with placeholder texts to retype in place, shown, no
+    photo. Back to the landing's announcements; at the cap with a sentence
+    why."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    if db.add_announcement(user.id) is None:
+        return RedirectResponse(f"/?error=Najviše+{db.MAX_ANNOUNCEMENTS}+najava.#aktualno", status_code=303)
+    return RedirectResponse("/#aktualno", status_code=303)
+
+
+@app.post("/aktualno/{ann_id}/obrisi")
+def aktualno_obrisi(request: Request, ann_id: int):
+    """The editor's "Obriši najavu" (edit mode, a plain form the pill sends
+    at its second tap): the card goes, then its photo's file. A card already
+    gone is nothing to do."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    image = db.delete_announcement(ann_id)
+    if image:
+        storage.delete(image)
+    return RedirectResponse("/#aktualno", status_code=303)
 
 
 @app.get("/cjenik")

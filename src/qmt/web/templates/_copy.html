@@ -16,6 +16,21 @@
   {%- endif -%}
 {%- endmacro %}
 
+{# A text that is no slot: one of an announcement's (a row of the
+   announcements table, landing.html's #aktualno). `c.field(key, text,
+   label)` prints it as c.t prints a slot, the same span for the same
+   viewers: `key` is its virtual key (aktualno.<id>.<field>), which POST
+   /copy/{key} takes as it takes a slot's, `text` what the row holds, and
+   `label` what the editor's bar names ("Najava 2: naslov"); the cap is
+   every text's, CAP. #}
+{% macro field(key, text, label) -%}
+  {%- if can_edit_copy -%}
+    <span class="ed t" data-copy="{{ key }}" data-max="{{ CAP }}" data-label="{{ label }}">{{ text }}</span>
+  {%- else -%}
+    <span class="t">{{ text }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
 {# An editable LIST (copy.ListSlot): `c.points("key")` prints the <ul>. Each
    item is an .ed span that saves with its index; for an editor every item
    also gets a ✕ and the list a "+ Dodaj stavku" after it, both shown only in

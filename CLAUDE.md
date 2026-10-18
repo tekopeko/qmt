@@ -31,7 +31,7 @@ python scripts/seed_demo.py                # dev RESET: users, timetable, plans,
 python serve.py [--reload] [--port 8100]   # 8100 — 8000 is mojimakrosi's local port
 
 createdb qmt_test                          # once
-pytest -q                                  # 139 tests, must stay green
+pytest -q                                  # 145 tests, must stay green
 ```
 
 Demo logins: `trener@qmt.local/trener123` (trainer **and** owner locally, via
@@ -54,19 +54,20 @@ variables --kv` reads config). Pushing to `master` auto-deploys.
 
 | Route | Who | What |
 |---|---|---|
-| `/` | public | Landing: hero = kicker, headline, then **`#aktualno`**: the owner's two announcement cards for the month (chip, title, when, a few lines, a grey "Javi nam se" → `/#kontakt`; each switched off by the editor, a `FlagSlot`, gone when both are; each optionally over a photo of the owner's (`ImageSlot`: uploaded in edit mode, shrunk to a 1600px JPEG, stored like other media, in R2 on prod), then Shape's photo card: glass chip on top, white type and a white pill at the bottom): one card per view at every width, as wide as the row (the screen less the gutter on a phone, the 1100px column on a desktop), dots under it, moving on by itself every 5 s (quiet while touched, hovered or focused, off-screen, in a hidden tab, or under reduced motion); edit mode stacks the two, one under the other; then the photo card that links to the offer; no lead, no button, no note since 16.10.2026 (the owner's call: the announcements are the first thing on the page). **The offer (`#usluge`) is three tiers of the online plan** (QMove START / PRO, featured / ELITE; each with the MojiMakrosi add-on, 5 €): tier 1's monthly price is the online plan's own, every other price (tiers 2–3 monthly, all three yearly) is editable text until a plan exists; a **Mjesečno / Godišnje** switch under the cards shows one price per card (per page view, monthly without JS); on phones (<900px) the tiers are a swipe carousel (cards 92% wide, a sliver of the next) with three dots that opens on PRO (the featured middle card: START a swipe to the left, ELITE to the right). Below it, quieter, **the gym (`#dvorana`)**: Dvorana and Individualno cards (add-on 3 €; Individualno names its semi-individual and rehab prices in a muted line under its own), tiers too (the plan's real monthly price, an editable yearly one) with their own switch, one choice with the tiers' (pressing either flips both sections), and a two-card swipe row on phones. Gallery from `static/gallery/`; contact. A card's button follows the visitor: owner of the plan → into the app, member → "Odaberi plan" → that plan's card on `/moja-clanarina`, guest → "Registriraj se" when signup is open, else "Javi nam se" → `#kontakt` |
+| `/` | public | Landing: hero = kicker, headline, then **`#aktualno`**: the owner's announcement cards for the month, any number up to 8, rows of the `announcements` table in creation order (chip, title, when, a few lines, a grey "Javi nam se" → `/#kontakt`; added in edit mode with "+ Dodaj najavu" (placeholder texts to retype) and deleted with each card's "Obriši najavu" (two taps); each switched off by the editor, gone when all are; each optionally over a photo of the owner's (uploaded in edit mode, shrunk to a 1600px JPEG, stored like other media, in R2 on prod), then Shape's photo card: glass chip on top, white type and a white pill at the bottom): one card per view at every width, as wide as the row (the screen less the gutter on a phone, the 1100px column on a desktop), dots under it, moving on by itself every 5 s (quiet while touched, hovered or focused, off-screen, in a hidden tab, or under reduced motion); edit mode stacks them, one under the other; then the photo card that links to the offer; no lead, no button, no note since 16.10.2026 (the owner's call: the announcements are the first thing on the page). **The offer (`#usluge`) is three tiers of the online plan** (QMove START / PRO, featured / ELITE; each with the MojiMakrosi add-on, 5 €): tier 1's monthly price is the online plan's own, every other price (tiers 2–3 monthly, all three yearly) is editable text until a plan exists; a **Mjesečno / Godišnje** switch under the cards shows one price per card (per page view, monthly without JS); on phones (<900px) the tiers are a swipe carousel (cards 92% wide, a sliver of the next) with three dots that opens on PRO (the featured middle card: START a swipe to the left, ELITE to the right). Below it, quieter, **the gym (`#dvorana`)**: Dvorana and Individualno cards (add-on 3 €; Individualno names its semi-individual and rehab prices in a muted line under its own), tiers too (the plan's real monthly price, an editable yearly one) with their own switch, one choice with the tiers' (pressing either flips both sections), and a two-card swipe row on phones. Gallery from `static/gallery/`; contact. A card's button follows the visitor: owner of the plan → into the app, member → "Odaberi plan" → that plan's card on `/moja-clanarina`, guest → "Registriraj se" when signup is open, else "Javi nam se" → `#kontakt` |
 | `/moja-clanarina` | client | **"Moja članarina"** (18.10.2026, Shape Club's billing page in QMT's look): **members only** (guests are sent to log in; the trainer and the owner go to `/clanarine`), where plans are seen, bought and managed; the public price list is the landing's offer. **Tvoji planovi**: a card per plan held, active or lapsed (active first, `PLAN_TYPES` order): PAKET + name, a chip that says the state (aktivna / dospijeva za N dana, N ≤ 7 to dospijeće / istekla / otkazana · vrijedi do kraja), the facts (cijena, uplaćeno, sljedeća uplata, vrijedi do; a tiered grupni's paket and "n od N u ovom ciklusu"), one sentence on how and by when it is paid, and only what fits how it is paid: the plan's door (`PLAN_LINKS`) while it runs; a card subscriber's portal ("Kartica, računi, otkazivanje") and tier switch; a cash member's "Prebaci na karticu" once Stripe is configured (nothing more without it). **Dodaj plan**: the plans not held with their prices (Stripe, else the reference price, the editable `price.<plan>.*` slots) and "Pretplati se karticom" → Stripe Checkout where sellable, else `cjenik.note`. **Računi**: the `payments` ledger, newest first (date, plan with the method under it, amount when known), plus the portal's invoices for a subscriber. Price lines are the `_plan_price.html` macro. **`/cjenik`** (the old price list; the reminder email still links it) redirects here, query and `#plan-<key>` kept |
 | `/raspored` | client | Week calendar, booking, "Moja članarina" (one line per plan, "aktivna do …" with a tiered plan's "5/12", or "istekla …", and a link to `/moja-clanarina`) + "Moje rezervacije" as day columns, each booking with a ✕ that asks before it cancels; cancelling is allowed until 12 h before the termin, `CANCEL_CUTOFF_HOURS`. After booking a weekly slot the ok alert offers "Isti termin svaki tjedan do …" → `POST /book/{id}/series` books that slot for the rest of the paid period. A client's **"Tvoj sljedeći termin"** card (the soonest booking, with its ✕) sits right under the week's head at every width. **On phones (≤860px) one day at a time** (17.10.2026, so nobody scrolls the whole week): a day strip (Shape's "Moj napredak" week: pon 12 … ned 18, the chosen day filled, today ringed, a dot on days with my booking) picks the day, `?day=` keeps it through a reload, every form and redirect, and a sideways swipe moves a day; each termin is one 56px row, and a row with an action opens the bottom sheet (`#sheet`): the facts and one action, "Rezerviraj" (with the "isti termin svaki tjedan" checkbox on weekly slots: `POST /book/{id}` with `series=1` books the repeat at once) or "Otkaži rezervaciju". The trainer's rows link to the roster. Without JS the phone keeps the agenda of cards; the desktop keeps the 7-column grid. **A month overview on phones** (18.10.2026, clients): a "Tjedan | Mjesec" switch under the week buttons opens `?view=month&month=YYYY-MM`, the month as Shape's "Moj napredak" grid: the days of the paid period tinted a light green (`db.covered_days`: the plans that book termini, from the cycle's start to dospijeće), my bookings dotted, today ringed, and a tap on a day opens its week on that day; "Članarina vrijedi do …" under it. The switch is hidden from 861px and never shown to the trainer (`?view=month` is the week page for him) |
 | `/karton`, `/upitnik` | client | Personal file: upitnik result, training diary, termini. `/karton/{id}` is the trainer's read-only view |
 | `/treninzi` | client/trainer | Online programmes — automatic (see below) |
 | `/prehrana` | public | MojiMakrosi link (`/nutricionizam` 301s here) |
 | `/profil` | any | Basic info form; a client's link to `/moja-clanarina` (plans, uplate and računi moved there 18.10.2026) |
-| `POST /copy/{key}` | trainer/owner | Saves one in-place-edited text (JSON); empty text restores the default |
+| `POST /copy/{key}` | trainer/owner | Saves one in-place-edited text (JSON); empty text restores the default. An announcement's field too, by its virtual key `aktualno.<id>.<field>` |
+| `POST /aktualno/nova`, `POST /aktualno/{id}/obrisi` | trainer/owner | Adds an announcement after the last (placeholder texts; at most 8) / deletes one with its photo. Plain forms from edit mode, back to `/#aktualno` |
 | `/admin` | trainer | Weekly timetable as an **editable week grid** + one-off termini |
 | `/clanarine` | trainer | Record cash/card uplate per client per plan |
 | `/korisnici`, `/statistika` | owner | Roster + trainer grants; uplate per plan per month |
 
-Media (`data/uploads/`, gitignored) is served ONLY via the auth-gated `/media/{name}` — except the announcements' images, public by nature, which `/slika/{name}` serves (only names an `ImageSlot` holds, cached a year).
+Media (`data/uploads/`, gitignored) is served ONLY via the auth-gated `/media/{name}` — except the announcements' images, public by nature, which `/slika/{name}` serves (only names an announcement holds, cached a year).
 
 ## Architecture — the three ideas
 
@@ -108,16 +109,16 @@ active `online` plan → filled upitnik → matched programmes.
 | Path | Role |
 |---|---|
 | `src/qmt/config.py` | `.env`, `OWNER_EMAIL`/`ALLOWED_EMAILS`, booking knobs, prod guards |
-| `src/qmt/copy.py` | The texts a trainer/owner may edit in place: slot → default text, label; a 2000-character cap, no design limit since 16.10.2026; lists (`ListSlot`), on/off flags (`FlagSlot`, the landing's announcements) and photos (`ImageSlot`, behind the announcements); the reference prices (`price.<plan>.*`, `addon.*`, defaults `REFERENCE_PRICES` / `MOJIMAKROSI_ADDON`), what the site says until a Stripe Price exists |
-| `src/qmt/models.py` | `User` (+profile fields), `SessionTemplate`, `TrainingSession`, `Booking`, `Membership`, `Payment`, `OnboardingResponse`, `TrainingLog`, `Program`(level/goal)/`ProgramItem`; `PLAN_*`, `FEELING_LABELS`, `PAYMENT_METHODS` |
-| `src/qmt/db.py` | Queries + rules. **`book()` locks the session row FOR UPDATE** and re-counts inside the lock (tested) |
+| `src/qmt/copy.py` | The texts a trainer/owner may edit in place: slot → default text, label; a 2000-character cap, no design limit since 16.10.2026; lists (`ListSlot`), on/off flags (`FlagSlot`) and photos (`ImageSlot`); the reference prices (`price.<plan>.*`, `addon.*`, defaults `REFERENCE_PRICES` / `MOJIMAKROSI_ADDON`), what the site says until a Stripe Price exists; how an announcement's fields are edited (`ANNOUNCEMENT_SLOTS`, `ANNOUNCEMENT_COLUMNS`), a new card's placeholders (`ANNOUNCEMENT_BLANK`) and the seed's two examples (`ANNOUNCEMENT_EXAMPLES`) |
+| `src/qmt/models.py` | `User` (+profile fields), `SessionTemplate`, `TrainingSession`, `Booking`, `Membership`, `Payment`, `OnboardingResponse`, `TrainingLog`, `Program`(level/goal)/`ProgramItem`, `SiteCopy`, `Announcement` (the landing's cards); `PLAN_*`, `FEELING_LABELS`, `PAYMENT_METHODS` |
+| `src/qmt/db.py` | Queries + rules. **`book()` locks the session row FOR UPDATE** and re-counts inside the lock (tested); `add_announcement` locks the `announcements` table, so the cap of 8 (`MAX_ANNOUNCEMENTS`) holds when adds race (tested) |
 | `src/qmt/upitnik.py` | Questions, scoring thresholds, level/goal labels |
 | `src/qmt/auth.py` | bcrypt + signed email tokens (verify 24 h; reset 1 h, single-use) |
 | `src/qmt/mailer.py` | Only Resend importer. Also `send_new_user_notice` → owner hears about each first verification |
 | `src/qmt/reminders.py` | Email podsjetnici (pre-dospijeće + day-before termin), claim-idempotent via the `reminders` table; app lifespan ticks every 6 h, `scripts/send_reminders.py` forces a pass |
 | `src/qmt/storage.py` | Media backend: local disk, or Cloudflare R2 when the four `R2_*` vars are set (then `/media` 307s to presigned URLs); `stream()` hands out a stored file's bytes, for `/slika`, which proxies the bytes so its public URL stays cacheable |
 | `src/qmt/payments.py` | Stripe: prices for /moja-clanarina (cached), Checkout + portal sessions, signed webhook → `record_payment`. Tolerates both invoice shapes (pre/post 2025 API) |
-| `src/qmt/web/app.py` | All routes. `current_user()` per route; `PLAN_LINKS` maps an active plan to the page it unlocks |
+| `src/qmt/web/app.py` | All routes. `current_user()` per route; `PLAN_LINKS` maps an active plan to the page it unlocks; `/copy/{key}` takes a slot's key or an announcement's virtual key (`aktualno.<id>.<field>`, `_announcement_field`) |
 | `src/qmt/web/templates/` | Jinja2. Design tokens + topbar/avatar menu in `base.html` |
 
 ## Conventions (follow these)
@@ -182,25 +183,42 @@ active `online` plan → filled upitnik → matched programmes.
   through `{{ c.points("key") }}`. In edit mode each item has a ✕ and the list
   a "+ Dodaj stavku"; an item saves with its `index` (n appends, an empty text
   removes it) and "Zadano (cijela lista)" (`reset=1`) restores the whole list.
-  **Flags** (16.10.2026, the landing's announcements) are a `FlagSlot`: an
-  on/off switch stored as copy, the text "on" or "off" in `site_copy` (no row =
-  the default), read in a template with `copy_flag(key, copy_texts)`; `POST
-  /copy/{key}` takes exactly "on" or "off", or `reset=1`. In edit mode the card
-  it governs carries a `.ed-flag` toggle ("Prikazano" / "Skriveno") that saves
-  at a click; a hidden card stays on an editor's page as `.is-off` (shown,
-  dimmed, in edit mode only), and a visitor never gets a hidden card's markup.
-  **Images** (16.10.2026, a photo behind each announcement, like Shape's photo
-  cards) are an `ImageSlot`: the stored file's name as copy (no row = no
-  photo, a plain card), read with `copy_image(key, copy_texts)`. In edit mode
-  "Dodaj sliku" / "Promijeni sliku" (`.ed-img`) opens the file picker and posts
-  to `POST /copy/{key}/slika` (jpg / png / webp, at most 15 MB): Pillow turns
-  it upright (EXIF), shrinks it to 1600px on its long side and keeps a
-  progressive JPEG with no EXIF, under a new name `aktualno-<n>-<hex>.jpg`
-  (the slot's previous photo is deleted). "Ukloni sliku" (`.ed-img-x`, a
-  second tap confirms) is `reset=1` on `POST /copy/{key}`, which deletes file
-  and row; that route takes nothing else for an image slot. A card with a
+  **Announcements** (the landing's `#aktualno` cards; two fixed sets of slots,
+  `event1.*` / `event2.*`, until 18.10.2026, which migration `b48179fcf538`
+  turned into the first two rows) are rows, not slots: the `announcements`
+  table (`models.Announcement`: `position` = creation order, `shown`, five
+  texts, `image`), up to 8 (`db.MAX_ANNOUNCEMENTS`), which the gym owner
+  adds, hides and deletes himself. The editor edits a card as it edits slots,
+  through **virtual keys** `aktualno.<id>.<field>` on the same routes
+  (`copy.ANNOUNCEMENT_SLOTS` says how each field is edited), and the
+  template prints a card's text with `c.field(key, text, label)` (`_copy.html`,
+  the same span as `c.t`; the bar names a card by its place, "Najava 2:
+  naslov"). The texts (`tag`, `title`, `when`, `text`, `cta`) behave as
+  slots, except that an empty one (or "Zadano") puts the new card's
+  placeholder back (`copy.ANNOUNCEMENT_BLANK`). **The switch** (`show`) is
+  a `FlagSlot`: `POST /copy/{key}` takes exactly "on" or "off", or
+  `reset=1` (on). In edit mode the card carries a `.ed-flag` toggle
+  ("Prikazano" / "Skriveno") that saves at a click; a hidden card stays on
+  an editor's page as `.is-off` (shown, dimmed, in edit mode only), and a
+  visitor never gets a hidden card's markup. **The photo** (`image`, like
+  Shape's photo cards) is an `ImageSlot`: in edit mode "Dodaj sliku" /
+  "Promijeni sliku" (`.ed-img`) opens the file picker and posts to `POST
+  /copy/{key}/slika` (jpg / png / webp, at most 15 MB): Pillow turns it
+  upright (EXIF), shrinks it to 1600px on its long side and keeps a
+  progressive JPEG with no EXIF, under a new name `aktualno-<id>-<hex>.jpg`
+  (the card's previous photo is deleted). "Ukloni sliku" (`.ed-img-x`, a
+  second tap confirms) is `reset=1` on `POST /copy/{key}`, which deletes
+  file and name; that route takes nothing else for a photo. A card with a
   photo is `.has-img` + `data-photo` (the audit counts its text as on a
-  photograph); the plain card beside it moves its lines to its foot.
+  photograph). **Adding and deleting**: in edit mode "+ Dodaj najavu"
+  (`.ed-add-ann`, under the row's dots, `POST /aktualno/nova`) adds a card
+  after the last, with placeholder texts, shown, no photo; each card's
+  "Obriši najavu" (`.ed-ann-x`, `POST /aktualno/{id}/obrisi`) asks first
+  ("Obriši?" at one tap, as a ✕) and deletes the card, then its photo. Both
+  are plain forms that come back to `/#aktualno`; at 8 the add is not
+  offered (and refused with "Najviše 8 najava."). The slot types `FlagSlot`
+  and `ImageSlot` stay, for any slot that is a switch or a photo (read with
+  `copy_flag` / `copy_image`); no `SLOTS` entry is one since 18.10.2026.
   **Prices** (18.10.2026) are plain slots, the reference prices: per plan
   `price.<plan>.amount` / `.unit` / `.note` and the MojiMakrosi add-on's
   `addon.online` / `addon.dvorana` (defaults `REFERENCE_PRICES` /

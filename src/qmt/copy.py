@@ -22,23 +22,34 @@ site_copy row whose text is a JSON array of cleaned, non-empty strings; no row
 means the default list. Its caps are a count (max_items) and a length per item
 (max_chars). Printed with `{{ c.points("the.key") }}`.
 
-A FlagSlot is a switch, not a text: whether a part of a page shows at all —
-the hero's two announcements for the month (#aktualno), each one the owner
-switches off when it is over. It is stored like any slot, as the text "on" or
-"off"; no row means the default. Read with `copy_flag("the.key", copy_texts)`
-(flag_on below). In edit mode the editor flips it with a toggle (.ed-flag,
-base.html); a visitor never gets the markup of what a flag hides.
+A FlagSlot is a switch, not a text: whether a part of a page shows at all.
+It is stored like any slot, as the text "on" or "off"; no row means the
+default. Read with `copy_flag("the.key", copy_texts)` (flag_on below). In
+edit mode the editor flips it with a toggle (.ed-flag, base.html); a visitor
+never gets the markup of what a flag hides.
 
-An ImageSlot is a photo, not a text: the background of one of the hero's
-announcements, the way Shape's photo cards carry theirs. It is stored like any
-slot, its text the stored file's name ("aktualno-1-3f9a1c….jpg"); no row means
-no photo, a plain card. Only POST /copy/{key}/slika writes it: the upload is
-turned upright, shrunk to a 1600px JPEG and kept where programme media is kept
-(storage.py: R2 on prod), and reset=1 on POST /copy/{key} removes file and row.
-Read with `copy_image("the.key", copy_texts)` (image_name below). The photo is
-public, as the landing is: GET /slika/{name} serves the names an ImageSlot
-holds and nothing else. In edit mode the editor picks a file with "Dodaj sliku"
-/ "Promijeni sliku" and removes it with "Ukloni sliku" (.ed-img, base.html).
+An ImageSlot is a photo, not a text, the way Shape's photo cards carry
+theirs. It is stored like any slot, its text the stored file's name; no row
+means no photo. Only POST /copy/{key}/slika writes it: the upload is turned
+upright, shrunk to a 1600px JPEG and kept where programme media is kept
+(storage.py: R2 on prod), and reset=1 on POST /copy/{key} removes file and
+row. Read with `copy_image("the.key", copy_texts)` (image_name below). The
+photo is public, as the landing is: GET /slika/{name} serves the names an
+ImageSlot or an announcement holds and nothing else. In edit mode the editor
+picks a file with "Dodaj sliku" / "Promijeni sliku" and removes it with
+"Ukloni sliku" (.ed-img, base.html).
+
+The landing's announcements (#aktualno, in the hero) are what both types are
+for, and since 18.10.2026 they are rows, not slots: the gym owner adds,
+hides and deletes them himself, up to eight (models.Announcement, db.py;
+until then two fixed sets of slots, event1.* / event2.*). The editor edits
+them as it edits slots, through virtual keys, aktualno.<id>.<field>, on the
+same routes (POST /copy/{key} and /copy/{key}/slika, app.py):
+ANNOUNCEMENT_SLOTS below says how each field is edited (a text is a Slot
+whose default is a new card's placeholder, the switch a FlagSlot, the photo
+an ImageSlot) and ANNOUNCEMENT_COLUMNS where a row keeps a text. No entry of
+SLOTS is a flag or a photo since; the types stay for the announcements, and
+for any slot that is one.
 
 The price slots (18.10.2026) are plain Slots with one job: the reference
 prices, what the site says a plan costs until a Stripe Price exists for it
@@ -78,12 +89,12 @@ class ListSlot:
 @dataclass(frozen=True)
 class FlagSlot:
     default: bool   # True: shown until someone switches it off
-    label: str      # what the editor's toggle stands for ("Događanje 1: prikazano")
+    label: str      # what the editor's toggle stands for ("Najava 1: prikazano")
 
 
 @dataclass(frozen=True)
 class ImageSlot:
-    label: str      # what the editor's bar names while a photo goes up ("Događanje 1: slika")
+    label: str      # what the editor's bar names while a photo goes up ("Najava 1: slika")
 
 
 # the online tiers' bullets: tier 1's own defaults, and placeholders for 2 and 3
@@ -183,29 +194,7 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     # the MojiMakrosi add-on's amount in €: beside the online tiers, beside the gym's cards
     "addon.online": Slot(MOJIMAKROSI_ADDON["online"], CAP, "MojiMakrosi dodatak uz online (€)"),
     "addon.dvorana": Slot(MOJIMAKROSI_ADDON["dvorana"], CAP, "MojiMakrosi dodatak uz dvoranu (€)"),
-    # ---- landing: aktualno, in the hero between the headline and the photo ----
-    # The owner's announcements for the month (a new group, a course): two
-    # strips, the defaults are examples to retype. Each one is switched off in
-    # edit mode when it is over (FlagSlot); a hidden strip is not on a
-    # visitor's page at all, and with both hidden neither is their box. Each
-    # one may carry a photo behind it (ImageSlot; no row: a plain card). The
-    # strip's link always leads to the contact (/#kontakt).
-    "event1.show": FlagSlot(True, "Događanje 1: prikazano"),
-    "event1.image": ImageSlot("Događanje 1: slika"),
-    "event1.tag": Slot("Novo", CAP, "Događanje 1: oznaka"),
-    "event1.title": Slot("Treninzi za penziće", CAP, "Događanje 1: naslov"),
-    "event1.when": Slot("Utorkom i četvrtkom u 10:00", CAP, "Događanje 1: termin"),
-    "event1.text": Slot("Lagani grupni treninzi za zlatne godine: snaga, ravnoteža i pokretljivost u ugodnom "
-                        "tempu, uz stručno vodstvo. Prijave u dvorani ili porukom.", CAP, "Događanje 1: tekst"),
-    "event1.cta": Slot("Javi nam se", CAP, "Događanje 1: gumb"),
-    "event2.show": FlagSlot(True, "Događanje 2: prikazano"),
-    "event2.image": ImageSlot("Događanje 2: slika"),
-    "event2.tag": Slot("Nova grupa", CAP, "Događanje 2: oznaka"),
-    "event2.title": Slot("Pilates za cure", CAP, "Događanje 2: naslov"),
-    "event2.when": Slot("Srijedom u 18:00", CAP, "Događanje 2: termin"),
-    "event2.text": Slot("Pilates u maloj grupi: jezgra, držanje i opuštanje, za sve razine. Prijave u tijeku.",
-                        CAP, "Događanje 2: tekst"),
-    "event2.cta": Slot("Javi nam se", CAP, "Događanje 2: gumb"),
+    # ---- landing: aktualno: rows since 18.10.2026, not slots (ANNOUNCEMENT_* below) ----
     # ---- landing: info ----
     "info.hours.h": Slot("Radno vrijeme", CAP, "Naslov: radno vrijeme"),
     "info.hours.d1": Slot("pon · sri · čet · pet", CAP, "Radno vrijeme, dani 1"),
@@ -231,6 +220,49 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     "prehrana.h1": Slot("Prehrana ide uz trening", CAP, "Prehrana: naslov"),
     "prehrana.note": Slot("Pristup je na poziv — javi se treneru ako se ne možeš registrirati.", CAP, "Prehrana: napomena"),
 }
+
+# ---- the landing's announcements (#aktualno, in the hero) ----
+# Rows of the announcements table (models.Announcement), not slots: the
+# owner's cards for the month (a new group, a course), as many as he adds, up
+# to db.MAX_ANNOUNCEMENTS. Each one is switched off in edit mode when it is
+# over (a hidden card is not on a visitor's page at all, and with none shown
+# neither is their box), may carry a photo behind it, and its link always
+# leads to the contact (/#kontakt). The dicts below are keyed by the row's
+# columns.
+
+# a new card ("+ Dodaj najavu"): these placeholders to retype, shown, no photo
+ANNOUNCEMENT_BLANK = {"tag": "Novo", "title": "Nova najava", "when_text": "Kada i gdje",
+                      "body": "Kratki opis — klikni i upiši.", "cta": "Javi nam se"}
+
+# the two examples the landing shipped with (the event1.* / event2.* slots'
+# defaults until 18.10.2026), the cards of the demo seed (scripts/seed_demo.py);
+# the migration that made them rows carries its own copy
+ANNOUNCEMENT_EXAMPLES = (
+    {"tag": "Novo", "title": "Treninzi za penziće", "when_text": "Utorkom i četvrtkom u 10:00",
+     "body": "Lagani grupni treninzi za zlatne godine: snaga, ravnoteža i pokretljivost u ugodnom "
+             "tempu, uz stručno vodstvo. Prijave u dvorani ili porukom.",
+     "cta": "Javi nam se"},
+    {"tag": "Nova grupa", "title": "Pilates za cure", "when_text": "Srijedom u 18:00",
+     "body": "Pilates u maloj grupi: jezgra, držanje i opuštanje, za sve razine. Prijave u tijeku.",
+     "cta": "Javi nam se"},
+)
+
+# A card's fields as the editor's virtual keys name them, aktualno.<id>.<field>,
+# and how each is edited: a text as a Slot, its default the placeholder an
+# empty save (or Zadano) puts back; the switch as a FlagSlot, on by default;
+# the photo as an ImageSlot. The label is the field's word in the editor's
+# bar, after the card's number ("Najava 2: naslov", landing.html).
+ANNOUNCEMENT_SLOTS: dict[str, Slot | FlagSlot | ImageSlot] = {
+    "tag": Slot(ANNOUNCEMENT_BLANK["tag"], CAP, "oznaka"),
+    "title": Slot(ANNOUNCEMENT_BLANK["title"], CAP, "naslov"),
+    "when": Slot(ANNOUNCEMENT_BLANK["when_text"], CAP, "termin"),
+    "text": Slot(ANNOUNCEMENT_BLANK["body"], CAP, "tekst"),
+    "cta": Slot(ANNOUNCEMENT_BLANK["cta"], CAP, "gumb"),
+    "show": FlagSlot(True, "prikazano"),
+    "image": ImageSlot("slika"),
+}
+# where a row keeps each text ("when" is a keyword in too many places)
+ANNOUNCEMENT_COLUMNS = {"tag": "tag", "title": "title", "when": "when_text", "text": "body", "cta": "cta"}
 
 
 def clean(text: str) -> str:
@@ -272,7 +304,7 @@ def items_for(key: str, texts: dict[str, str]) -> list[str]:
 def flag_on(key: str, texts: dict[str, str]) -> bool:
     """Whether flag slot `key` is on, given the edited texts
     (db.copy_texts()): a stored "on" or "off", else the default (no row, or a
-    row that is neither). Templates call it as copy_flag (landing.html)."""
+    row that is neither). Templates call it as copy_flag."""
     stored = texts.get(key)
     if stored in ("on", "off"):
         return stored == "on"
@@ -283,7 +315,7 @@ def image_name(key: str, texts: dict[str, str]) -> str | None:
     """The stored photo's file name for image slot `key`, given the edited
     texts (db.copy_texts()), or None: no row, or a row that is empty or names
     a path rather than a file ("/", "\\" or ".." in it), which is never let
-    near storage. Templates call it as copy_image (landing.html)."""
+    near storage. Templates call it as copy_image."""
     name = texts.get(key)
     if not name or "/" in name or "\\" in name or ".." in name:
         return None

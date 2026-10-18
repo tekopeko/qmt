@@ -232,6 +232,39 @@ class SiteCopy(Base):
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
+class Announcement(Base):
+    """One of the landing's announcements (#aktualno, in the hero: a new
+    group, a course). Since 18.10.2026 a row the trainer or owner adds,
+    hides and deletes in edit mode, at most db.MAX_ANNOUNCEMENTS of them;
+    before, two fixed sets of copy slots (event1.* / event2.*, which
+    migration b48179fcf538 turned into the first two rows). Its texts are
+    edited in place like copy, through virtual keys aktualno.<id>.<field>
+    (app.py, copy_save), cleaned as copy is (copy.clean) and never empty:
+    an emptied one is its placeholder again (copy.ANNOUNCEMENT_BLANK).
+    `position` is creation order, 1-based: the order the landing shows them
+    in (nothing reorders them yet; a deleted card leaves a gap). `shown` is
+    the switch: a hidden card is on an editor's page only. `image` is the
+    stored photo's file name (served by /slika), or NULL: a plain card."""
+
+    __tablename__ = "announcements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    position: Mapped[int] = mapped_column(Integer)
+    shown: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    tag: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    title: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    # "when" is a keyword in too many places (SQL's CASE among them)
+    when_text: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    body: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    cta: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    image: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                 onupdate=func.now())
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (UniqueConstraint("position", name="uq_announcements_position"),)
+
+
 class ReminderLog(Base):
     """One row per reminder actually sent — the idempotency ledger.
 

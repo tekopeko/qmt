@@ -20,6 +20,8 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `ul[data-list]` / `.ed-x` / `.ed-add` | base (trainer, owner) | an editable list (`c.points`): each item an `.ed` with `data-index`, a 32px round `.ed-x` ✕ beside it (negative margin, so the line height holds) and an `.act.ed-add` "+ Dodaj stavku" after the list, hidden at the count limit; both only under `body.editing`. The bar names the item ("…: stavka 2") and its Zadano reads "Zadano (cijela lista)" |
 | `.ed-flag` / `.is-off` | base (trainer, owner) | the edit-mode toggle of a `copy.FlagSlot` (an on/off switch, the landing's announcements): the first child of the box it switches (`data-flag`), a 32px pill, green `--good-fill` "● Prikazano" / grey `--surface-2` "○ Skriveno", saved at a click, no confirm (hiding loses no text). A switched-off box is `.is-off`: hidden, shown only in edit mode with its content dimmed to .55 and the toggle at full strength; its `data-flag-group` follows its boxes (`.is-off` when none is on, `.single` on their row when one is). A visitor gets neither the toggle nor a hidden box |
 | `.ed-img` / `.ed-img-x` / `#edImgFile` | base (trainer, owner) | the edit-mode pills of a `copy.ImageSlot`, a photo behind a box (the landing's announcements; the box carries `data-image`): `.ed-img` "Dodaj sliku" / "Promijeni sliku" opens the hidden file picker (`#edImgFile`: jpg, png, webp) and posts to `/copy/<key>/slika`; the answer's URL becomes the box's first child, `img.bg`, and the box turns `.has-img` + `data-photo`. `.ed-img-x` "Ukloni sliku" (only with a photo) asks first, as an item's ✕ ("Ukloni?" for 4 s, then `reset=1`). 32px pills like `.ed-flag` (`--surface-2` / `--muted`), after it; on a photo (`[data-photo]`) a solid `--surface` pill with `--text` ink: the editor's controls, not text on a photograph. A failure is said in the bar |
+| `form.ed-ann-x` | base (trainer, owner) | "Obriši najavu", the edit-mode pill that deletes a landing announcement (`POST /aktualno/<id>/obrisi`, a plain form): the `.ed-img-x` pill to the pixel (32px, `--surface-2` / `--muted`, solid `--surface` on a photo), after the photo's pills; the form is `display: contents` in edit mode, so its button lines up with them as a flex item of the card. It asks first, as an item's ✕: one tap arms it into "Obriši?" (the accent tint, `aria-label` "Potvrdi brisanje") for 4 s, any other tap disarms it, the second tap sends the form; the page comes back without the card. On a card that is off it is dimmed with the card's content (a rule of its own: the form has no box to carry the opacity). Hidden outside edit mode; a visitor never gets it |
+| `form.ed-add-ann` | landing (trainer, owner) | "+ Dodaj najavu": an `.act` pill (32px tall at every pointer) after the announcements' dots, centred in the hero under the stacked cards, in edit mode only; a plain form (`POST /aktualno/nova`) that comes back with a new card last (placeholder texts, shown, no photo). Not rendered at the cap (8 cards); with none left it is all the editor's empty box holds. A visitor never gets it |
 | `.featured-tag` | base | "Najpopularnije" chip in the top-right corner of a `position: relative` card: accent tint + `--accent-tint-ink`. Used by `/moja-clanarina`'s "Dodaj plan" and the landing's offer |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill to that plan's card on `/moja-clanarina` (`#plan-<key>`) |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
@@ -139,8 +141,10 @@ plans in `stripe_priced`), else its reference price, the
 place (the add-on's amount: `addon.<where>`). Prices are public unless
 `PUBLIC_PRICES=off` (which also hides both switches), and no public page links
 to `/moja-clanarina` (nor to the old `/cjenik`). **Aktualno** (`#aktualno`, in the hero since 16.10.2026,
-between the h1 and the photo: the first thing on the page): the owner's two
-announcements for the month as `.event` cards in `.evs` (text left-aligned
+between the h1 and the photo: the first thing on the page): the owner's
+announcements for the month (rows of the `announcements` table since
+18.10.2026, in creation order, up to eight, added and deleted in edit mode:
+`form.ed-add-ann`, `form.ed-ann-x`) as `.event` cards in `.evs` (text left-aligned
 in the centred hero): the `.card` surface at `--r-lg` (a shallow card, not
 the stage's `--r-xl`), one flex row that WRAPS, its items centred on their
 line and its lines at the top (`align-content: flex-start`: a card the row
@@ -170,7 +174,7 @@ runs to the screen's edges, and the card's shadow is not cut (12px over,
 none of the next card shows. Its `.dots` show at every width (`.evs +
 .dots`; the tiers' and the gym's stay phone-only). One card shown
 (`.single`) has no dots and does not move: the script makes neither for
-fewer than two. **Edit mode stacks the two** (`body.editing .evs`: a
+fewer than two. **Edit mode stacks them** (`body.editing .evs`: a
 one-column grid, not a scroller, its dots hidden), so the editor reaches a
 card that is off, which has no dot. It **moves on by itself**
 (`data-auto="5000"`, the owner's 5 s): the next card glides in as its dot
@@ -182,7 +186,7 @@ screen; never under `prefers-reduced-motion`; only where the row scrolls,
 which the announcements' row does at every width (in edit mode its glide
 moves nothing: the grid does not scroll).
 Each card is switched off with its `.ed-flag`, its first item in edit mode;
-a visitor never gets a hidden one, nor the box when both are.
+a visitor never gets a hidden one, nor the box when none is on.
 **A card over a photo** (`.has-img`: the owner's upload, a `copy.ImageSlot`;
 Shape's photo cards, 16.10.2026): the photo (`img.bg`, its first child, from
 `/slika`) fills the card under the stage's kind of gradient (`rgba(0,0,0,.25)`
@@ -197,7 +201,7 @@ a phone, 320px from 900px (a wide banner across the column). `data-photo`
 makes the audit count its text instead of scoring it. The plain card in the
 same row is stretched to its height, its lines at the top: the row keeps one
 height, so its dots stay put as the cards change. In edit mode the pills
-(`.ed-flag`, `.ed-img`, `.ed-img-x`) stack at the top of a photo card. Info band
+(`.ed-flag`, `.ed-img`, `.ed-img-x`, `.ed-ann-x`) stack at the top of a photo card. Info band
 `.info-grid`: radno vrijeme table, `.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).

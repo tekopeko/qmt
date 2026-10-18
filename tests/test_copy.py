@@ -1,6 +1,9 @@
 """In-place editable copy: src/qmt/copy.py (the slots and their caps),
 POST /copy/{key} (the save), _copy.html (the macros), the editor in base.html,
-the announcements' photos (POST /copy/{key}/slika, GET /slika/{name}), the
+the landing's announcements (rows since 18.10.2026: their fields edited
+through virtual keys on the same routes, "+ Dodaj najavu" and "Obriši
+najavu", the cap of eight, and the migration that made the two old sets of
+slots rows), their photos (POST /copy/{key}/slika, GET /slika/{name}), the
 reference prices (the price.<plan>.* and addon.* slots), and the migration
 that turned the offer cards' bullets into lists.
 
@@ -13,8 +16,8 @@ Nothing may overflow or be cut, and the cards' prices stay level. It proves
 no design; that pass comes once the copy is final. On the way it walks the
 landing's rows of cards, the announcements' among them (one card per view;
 they move on by themselves, on a phone and on a desktop, and hold still when
-they must), the editor's switch and photo pills, and the install banner's
-week between asks.
+they must), the editor's switch and photo pills, adding and deleting a card, and the
+install banner's week between asks.
 """
 
 from __future__ import annotations
@@ -39,7 +42,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from qmt import auth, config, copy, db
+from qmt import auth, config, copy, db, storage
 from qmt.models import PLAN_TYPES, Base, User
 from qmt.web.app import addon_amounts, app, reference_prices
 
@@ -168,64 +171,157 @@ def test_a_list_slot_takes_edits_additions_and_removals_within_its_limits():
     assert 'data-list="offer.dvorana.points"' in t.get("/").text            # the editor can still add one
 
 
-def test_a_flag_slot_switches_on_and_off_and_takes_nothing_else():
-    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
-    key, slot = "event1.show", copy.SLOTS["event1.show"]
-    assert isinstance(slot, copy.FlagSlot) and slot.default is True
+# ---------- the announcements: rows, edited through virtual keys ----------
 
-    assert TestClient(app).post(f"/copy/{key}", data={"text": "off"}).status_code == 401
-    assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "off"}).status_code == 403
-    assert key not in db.copy_texts()
+def examples() -> list[int]:
+    """The two example cards, as the migration leaves a database where
+    nobody edited them (copy.ANNOUNCEMENT_EXAMPLES): their ids, in order."""
+    ids = []
+    for example in copy.ANNOUNCEMENT_EXAMPLES:
+        a = db.add_announcement(None)
+        for column, text in example.items():
+            db.set_announcement_field(a.id, column, text, None)
+        ids.append(a.id)
+    return ids
+
+
+def test_an_announcements_texts_are_edited_in_place_through_their_virtual_keys():
+    make_user("ivan@test.local"); uid = make_user("trener@test.local", is_trainer=True)
+    one, two = examples()
+    key = f"aktualno.{one}.title"
+    assert TestClient(app).post(f"/copy/{key}", data={"text": "x"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "x"}).status_code == 403
+    assert db.announcement(one).title == "Treninzi za penziće"
 
     t = client_for("trener@test.local")
-    r = t.post(f"/copy/{key}", data={"text": "off"})                        # stored like any slot: the text "off"
+    r = t.post(f"/copy/{key}", data={"text": "  Treninzi   za\n penziće  "})   # cleaned as a slot's text is
+    assert r.status_code == 200 and r.json() == {"ok": True, "text": "Treninzi za\npenziće", "default": False}
+    assert db.announcement(one).title == "Treninzi za\npenziće" and db.announcement(one).updated_by == uid
+    page = TestClient(app).get("/").text                                    # everyone reads it, in a .t span
+    assert '<h2><span class="t">Treninzi za\npenziće</span></h2>' in page and f'data-copy="{key}"' not in page
+    assert (f'<h2><span class="ed t" data-copy="{key}" data-max="2000" data-label="Najava 1: naslov">'
+            "Treninzi za\npenziće</span></h2>") in t.get("/").text          # the editor's span names its card
+    for field, column in (("tag", "tag"), ("when", "when_text"), ("text", "body"), ("cta", "cta")):
+        r = t.post(f"/copy/aktualno.{two}.{field}", data={"text": f"Novo: {field}"})
+        assert r.json() == {"ok": True, "text": f"Novo: {field}", "default": False}, field
+        assert getattr(db.announcement(two), column) == f"Novo: {field}", field
+    page = t.get("/").text
+    for field, word in (("tag", "oznaka"), ("when", "termin"), ("text", "tekst"), ("cta", "gumb")):
+        assert f'data-copy="aktualno.{two}.{field}" data-max="2000" data-label="Najava 2: {word}">Novo: {field}</span>' in page
+
+    r = t.post(f"/copy/{key}", data={"text": "x" * 2001})                   # the cap, as a slot's
+    assert r.status_code == 400 and r.json()["error"] == "Najviše 2000 znakova — ovo ih ima 2001."
+    assert t.post(f"/copy/{key}", data={"text": "x" * 2000}).status_code == 200
+    for blank in ("   ", " \n \n\n "):                                       # empty: the new card's placeholder,
+        t.post(f"/copy/{key}", data={"text": "Nešto."})                     # as an emptied slot's default
+        r = t.post(f"/copy/{key}", data={"text": blank})
+        assert r.json() == {"ok": True, "text": "Nova najava", "default": True} and db.announcement(one).title == "Nova najava"
+    t.post(f"/copy/{key}", data={"text": "Opet."})                          # reset=1 (Zadano) does the same
+    r = t.post(f"/copy/{key}", data={"text": "ignoriran", "reset": "1"})
+    assert r.json() == {"ok": True, "text": "Nova najava", "default": True}
+
+    for bad in ("aktualno.99.title", f"aktualno.{one}.naslov", f"aktualno.{one}.when_text", f"aktualno.{one}",
+                f"aktualno.{one}.title.x", "aktualno.x.title", f"aktualno.0{one}.title", "aktualno.1234567890.title",
+                "event1.title"):                                            # no such card, field or slot
+        assert t.post(f"/copy/{bad}", data={"text": "x"}).status_code == 404, bad
+    assert db.copy_texts() == {}                                            # none of it lands in site_copy
+
+
+def test_an_announcement_is_switched_on_and_off_and_takes_nothing_else():
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    one, _ = examples()
+    key = f"aktualno.{one}.show"
+    assert TestClient(app).post(f"/copy/{key}", data={"text": "off"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "off"}).status_code == 403
+    assert db.announcement(one).shown is True
+
+    t = client_for("trener@test.local")
+    r = t.post(f"/copy/{key}", data={"text": "off"})                        # answered as a FlagSlot is
     assert r.status_code == 200 and r.json() == {"ok": True, "on": False, "default": False}
-    assert db.copy_texts()[key] == "off" and copy.flag_on(key, db.copy_texts()) is False
+    assert db.announcement(one).shown is False
     r = t.post(f"/copy/{key}", data={"text": "on"})
-    assert r.json() == {"ok": True, "on": True, "default": False} and db.copy_texts()[key] == "on"
+    assert r.json() == {"ok": True, "on": True, "default": False} and db.announcement(one).shown is True
     for bad in ("maybe", "", " off", "OFF", "1"):                          # exactly "on" or "off"
         r = t.post(f"/copy/{key}", data={"text": bad})
         assert r.status_code == 400 and r.json() == {"ok": False, "error": "Nepoznata vrijednost."}, bad
-    assert db.copy_texts()[key] == "on"                                     # a refused value changes nothing
-
-    t.post(f"/copy/{key}", data={"text": "off"})                            # reset=1: the default, and no row
+    assert db.announcement(one).shown is True                               # a refused value changes nothing
+    t.post(f"/copy/{key}", data={"text": "off"})                            # reset=1: on again
     r = t.post(f"/copy/{key}", data={"text": "off", "reset": "1"})
-    assert r.json() == {"ok": True, "on": True, "default": True} and key not in db.copy_texts()
-    db.set_copy(key, "nešto", None)                                         # a row that is neither: the default
-    assert copy.flag_on(key, db.copy_texts()) is True
+    assert r.json() == {"ok": True, "on": True, "default": True} and db.announcement(one).shown is True
+    assert db.copy_texts() == {}
 
 
 def test_the_announcements_show_what_is_on_and_the_editor_keeps_what_is_off():
     make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
-    one, two = copy.SLOTS["event1.title"].default, copy.SLOTS["event2.title"].default
-    page = TestClient(app).get("/").text                                    # both by default, in the hero:
-    assert 'id="aktualno"' in page and one in page and two in page          # under the headline, above the photo
+    one, two = examples()
+    first, second = (example["title"] for example in copy.ANNOUNCEMENT_EXAMPLES)
+    page = TestClient(app).get("/").text                                    # both, in the hero:
+    assert 'id="aktualno"' in page and first in page and second in page    # under the headline, above the photo
     assert page.index("<h1") < page.index('id="aktualno"') < page.index('class="stage"')
     assert page.count('<a class="act" href="/#kontakt"><span class="t">Javi nam se</span></a>') == 2
     assert '<div class="evs swipe-row" id="aktualno" data-auto="5000">' in page          # a phone's swipe row,
     assert '<div class="dots" role="group" aria-label="Aktualno" hidden></div>' in page  # its dots the script's
 
-    db.set_copy("event2.show", "off", None)                                 # one off: gone from a visitor's page
+    db.set_announcement_shown(two, False)                                   # one off: gone from a visitor's page
     for c in (TestClient(app), client_for("ivan@test.local")):              # and a client's, the one left alone
         page = c.get("/").text
-        assert one in page and two not in page and 'class="evs swipe-row single"' in page
+        assert first in page and second not in page and 'class="evs swipe-row single"' in page
         assert 'is-off"' not in page
     page = client_for("trener@test.local").get("/").text                    # the editor has it, marked off
-    assert two in page and 'data-flag-group' in page and 'class="evs swipe-row single"' in page
-    assert '<article class="card event is-off" data-flag="event2.show" data-image="event2.image">' in page
+    assert second in page and 'data-flag-group' in page and 'class="evs swipe-row single"' in page
+    assert f'<article class="card event is-off" data-flag="aktualno.{two}.show" data-image="aktualno.{two}.image">' in page
 
-    db.set_copy("event1.show", "off", None)                                 # both off: not even their box
+    db.set_announcement_shown(one, False)                                   # both off: not even their box
     page = TestClient(app).get("/").text
-    assert 'id="aktualno"' not in page and one not in page and two not in page and 'aria-label="Aktualno"' not in page
+    assert 'id="aktualno"' not in page and first not in page and second not in page and 'aria-label="Aktualno"' not in page
     page = client_for("trener@test.local").get("/").text                    # the editor keeps both, and the box
-    assert '<div class="evs swipe-row is-off" id="aktualno"' in page and one in page and two in page
+    assert '<div class="evs swipe-row is-off" id="aktualno"' in page and first in page and second in page
     assert page.count('<article class="card event is-off" data-flag="') == 2
     assert page.count('aria-pressed="false">Skriveno</button>') == 2
 
 
+ADD = '<form method="post" action="/aktualno/nova" class="ed-add-ann"><button type="submit" class="act">+ Dodaj najavu</button></form>'
+DROP = '<button type="submit" aria-label="Obriši najavu">Obriši najavu</button></form>'
+
+
+def test_a_visitor_gets_the_shown_cards_in_order_and_only_the_editor_adds_and_deletes():
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    ids = [db.add_announcement(None).id for _ in range(3)]
+    for i, title in zip(ids, ("Prva najava", "Druga najava", "Treća najava")):
+        db.set_announcement_field(i, "title", title, None)
+    db.set_announcement_shown(ids[1], False)
+    for c in (TestClient(app), client_for("ivan@test.local")):
+        page = c.get("/").text                                              # the shown ones, in creation order
+        assert "Druga najava" not in page and page.index("Prva najava") < page.index("Treća najava")
+        assert page.count('<article class="card event">') == 2
+        for mark in (ADD, DROP, 'action="/aktualno/', 'class="ed-ann-x"', 'class="ed-add-ann"'):
+            assert mark not in page, mark
+    page = client_for("trener@test.local").get("/").text                    # the editor: every one, in order,
+    assert page.index("Prva najava") < page.index("Druga najava") < page.index("Treća najava")
+    assert page.count(DROP) == 3 and page.count(ADD) == 1                   # each with its "Obriši najavu"
+    for n, i in enumerate(ids, start=1):
+        assert f'<form method="post" action="/aktualno/{i}/obrisi" class="ed-ann-x">{DROP}' in page
+        assert f'data-label="Najava {n}: naslov">' in page                  # the bar names a card by its place
+    # "+ Dodaj najavu" after the row's dots, before the photo
+    assert page.index('<div class="dots" role="group" aria-label="Aktualno" hidden></div>') < page.index(ADD) < page.index('class="stage"')
+
+
+def test_two_quick_adds_never_pass_the_cap():
+    """Eight is the cap even when taps race: with six cards, six adds at
+    once land two (the count and the next position are read under a lock),
+    and no position is taken twice."""
+    for _ in range(6):
+        db.add_announcement(None)
+    landed = []
+    threads = [threading.Thread(target=lambda: landed.append(db.add_announcement(None) is not None)) for _ in range(6)]
+    for th in threads: th.start()
+    for th in threads: th.join()
+    assert sorted(landed) == [False] * 4 + [True] * 2
+    assert [a.position for a in db.announcements(all=True)] == list(range(1, 9))
+
+
 # ---------- the announcements' photos ----------
 
-URL = "/copy/event1.image/slika"
 UNSUPPORTED = {"ok": False, "error": "Nepodržan format — dozvoljeno: jpg, png, webp."}
 
 
@@ -244,46 +340,50 @@ def picture(w: int, h: int, fmt: str = "JPEG", orientation: int | None = None, m
     return buf.getvalue()
 
 
-def stored(r) -> str:
-    """The name a good upload to the first card answers with."""
+def stored(r, ann_id: int) -> str:
+    """The name a good upload to card `ann_id` answers with."""
     d = r.json()
-    m = re.fullmatch(r"/slika/(aktualno-1-[0-9a-f]{16}\.jpg)", d.get("url") or "")
+    m = re.fullmatch(rf"/slika/(aktualno-{ann_id}-[0-9a-f]{{16}}\.jpg)", d.get("url") or "")
     assert r.status_code == 200 and d["ok"] is True and m, d
     return m.group(1)
 
 
 def test_a_photo_goes_up_only_from_an_editor_and_only_as_a_real_image():
     make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    one, _ = examples(); url = f"/copy/aktualno.{one}.image/slika"
     good = {"slika": ("foto.jpg", picture(300, 200), "image/jpeg")}
 
-    r = TestClient(app).post(URL, files=good)
+    r = TestClient(app).post(url, files=good)
     assert r.status_code == 401 and r.json()["ok"] is False
-    assert client_for("ivan@test.local").post(URL, files=good).status_code == 403
+    assert client_for("ivan@test.local").post(url, files=good).status_code == 403
 
     t = client_for("trener@test.local")
-    assert t.post("/copy/no.such.slot/slika", files=good).status_code == 404
-    r = t.post("/copy/event1.title/slika", files=good)                     # a text takes no photo
-    assert r.status_code == 400 and r.json() == {"ok": False, "error": "Ovdje ne ide slika."}
+    for unknown in ("no.such.slot", "aktualno.99.image", f"aktualno.{one}.slika", "event1.image"):
+        assert t.post(f"/copy/{unknown}/slika", files=good).status_code == 404, unknown
+    for text in (f"aktualno.{one}.title", f"aktualno.{one}.show", "hero.kicker"):   # a text, or the switch,
+        r = t.post(f"/copy/{text}/slika", files=good)                              # takes no photo
+        assert r.status_code == 400 and r.json() == {"ok": False, "error": "Ovdje ne ide slika."}, text
     for name, data in (("foto.txt", b"samo tekst"), ("foto.gif", picture(30, 20, "GIF")),   # by the name,
                        ("foto.jpg", b"ovo nije slika"), ("foto.jpg", picture(30, 20, "GIF")),  # and by what is in it:
                        ("foto.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 64), ("foto.jpg", b"")):  # Pillow must open it
-        r = t.post(URL, files={"slika": (name, data, "image/jpeg")})
+        r = t.post(url, files={"slika": (name, data, "image/jpeg")})
         assert r.status_code == 400 and r.json() == UNSUPPORTED, name
-    r = t.post(URL)                                                         # no file at all
+    r = t.post(url)                                                         # no file at all
     assert r.status_code == 400 and r.json() == UNSUPPORTED
-    r = t.post(URL, files={"slika": ("velika.jpg", b"\0" * (16 * 1024 * 1024), "image/jpeg")})
+    r = t.post(url, files={"slika": ("velika.jpg", b"\0" * (16 * 1024 * 1024), "image/jpeg")})
     assert r.status_code == 400 and r.json() == {"ok": False, "error": "Slika je veća od 15 MB."}
-    assert "event1.image" not in db.copy_texts()                           # nothing recorded, nothing stored
+    assert db.announcement(one).image is None                               # nothing recorded, nothing stored
     assert not config.MEDIA_DIR.exists() or not any(config.MEDIA_DIR.iterdir())
 
 
 def test_a_photo_is_stored_upright_small_and_bare_and_its_card_shows_it_to_everyone():
     make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
-    t = client_for("trener@test.local")
+    one, two = examples(); t = client_for("trener@test.local")
     # a phone's photo, its pixels on their side and EXIF orientation 6 to turn them
-    name = stored(t.post(URL, files={"slika": ("IMG_0001.JPG", picture(2400, 1600, orientation=6), "image/jpeg")}))
+    name = stored(t.post(f"/copy/aktualno.{one}.image/slika",
+                         files={"slika": ("IMG_0001.JPG", picture(2400, 1600, orientation=6), "image/jpeg")}), one)
     path = config.MEDIA_DIR / name
-    assert db.copy_texts()["event1.image"] == name and path.is_file()
+    assert db.announcement(one).image == name and path.is_file()
     with Image.open(path) as im:
         assert im.format == "JPEG" and im.size == (1067, 1600)             # upright, its long side 1600
         assert im.info.get("progressive") and not im.getexif() and "exif" not in im.info   # no camera, no place
@@ -296,65 +396,170 @@ def test_a_photo_is_stored_upright_small_and_bare_and_its_card_shows_it_to_every
         for mark in ("data-image", 'class="ed-img"', 'class="ed-img-x"', 'id="edImgFile"'):
             assert mark not in page, mark
     page = t.get("/").text                                                  # the editor: both cards take a photo
-    assert '<article class="card event has-img" data-photo data-flag="event1.show" data-image="event1.image">' in page
-    assert '<article class="card event" data-flag="event2.show" data-image="event2.image">' in page
-    assert re.search(r'<button type="button" class="ed-img" data-copy="event1.image" data-label="Događanje 1: slika">'
+    assert f'<article class="card event has-img" data-photo data-flag="aktualno.{one}.show" data-image="aktualno.{one}.image">' in page
+    assert f'<article class="card event" data-flag="aktualno.{two}.show" data-image="aktualno.{two}.image">' in page
+    assert re.search(rf'<button type="button" class="ed-img" data-copy="aktualno\.{one}\.image" data-label="Najava 1: slika">'
                      r'Promijeni sliku</button>\s*<button type="button" class="ed-img-x" aria-label="Ukloni sliku" '
-                     r'data-copy="event1.image">Ukloni sliku</button>', page)
-    assert ('<button type="button" class="ed-img" data-copy="event2.image" data-label="Događanje 2: slika">'
+                     rf'data-copy="aktualno\.{one}\.image">Ukloni sliku</button>', page)
+    assert (f'<button type="button" class="ed-img" data-copy="aktualno.{two}.image" data-label="Najava 2: slika">'
             'Dodaj sliku</button>') in page
     assert page.count('class="ed-img-x"') == 1 and page.count('id="edImgFile"') == 1
 
     r = TestClient(app).get(f"/slika/{name}")                              # anyone gets it, to keep for a year
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content == path.read_bytes()
     assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
-    (config.MEDIA_DIR / "3f9a1c2b4d5e6f70.jpg").write_bytes(path.read_bytes())   # a programme's media: in no image slot
+    db.set_announcement_shown(one, False)                                   # a hidden card's too: its editor sees it
+    assert TestClient(app).get(f"/slika/{name}").status_code == 200
+    (config.MEDIA_DIR / "3f9a1c2b4d5e6f70.jpg").write_bytes(path.read_bytes())   # a programme's media: on no card
     for other in ("nema.jpg", "3f9a1c2b4d5e6f70.jpg", "../x", "..%2Fx", "..jpg"):
         assert TestClient(app).get(f"/slika/{other}").status_code == 404, other
 
 
 def test_a_new_photo_replaces_the_old_and_ukloni_takes_photo_and_row():
     make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
-    t = client_for("trener@test.local")
-    names = [stored(t.post(URL, files={"slika": (f, data, kind)})) for f, data, kind in (
+    one, _ = examples(); t = client_for("trener@test.local"); key = f"aktualno.{one}.image"
+    names = [stored(t.post(f"/copy/{key}/slika", files={"slika": (f, data, kind)}), one) for f, data, kind in (
         ("prva.jpeg", picture(2400, 1600), "image/jpeg"),
         ("druga.webp", picture(800, 600, "WEBP"), "image/webp"),
         ("treca.png", picture(300, 200, "PNG", mode="RGBA"), "image/png"))]   # small, with transparency
-    assert len(set(names)) == 3 and db.copy_texts()["event1.image"] == names[2]
+    assert len(set(names)) == 3 and db.announcement(one).image == names[2]
     assert [n for n in names if (config.MEDIA_DIR / n).exists()] == names[2:]   # each one replaced the one before
     assert [TestClient(app).get(f"/slika/{n}").status_code for n in names] == [404, 404, 200]   # nor is it served
     with Image.open(config.MEDIA_DIR / names[2]) as im:
         assert im.format == "JPEG" and im.mode == "RGB" and im.size == (300, 200)   # a JPEG, never enlarged
 
-    r = t.post("/copy/event1.image", data={"text": names[2]})               # no text ever lands in an image slot
-    assert r.status_code == 400 and r.json() == {"ok": False, "error": "Sliku šalje /copy/event1.image/slika."}
-    assert TestClient(app).post("/copy/event1.image", data={"reset": "1"}).status_code == 401
-    assert client_for("ivan@test.local").post("/copy/event1.image", data={"reset": "1"}).status_code == 403
-    assert db.copy_texts()["event1.image"] == names[2] and (config.MEDIA_DIR / names[2]).is_file()
+    r = t.post(f"/copy/{key}", data={"text": names[2]})                     # no text ever lands on a card's photo
+    assert r.status_code == 400 and r.json() == {"ok": False, "error": f"Sliku šalje /copy/{key}/slika."}
+    assert TestClient(app).post(f"/copy/{key}", data={"reset": "1"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{key}", data={"reset": "1"}).status_code == 403
+    assert db.announcement(one).image == names[2] and (config.MEDIA_DIR / names[2]).is_file()
 
-    r = t.post("/copy/event1.image", data={"reset": "1"})                   # Ukloni sliku: the row and the file go
+    r = t.post(f"/copy/{key}", data={"reset": "1"})                         # Ukloni sliku: the name and the file go
     assert r.status_code == 200 and r.json() == {"ok": True, "url": None, "default": True}
-    assert "event1.image" not in db.copy_texts() and not any(config.MEDIA_DIR.iterdir())
+    assert db.announcement(one).image is None and not any(config.MEDIA_DIR.iterdir())
     page = TestClient(app).get("/").text                                    # and the card is plain again
     assert 'class="card event has-img"' not in page and "/slika/" not in page
     assert page.count('<article class="card event">') == 2
     page = t.get("/").text
-    assert 'data-label="Događanje 1: slika">Dodaj sliku</button>' in page and 'class="ed-img-x"' not in page
+    assert 'data-label="Najava 1: slika">Dodaj sliku</button>' in page and 'class="ed-img-x"' not in page
+    assert t.post(f"/copy/{key}", data={"reset": "1"}).json() == {"ok": True, "url": None, "default": True}   # none: the same
 
-    db.set_copy("event1.image", "../../.env", None)                         # a row naming a path is no photo
-    assert copy.image_name("event1.image", db.copy_texts()) is None
-    assert "/slika/" not in TestClient(app).get("/").text
+    with pytest.raises(ValueError):                                         # a name that is a path is no photo
+        db.set_announcement_image(one, "../../.env")
+    assert db.announcement(one).image is None
 
 
-def _migration():
-    path = pathlib.Path(__file__).parents[1] / "alembic" / "versions" / "1b09c249c2c6_offer_points_lists.py"
-    spec = importlib.util.spec_from_file_location("offer_points_lists", path)
+def test_a_photo_sent_for_a_card_deleted_meanwhile_is_not_kept(monkeypatch):
+    """The card is deleted while its photo goes up (stored, not yet
+    recorded): the answer is 404 and the new file goes too, so nothing is
+    left in storage that no card names."""
+    make_user("trener@test.local", is_trainer=True)
+    one, _ = examples(); t = client_for("trener@test.local")
+    save = storage.save
+
+    def save_then_delete(name, local_path, content_type):
+        save(name, local_path, content_type)
+        db.delete_announcement(one)
+    monkeypatch.setattr(storage, "save", save_then_delete)
+    r = t.post(f"/copy/aktualno.{one}.image/slika", files={"slika": ("foto.jpg", picture(300, 200), "image/jpeg")})
+    assert r.status_code == 404 and r.json() == {"ok": False, "error": "Nepoznat tekst."}
+    assert db.announcement(one) is None and not any(config.MEDIA_DIR.iterdir())
+
+
+def test_the_editor_adds_cards_up_to_eight_and_deletes_them_with_their_photos():
+    make_user("ivan@test.local"); uid = make_user("trener@test.local", is_trainer=True)
+    for path in ("/aktualno/nova", "/aktualno/1/obrisi"):                  # a guest logs in first; a client may not
+        r = TestClient(app).post(path, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/login", path
+        assert client_for("ivan@test.local").post(path, follow_redirects=False).status_code == 403, path
+    assert db.announcements(all=True) == []
+
+    t = client_for("trener@test.local")                                     # none at all: the editor's box is
+    box = t.get("/").text.split('id="aktualno"')[1].split('class="stage"')[0]   # empty but for "+ Dodaj najavu"
+    assert "<article" not in box and ADD in box
+    assert 'id="aktualno"' not in TestClient(app).get("/").text            # a visitor gets nothing
+
+    for _ in range(8):
+        r = t.post("/aktualno/nova", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/#aktualno"
+    cards = db.announcements(all=True)
+    assert [a.position for a in cards] == list(range(1, 9))                 # in creation order
+    for a in cards:                                                         # the placeholders, shown, no photo
+        assert {column: getattr(a, column) for column in copy.ANNOUNCEMENT_BLANK} == copy.ANNOUNCEMENT_BLANK
+        assert a.shown and a.image is None and a.updated_by == uid
+    assert TestClient(app).get("/").text.count('<article class="card event">') == 8
+    page = t.get("/").text
+    assert ADD not in page and page.count(DROP) == 8                        # full: no "+ Dodaj najavu"
+    r = t.post("/aktualno/nova", follow_redirects=False)                    # a ninth is refused, and he is told
+    assert r.status_code == 303 and r.headers["location"] == "/?error=Najvi%C5%A1e+8+najava.#aktualno"
+    assert len(db.announcements(all=True)) == 8
+    assert '<span>Najviše 8 najava.</span>' in t.get(r.headers["location"]).text
+
+    first = cards[0]                                                        # one with a photo
+    config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    photo = config.MEDIA_DIR / f"aktualno-{first.id}-0123456789abcdef.jpg"
+    photo.write_bytes(picture(300, 200))
+    db.set_announcement_image(first.id, photo.name)
+    assert client_for("ivan@test.local").post(f"/aktualno/{first.id}/obrisi", follow_redirects=False).status_code == 403
+    assert db.announcement(first.id) is not None and photo.is_file()
+    r = t.post(f"/aktualno/{first.id}/obrisi", follow_redirects=False)      # Obriši najavu: the card, then its photo
+    assert r.status_code == 303 and r.headers["location"] == "/#aktualno"
+    assert db.announcement(first.id) is None and not photo.exists()
+    assert TestClient(app).get(f"/slika/{photo.name}").status_code == 404
+    r = t.post(f"/aktualno/{first.id}/obrisi", follow_redirects=False)      # gone already: nothing to do
+    assert r.status_code == 303 and r.headers["location"] == "/#aktualno" and len(db.announcements(all=True)) == 7
+    assert ADD in t.get("/").text                                           # room again,
+    t.post("/aktualno/nova")                                                # and a new card comes last
+    assert [a.position for a in db.announcements(all=True)] == list(range(2, 10))
+
+
+def _migration(file: str):
+    path = pathlib.Path(__file__).parents[1] / "alembic" / "versions" / file
+    spec = importlib.util.spec_from_file_location(path.stem, path)
     mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
     return mod
 
 
+def test_the_migration_turns_the_two_announcement_slots_into_rows():
+    """b48179fcf538: the event1.* / event2.* rows of site_copy become the
+    first two announcements, what was edited where it was, else the old
+    defaults (its own copy, which must agree with copy.ANNOUNCEMENT_EXAMPLES);
+    the switch and the photo carried over; the event rows gone. And back."""
+    mig = _migration("b48179fcf538_announcements.py"); uid = make_user("trener@test.local", is_trainer=True)
+    with db.engine.begin() as conn:                                         # nobody edited them: the two examples
+        mig.fold_events(conn)
+    cards = db.announcements()
+    assert [{column: getattr(a, column) for column in copy.ANNOUNCEMENT_BLANK} for a in cards] == list(copy.ANNOUNCEMENT_EXAMPLES)
+    assert [(a.position, a.shown, a.image, a.updated_by) for a in cards] == [(1, True, None, None), (2, True, None, None)]
+    for a in cards:
+        db.delete_announcement(a.id)
+
+    for key, text in [("event1.title", "Treninzi za umirovljenike"), ("event1.show", "off"),
+                      ("event1.image", "aktualno-1-0123456789abcdef.jpg"),
+                      ("event2.cta", "Prijavi se"), ("event2.show", "on"), ("event2.image", "../../.env"),
+                      ("hero.kicker", "Ostaje kakav jest.")]:
+        db.set_copy(key, text, uid)
+    with db.engine.begin() as conn:
+        mig.fold_events(conn)
+    one, two = db.announcements(all=True)
+    assert {column: getattr(one, column) for column in copy.ANNOUNCEMENT_BLANK} == {
+        **copy.ANNOUNCEMENT_EXAMPLES[0], "title": "Treninzi za umirovljenike"}
+    assert (one.position, one.shown, one.image, one.updated_by) == (1, False, "aktualno-1-0123456789abcdef.jpg", uid)
+    assert {column: getattr(two, column) for column in copy.ANNOUNCEMENT_BLANK} == {**copy.ANNOUNCEMENT_EXAMPLES[1], "cta": "Prijavi se"}
+    assert (two.position, two.shown, two.image) == (2, True, None)          # a path is no photo
+    assert db.copy_texts() == {"hero.kicker": "Ostaje kakav jest."}         # the event rows gone, the rest kept
+    page = TestClient(app).get("/").text                                    # and the page reads the rows
+    assert "Prijavi se" in page and "Treninzi za umirovljenike" not in page and 'data-photo>' not in page
+
+    with db.engine.begin() as conn:                                         # the way back: what differs from the defaults
+        mig.unfold_events(conn)
+    assert db.copy_texts() == {"hero.kicker": "Ostaje kakav jest.", "event1.title": "Treninzi za umirovljenike",
+                               "event1.show": "off", "event1.image": "aktualno-1-0123456789abcdef.jpg",
+                               "event2.cta": "Prijavi se"}
+
+
 def test_the_migration_folds_the_old_bullet_slots_into_lists():
-    mig = _migration(); uid = make_user("trener@test.local", is_trainer=True)
+    mig = _migration("1b09c249c2c6_offer_points_lists.py"); uid = make_user("trener@test.local", is_trainer=True)
     for key, text in [("offer.online.p1", "Prva"), ("offer.online.p2", "Druga"), ("offer.online.p3", "Treća"),
                       ("offer.individualno.p2", "U paru"),             # only the middle one edited
                       ("hero.kicker", "Ostaje kakav jest.")]:
@@ -384,8 +589,10 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
     (price.<plan>.*) prints on the landing's card and on /moja-clanarina,
     one fact in both places, and a save updates every copy of it on the
     page it is made on. A list, a switch and a photo keep their shape on
-    each page they are on; a visitor and a client get no editor markup."""
+    each page they are on; a visitor and a client get no editor markup, the
+    announcements' (rows, not slots) included."""
     make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
+    examples()
     t = client_for("trener@test.local"); seen: dict[str, list[str]] = {}
     for path in PAGES:
         page = t.get(path).text
@@ -407,7 +614,7 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
             page = c.get(path).text
             if c.get(path, follow_redirects=False).status_code == 200:
                 for mark in ("data-copy", "copyToggle", "data-list", 'class="ed-x"', 'ed-add"', 'class="ed-flag"', "data-flag",
-                             'class="ed-img"', "data-image"):
+                             'class="ed-img"', "data-image", 'class="ed-ann-x"', 'class="ed-add-ann"', 'action="/aktualno/'):
                     assert mark not in page, (path, mark)
 
 
@@ -641,8 +848,9 @@ LANDING = r"""([w, strict]) => {
   return out;
 }"""
 
-# The announcements (#aktualno, in the hero), both on in every walk (fill()
-# leaves the flags alone), the first over a photo. One card per view at every
+# The announcements (#aktualno, in the hero), the two the migration leaves,
+# both on in every walk (fill() leaves the switches alone), the first over a
+# photo. One card per view at every
 # width: a scroller whose card is as wide as its content box, the second card
 # on the same line one content width and one gap further (none of it in
 # view), a dot per card under it (32px or more, labelled), the first lit on
@@ -730,6 +938,34 @@ PHOTO = r"""() => {
   return out;
 }"""
 
+# The announcements in edit mode (add_drop, with three cards): one under the
+# other, the page and the hero no wider than the screen, nothing in the row
+# or in "+ Dodaj najavu" wider than its box, and nothing in a card (its
+# texts, its link, its pills) outside it. Scoped to them: MEASURE in edit
+# mode would also count the lists' ✕, which hangs 6px past its item on
+# purpose (base.html, .ed-x).
+EDIT_ROW = r"""() => {
+  const vis = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const de = document.documentElement, hero = document.querySelector('.hero-inner'), out = [];
+  const cards = [...document.querySelectorAll('#aktualno .event')].filter(vis), box = el => el.getBoundingClientRect();
+  if (!cards.every((c, i) => !i || box(c).top >= box(cards[i - 1]).bottom - 1)) out.push('the cards are not one under the other');
+  if (de.scrollWidth - de.clientWidth > 0) out.push(`the page overflows by ${de.scrollWidth - de.clientWidth}px`);
+  if (hero.scrollWidth - hero.clientWidth > 0) out.push(`the hero overflows by ${hero.scrollWidth - hero.clientWidth}px`);
+  for (const el of document.querySelectorAll('#aktualno *, .ed-add-ann *')) {
+    if (!vis(el) || ['auto', 'scroll'].includes(getComputedStyle(el).overflowX)) continue;
+    if (el.scrollWidth - el.clientWidth > 2 && el.clientWidth > 0)
+      out.push(`${el.tagName.toLowerCase()}.${el.className} overflows its box by ${el.scrollWidth - el.clientWidth}px`);
+  }
+  for (const card of cards) { const c = box(card);
+    for (const el of card.querySelectorAll('span.t, .tag, .act, .ed-flag, .ed-img, .ed-img-x, .ed-ann-x > button')) {
+      if (!vis(el)) continue; const b = box(el);
+      if (b.left < c.left - 1 || b.right > c.right + 1 || b.top < c.top - 1 || b.bottom > c.bottom + 1)
+        out.push(`"${el.textContent.trim().slice(0, 12)}…" leaves its card`);
+    }
+  }
+  return out;
+}"""
+
 # Mjesečno / Godišnje: one choice, two switches (under the tiers, under the
 # gym). Every card of both sections shows exactly the chosen price, and both
 # switches say it.
@@ -765,15 +1001,20 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     pytest.importorskip("playwright")
     from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright
     make_user("trener@test.local", is_trainer=True); make_user("ivan@test.local", plans=("grupni",))
+    one, two = examples()                             # the landing's two announcements, as the migration leaves them
+    CARD = f'[data-image="aktualno.{one}.image"]'     # the first one, in the editor's markup
 
     def fill(make):
         for key, slot in copy.SLOTS.items():
-            if isinstance(slot, (copy.FlagSlot, copy.ImageSlot)):   # a switch and a photo, not texts: the flags
-                continue                                            # left on (both show), the photo below
+            if isinstance(slot, (copy.FlagSlot, copy.ImageSlot)):   # a switch and a photo, not texts
+                continue
             if isinstance(slot, copy.ListSlot):         # every list 12 items long, each item 60 characters
                 db.set_copy(key, copy.dump_items([make(min(slot.max_chars, ITEM))] * min(slot.max_items, ITEMS)), None)
             else:                                       # every text 300 characters
                 db.set_copy(key, make(min(slot.max, LONG)), None)
+        for a in db.announcements(all=True):            # and every text of every announcement; they stay
+            for column in copy.ANNOUNCEMENT_BLANK:      # on (both show), the photo below
+                db.set_announcement_field(a.id, column, make(LONG), None)
         photo_on()
 
     def photo_on():
@@ -783,7 +1024,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         own MEDIA_DIR (the autouse fixture)."""
         config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (1600, 900), (70, 92, 112)).save(config.MEDIA_DIR / PHOTO_NAME, "JPEG", quality=82)
-        db.set_copy("event1.image", PHOTO_NAME, None)
+        db.set_announcement_image(one, PHOTO_NAME)
 
     def photo_edit(pg):
         """The editor's photo pills in a browser (base.html), on the first
@@ -794,7 +1035,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         second tap leaves the card plain, row and file gone. "Dodaj sliku"
         then puts a photo on the plain card. The walks' photo is put back,
         the page reloaded, for what follows."""
-        out, card = [], pg.locator('#aktualno [data-image="event1.image"]')
+        out, card = [], pg.locator(f"#aktualno {CARD}")
 
         def send(before):
             """A file picked with the card's .ed-img: the problems seen, and the stored name."""
@@ -802,16 +1043,16 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 card.locator(".ed-img").click()
             chooser.value.set_files({"name": "nova.jpg", "mimeType": "image/jpeg", "buffer": picture(1200, 800)})
             try:
-                pg.wait_for_function("""(before) => { const i = document.querySelector('[data-image="event1.image"]').firstElementChild;
+                pg.wait_for_function("""([card, before]) => { const i = document.querySelector(card).firstElementChild;
                   return i.matches('img.bg') && i.getAttribute('src') !== before && i.complete && i.naturalWidth > 0; }""",
-                                     arg=before, timeout=10000)
+                                     arg=[CARD, before], timeout=10000)
             except PlaywrightTimeout:
                 return ["a photo sent from the editor did not show first in its card"], ""
-            name = db.copy_texts().get("event1.image", "")
-            seen = pg.evaluate("""() => { const c = document.querySelector('[data-image="event1.image"]');
+            name = db.announcement(one).image or ""
+            seen = pg.evaluate("""(card) => { const c = document.querySelector(card);
               return [c.classList.contains('has-img'), c.hasAttribute('data-photo'), c.firstElementChild.getAttribute('src'),
-                      [...c.querySelectorAll('.ed-img, .ed-img-x')].map(b => b.textContent), document.getElementById('copyBar').hidden]; }""")
-            if seen != [True, True, f"/slika/{name}", ["Promijeni sliku", "Ukloni sliku"], True] or not name.startswith("aktualno-1-"):
+                      [...c.querySelectorAll('.ed-img, .ed-img-x')].map(b => b.textContent), document.getElementById('copyBar').hidden]; }""", CARD)
+            if seen != [True, True, f"/slika/{name}", ["Promijeni sliku", "Ukloni sliku"], True] or not name.startswith(f"aktualno-{one}-"):
                 return [f"after an upload the card is {seen}, the row {name!r}"], name
             return [], name
 
@@ -822,19 +1063,20 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             out.append("the photo an upload replaced is still stored")
         x = card.locator(".ed-img-x")
         x.click()
-        if x.text_content() != "Ukloni?" or db.copy_texts().get("event1.image") != name:
-            out.append(f"one tap on Ukloni sliku: {x.text_content()!r}, the row {db.copy_texts().get('event1.image')!r}")
+        if x.text_content() != "Ukloni?" or db.announcement(one).image != name:
+            out.append(f"one tap on Ukloni sliku: {x.text_content()!r}, the row {db.announcement(one).image!r}")
         x.click()
         try:
-            pg.wait_for_function("""() => { const c = document.querySelector('[data-image="event1.image"]');
+            pg.wait_for_function("""(card) => { const c = document.querySelector(card);
               return !c.classList.contains('has-img') && !c.hasAttribute('data-photo') && !c.querySelector('img.bg, .ed-img-x')
-                     && c.querySelector('.ed-img').textContent === 'Dodaj sliku'; }""", timeout=10000)
+                     && c.querySelector('.ed-img').textContent === 'Dodaj sliku'; }""", arg=CARD, timeout=10000)
         except PlaywrightTimeout:
             out.append("the second tap on Ukloni sliku did not leave the card plain")
-        if "event1.image" in db.copy_texts() or (config.MEDIA_DIR / name).exists():
-            out.append("after Ukloni sliku its row or its file is still there")
+        if db.announcement(one).image is not None or (config.MEDIA_DIR / name).exists():
+            out.append("after Ukloni sliku its name or its file is still there")
         problems, name = send(None)                                    # Dodaj sliku, on the plain card
         out += [f"onto a plain card: {p}" for p in problems]
+        pg.click("#copyToggle")                                        # Gotovo: edit mode persists in the tab otherwise
         photo_on(); pg.reload(); pg.wait_for_load_state("networkidle")
         return out
 
@@ -853,9 +1095,11 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         pg.wait_for_function("""() => { const b = document.querySelector('#aktualno .ed-flag');
           return b.getAttribute('aria-pressed') === 'false' && b.closest('.event').classList.contains('is-off'); }""", timeout=5000)
         seen = pg.evaluate("""() => { const c = document.querySelector('#aktualno .event'), o = el => +getComputedStyle(el).opacity;
-          return [c.getBoundingClientRect().height > 0, o(c.querySelector('.head')), o(c.querySelector('.ed-flag'))]; }""")
-        if seen != [True, 0.55, 1]:
-            out.append(f"a strip switched off in edit mode (shown, its title block's and its toggle's opacity): {seen}")
+          return [c.getBoundingClientRect().height > 0, o(c.querySelector('.head')), o(c.querySelector('.ed-flag')),
+                  o(c.querySelector('.ed-ann-x > button'))]; }""")
+        if seen != [True, 0.55, 1, 0.55]:
+            out.append(f"a strip switched off in edit mode (shown, its title block's, its toggle's and its Obriši najavu's "
+                       f"opacity): {seen}")
         stacked = pg.evaluate("""() => { const row = document.querySelector('#aktualno'), cs = getComputedStyle(row);
           const [a, b] = [...row.querySelectorAll('.event')].map(c => c.getBoundingClientRect());
           const de = document.documentElement, hero = row.parentElement;
@@ -868,6 +1112,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 or stacked["overflow"] != [0, 0]):
             out.append(f"in edit mode, one announcement off, they are not one under the other, each the row's width, without dots "
                        f"and without overflow (the page's, the hero's): {stacked}")
+        pg.click("#copyToggle")                                        # Gotovo, then the visitor's view
         pg.reload(); pg.wait_for_load_state("networkidle")
         cards = pg.locator("#aktualno .event")
         if cards.nth(0).is_visible() or not cards.nth(1).is_visible():
@@ -882,10 +1127,48 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             out.append(f"the one announcement left is {alone['width']}px of the row's {alone['room']}px")
         if alone["dots"] or not alone["hidden"]:
             out.append(f"one announcement left, and {alone['dots']} dots under it (their box hidden: {alone['hidden']})")
-        if db.copy_texts().get("event1.show") != "off":
+        if db.announcement(one).shown:
             out.append("the switch was not stored")
         out += pg.evaluate(MEASURE, True)["problems"]
-        db.set_copy("event1.show", "on", None)
+        db.set_announcement_shown(one, True)
+        return out
+
+    def add_drop(pg):
+        """The editor's "+ Dodaj najavu" and "Obriši najavu" in a browser.
+        In edit mode the first adds a card: the page comes back on
+        #aktualno with three, the new one last with its placeholders, and
+        three dots under them (outside edit mode again). In edit mode the
+        three stack, nothing overflowing, and the new card's "Obriši najavu"
+        asks first ("Obriši?" at one tap, the card still there); its second
+        tap deletes it, and the page comes back with the two cards of the
+        walks."""
+        out = []
+        pg.click("#copyToggle")
+        with pg.expect_navigation():
+            pg.click(".ed-add-ann button")
+        pg.wait_for_load_state("networkidle")
+        cards = db.announcements(all=True)
+        if [a.id for a in cards[:2]] != [one, two] or len(cards) != 3 or cards[2].title != copy.ANNOUNCEMENT_BLANK["title"]:
+            out.append(f"+ Dodaj najavu left the cards {[(a.id, a.title[:12]) for a in cards]}")
+        seen = pg.evaluate("""() => [document.querySelectorAll('#aktualno .event').length,
+                                     document.querySelectorAll('#aktualno + .dots button').length,
+                                     document.querySelector('#aktualno .event:last-child h2').textContent, location.hash]""")
+        if seen != [3, 3, copy.ANNOUNCEMENT_BLANK["title"], "#aktualno"]:
+            out.append(f"after + Dodaj najavu (cards, dots, the last one's title, the address' #): {seen}")
+        if not pg.evaluate("document.body.classList.contains('editing')"):   # it comes back in edit mode by itself
+            out.append("after + Dodaj najavu the page is not in edit mode any more")
+        out += pg.evaluate(EDIT_ROW)
+        x = pg.locator("#aktualno .event").nth(2).locator(".ed-ann-x > button")
+        x.click()
+        if x.text_content() != "Obriši?" or len(db.announcements(all=True)) != 3:
+            out.append(f"one tap on Obriši najavu: {x.text_content()!r}, {len(db.announcements(all=True))} cards")
+        with pg.expect_navigation():
+            x.click()
+        pg.wait_for_load_state("networkidle")
+        left, shown = [a.id for a in db.announcements(all=True)], pg.locator("#aktualno .event").count()
+        if left != [one, two] or shown != 2:
+            out.append(f"the second tap on Obriši najavu left the cards {left}, {shown} on the page")
+        pg.click("#copyToggle")                                        # Gotovo
         return out
 
     ROW = "document.querySelector('#aktualno')"
@@ -960,7 +1243,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         ctx.browser.close()
         return [f"[install banner 390px] {p}" for p in out]
 
-    def walk(pw, email, widths, label, strict=True, lines=False, switch=(), auto=(), photos=(), one_line=False):
+    def walk(pw, email, widths, label, strict=True, lines=False, switch=(), auto=(), photos=(), adds=(), one_line=False):
         problems = []
         for w in widths:
             phone = w < 600
@@ -997,6 +1280,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                     problems += [f"{where} photo: {p}" for p in photo_edit(pg)]
                 if w in switch:                             # the editor's switch, on a phone and a wide screen
                     problems += [f"{where} switch: {p}" for p in flip(pg)]
+                if w in adds:                               # the editor adds a card and deletes it, likewise
+                    problems += [f"{where} add/delete: {p}" for p in add_drop(pg)]
             problems += [f"[{label} {w}px] js: {e}" for e in errs]
             ctx.browser.close()
         return problems
@@ -1007,10 +1292,11 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         fill(words)                                   # long texts: 300 characters, lists of 12
         problems += walk(pw, None, (360, 390, 900, 1280), "words", auto=(390, 1280))
         problems += still(pw)                         # under reduced motion: never by themselves
-        problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280), photos=(390,))
+        problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280), photos=(390,),
+                         adds=(390, 1280))
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")
         problems += banner(pw)                        # the install banner's week between asks
-        db.set_copy("event1.text", LINES, None)       # line breaks: the first announcement's text in three lines
+        db.set_announcement_field(one, "body", LINES, None)   # line breaks: the first announcement's text in three lines
         problems += walk(pw, None, (390, 1280), "lines", lines=True)
         problems += walk(pw, "trener@test.local", (390,), "lines", lines=True)
         fill(lambda n: "W" * n)                       # one unbreakable word: must wrap, never widen

@@ -94,32 +94,44 @@
   /* at the right end of the strip, or of its own line when it wraps; at
      most the strip's width, so a long link text wraps inside it */
   .event .foot { flex: none; max-width: 100%; margin-left: auto; display: flex; }
-  /* A strip the editor switched off (copy.FlagSlot) is on his page only, as
-     .is-off, and so is their box when both are: hidden, so outside edit mode
-     he sees the visitor's page. Edit mode shows them, the strip's content
-     dimmed but not its toggle, which stays readable to switch it back on.
-     The toggle is the strip's first item, the photo's pills after it
-     (.ed-img, .has-img below), centred on it like the rest: base.html gives
-     them the margin and the alignment of a column. */
+  /* A strip the editor switched off (its switch, a copy.FlagSlot) is on his
+     page only, as .is-off, and so is their box when none is on: hidden, so
+     outside edit mode he sees the visitor's page. Edit mode shows them, the
+     strip's content dimmed but not its toggle, which stays readable to
+     switch it back on. The toggle is the strip's first item, the photo's
+     pills and "Obriši najavu" after it (.ed-img, .has-img below), centred
+     on it like the rest: base.html gives them the margin and the alignment
+     of a column. "Obriši najavu" is dimmed by a rule of its own: its form
+     has no box (display: contents), so the form's opacity would not reach
+     it. */
   .evs.is-off, .event.is-off { display: none; }
   body.editing .evs.is-off { display: grid; }
   body.editing .event.is-off { display: flex; }
-  body.editing .event.is-off > :not(.ed-flag) { opacity: .55; }
-  body.editing .event .ed-flag, body.editing .event .ed-img, body.editing .event .ed-img-x { margin: 0; align-self: center; }
-  /* Edit mode: the two one under the other, each the row's width, so the
+  body.editing .event.is-off > :not(.ed-flag), body.editing .event.is-off .ed-ann-x > button { opacity: .55; }
+  body.editing .event .ed-flag, body.editing .event .ed-img, body.editing .event .ed-img-x,
+  body.editing .event .ed-ann-x > button { margin: 0; align-self: center; }
+  /* Edit mode: the cards one under the other, each the row's width, so the
      editor reaches a card that is off, which has no dot (the script makes
      dots for the cards a visitor sees). Not a scroller then, and no dots:
      the auto-advance's glide moves nothing in a box that does not scroll. */
   body.editing .evs { display: grid; grid-template-columns: minmax(0, 1fr); overflow: visible; }
   body.editing .evs + .dots { display: none; }
+  /* "+ Dodaj najavu": a new card (a plain form, POST /aktualno/nova; the
+     page comes back with it last), under the stacked cards, centred in the
+     hero as the dots it stands in for are. Edit mode only; 32px tall at
+     every pointer, as the list's "+ Dodaj stavku". */
+  .ed-add-ann { display: none; }
+  body.editing .ed-add-ann { display: flex; justify-content: center; }
+  body.editing .ed-add-ann .act { min-height: 32px; }
   @media (max-width: 699px) {
     .event { flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 20px; }
     .event .text { flex-basis: auto; }
     .event .foot { margin-left: 0; margin-top: 4px; }
-    body.editing .event .ed-flag, body.editing .event .ed-img, body.editing .event .ed-img-x { align-self: flex-start; }
+    body.editing .event .ed-flag, body.editing .event .ed-img, body.editing .event .ed-img-x,
+    body.editing .event .ed-ann-x > button { align-self: flex-start; }
   }
-  /* An announcement over a photo (.has-img: the owner's upload, a
-     copy.ImageSlot): Shape's photo cards, in the stage's language (.stage,
+  /* An announcement over a photo (.has-img: the owner's upload, its row's
+     image): Shape's photo cards, in the stage's language (.stage,
      below). The photo fills the card and a dark gradient makes white type
      readable on any photo (as .stage::after), so the card is light-on-dark
      whatever the theme: what its text sits on is the photo (as .stage and
@@ -149,7 +161,7 @@
   .event.has-img .act { background: #fff; color: #111; border-color: transparent; }
   .event.has-img .act:hover { background: #e2e2e2; color: #111; border-color: transparent; }
   body.editing .event.has-img .ed-flag, body.editing .event.has-img .ed-img,
-  body.editing .event.has-img .ed-img-x { align-self: flex-start; }
+  body.editing .event.has-img .ed-img-x, body.editing .event.has-img .ed-ann-x > button { align-self: flex-start; }
   /* a wide banner on a desktop, the whole column across */
   @media (min-width: 900px) { .event.has-img { min-height: 320px; } }
 
@@ -195,8 +207,10 @@
   /* phones: a wide band, not a tall one — a 4:5 window on a landscape photo
      shows its whole height, wall print included; 16:11 keeps the equipment */
   /* under the announcements' dots the photo needs less air than under a
-     headline: the row's own 20px and the dots are already between them */
-  .dots + .stage { margin-top: clamp(14px, 2.5vw, 26px); }
+     headline: the row's own 20px and the dots are already between them.
+     ~, not +: an editor's "+ Dodaj najavu" form (edit mode only) sits
+     between the dots and the photo */
+  .dots ~ .stage { margin-top: clamp(14px, 2.5vw, 26px); }
   @media (max-width: 720px) { .stage { aspect-ratio: 16 / 11; } .stage .tags.r { display: none; }
                               .stage .copy p { display: none; } }
 
@@ -407,49 +421,60 @@
     <h1>{{ c.t("hero.h1a") }} <span class="red">{{ c.t("hero.h1b") }}</span></h1>
 
     {# Aktualno: the owner's announcements for the month, the first thing on
-       the page since 16.10.2026 (his call): two strips under the headline,
-       above the photo, where the lead, a member's button and its note were;
-       a member's way in is the bar's tabs and the offer cards' buttons. One
-       card per view at every width, as wide as the row: a swipe row
-       (.swipe-row) with a dot per card under it everywhere, made by the
-       script, which also moves the row on by itself every 5 s (data-auto,
-       in ms); edit mode stacks the two, one under the other. He switches a
-       strip off in edit mode when it is over (copy.FlagSlot: the toggle at
-       its start). A visitor gets only the strips that are on, and not even
-       their box when both are off. An editor gets both strips and the box
-       always, what is off marked .is-off (shown, dimmed, in edit mode
-       only); the data-flag marks are for the editor's script, which keeps
-       .is-off in step when a toggle is pressed, and .single on the box, set
-       here too when one strip shows: one card, so no dots and no moving on
-       (the script makes neither for fewer than two). The link leads to the
-       contact.
-       A card may carry the owner's photo behind it (copy.ImageSlot): then
+       the page since 16.10.2026 (his call): cards under the headline, above
+       the photo, where the lead, a member's button and its note were; a
+       member's way in is the bar's tabs and the offer cards' buttons. Rows
+       of the announcements table since 18.10.2026 (db.announcements, in
+       creation order), as many as he adds, up to eight. One card per view
+       at every width, as wide as the row: a swipe row (.swipe-row) with a
+       dot per card under it everywhere, made by the script, which also
+       moves the row on by itself every 5 s (data-auto, in ms); edit mode
+       stacks them, one under the other. He switches a card off in edit
+       mode when it is over (the toggle at its start). A visitor gets only
+       the cards that are on, and not even their box when none is. An
+       editor gets every card and the box always, what is off marked .is-off
+       (shown, dimmed, in edit mode only); the data-flag marks are for the
+       editor's script, which keeps .is-off in step when a toggle is
+       pressed, and .single on the box, set here too when one card shows:
+       one card, so no dots and no moving on (the script makes neither for
+       fewer than two). The link leads to the contact. A card's texts are
+       printed by c.field under virtual keys, aktualno.<id>.<field>, which
+       the editor saves as it saves a slot; its bar names a card by its
+       number on the page ("Najava 2: naslov", the field's word from
+       ANNOUNCEMENT, copy.ANNOUNCEMENT_SLOTS).
+       A card may carry the owner's photo behind it (its row's image): then
        it is .has-img with the photo as its first child, served by /slika,
        and data-photo, which tells the audit its text sits on a photograph.
        An editor's card always carries data-image, where the script puts a
        photo it has just sent, and its pills: "Dodaj sliku" (or "Promijeni
-       sliku") and, with a photo, "Ukloni sliku". #}
-    {% set ev_on = [copy_flag("event1.show", copy_texts), copy_flag("event2.show", copy_texts)] %}
-    {% set ev_shown = ev_on | select | list | length %}
+       sliku"), with a photo "Ukloni sliku", and "Obriši najavu", a plain
+       form its pill sends at the second tap (base.html). After the row's
+       dots an editor gets "+ Dodaj najavu", a plain form too, while there
+       are fewer than eight (can_add); with every card deleted his box is
+       empty, and that form is how he starts again. A visitor gets none of
+       it, not even a line of white space. #}
+    {% set ev_shown = announcements | selectattr("shown") | list | length %}
     {% if ev_shown or can_edit_copy %}
     <div class="evs swipe-row{% if ev_shown == 1 %} single{% endif %}{% if not ev_shown %} is-off{% endif %}" id="aktualno" data-auto="5000"{% if can_edit_copy %} data-flag-group{% endif %}>
-      {% for on in ev_on %}{% set ev = "event" ~ loop.index %}{% set photo = copy_image(ev ~ ".image", copy_texts) %}
+      {% for a in announcements %}{% set ev = "aktualno." ~ a.id %}{% set on = a.shown %}{% set photo = a.image %}{% set n = "Najava " ~ loop.index ~ ": " %}
       {% if on or can_edit_copy %}
       <article class="card event{% if photo %} has-img{% endif %}{% if not on %} is-off{% endif %}"{% if photo %} data-photo{% endif %}{% if can_edit_copy %} data-flag="{{ ev }}.show" data-image="{{ ev }}.image"{% endif %}>
         {% if photo %}<img class="bg" src="/slika/{{ photo }}" alt="" loading="eager" decoding="async">{% endif %}
-        {% if can_edit_copy %}<button type="button" class="ed-flag" data-copy="{{ ev }}.show" data-label="{{ COPY[ev ~ '.show'].label }}"
+        {% if can_edit_copy %}<button type="button" class="ed-flag" data-copy="{{ ev }}.show" data-label="{{ n ~ ANNOUNCEMENT['show'].label }}"
                 aria-pressed="{{ 'true' if on else 'false' }}">{{ "Prikazano" if on else "Skriveno" }}</button>
-        <button type="button" class="ed-img" data-copy="{{ ev }}.image" data-label="{{ COPY[ev ~ '.image'].label }}">{{ "Promijeni sliku" if photo else "Dodaj sliku" }}</button>
-        {% if photo %}<button type="button" class="ed-img-x" aria-label="Ukloni sliku" data-copy="{{ ev }}.image">Ukloni sliku</button>{% endif %}{% endif %}
-        <span class="tag">{{ c.t(ev ~ ".tag") }}</span>
-        <div class="head"><h2>{{ c.t(ev ~ ".title") }}</h2><p class="when">{{ c.t(ev ~ ".when") }}</p></div>
-        <p class="text">{{ c.t(ev ~ ".text") }}</p>
-        <div class="foot"><a class="act" href="/#kontakt">{{ c.t(ev ~ ".cta") }}</a></div>
+        <button type="button" class="ed-img" data-copy="{{ ev }}.image" data-label="{{ n ~ ANNOUNCEMENT['image'].label }}">{{ "Promijeni sliku" if photo else "Dodaj sliku" }}</button>
+        {% if photo %}<button type="button" class="ed-img-x" aria-label="Ukloni sliku" data-copy="{{ ev }}.image">Ukloni sliku</button>{% endif %}
+        <form method="post" action="/aktualno/{{ a.id }}/obrisi" class="ed-ann-x"><button type="submit" aria-label="Obriši najavu">Obriši najavu</button></form>{% endif %}
+        <span class="tag">{{ c.field(ev ~ ".tag", a.tag, n ~ ANNOUNCEMENT["tag"].label) }}</span>
+        <div class="head"><h2>{{ c.field(ev ~ ".title", a.title, n ~ ANNOUNCEMENT["title"].label) }}</h2><p class="when">{{ c.field(ev ~ ".when", a.when_text, n ~ ANNOUNCEMENT["when"].label) }}</p></div>
+        <p class="text">{{ c.field(ev ~ ".text", a.body, n ~ ANNOUNCEMENT["text"].label) }}</p>
+        <div class="foot"><a class="act" href="/#kontakt">{{ c.field(ev ~ ".cta", a.cta, n ~ ANNOUNCEMENT["cta"].label) }}</a></div>
       </article>
       {% endif %}
       {% endfor %}
     </div>
-    <div class="dots" role="group" aria-label="Aktualno" hidden></div>
+    <div class="dots" role="group" aria-label="Aktualno" hidden></div>{% if can_add %}
+    <form method="post" action="/aktualno/nova" class="ed-add-ann"><button type="submit" class="act">+ Dodaj najavu</button></form>{% endif %}
     {% endif %}
 
     {# the stage: the studio itself. The whole card is a link to the offer. #}

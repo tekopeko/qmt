@@ -13,14 +13,14 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from typing import Iterator
 
-from sqlalchemy import create_engine, delete as sa_delete, func, select
+from sqlalchemy import create_engine, delete as sa_delete, func, select, text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import config
-from .models import (PLAN_LABELS, SESSION_KINDS, Base, Booking, Membership, OnboardingResponse,
-                     Payment, Program, ProgramItem, ReminderLog, SessionTemplate,
-                     SiteCopy, TrainingLog, TrainingSession, User)
+from . import config, copy
+from .models import (PLAN_LABELS, SESSION_KINDS, Announcement, Base, Booking, Membership,
+                     OnboardingResponse, Payment, Program, ProgramItem, ReminderLog,
+                     SessionTemplate, SiteCopy, TrainingLog, TrainingSession, User)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -142,6 +142,108 @@ def reset_copy(key: str) -> None:
     """Back to the template's default: the row goes, the default returns."""
     with session_scope() as s:
         s.execute(sa_delete(SiteCopy).where(SiteCopy.key == key))
+
+
+# ---------- the landing's announcements (#aktualno; models.Announcement) ----------
+
+MAX_ANNOUNCEMENTS = 8          # the owner's number (18.10.2026)
+
+
+def announcements(all: bool = False) -> list[Announcement]:
+    """In position order (creation order): the shown ones, or with all=True
+    every one, the hidden too (an editor's page)."""
+    with session_scope() as s:
+        q = select(Announcement).order_by(Announcement.position)
+        return list(s.scalars(q if all else q.where(Announcement.shown)))
+
+
+def announcement(ann_id: int) -> Announcement | None:
+    with session_scope() as s:
+        return s.get(Announcement, ann_id)
+
+
+def add_announcement(user_id: int | None) -> Announcement | None:
+    """A new card after the last one: the placeholder texts
+    (copy.ANNOUNCEMENT_BLANK), shown, no photo. None at the cap
+    (MAX_ANNOUNCEMENTS). The count and the next position are read under a
+    table lock, so two quick taps (or two editors) never pass the cap
+    together nor take one position twice. The lock's mode is self-exclusive
+    and lets plain reads through: the landing never waits on it."""
+    with session_scope() as s:
+        s.execute(sa_text("LOCK TABLE announcements IN SHARE ROW EXCLUSIVE MODE"))
+        n, last = s.execute(select(func.count(), func.coalesce(func.max(Announcement.position), 0))
+                            .select_from(Announcement)).one()
+        if n >= MAX_ANNOUNCEMENTS:
+            return None
+        a = Announcement(position=last + 1, updated_by=user_id, **copy.ANNOUNCEMENT_BLANK)
+        s.add(a)
+        s.flush()
+        return a
+
+
+def _announcement_row(s: Session, ann_id: int) -> Announcement:
+    """The card, locked for this transaction (a photo replaced while the card
+    is deleted must not lose track of a file); LookupError when it is gone."""
+    a = s.get(Announcement, ann_id, with_for_update=True)
+    if a is None:
+        raise LookupError(f"no announcement {ann_id}")
+    return a
+
+
+def delete_announcement(ann_id: int) -> str | None:
+    """Delete a card. Returns its photo's file name for the caller to remove
+    from storage (the row first, so no page names a file that is gone);
+    None when it had none, or was gone already."""
+    with session_scope() as s:
+        try:
+            a = _announcement_row(s, ann_id)
+        except LookupError:
+            return None
+        image = a.image
+        s.delete(a)
+        return image
+
+
+def set_announcement_field(ann_id: int, field: str, text: str, user_id: int | None) -> str:
+    """Set one text of a card. `field` is its column: tag, title, when_text,
+    body or cta. The text is cleaned as copy is (copy.clean); an empty one
+    is the field's placeholder again (copy.ANNOUNCEMENT_BLANK), as an
+    emptied slot is its default, so a card is never blank. Returns what is
+    stored. ValueError: an unknown field, or a text past copy.CAP;
+    LookupError: no such card."""
+    if field not in copy.ANNOUNCEMENT_BLANK:
+        raise ValueError(f"not a text of an announcement: {field!r}")
+    cleaned = copy.clean(text)
+    if len(cleaned) > copy.CAP:
+        raise ValueError(f"{len(cleaned)} characters, at most {copy.CAP}")
+    stored = cleaned or copy.ANNOUNCEMENT_BLANK[field]
+    with session_scope() as s:
+        a = _announcement_row(s, ann_id)
+        setattr(a, field, stored)
+        a.updated_by = user_id
+    return stored
+
+
+def set_announcement_shown(ann_id: int, shown: bool, user_id: int | None = None) -> None:
+    """The card's switch: shown to everyone, or on an editor's page only.
+    LookupError: no such card."""
+    with session_scope() as s:
+        a = _announcement_row(s, ann_id)
+        a.shown, a.updated_by = shown, user_id
+
+
+def set_announcement_image(ann_id: int, name: str | None, user_id: int | None = None) -> str | None:
+    """Put a stored photo behind a card (its file name), or none. Returns
+    the name it held before, for the caller to remove from storage now that
+    no row names it. A name that is a path rather than a file is refused
+    (ValueError), as copy.image_name refuses one; LookupError: no such card."""
+    if name is not None and (not name or len(name) > 128 or "/" in name or "\\" in name or ".." in name):
+        raise ValueError(f"not a file name: {name!r}")
+    with session_scope() as s:
+        a = _announcement_row(s, ann_id)
+        old = a.image
+        a.image, a.updated_by = name, user_id
+        return old
 
 
 def set_trainer_id(user_id: int, is_trainer: bool) -> bool:

@@ -415,18 +415,24 @@
        like .ed-flag, in edit mode only. On a photo ([data-photo]) they are
        the editor's controls, not text on a photograph: a solid --surface
        pill with --text ink, readable on any picture; armed, the ✕'s accent
-       tint over that same solid ground. */
-    .ed-img, .ed-img-x { display: none; }
-    body.editing .ed-img, body.editing .ed-img-x {
+       tint over that same solid ground. "Obriši najavu" (.ed-ann-x, a
+       form: the landing's announcement goes with its photo) is the same
+       pill, its button the form's only box (display: contents) so it lines
+       up with the others; armed, "Obriši?". */
+    .ed-img, .ed-img-x, .ed-ann-x { display: none; }
+    body.editing .ed-ann-x { display: contents; }
+    body.editing .ed-img, body.editing .ed-img-x, body.editing .ed-ann-x > button {
       display: inline-flex; align-self: flex-start; align-items: center; min-height: 32px; margin-bottom: 14px;
       padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); box-shadow: none;
       font: 700 .8rem var(--font-body); background: var(--surface-2); color: var(--muted); }
-    body.editing .ed-img:hover, body.editing .ed-img-x:hover { transform: none; color: var(--text);
-                                                               background: color-mix(in srgb, var(--text) 10%, var(--surface-2)); }
-    body.editing [data-photo] .ed-img, body.editing [data-photo] .ed-img-x { background: var(--surface); color: var(--text); }
-    body.editing [data-photo] .ed-img:hover, body.editing [data-photo] .ed-img-x:hover {
-      background: color-mix(in srgb, var(--text) 10%, var(--surface)); }
-    body.editing .ed-img-x.armed, body.editing .ed-img-x.armed:hover {
+    body.editing .ed-img:hover, body.editing .ed-img-x:hover, body.editing .ed-ann-x > button:hover {
+      transform: none; color: var(--text); background: color-mix(in srgb, var(--text) 10%, var(--surface-2)); }
+    body.editing [data-photo] .ed-img, body.editing [data-photo] .ed-img-x,
+    body.editing [data-photo] .ed-ann-x > button { background: var(--surface); color: var(--text); }
+    body.editing [data-photo] .ed-img:hover, body.editing [data-photo] .ed-img-x:hover,
+    body.editing [data-photo] .ed-ann-x > button:hover { background: color-mix(in srgb, var(--text) 10%, var(--surface)); }
+    body.editing .ed-img-x.armed, body.editing .ed-img-x.armed:hover,
+    body.editing .ed-ann-x > button.armed, body.editing .ed-ann-x > button.armed:hover {
       color: var(--accent-tint-ink); border-color: transparent;
       background: linear-gradient(var(--accent-dim), var(--accent-dim)) var(--surface); }
     /* width: max-content: centred by left: 50%, the bar would otherwise
@@ -740,7 +746,10 @@
   // sliku" (.ed-img) opens the file picker, the file goes to
   // /copy/<key>/slika, and the server's answer puts the photo behind its
   // card. "Ukloni sliku" (.ed-img-x) asks first, as an item's ✕ does, then
-  // reset=1 removes photo and row (pick and unpick below).
+  // reset=1 removes photo and row (pick and unpick below). A landing
+  // announcement's "Obriši najavu" (.ed-ann-x, a form) asks first too, and
+  // its second tap sends the form: the page comes back without the card
+  // (drop below).
   (function () {
     var mode = false, cur = null, orig = "";
     var tog = document.getElementById("copyToggle"), bar = document.getElementById("copyBar");
@@ -841,7 +850,7 @@
       }
       disarm(); begin(sp, true); sp.textContent = ""; save(false);
     }
-    document.addEventListener("click", function (e) { if (armed && !e.target.closest(".ed-x, .ed-img-x")) disarm(); }, true);
+    document.addEventListener("click", function (e) { if (armed && !e.target.closest(".ed-x, .ed-img-x, .ed-ann-x")) disarm(); }, true);
     function add(btn) {
       var ul = btn.previousElementSibling;
       if (cur) end(false);
@@ -941,18 +950,38 @@
         if (!cur) bar.hidden = true;
       }).catch(function () { says(name, "Nije spremljeno — provjeri vezu."); });
     }
-    tog.addEventListener("click", function () {
+    // deleting a whole announcement asks first, as an item's ✕: the first
+    // tap arms the pill into "Obriši?", the second within four seconds
+    // sends its form (a plain POST; the page comes back without the card)
+    function drop(b) {
+      if (cur) end(false);
+      if (armed !== b) {
+        disarm(); armed = b; b.dataset.label = b.getAttribute("aria-label") || ""; b.dataset.text = b.textContent;
+        b.textContent = "Obriši?"; b.classList.add("armed"); b.setAttribute("aria-label", "Potvrdi brisanje");
+        armTimer = setTimeout(disarm, 4000); return;
+      }
+      disarm(); b.form.submit();
+    }
+    // Edit mode survives a reload in this tab (sessionStorage): "+ Dodaj
+    // najavu" and "Obriši najavu" are forms that reload the page, and the
+    // editor should land back in edit mode, not have to press the pill again.
+    function setMode(on) {
       end(false);
-      mode = !mode; document.body.classList.toggle("editing", mode);
+      mode = !!on; document.body.classList.toggle("editing", mode);
       tog.setAttribute("aria-pressed", mode ? "true" : "false"); tog.textContent = mode ? "✓ Gotovo" : "✎ Uredi tekstove";
-    });
+      try { if (mode) sessionStorage.setItem("qmt-editing", "1"); else sessionStorage.removeItem("qmt-editing"); } catch (e) {}
+    }
+    tog.addEventListener("click", function () { setMode(!mode); });
+    try { if (sessionStorage.getItem("qmt-editing") === "1") setMode(true); } catch (e) {}
     document.addEventListener("click", function (e) {
       if (!mode) return;
       var f = e.target.closest(".ed-flag"), im = e.target.closest(".ed-img"), ix = e.target.closest(".ed-img-x");
       var x = e.target.closest(".ed-x"), a = e.target.closest(".ed-add"), el = e.target.closest(".ed");
+      var ax = e.target.closest(".ed-ann-x > button");
       if (f) { e.preventDefault(); e.stopPropagation(); flag(f); }
       else if (im) { e.preventDefault(); e.stopPropagation(); pick(im); }
       else if (ix) { e.preventDefault(); e.stopPropagation(); unpick(ix); }
+      else if (ax) { e.preventDefault(); e.stopPropagation(); drop(ax); }
       else if (x) { e.preventDefault(); e.stopPropagation(); remove(x); }
       else if (a) { e.preventDefault(); e.stopPropagation(); add(a); }
       else if (el) { e.preventDefault(); e.stopPropagation(); begin(el); }

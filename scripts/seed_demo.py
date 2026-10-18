@@ -158,6 +158,22 @@ def seed_program() -> None:
     print(f"  {made} programa (razina × cilj), svi s osnovnim vježbama")
 
 
+def seed_announcements() -> None:
+    """The landing's two example announcements (copy.ANNOUNCEMENT_EXAMPLES),
+    in place of whatever cards there were: a dev RESET, as the rest. Their
+    photos' files are left alone: the dev .env may point storage at R2."""
+    from sqlalchemy import delete
+
+    from qmt.copy import ANNOUNCEMENT_EXAMPLES
+    from qmt.models import Announcement
+
+    with db.session_scope() as s:
+        s.execute(delete(Announcement))
+        for position, example in enumerate(ANNOUNCEMENT_EXAMPLES, start=1):
+            s.add(Announcement(position=position, **example))
+    print(f"  {len(ANNOUNCEMENT_EXAMPLES)} najave (primjeri)")
+
+
 def seed_karton() -> None:
     """Ivan: filled upitnik + two diary entries — the karton demo."""
     import json
@@ -193,3 +209,5 @@ if __name__ == "__main__":
     seed_program()
     print("karton:")
     seed_karton()
+    print("aktualno:")
+    seed_announcements()
