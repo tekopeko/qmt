@@ -8,7 +8,7 @@
  *   - show a small offline notice when navigation fails entirely.
  * Installability + graceful offline message; not offline functionality.
  */
-const VERSION = "qmt-v1";
+const VERSION = "qmt-v2";   // v2: the icons changed (18.10.2026, white ground, the mark inside the safe zone)
 const STATIC = `${VERSION}-static`;
 const STATIC_ASSETS = [
   "/static/icons/icon-192.png",
