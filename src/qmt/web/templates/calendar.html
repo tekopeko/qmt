@@ -44,6 +44,9 @@
   .tag-11 { font-size: .72rem; font-weight: 800; letter-spacing: .05em;
             background: var(--accent-dim); color: var(--accent-tint-ink); border-radius: 6px;
             padding: 1px 6px; margin-left: 4px; vertical-align: 1px; }
+  /* on my own card the tint would sit on the card's tint (4.2:1 in dark, under
+     AA): the chip takes the card's base colour there, the ink stays */
+  .sess.mine .tag-11 { background: var(--surface); }
   .sess form { margin-top: 7px; }
   .sess .none { color: var(--muted); font-size: .8rem; padding: 12px 11px; }
 

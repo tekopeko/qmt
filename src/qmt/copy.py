@@ -129,9 +129,10 @@ REFERENCE_PRICES = {
 
 # MojiMakrosi (the prehrana app) as a monthly add-on, as the owner set it on
 # 5.10.2026: cheaper beside a plan in the dvorana, dearer for online-only
-# clients. The defaults of the addon.* slots (below), which the landing's
-# offer cards print, and the prehrana plan's hint on /moja-clanarina too
-# ("3 € uz dvoranu, 5 € uz online", _plan_price.html): one slot per number.
+# clients. The defaults of the addon.* slots (below), which the prehrana
+# plan's hint on /moja-clanarina prints ("3 € uz dvoranu, 5 € uz online",
+# _plan_price.html), and the landing's online tiers the online one (the gym's
+# cards carry no add-on line since 20.10.2026): one slot per number.
 MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
 
 SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
@@ -200,7 +201,8 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     **{f"price.{plan}.{part}": Slot(text or "", CAP, f"Cijena · {plan}: {label}")
        for plan, row in REFERENCE_PRICES.items()
        for part, label, text in zip(("amount", "unit", "note"), ("iznos", "jedinica", "napomena"), row)},
-    # the MojiMakrosi add-on's amount in €: beside the online tiers, beside the gym's cards
+    # the MojiMakrosi add-on's amount in €: online beside the landing's online
+    # tiers, both in the prehrana plan's hint (the gym's cards print none)
     "addon.online": Slot(MOJIMAKROSI_ADDON["online"], CAP, "MojiMakrosi dodatak uz online (€)"),
     "addon.dvorana": Slot(MOJIMAKROSI_ADDON["dvorana"], CAP, "MojiMakrosi dodatak uz dvoranu (€)"),
     # ---- landing: aktualno: rows since 18.10.2026, not slots (ANNOUNCEMENT_* below) ----

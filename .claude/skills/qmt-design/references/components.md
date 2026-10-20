@@ -11,7 +11,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.topbar` | base | a floating dark-glass pill (999px, blur, sticky 10px below the top, max 1100px) on every screen and both themes; ONE row at every width: brand left, tabs middle, avatar right, all inside the pill's padding. `.brand-slot` takes the room the tabs leave and is a query container: the wordmark shows in full when the slot is ≥19.2rem, else "QMT" (never a window breakpoint — the pill is capped, so the window says nothing about the room inside). 7+ tabs run tight (`.nav:has(> a:nth-of-type(7))`), all tabs tighten ≤1200px and fold into ☰ ≤900px. Tabs never wrap. |
 | `.nav a` / `.nav a.cta` / `.nav a.dark` / `.on` | base | tab; red pill (`.cta`); dark glass pill (`.dark`, the pill's own "black", theme-free because the bar is always dark); current page. Guest bar: Prijava `.cta` (plus Registriraj se at the same weight while signup is open) · "Kontakt" `.dark`; never a Cjenik tab, and no "Što nudimo" — the photo leads to the offer |
 | `.topbar.compact` | base (guests) | Shape's small pill: `width: fit-content`, centred; the brand is content-sized (no slot query) and the wordmark shortens below 420px, where even the small pill cannot hold the name beside the ☰. Its drawer is a centred 300px card, not a sliver the pill's width |
-| `.avatar` / `.user-menu` | base | initials circle → account menu on the YouTube pattern: identity header (ellipsized email), icon gutter rows (Profil, theme, Odjava), full-bleed hover |
+| `.avatar` / `.user-menu` | base | initials circle → account menu on the YouTube pattern: identity header (the email ellipsized on a desktop with the whole address in its `title`, wrapped ≤900px), icon gutter rows (Profil, Moja članarina for a trainer only — the Članarina tab's exact opposite —, theme, Odjava), full-bleed hover |
 | `main` | base | max-width 1100px, `clamp(14px,4vw,40px)` side padding; `main.full` for the landing |
 | `main > h1`, `main > h1 + .hint` | base | the page header: title `clamp(1.6rem,3vw,2rem)` + one lead sentence, 70ch max — templates write bare `<h1>` / `<p class="hint">` with no inline style |
 | `.card` | base | `--surface`, hairline, `--r-lg` (20px), `--shadow`; hero-grade cards (`.svc`, `.plan`, `.upitnik`, `.termini`) take `--r-xl` (28px) with 26px padding |
@@ -98,7 +98,8 @@ online plan as `.offer` cards in `.offer-grid` — italic uppercase title, one
 (`c.points`, up to six), then a `.foot` pinned to the bottom holding the
 `.addon` line, the `.price` (2.1rem number + muted unit) and one button, so
 add-on, price and button sit level across the row. Each tier has two `.price`
-blocks, `data-period="month"` and `"year"` (`hidden`); the `.period` switch
+blocks, `data-period="month"` (`hidden`) and `"year"`: the yearly shows first,
+and both switches render Godišnje selected (20.10.2026); the `.period` switch
 under the cards (the `.auth-tabs` idiom on a `--surface` track — the tint over
 `--surface-2` is 4.34:1 in dark) shows one on all three, per page view, and is
 hidden until the script runs. Tier prices are mostly owner-typed text, so the
@@ -122,7 +123,8 @@ a swipe to the left, ELITE to the right), else on its first; the script does
 it only where the row scrolls, so the desktop grid is untouched. The
 announcements' `.evs` is a `.swipe-row` too, at every width and one card per
 view (**Aktualno**, below).
-**The gym** (`#dvorana`, below): the same `.offer` cards in `.gym-grid` (two
+**The gym** (`#dvorana`, below): the same `.offer` cards, without the
+`.addon` line (20.10.2026: `offer()` prints it only with an `addon_at`), in `.gym-grid` (two
 columns ≥900px, capped at 760px so each is about a tier's width; the swipe
 row, two dots, below), not featured; Individualno's other
 prices are a muted `.price-note` under its `.price` (each price in it one

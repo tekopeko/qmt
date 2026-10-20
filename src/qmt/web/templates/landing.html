@@ -294,8 +294,8 @@
      not .auth-tabs' --surface-2: in dark the tint over --surface-2 leaves the
      ink at 4.34:1, under AA (4.81:1 over --surface). Hidden until the script
      can work it, so without JS there is no switch that does nothing (the
-     monthly price shows). 34px on a desktop clears the featured card, which
-     hangs 16px below the row. */
+     yearly price shows, as it does on load). 34px on a desktop clears the
+     featured card, which hangs 16px below the row. */
   .period { display: flex; gap: 3px; width: fit-content; margin: 34px auto 0; padding: 3px;
             border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
   .period[hidden] { display: none; }
@@ -316,7 +316,8 @@
   .offer li { display: flex; gap: 12px; align-items: flex-start; font-size: .95rem; line-height: 1.4; }
   .offer li::before { content: ""; flex: none; width: 8px; height: 8px; margin: .42em 4px 0; border-radius: 50%;
                       background: var(--accent); box-shadow: 0 0 0 5px var(--accent-dim); }
-  /* add-on, price and button are one block pinned to the bottom: level across the row */
+  /* add-on (the tiers' only), price and button are one block pinned to the
+     bottom: level across the row */
   .offer .foot { margin-top: auto; padding-top: 26px; display: flex; flex-direction: column;
                  align-items: flex-start; gap: 16px; }
   .offer .addon { align-self: stretch; padding-top: 14px; border-top: 1px solid var(--line);
@@ -509,18 +510,21 @@
       {%- else %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="#kontakt">Javi nam se →</a>{% endif %}
     {%- endmacro %}
     {# A price that is text, not a plan's: two copy slots, the amount and the
-       unit beside it. A visitor gets no unit span when the unit is empty. #}
-    {% macro text_price(price_key, unit_key, period) -%}
+       unit beside it. A visitor gets no unit span when the unit is empty.
+       hidden: not the price shown on load (a tier's monthly one). #}
+    {% macro text_price(price_key, unit_key, period, hidden=false) -%}
       {%- set unit = copy_texts.get(unit_key, COPY[unit_key].default) -%}
-      <div class="price" data-period="{{ period }}"{% if period == "year" %} hidden{% endif %}><b>{{ c.t(price_key) }}</b>
+      <div class="price" data-period="{{ period }}"{% if hidden %} hidden{% endif %}><b>{{ c.t(price_key) }}</b>
         {%- if unit or can_edit_copy %}<span>{{ c.t(unit_key) }}</span>{% endif %}</div>
     {%- endmacro %}
     {# keys: the plans a card stands for, the first one prices it. slot: the
        card's copy prefix (slot.title / .lead / .points in src/qmt/copy.py).
-       addon_at: where its MojiMakrosi add-on is sold ("online", "dvorana"),
-       the amount the addon.<addon_at> slot. tier: a monthly and a yearly
-       price (the yearly is the slot.year_price / .year_unit text), the switch
-       under the row shows one; every card on the landing is one; real: its
+       addon_at: where its MojiMakrosi add-on is sold ("online"), the amount
+       the addon.<addon_at> slot; none, no add-on line at all (the gym's
+       cards since 20.10.2026). tier: a monthly and a yearly price (the
+       yearly is the slot.year_price / .year_unit text), the switch under the
+       row shows one, the yearly on load (the monthly is hidden until
+       Mjesečno is pressed); every card on the landing is one; real: its
        monthly price is the plan's own, else the slot.price / slot.unit text.
        note: a muted line under the price (none: no line). room: the line
        of the card beside it, whose room this one keeps without showing it
@@ -529,19 +533,19 @@
        owner retypes in place; no Stripe Price prints instead (18.10.2026,
        the owner's call). A guest sees no price at all while
        PUBLIC_PRICES=off, which also hides the add-on's amount. #}
-    {% macro offer(keys, slot, addon_at, featured=false, tier=false, real=true, note=none, room=none) -%}
+    {% macro offer(keys, slot, addon_at=none, featured=false, tier=false, real=true, note=none, room=none) -%}
       <div class="card offer{% if featured %} featured{% endif %}{% if keys | select('in', my_plans) | list %} mine{% endif %}">
         {% if featured %}<span class="featured-tag">Najpopularnije</span>{% endif %}
         <h3>{{ c.t(slot ~ ".title") }}</h3>
         <p class="lead">{{ c.t(slot ~ ".lead") }}</p>
         {{ c.points(slot ~ ".points") }}
         <div class="foot">
-          <p class="addon">{{ c.t("offer.addon") }}{% if show_prices %} <b>+{{ c.t("addon." ~ addon_at) }} € / mjesečno</b>{% endif %}</p>
+          {% if addon_at %}<p class="addon">{{ c.t("offer.addon") }}{% if show_prices %} <b>+{{ c.t("addon." ~ addon_at) }} € / mjesečno</b>{% endif %}</p>{% endif %}
           {% if not show_prices %}<div class="price quiet">Cijene nakon prijave</div>
           {% else %}
             {% if real %}{% set plan = keys[0] %}
-            <div class="price"{% if tier %} data-period="month"{% endif %}><b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b><span>{{ c.t("price." ~ plan ~ ".unit") }}</span></div>
-            {% else %}{{ text_price(slot ~ ".price", slot ~ ".unit", "month") }}{% endif %}
+            <div class="price"{% if tier %} data-period="month" hidden{% endif %}><b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b><span>{{ c.t("price." ~ plan ~ ".unit") }}</span></div>
+            {% else %}{{ text_price(slot ~ ".price", slot ~ ".unit", "month", hidden=tier) }}{% endif %}
             {% if tier %}{{ text_price(slot ~ ".year_price", slot ~ ".year_unit", "year") }}{% endif %}
             {% if note is not none %}<p class="price-note">{{ note }}</p>
             {%- elif room is not none %}<p class="price-note room" aria-hidden="true">{{ room }}</p>{% endif %}
@@ -552,13 +556,15 @@
     {%- endmacro %}
     {# Mjesečno / Godišnje, under each row of cards (the tiers, the gym): two
        switches, one choice — the script keeps them in step and shows the
-       chosen price on every card of both. Hidden until the script works it;
-       none at all while a guest sees no prices. #}
+       chosen price on every card of both. Godišnje is chosen on load
+       (20.10.2026, the owner's call: yearly first, monthly only when the
+       visitor picks it), as the cards' prices are. Hidden until the script
+       works it; none at all while a guest sees no prices. #}
     {% macro period_switch() -%}
       {% if show_prices %}
       <div class="period" role="tablist" aria-label="Razdoblje plaćanja" hidden>
-        <button type="button" role="tab" aria-selected="true" data-period="month">Mjesečno</button>
-        <button type="button" role="tab" aria-selected="false" data-period="year">Godišnje</button>
+        <button type="button" role="tab" aria-selected="false" data-period="month">Mjesečno</button>
+        <button type="button" role="tab" aria-selected="true" data-period="year">Godišnje</button>
       </div>
       {% endif %}
     {%- endmacro %}
@@ -578,6 +584,10 @@
 {# The gym: a quieter section under the online tiers, same cards. Both are
    tiers too: the monthly price is the plan's own, the yearly one text until a
    plan exists for it, and the switch under them is one choice with the tiers'.
+   No MojiMakrosi add-on line on either (20.10.2026, the owner: "remove the
+   mojimakrosi price completely in the 'treninzi u dvorani' section"); its
+   amount beside the dvorana stays in the prehrana plan's hint on
+   /moja-clanarina (the addon.dvorana slot).
    Individualno names its other two prices under its own, in both periods;
    they used to follow its bullets, which are free text now. Each is the
    owner's text, the price.<plan>.amount and .unit slots the gym owner
@@ -599,8 +609,8 @@
       <h2>{{ c.t("gym.h2") }}</h2>
     </div>
     <div class="gym-grid swipe-row">
-      {{ offer(["grupni"], "offer.dvorana", "dvorana", tier=true, room=gym_note) }}
-      {{ offer(["individualni", "poluindividualni", "rehabilitacija"], "offer.individualno", "dvorana",
+      {{ offer(["grupni"], "offer.dvorana", tier=true, room=gym_note) }}
+      {{ offer(["individualni", "poluindividualni", "rehabilitacija"], "offer.individualno",
                tier=true, note=gym_note) }}
     </div>
     <div class="dots" role="group" aria-label="Kartice ponude" hidden></div>
@@ -791,7 +801,9 @@
     });
   })();
   // Mjesečno / Godišnje: one choice, two switches (under the tiers, under the
-  // gym). Pressing either shows that price on every card of both sections and
+  // gym). The page opens on Godišnje, as the server renders it (the yearly
+  // prices shown, the monthly hidden, Godišnje selected), so nothing runs on
+  // load. Pressing either shows that price on every card of both sections and
   // marks both switches alike; it is per page view, nothing is remembered.
   (function () {
     var switches = [].slice.call(document.querySelectorAll(".period"));

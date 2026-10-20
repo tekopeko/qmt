@@ -1334,8 +1334,9 @@ def profil_page(request: Request):
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/profil')}", status_code=303)
     # the person's own data only: plans, uplate and računi are /moja-clanarina's
+    # (tz: the Račun card's registration date, in the studio's time zone)
     return templates.TemplateResponse(request, "profil.html", _ctx(
-        request, user, first_login="dopuni" in request.query_params))
+        request, user, first_login="dopuni" in request.query_params, tz=config.TZ))
 
 
 @app.post("/profil")

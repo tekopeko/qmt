@@ -679,11 +679,12 @@ def card_on(page: str, key: str) -> str:
 def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     """The gym owner retypes a price in place and it shows, as typed with
     " €" after it, wherever that plan's price does: QMove START's card on the
-    landing and the online plan's card on /moja-clanarina. The add-on's
-    amount the same, on both gym cards and in the prehrana plan's hint on
-    /moja-clanarina (one slot, no number of its own there); Individualno's
-    line reads the two other plans' slots. "Zadano" brings the shop's number
-    back and leaves no row."""
+    landing and the online plan's card on /moja-clanarina. The dvorana
+    add-on's amount the same, in the prehrana plan's hint on /moja-clanarina
+    (one slot, no number of its own there), and on no landing card: the
+    gym's cards carry no add-on line since 20.10.2026. Individualno's line
+    reads the two other plans' slots. "Zadano" brings the shop's number back
+    and leaves no row."""
     make_user("ivan@test.local", plans=("online",)); make_user("trener@test.local", is_trainer=True)
     t = client_for("trener@test.local")
     for key, text in (("price.online.amount", "45"), ("addon.dvorana", "4"),
@@ -696,8 +697,8 @@ def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     assert "45 € / mjesečno" in shown(start)
     assert offer.count('+<span class="t">5</span> € / mjesečno') == 3      # the online tiers keep theirs
     dvorana, individualno = gym.split('class="card offer')[1:3]
-    for c in (dvorana, individualno):
-        assert '+<span class="t">4</span> € / mjesečno' in c
+    for c in (dvorana, individualno):                                      # no add-on line on the gym's cards
+        assert 'class="addon"' not in c and '+<span class="t">4</span>' not in c
     assert "u dvoje ili troje 28 € / trening · rehabilitacija od 30 € / dolazak" in shown(individualno)
     mine = client_for("ivan@test.local").get("/moja-clanarina").text
     assert "Cijena 45 € / mjesečno" in shown(card_on(mine, "online"))
@@ -824,18 +825,21 @@ MEASURE = r"""(strict) => {
 # lit: the tiers on QMove PRO in the middle, the gym (no featured card) on its
 # first. The shown prices are level across a row either way, at their bottom
 # edge as in MEASURE (the featured tier hangs 16px past its neighbours on a
-# desktop, so the row check above can miss it; this one cannot).
+# desktop, so the row check above can miss it; this one cannot). The tiers
+# carry the MojiMakrosi add-on line, the gym's cards none (20.10.2026).
 LANDING = r"""([w, strict]) => {
   const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().width > 0; };
   const out = [], top = el => el.getBoundingClientRect().top, price = card => [...card.querySelectorAll('.price')].find(vis);
   const level = (cards, what) => { if (!strict) return;       // one unbreakable word: it only must not widen
     const b = cards.map(c => Math.round(price(c).getBoundingClientRect().bottom));
     if (Math.max(...b) - Math.min(...b) > 1) out.push(`${what} prices not level: ${b.join(', ')}`); };
-  // [section, cards, name, how far a card may stand out of the row on a desktop, the card a phone starts on]
-  for (const [sec, n, what, slack, first] of [['#usluge', 3, 'tier', 17, 1], ['#dvorana', 2, 'gym', 1, 0]]) {
+  // [section, cards, name, how far a card may stand out of the row on a desktop, the card a phone starts on, an add-on line]
+  for (const [sec, n, what, slack, first, addon] of [['#usluge', 3, 'tier', 17, 1, true], ['#dvorana', 2, 'gym', 1, 0, false]]) {
     const row = document.querySelector(`${sec} .swipe-row`), cards = row ? [...row.children] : [];
     const dots = [...document.querySelectorAll(`${sec} .dots button`)].filter(vis);
     if (cards.length !== n || !cards.every(c => c.classList.contains('offer'))) { out.push(`${cards.length} ${what} cards`); continue; }
+    const addons = cards.filter(c => c.querySelector('.addon')).length;
+    if (addons !== (addon ? n : 0)) out.push(`${addons} of the ${n} ${what} cards carry the add-on line`);
     if (w < 900) {
       if (getComputedStyle(row).overflowX !== 'auto' || row.scrollWidth <= row.clientWidth) out.push(`the ${what} cards do not scroll sideways`);
       const snaps = cards.filter(c => getComputedStyle(c).scrollSnapAlign.includes('center'));
@@ -982,8 +986,8 @@ EDIT_ROW = r"""() => {
 }"""
 
 # Mjesečno / Godišnje: one choice, two switches (under the tiers, under the
-# gym). Every card of both sections shows exactly the chosen price, and both
-# switches say it.
+# gym), Godišnje on load. Every card of both sections shows exactly the
+# chosen price, and both switches say it.
 PERIOD = r"""(p) => {
   const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && el.getBoundingClientRect().width > 0; };
   const out = [];
@@ -1282,10 +1286,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                     problems += [f"{where} {p}" for p in advance(pg, phone)]
                 if not all(pg.locator(f"{sec} .period").is_visible() for sec in ("#usluge", "#dvorana")):
                     problems.append(f"{where} no Mjesečno / Godišnje switch under each row"); continue
-                problems += [f"{where} on load: {p}" for p in pg.evaluate(PERIOD, "month")]   # monthly first
+                problems += [f"{where} on load: {p}" for p in pg.evaluate(PERIOD, "year")]    # yearly first
                 # either switch flips both sections: each pressed both ways,
                 # the same checks after every press
-                for sec, period in (("#usluge", "year"), ("#dvorana", "month"), ("#dvorana", "year"), ("#usluge", "month")):
+                for sec, period in (("#usluge", "month"), ("#dvorana", "year"), ("#dvorana", "month"), ("#usluge", "year")):
                     pg.click(f'{sec} .period button[data-period="{period}"]')
                     did = f"{where} {sec} {period}:"
                     problems += [f"{did} {p}" for p in pg.evaluate(PERIOD, period)]

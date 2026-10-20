@@ -6,6 +6,17 @@
      pill may wrap (.act is nowrap everywhere else) rather than widen it. */
   .mc-link { max-width: 560px; padding: 12px 14px; }
   .mc-link .act { white-space: normal; text-align: left; }
+  /* Račun: the account itself, the email and since when (back 20.10.2026,
+     the owner: "the email address should show somewhere in the 'Profil'
+     tab"; the 18.10. task had dropped it with the plans). Plain text, not a
+     field: the email is the login, not changed here. Its caption is the
+     form's labels' (base.html, label), as a heading; the address may break
+     anywhere, so a long one never widens the card. */
+  .acct { max-width: 560px; padding: 16px 20px; margin-bottom: 26px; }
+  .acct h2 { font: 600 .76rem var(--font-body); text-transform: uppercase; letter-spacing: .06em;
+             color: var(--muted); margin-bottom: 5px; }
+  .acct .mail { font-weight: 600; overflow-wrap: anywhere; }
+  .acct .hint { font-size: .86rem; margin-top: 2px; }
 </style>{% endblock %}
 {% block content %}
 <h1>Profil</h1>
@@ -31,6 +42,12 @@
   </div>
   <button type="submit" class="btn-signal">Spremi podatke</button>
 </form>
+
+<div class="card acct">
+  <h2>Račun</h2>
+  <p class="mail">{{ user.email }}</p>
+  <p class="hint">Registriran/a od {{ user.created_at.astimezone(tz).strftime("%-d.%-m.%Y.") }}</p>
+</div>
 
 {% if not user.is_trainer %}
 <div class="card mc-link">
