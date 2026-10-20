@@ -398,6 +398,13 @@
     body.editing .ed-x.armed { width: auto; padding: 0 10px; border-radius: 999px; color: var(--accent-tint-ink);
                                background: var(--accent-dim); font-weight: 700; }
     body.editing .ed-add:not([hidden]) { display: inline-flex; align-self: flex-start; min-height: 32px; margin-top: 12px; }
+    /* an editable table (_copy.html, rows: the landing's opening hours): a
+       row's ✕ is its own cell, a column only in edit mode, so outside it the
+       editor's table is the visitor's; "+ Dodaj red" is the list's .ed-add.
+       The cell keeps its table's padding (the landing's .info td: 14px at
+       its right), which holds the ✕'s negative margin inside the table. */
+    .ed-xc { display: none; }
+    body.editing .ed-xc { display: table-cell; }
     /* a part of a page the editor switches on and off (copy.FlagSlot: the
        landing's announcements) carries a toggle at its top, in edit mode
        only: green "● Prikazano" while visitors get it, grey "○ Skriveno"
@@ -756,6 +763,12 @@
   // item at the end, which leaves no trace if it is cancelled unsaved; Zadano
   // puts the whole default list back. The server answers with the whole list
   // and the items are redrawn from it, so indexes always match the database.
+  // A cell of a table of rows (data-part, _copy.html's rows: the landing's
+  // opening hours) saves with its row's index and its part, and an emptied
+  // cell stays empty (a row left with two empty cells goes); a row's ✕ asks
+  // first, as an item's, then removes the row (remove=1); "+ Dodaj red" adds
+  // one with placeholders to retype (add=1); Zadano puts the whole default
+  // table back. The server answers with the whole table, redrawn from it.
   // A flag's toggle (.ed-flag, copy.FlagSlot) saves "on" or "off" at a click,
   // no confirm: hiding loses no text. Its box and group follow (flag below).
   // A photo (copy.ImageSlot) is the third thing: "Dodaj sliku" / "Promijeni
@@ -771,7 +784,13 @@
     var tog = document.getElementById("copyToggle"), bar = document.getElementById("copyBar");
     var label = bar.querySelector(".cb-label"), count = bar.querySelector(".cb-count"), msg = bar.querySelector(".cb-msg");
     var resetBtn = document.getElementById("cbReset");
-    function isItem(el) { return el.hasAttribute("data-index"); }
+    function isItem(el) { return el.hasAttribute("data-index") && !el.hasAttribute("data-part"); }
+    function isCell(el) { return el.hasAttribute("data-part"); }
+    // the other cell of a cell's row: its text
+    function twin(el) {
+      var o = el.closest("tr").querySelector('[data-part="' + (el.dataset.part === "0" ? "1" : "0") + '"]');
+      return o ? o.textContent : "";
+    }
     // "1 znak", "3 znaka", "5 znakova", "21 znak", "112 znakova"
     function chars(n) {
       var d = n % 10, h = n % 100;
@@ -783,7 +802,8 @@
       var max = +cur.dataset.max, t = cur.textContent;
       if (t.length > max) { cur.textContent = t.slice(0, max); caretEnd(cur); t = cur.textContent; }
       count.textContent = chars(t.length); count.classList.toggle("over", t.length >= max);
-      if (!t.trim()) msg.textContent = isItem(cur) ? "Prazno: Spremi uklanja stavku." : "Prazno: Spremi vraća izvorni tekst.";
+      if (!t.trim()) msg.textContent = isCell(cur) ? (twin(cur).trim() ? "Prazno: Spremi ostavlja polje prazno." : "Prazno: Spremi uklanja red.")
+        : isItem(cur) ? "Prazno: Spremi uklanja stavku." : "Prazno: Spremi vraća izvorni tekst.";
       else if (msg.textContent.indexOf("Prazno") === 0) msg.textContent = "";
     }
     function begin(el, quiet) {
@@ -792,8 +812,8 @@
       cur = el; orig = el.textContent; msg.textContent = "";
       el.setAttribute("contenteditable", "plaintext-only"); el.classList.add("ed-on");
       label.textContent = el.dataset.label + (isItem(el) ? " " + (+el.dataset.index + 1) : "");
-      resetBtn.textContent = isItem(el) ? "Zadano (cijela lista)" : "Zadano";
-      resetBtn.title = isItem(el) ? "Vrati izvorne stavke cijele liste" : "Vrati izvorni tekst";
+      resetBtn.textContent = isItem(el) ? "Zadano (cijela lista)" : isCell(el) ? "Zadano (cijela tablica)" : "Zadano";
+      resetBtn.title = isItem(el) ? "Vrati izvorne stavke cijele liste" : isCell(el) ? "Vrati izvorne redove cijele tablice" : "Vrati izvorni tekst";
       tick(); bar.hidden = false;
       if (!quiet) { el.focus(); caretEnd(el); }      // quiet: a removal, no keyboard to pop up
     }
@@ -822,10 +842,50 @@
       items.forEach(function (t, i) { ul.appendChild(item(ul, t, i)); });
       fitAdd(ul);
     }
+    // one row of a table of rows, the same shape _copy.html renders: two
+    // cells, each an .ed that saves with the row's index and its part (the
+    // days' cell td.d), and the row's ✕ in a third cell
+    function tableRow(table, cells, i) {
+      var tr = document.createElement("tr"), xc = document.createElement("td"), x = document.createElement("button");
+      cells.forEach(function (text, p) {
+        var td = document.createElement("td"), sp = document.createElement("span");
+        if (!p) td.className = "d";
+        sp.className = "ed t"; sp.textContent = text;
+        sp.setAttribute("data-copy", table.dataset.rows); sp.setAttribute("data-index", i); sp.setAttribute("data-part", p);
+        sp.setAttribute("data-max", table.dataset.max);
+        sp.setAttribute("data-label", table.dataset.label + ", red " + (i + 1) + ": " + table.dataset["cell" + p]);
+        td.appendChild(sp); tr.appendChild(td);
+      });
+      xc.className = "ed-xc";
+      x.type = "button"; x.className = "ed-x"; x.textContent = "✕"; x.setAttribute("aria-label", "Ukloni red " + (i + 1));
+      xc.appendChild(x); tr.appendChild(xc); return tr;
+    }
+    function drawRows(table, rows) {
+      var body = table.tBodies[0] || table.createTBody();
+      body.textContent = "";
+      rows.forEach(function (cells, i) { body.appendChild(tableRow(table, cells, i)); });
+      var add = table.nextElementSibling;
+      if (add && add.classList.contains("ed-add")) add.hidden = rows.length >= +table.dataset.maxRows;
+    }
+    // a change to a table of rows that is no typed text (a row removed, a
+    // row added): the answer is the whole table, redrawn; a failure is said
+    // in the bar under `name`
+    function sendRows(table, body, name) {
+      fetch("/copy/" + encodeURIComponent(table.dataset.rows), {
+        method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: body, credentials: "same-origin"
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) { says(name, d.error || "Nije spremljeno."); return; }
+        if (cur && table.contains(cur)) end(false);
+        drawRows(table, d.rows);
+        if (!cur) bar.hidden = true;                 // an earlier failure's message goes
+      }).catch(function () { says(name, "Nije spremljeno — provjeri vezu."); });
+    }
     function save(reset) {
       if (!cur) return;
       var el = cur, text = reset ? "" : el.textContent, body = "text=" + encodeURIComponent(text);
       if (reset) body += "&reset=1";
+      else if (isCell(el)) body += "&index=" + el.dataset.index + "&part=" + el.dataset.part;
       else if (isItem(el)) {
         if (el.hasAttribute("data-fresh") && !text.trim()) { end(false); return; }   // an empty new item: nothing to add
         body += "&index=" + el.dataset.index;
@@ -836,13 +896,18 @@
         body: body, credentials: "same-origin"
       }).then(function (r) { return r.json(); }).then(function (d) {
         if (!d.ok) { msg.textContent = d.error || "Nije spremljeno."; return; }
+        if (d.rows) {                                // a table of rows: redraw it from the answer
+          var table = el.closest("table");
+          if (cur && table.contains(cur)) end(true);
+          drawRows(table, d.rows); return;
+        }
         if (d.items) {                               // a list: redraw it from the answer
           var ul = el.closest("ul");
           el.removeAttribute("data-fresh");
           if (cur && ul.contains(cur)) end(true);
           draw(ul, d.items); return;
         }
-        // the same text can sit in several places (the add-on label on every card)
+        // the same text can sit in several places (the add-on's amount on every tier)
         document.querySelectorAll('[data-copy="' + el.dataset.copy + '"]').forEach(function (x) { x.textContent = d.text; });
         orig = d.text; end(true);
       }).catch(function () { msg.textContent = "Nije spremljeno — provjeri vezu."; });
@@ -855,6 +920,7 @@
       armed = null; clearTimeout(armTimer);
     }
     function remove(x) {
+      if (x.closest("table[data-rows]")) { removeRow(x); return; }
       var sp = x.parentElement.querySelector(".ed");
       if (cur && cur !== sp) end(false);
       if (!sp.isConnected) return;
@@ -866,10 +932,26 @@
       }
       disarm(); begin(sp, true); sp.textContent = ""; save(false);
     }
+    // a row's ✕ asks first, as an item's: the second tap removes the row
+    function removeRow(x) {
+      if (cur) end(false);
+      if (armed !== x) {
+        disarm(); armed = x; x.dataset.label = x.getAttribute("aria-label") || "";
+        x.textContent = "Ukloni?"; x.classList.add("armed"); x.setAttribute("aria-label", "Potvrdi uklanjanje");
+        armTimer = setTimeout(disarm, 4000); return;
+      }
+      disarm();
+      var table = x.closest("table"), i = +x.closest("tr").querySelector("[data-part]").dataset.index;
+      sendRows(table, "index=" + i + "&remove=1", table.dataset.label + ", red " + (i + 1));
+    }
     document.addEventListener("click", function (e) { if (armed && !e.target.closest(".ed-x, .ed-img-x, .ed-ann-x, .ed-gym-x")) disarm(); }, true);
     function add(btn) {
       var ul = btn.previousElementSibling;
       if (cur) end(false);
+      if (ul.matches("table[data-rows]")) {            // a table: the server adds the row, placeholders in it
+        if (ul.querySelectorAll("tr").length < +ul.dataset.maxRows) sendRows(ul, "add=1", ul.dataset.label);
+        return;
+      }
       if (ul.children.length >= +ul.dataset.maxItems) return;
       var li = item(ul, "", ul.children.length);
       li.firstChild.setAttribute("data-fresh", ""); ul.appendChild(li); fitAdd(ul); begin(li.firstChild);

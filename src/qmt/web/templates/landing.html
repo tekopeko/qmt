@@ -299,9 +299,10 @@
      the accent tint with its own ink. The track is --surface with a hairline,
      not .auth-tabs' --surface-2: in dark the tint over --surface-2 leaves the
      ink at 4.34:1, under AA (4.81:1 over --surface). Hidden until the script
-     can work it, so without JS there is no switch that does nothing (the
-     yearly price shows, as it does on load). 34px on a desktop clears the
-     featured card, which hangs 16px below the row. */
+     can work it, so without JS there is no switch that does nothing (each
+     section's opening price shows, as on load: the tiers' yearly, the
+     gym's monthly). 34px on a desktop clears the featured card, which
+     hangs 16px below the row. */
   .period { display: flex; gap: 3px; width: fit-content; margin: 34px auto 0; padding: 3px;
             border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
   .period[hidden] { display: none; }
@@ -578,12 +579,16 @@
     {# keys: the plans a card stands for, the first one prices it. slot: the
        card's copy prefix (slot.title / .lead / .points in src/qmt/copy.py).
        addon_at: where its MojiMakrosi add-on is sold ("online"), the amount
-       the addon.<addon_at> slot; none, no add-on line at all (the gym's
-       cards since 20.10.2026). tier: a monthly and a yearly price (the
+       the addon.<addon_at> slot and the words around it the card's own,
+       slot.addon before it and slot.addon_unit after it (20.10.2026: each
+       tier its own words, one amount); none, no add-on line at all (the
+       gym's cards since 20.10.2026). tier: a monthly and a yearly price (the
        yearly is the slot.year_price / .year_unit text), the switch under the
-       row shows one, the yearly on load (the monthly is hidden until
-       Mjesečno is pressed); every card on the landing is one; real: its
-       monthly price is the plan's own, else the slot.price / slot.unit text.
+       row shows one; start is the one shown on load, the other hidden until
+       the switch is pressed: "year" for the tiers, "month" for the gym's
+       cards (20.10.2026, the owner's call); every card on the landing is
+       one; real: its monthly price is the plan's own, else the slot.price /
+       slot.unit text.
        note: a muted line under the price (none: no line). room: the line
        of the card beside it, whose room this one keeps without showing it
        (an invisible copy, see .price-note). A plan's own price is the
@@ -606,7 +611,7 @@
        his online plan is of that tier (my_tier, db.online_tier); the other
        two offer him what any member gets, "Odaberi plan →". A card without
        one (the gym's) is his when he holds any of its plans. #}
-    {% macro offer(keys, slot, addon_at=none, featured=false, tier=false, real=true, note=none, room=none, card=none, n=none, tier_key=none) -%}
+    {% macro offer(keys, slot, addon_at=none, featured=false, tier=false, real=true, note=none, room=none, card=none, n=none, tier_key=none, start="year") -%}
       {%- set owned = (keys | select("in", my_plans) | list) if (tier_key is none or tier_key == my_tier) else [] -%}
       <div class="card offer{% if featured %} featured{% endif %}{% if owned %} mine{% endif %}{% if card is not none and not card.shown %} is-off{% endif %}"{% if card is not none and can_edit_copy %} data-flag="{{ slot }}.show"{% endif %}>
         {% if featured %}<span class="featured-tag">Najpopularnije</span>{% endif %}{% if card is not none and can_edit_copy %}<div class="ed-pills"><button type="button" class="ed-flag" data-copy="{{ slot }}.show" data-label="Kartica {{ n }}: {{ GYM['show'].label }}"
@@ -616,13 +621,13 @@
         <p class="lead">{% if card is not none %}{{ gym_field(slot, card, n, "lead") }}{% else %}{{ c.t(slot ~ ".lead") }}{% endif %}</p>
         {% if card is not none %}{{ c.field_points(slot ~ ".points", card.point_items, "Kartica " ~ n ~ ": " ~ GYM["points"].label, GYM["points"]) }}{% else %}{{ c.points(slot ~ ".points") }}{% endif %}
         <div class="foot">
-          {% if addon_at %}<p class="addon">{{ c.t("offer.addon") }}{% if show_prices %} <b>+{{ c.t("addon." ~ addon_at) }} € / mjesečno</b>{% endif %}</p>{% endif %}
+          {% if addon_at %}<p class="addon">{{ c.t(slot ~ ".addon") }}{% if show_prices %} <b>+{{ c.t("addon." ~ addon_at) }} {{ c.t(slot ~ ".addon_unit") }}</b>{% endif %}</p>{% endif %}
           {% if not show_prices %}<div class="price quiet">Cijene nakon prijave</div>
           {% else %}
             {% if real %}{% set plan = keys[0] %}
-            <div class="price"{% if tier %} data-period="month" hidden{% endif %}><b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b><span>{{ c.t("price." ~ plan ~ ".unit") }}</span></div>
-            {% else %}{% if card is not none %}{{ row_price(slot, card, n, "price", "unit", "month", hidden=tier) }}{% else %}{{ text_price(slot ~ ".price", slot ~ ".unit", "month", hidden=tier) }}{% endif %}{% endif %}
-            {% if tier %}{% if card is not none %}{{ row_price(slot, card, n, "year_price", "year_unit", "year") }}{% else %}{{ text_price(slot ~ ".year_price", slot ~ ".year_unit", "year") }}{% endif %}{% endif %}
+            <div class="price"{% if tier %} data-period="month"{% if start == "year" %} hidden{% endif %}{% endif %}><b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b><span>{{ c.t("price." ~ plan ~ ".unit") }}</span></div>
+            {% else %}{% if card is not none %}{{ row_price(slot, card, n, "price", "unit", "month", hidden=tier and start == "year") }}{% else %}{{ text_price(slot ~ ".price", slot ~ ".unit", "month", hidden=tier and start == "year") }}{% endif %}{% endif %}
+            {% if tier %}{% if card is not none %}{{ row_price(slot, card, n, "year_price", "year_unit", "year", hidden=start == "month") }}{% else %}{{ text_price(slot ~ ".year_price", slot ~ ".year_unit", "year", hidden=start == "month") }}{% endif %}{% endif %}
             {% if note is not none %}<p class="price-note">{{ note }}</p>
             {%- elif room is not none %}<p class="price-note room" aria-hidden="true">{{ room }}</p>{% endif %}
           {% endif %}
@@ -630,18 +635,20 @@
         </div>
       </div>
     {%- endmacro %}
-    {# Mjesečno / Godišnje, under each row of cards (the tiers, the gym): two
-       switches, one choice — the script keeps them in step and shows the
-       chosen price on every card of both (one switch when the gym's section
-       is not on the page: no card of it shown). Godišnje is chosen on load
-       (20.10.2026, the owner's call: yearly first, monthly only when the
-       visitor picks it), as the cards' prices are. Hidden until the script
-       works it; none at all while a guest sees no prices. #}
-    {% macro period_switch() -%}
+    {# Mjesečno / Godišnje, under each row of cards (the tiers, the gym):
+       each switch its own section's choice since 20.10.2026 (the owner, of
+       the gym: "The default in this section here should be 'mjesečno'",
+       and "unlink them"): the script shows the chosen price on the cards of
+       its own section.band and leaves the other alone. start is the period
+       it opens on, as its cards' prices do (offer's start): "year" for the
+       tiers (yearly first, monthly only when the visitor picks it, the
+       owner's call the same day), "month" for the gym. Hidden until the
+       script works it; none at all while a guest sees no prices. #}
+    {% macro period_switch(start) -%}
       {% if show_prices %}
       <div class="period" role="tablist" aria-label="Razdoblje plaćanja" hidden>
-        <button type="button" role="tab" aria-selected="false" data-period="month">Mjesečno</button>
-        <button type="button" role="tab" aria-selected="true" data-period="year">Godišnje</button>
+        <button type="button" role="tab" aria-selected="{{ 'true' if start == 'month' else 'false' }}" data-period="month">Mjesečno</button>
+        <button type="button" role="tab" aria-selected="{{ 'true' if start == 'year' else 'false' }}" data-period="year">Godišnje</button>
       </div>
       {% endif %}
     {%- endmacro %}
@@ -652,12 +659,12 @@
        alone, the other two offer him "Odaberi plan →". Tier 1 is priced by
        the plan. The dots under a .swipe-row are the script's, one per card. #}
     <div class="offer-grid swipe-row">
-      {{ offer(["online"], "offer.online", "online", tier=true, tier_key="start") }}
-      {{ offer(["online"], "offer.online2", "online", featured=true, tier=true, real=false, tier_key="pro") }}
-      {{ offer(["online"], "offer.online3", "online", tier=true, real=false, tier_key="elite") }}
+      {{ offer(["online"], "offer.online", "online", tier=true, tier_key="start", start="year") }}
+      {{ offer(["online"], "offer.online2", "online", featured=true, tier=true, real=false, tier_key="pro", start="year") }}
+      {{ offer(["online"], "offer.online3", "online", tier=true, real=false, tier_key="elite", start="year") }}
     </div>
     <div class="dots" role="group" aria-label="Kartice ponude" hidden></div>
-    {{ period_switch() }}
+    {{ period_switch("year") }}
   </div>
 </section>
 
@@ -668,7 +675,8 @@
    rows, and the offers the gym owner adds beside them ("Treninzi za
    penziće", "Pilates za cure"), up to eight, in creation order
    (db.gym_cards). Every card is a tier too, a monthly and a yearly price,
-   and the switch under them is one choice with the tiers'. No MojiMakrosi
+   and the switch under them is the section's own (20.10.2026: unlinked
+   from the tiers', opening on Mjesečno, the monthly price). No MojiMakrosi
    add-on line on any (20.10.2026, the owner: "remove the mojimakrosi price
    completely in the 'treninzi u dvorani' section"); its amount beside the
    dvorana stays in the prehrana plan's hint on /moja-clanarina (the
@@ -704,11 +712,14 @@
   </span>
 {%- endmacro %}
 {# a card's line: its plans after the first, each "<word> <price>", joined
-   by " · "; the word is the plan's name in lower case, or the gym's own
-   ("u dvoje ili troje"). Empty for a card of one plan, or none. #}
+   by " · "; the word is the plan's price.<plan>.word slot, free text the
+   gym owner retypes in place (20.10.2026: "u dvoje ili troje",
+   "rehabilitacija"), and for a plan without one its name in lower case.
+   The number is the plan's amount slot, its default back when emptied.
+   Empty for a card of one plan, or none. #}
 {% macro plan_note(keys) -%}
   {%- for plan in keys[1:] -%}
-    {{ " · " if not loop.first else "" }}{{ {"poluindividualni": "u dvoje ili troje"}.get(plan, plan_labels[plan] | lower) }} {{ note_price(plan) }}
+    {{ " · " if not loop.first else "" }}{% if ("price." ~ plan ~ ".word") in COPY %}{{ c.t("price." ~ plan ~ ".word") }}{% else %}{{ plan_labels[plan] | lower }}{% endif %} {{ note_price(plan) }}
   {%- endfor -%}
 {%- endmacro %}
 {% set gym_shown = gym_cards | selectattr("shown") | list | length %}
@@ -725,12 +736,12 @@
       {% for card in gym_cards %}{% set note = plan_note(card.plan_keys) %}
       {{ offer(card.plan_keys, "dvorana." ~ card.id, tier=true, real=card.plan_keys | length > 0,
                note=note if note else none, room=gym_room.note if (not note and gym_room.note) else none,
-               card=card, n=loop.index) }}
+               card=card, n=loop.index, start="month") }}
       {% endfor %}
     </div>
     <div class="dots" role="group" aria-label="Kartice ponude" hidden></div>{% if can_add_gym %}
     <form method="post" action="/dvorana/nova" class="ed-add-gym"><button type="submit" class="act">+ Dodaj karticu</button></form>{% endif %}
-    {{ period_switch() }}
+    {{ period_switch("month") }}
   </div>
 </section>
 {% endif %}
@@ -759,11 +770,9 @@
       <div class="info-grid">
         <div>
           <h3>{{ c.t("info.hours.h") }}</h3>
-          <table>
-            <tr><td class="d">{{ c.t("info.hours.d1") }}</td><td>{{ c.t("info.hours.t1") }}</td></tr>
-            <tr><td class="d">{{ c.t("info.hours.d2") }}</td><td>{{ c.t("info.hours.t2") }}</td></tr>
-            <tr><td class="d">{{ c.t("info.hours.d3") }}</td><td>{{ c.t("info.hours.t3") }}</td></tr>
-          </table>
+          {# rows since 20.10.2026 (copy.RowsSlot): the gym owner empties a
+             cell, removes a row with its ✕, adds one with "+ Dodaj red" #}
+          {{ c.rows("info.hours.rows") }}
         </div>
         <div>
           <h3>{{ c.t("info.where.h") }}</h3>
@@ -917,27 +926,25 @@
       run();
     });
   })();
-  // Mjesečno / Godišnje: one choice, two switches (under the tiers, under the
-  // gym; one when the gym's section is not on the page, no card of it shown:
-  // the loops below take any number). The page opens on Godišnje, as the
-  // server renders it (the yearly prices shown, the monthly hidden, Godišnje
-  // selected), so nothing runs on load. Pressing either shows that price on every card of both sections and
-  // marks both switches alike; it is per page view, nothing is remembered.
+  // Mjesečno / Godišnje: a switch under each row (the tiers', the gym's; no
+  // gym switch when its section is not on the page, no card of it shown),
+  // each its own section's choice since 20.10.2026 (the owner: "unlink
+  // them"). The page opens as the server renders it, the tiers on Godišnje
+  // and the gym on Mjesečno (each section's prices, the other one hidden,
+  // and its switch's tab selected), so nothing runs on load. Pressing one
+  // shows that price on every card of its own section.band and marks that
+  // switch only; it is per page view, nothing is remembered.
   (function () {
-    var switches = [].slice.call(document.querySelectorAll(".period"));
-    function show(period) {
-      switches.forEach(function (sw) {
-        [].forEach.call(sw.querySelectorAll("button[data-period]"), function (x) {
-          x.setAttribute("aria-selected", x.dataset.period === period ? "true" : "false");
-        });
-      });
-      [].forEach.call(document.querySelectorAll(".price[data-period]"), function (p) { p.hidden = p.dataset.period !== period; });
-    }
-    switches.forEach(function (sw) {
+    [].forEach.call(document.querySelectorAll(".period"), function (sw) {
+      var band = sw.closest("section.band");
       sw.hidden = false;
       sw.addEventListener("click", function (e) {
         var b = e.target.closest("button[data-period]");
-        if (b) show(b.dataset.period);
+        if (!b) return;
+        [].forEach.call(sw.querySelectorAll("button[data-period]"), function (x) {
+          x.setAttribute("aria-selected", x.dataset.period === b.dataset.period ? "true" : "false");
+        });
+        [].forEach.call(band.querySelectorAll(".price[data-period]"), function (p) { p.hidden = p.dataset.period !== b.dataset.period; });
       });
     });
   })();

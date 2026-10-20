@@ -50,6 +50,7 @@ app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=c
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["COPY"] = copy.SLOTS      # the editable texts and their limits (_copy.html)
 templates.env.globals["copy_items"] = copy.items_for   # a list slot's items (_copy.html, points)
+templates.env.globals["copy_rows"] = copy.rows_for     # a rows slot's rows (_copy.html, rows)
 templates.env.globals["copy_flag"] = copy.flag_on      # a flag slot: on or off
 templates.env.globals["copy_image"] = copy.image_name  # an image slot: its file's name, or None
 templates.env.globals["CAP"] = copy.CAP                # a text's cap, where no slot says it (_copy.html, field)
@@ -271,7 +272,7 @@ def logout(request: Request):
 
 @app.post("/copy/{key}")
 def copy_save(request: Request, key: str, text: str = Form(""), index: str = Form(""),
-              reset: str = Form("")):
+              reset: str = Form(""), part: str = Form(""), remove: str = Form(""), add: str = Form("")):
     """Save one edited text (the in-place editor in base.html posts here).
     JSON in both directions: this is called by fetch, never by a form. The
     limit is the slot's, enforced here as well as in the browser; an empty
@@ -282,7 +283,9 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
     so no text can ever land in an image slot. An announcement's field (a
     row, not a slot: aktualno.<id>.<field>) is edited the same way, by the
     type its field has (see _copy_save_announcement), and so is a gym
-    card's (dvorana.<id>.<field>, see _copy_save_gym_card)."""
+    card's (dvorana.<id>.<field>, see _copy_save_gym_card). A rows slot
+    (the opening hours) is edited a cell or a row at a time, and an
+    emptied cell stays empty (see _copy_save_rows)."""
     user = current_user(request)
     if user is None:
         return JSONResponse({"ok": False, "error": "Prijava je istekla — prijavi se ponovno."}, status_code=401)
@@ -299,6 +302,8 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
         return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
     if isinstance(slot, copy.ListSlot):
         return _copy_save_list(key, slot, text, index, reset, user.id)
+    if isinstance(slot, copy.RowsSlot):
+        return _copy_save_rows(key, slot, text, index, part, remove, add, reset, user.id)
     if isinstance(slot, copy.FlagSlot):
         if reset == "1":
             db.reset_copy(key)
@@ -441,6 +446,53 @@ def _copy_save_list(key: str, slot: copy.ListSlot, text: str, index: str, reset:
     stored = db.copy_texts().get(key)
     return _edit_list(copy.load_items(stored, slot), stored is None, slot, text, index,
                       lambda items: db.set_copy(key, copy.dump_items(items), user_id))
+
+
+def _copy_save_rows(key: str, slot: copy.RowsSlot, text: str, index: str, part: str, remove: str, add: str,
+                    reset: str, user_id: int) -> JSONResponse:
+    """One change to a rows slot (the landing's opening hours), made to the
+    stored rows (no row: the default rows) and stored as the slot's one
+    row: reset=1 puts the default rows back; add=1 appends a row of
+    placeholders (copy.ROW_BLANK), at most max_rows; index=i with remove=1
+    removes row i; index=i with part ("0" or "1") sets that cell to `text`,
+    cleaned and capped as every text is. An emptied cell stays empty, the
+    one text with no default to come back (a row has none per cell), and a
+    row left with two empty cells goes. The answer is always the whole
+    table, so the editor redraws it with fresh indexes."""
+    def ok(rows: list[list[str]], default: bool) -> JSONResponse:
+        return JSONResponse({"ok": True, "rows": rows, "default": default})
+
+    def bad(error: str) -> JSONResponse:
+        return JSONResponse({"ok": False, "error": error}, status_code=400)
+
+    if reset == "1":
+        db.reset_copy(key)
+        return ok([list(row) for row in slot.default], True)
+    rows = copy.load_rows(db.copy_texts().get(key), slot)
+    if add == "1":
+        if len(rows) >= slot.max_rows:
+            return bad(f"Najviše {slot.max_rows} redova.")
+        rows.append(list(copy.ROW_BLANK))
+    else:
+        try:
+            i = int(index)
+        except ValueError:
+            return bad("Nepoznat red.")
+        if not 0 <= i < len(rows):
+            return bad("Nepoznat red.")
+        if remove == "1":
+            del rows[i]
+        elif part in ("0", "1"):
+            cleaned = copy.clean(text)
+            if len(cleaned) > slot.max_chars:
+                return bad(f"Najviše {slot.max_chars} znakova — ovo ih ima {len(cleaned)}.")
+            rows[i][int(part)] = cleaned
+            if not any(rows[i]):
+                del rows[i]
+        else:
+            return bad("Nepoznato polje.")
+    db.set_copy(key, copy.dump_rows(rows), user_id)
+    return ok(rows, False)
 
 
 def _edit_list(items: list[str], untouched: bool, slot: copy.ListSlot, text: str, index: str,

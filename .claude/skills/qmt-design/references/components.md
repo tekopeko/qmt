@@ -18,6 +18,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.crumbs` | base | breadcrumb: muted links, `/` separators, `.here` current |
 | `.ed` / `.copy-toggle` / `.copy-bar` | base (trainer, owner) | in-place copy editor: `_copy.html` prints every slot in a `span.t` (`white-space: pre-line`, so the owner's line breaks show) and makes it an `.ed` for an editor; the fixed "✎ Uredi tekstove" pill toggles `body.editing` (dashed outlines, click to edit, `.ed-on` while open; an empty `.ed` keeps a 2.5em box so it can be clicked); Enter is a new line, ⌘/Ctrl+Enter saves; the bar under the pill (as wide as its content, at most the window less 20px) shows label, an "n znakova" counter, the `.cb-hint` "Enter = novi red · ⌘/Ctrl+Enter = spremi" (600px and up) and Spremi / Zadano / Odustani. Visitors get a bare `span.t`, no editor markup |
 | `ul[data-list]` / `.ed-x` / `.ed-add` | base (trainer, owner) | an editable list (`c.points`): each item an `.ed` with `data-index`, a 32px round `.ed-x` ✕ beside it (negative margin, so the line height holds) and an `.act.ed-add` "+ Dodaj stavku" after the list, hidden at the count limit; both only under `body.editing`. The bar names the item ("…: stavka 2") and its Zadano reads "Zadano (cijela lista)" |
+| `table[data-rows]` / `td.ed-xc` | base (trainer, owner) | an editable table of rows (`c.rows`, a `copy.RowsSlot`: the landing's opening hours, 20.10.2026): each cell an `.ed` with `data-index` (the row) and `data-part` (0, 1), an emptied cell an empty `.ed` that keeps its click box; each row's ✕ is the list's `.ed-x` in a cell of its own, `td.ed-xc`, a column only under `body.editing` (outside it the editor's table is a visitor's), whose padding holds the ✕'s negative margin; "+ Dodaj red" is the list's `.act.ed-add` after the table, hidden at 12 rows. The bar names the cell ("Radno vrijeme, red 2: sati") and its Zadano reads "Zadano (cijela tablica)"; emptied, it says "Prazno: Spremi ostavlja polje prazno." (or "… uklanja red." when the other cell is empty too) |
 | `.ed-flag` / `.is-off` | base (trainer, owner) | the edit-mode toggle of a `copy.FlagSlot` (an on/off switch, the landing's announcements): the first child of the box it switches (`data-flag`), a 32px pill, green `--good-fill` "● Prikazano" / grey `--surface-2` "○ Skriveno", saved at a click, no confirm (hiding loses no text). A switched-off box is `.is-off`: hidden, shown only in edit mode with its content dimmed to .55 and the toggle at full strength; its `data-flag-group` follows its boxes (`.is-off` when none is on, `.single` on their row when one is). A visitor gets neither the toggle nor a hidden box |
 | `.ed-img` / `.ed-img-x` / `#edImgFile` | base (trainer, owner) | the edit-mode pills of a `copy.ImageSlot`, a photo behind a box (the landing's announcements; the box carries `data-image`): `.ed-img` "Dodaj sliku" / "Promijeni sliku" opens the hidden file picker (`#edImgFile`: jpg, png, webp) and posts to `/copy/<key>/slika`; the answer's URL becomes the box's first child, `img.bg`, and the box turns `.has-img` + `data-photo`. `.ed-img-x` "Ukloni sliku" (only with a photo) asks first, as an item's ✕ ("Ukloni?" for 4 s, then `reset=1`). 32px pills like `.ed-flag` (`--surface-2` / `--muted`), after it; on a photo (`[data-photo]`) a solid `--surface` pill with `--text` ink: the editor's controls, not text on a photograph. A failure is said in the bar |
 | `form.ed-ann-x` | base (trainer, owner) | "Obriši najavu", the edit-mode pill that deletes a landing announcement (`POST /aktualno/<id>/obrisi`, a plain form): the `.ed-img-x` pill to the pixel (32px, `--surface-2` / `--muted`, solid `--surface` on a photo), after the photo's pills; the form is `display: contents` in edit mode, so its button lines up with them as a flex item of the card. It asks first, as an item's ✕: one tap arms it into "Obriši?" (the accent tint, `aria-label` "Potvrdi brisanje") for 4 s, any other tap disarms it, the second tap sends the form; the page comes back without the card. On a card that is off it is dimmed with the card's content (a rule of its own: the form has no box to carry the opacity). Hidden outside edit mode; a visitor never gets it. The gym's "Obriši karticu" (`form.ed-gym-x`, `POST /dvorana/<id>/obrisi`, 20.10.2026) is the same pill and the same two taps |
@@ -96,13 +97,18 @@ offer, with a small `.go` arrow as the hint a phone needs (no hover there) and
 online plan as `.offer` cards in `.offer-grid` — italic uppercase title, one
 `.lead` line (two lines reserved), an editable list of dotted facts
 (`c.points`, up to six), then a `.foot` pinned to the bottom holding the
-`.addon` line, the `.price` (2.1rem number + muted unit) and one button, so
-add-on, price and button sit level across the row. Each tier has two `.price`
-blocks, `data-period="month"` (`hidden`) and `"year"`: the yearly shows first,
-and both switches render Godišnje selected (20.10.2026); the `.period` switch
+`.addon` line (each tier's own words, `slot.addon` before the shared
+`addon.online` amount and `slot.addon_unit` after it, 20.10.2026), the
+`.price` (2.1rem number + muted unit) and one button, so add-on, price and
+button sit level across the row. Each tier has two `.price` blocks,
+`data-period="month"` (`hidden`) and `"year"`: the yearly shows first, and the
+tiers' switch renders Godišnje selected (20.10.2026); the `.period` switch
 under the cards (the `.auth-tabs` idiom on a `--surface` track — the tint over
 `--surface-2` is 4.34:1 in dark) shows one on all three, per page view, and is
-hidden until the script runs. Tier prices are mostly owner-typed text, so the
+hidden until the script runs. Each `.period` is its own section's choice
+(`period_switch(start)`, `offer(…, start=)`): the script sets the
+`.price[data-period]` inside its own `section.band` and its own
+`aria-selected`, never the other switch's. Tier prices are mostly owner-typed text, so the
 cards (tiers and gym) reserve a second price line (`min-height`, 900–1100px)
 and stay level whatever is typed. `.featured` (tier 2) is taller, not shifted
 (`margin-block: -16px` + matching padding, desktop only) and carries
@@ -148,9 +154,12 @@ edit mode a card's first line is `.ed-pills`: its `.ed-flag` and
 the section is `.is-off` when none is on (a visitor gets no section then);
 `form.ed-add-gym` "+ Dodaj karticu" under the row. The gym's cards are tiers
 too (a monthly and an editable yearly price) with their own `.period` under
-`.gym-grid`, and the two switches are one choice: pressing either sets
-every `.price[data-period]` on the page and `aria-selected` on both (one
-switch when the gym's section is not on the page). Buttons: accent `.btn-sm` on the featured card,
+`.gym-grid`, its own choice since 20.10.2026 (unlinked from the tiers'): it
+opens on Mjesečno, the monthly `.price` shown and the yearly `hidden`, and a
+press sets the gym's cards only (no gym switch when its section is not on
+the page). A card's `.price-note` says each extra plan's
+`price.<plan>.word` slot before its price (free text), the number its
+amount slot. Buttons: accent `.btn-sm` on the featured card,
 neutral `.cta` beside it, green `.owned` for a plan the visitor has. A
 plan's own price is the owner's text, always (18.10.2026: no Stripe Price
 prints instead), the `price.<plan>.amount` / `.unit` copy slots printed with
@@ -218,7 +227,10 @@ makes the audit count its text instead of scoring it. The plain card in the
 same row is stretched to its height, its lines at the top: the row keeps one
 height, so its dots stay put as the cards change. In edit mode the pills
 (`.ed-flag`, `.ed-img`, `.ed-img-x`, `.ed-ann-x`) stack at the top of a photo card. Info band
-`.info-grid`: radno vrijeme table, `.crow` contact rows
+`.info-grid`: the radno vrijeme table (`c.rows`, rows since 20.10.2026:
+`td.d` the days in `--text` 600, the hours `--muted`, 3px / 14px of padding;
+an emptied cell an empty `td`; for an editor `table[data-rows]`, above),
+`.crow` contact rows
 (14px stroke icon + text, address is the Maps link), `.socials` icon row (20px
 glyphs, muted → accent on hover, 32px targets).
 

@@ -22,6 +22,16 @@ site_copy row whose text is a JSON array of cleaned, non-empty strings; no row
 means the default list. Its caps are a count (max_items) and a length per item
 (max_chars). Printed with `{{ c.points("the.key") }}`.
 
+A RowsSlot is a table of rows of two texts the editor can add to and remove
+from, not only retype — the landing's opening hours (20.10.2026, the owner's
+friend: he emptied "uto" and the box stayed; "make it rows which can be
+removed"). It is stored as ONE site_copy row whose text is a JSON array of
+two-item arrays; no row means the default rows. A cell may be empty: that
+is the point, "uto" with nothing beside it stays so, and an emptied cell is
+the one text that does not get a default back (a row has none per cell). A
+row whose two cells are both empty goes. Its caps are a count (max_rows)
+and a length per cell (max_chars). Printed with `{{ c.rows("the.key") }}`.
+
 A FlagSlot is a switch, not a text: whether a part of a page shows at all.
 It is stored like any slot, as the text "on" or "off"; no row means the
 default. Read with `copy_flag("the.key", copy_texts)` (flag_on below). In
@@ -103,6 +113,20 @@ class ListSlot:
 
 
 @dataclass(frozen=True)
+class RowsSlot:
+    default: tuple[tuple[str, str], ...]
+    max_rows: int   # how many rows the table may hold
+    max_chars: int  # characters per cell, counted as for Slot.max
+    label: str      # the editor shows it with the row's number and the cell's word ("…, red 2: sati")
+    cell_labels: tuple[str, str]   # the two cells' words, in the editor's bar
+
+
+# a new row ("+ Dodaj red", POST /copy/{key} with add=1): these placeholders
+# to retype, the hours table's words (the one RowsSlot)
+ROW_BLANK = ("dan", "sati")
+
+
+@dataclass(frozen=True)
 class FlagSlot:
     default: bool   # True: shown until someone switches it off
     label: str      # what the editor's toggle stands for ("Najava 1: prikazano")
@@ -144,7 +168,7 @@ REFERENCE_PRICES = {
 # cards carry no add-on line since 20.10.2026): one slot per number.
 MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
 
-SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
+SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # ---- landing: hero ----
     "hero.kicker": Slot("Zagreb · Dubrava", CAP, "Mala oznaka iznad naslova"),
     "hero.h1a": Slot("Kvaliteta pokreta", CAP, "Naslov, bijeli red"),
@@ -165,14 +189,22 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     # plan (models.ONLINE_TIER_SLOTS, 20.10.2026) and its title is the
     # tier's name everywhere in the app: /clanarine's selects and flash,
     # the Paket fact on /moja-clanarina (online_tier_names below).
+    # Each tier's MojiMakrosi line is its own words around the one amount
+    # (addon.online, below): .addon before it, .addon_unit after it
+    # (20.10.2026, the owner: "a similar treatment of the three QMOVE
+    # tabs"; one offer.addon for all three until then).
     "offer.online.title": Slot("QMove START", CAP, "Online 1: naziv"),
     "offer.online.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 1: podnaslov"),
     "offer.online.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 1: stavka"),
+    "offer.online.addon": Slot("MojiMakrosi prehrana", CAP, "Online 1: dodatak za prehranu"),
+    "offer.online.addon_unit": Slot("€ / mjesečno", CAP, "Online 1: uz cijenu dodatka"),
     "offer.online.year_price": Slot("na upit", CAP, "Online 1: godišnja cijena"),
     "offer.online.year_unit": Slot("", CAP, "Online 1: uz godišnju cijenu"),
     "offer.online2.title": Slot("QMove PRO", CAP, "Online 2: naziv"),
     "offer.online2.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 2: podnaslov"),
     "offer.online2.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 2: stavka"),
+    "offer.online2.addon": Slot("MojiMakrosi prehrana", CAP, "Online 2: dodatak za prehranu"),
+    "offer.online2.addon_unit": Slot("€ / mjesečno", CAP, "Online 2: uz cijenu dodatka"),
     "offer.online2.price": Slot("na upit", CAP, "Online 2: mjesečna cijena"),
     "offer.online2.unit": Slot("", CAP, "Online 2: uz mjesečnu cijenu"),
     "offer.online2.year_price": Slot("na upit", CAP, "Online 2: godišnja cijena"),
@@ -180,6 +212,8 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     "offer.online3.title": Slot("QMove ELITE", CAP, "Online 3: naziv"),
     "offer.online3.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 3: podnaslov"),
     "offer.online3.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 3: stavka"),
+    "offer.online3.addon": Slot("MojiMakrosi prehrana", CAP, "Online 3: dodatak za prehranu"),
+    "offer.online3.addon_unit": Slot("€ / mjesečno", CAP, "Online 3: uz cijenu dodatka"),
     "offer.online3.price": Slot("na upit", CAP, "Online 3: mjesečna cijena"),
     "offer.online3.unit": Slot("", CAP, "Online 3: uz mjesečnu cijenu"),
     "offer.online3.year_price": Slot("na upit", CAP, "Online 3: godišnja cijena"),
@@ -189,7 +223,6 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     # section's kicker and heading stay slots.
     "gym.kicker": Slot("Dvorana", CAP, "Mala oznaka iznad dvorane"),
     "gym.h2": Slot("Treninzi u dvorani", CAP, "Naslov: dvorana"),
-    "offer.addon": Slot("MojiMakrosi prehrana", CAP, "Naziv dodatka za prehranu"),
     # ---- prices: every price the site shows (no Stripe Price overrides them) ----
     # Per plan its amount, unit and note, the defaults REFERENCE_PRICES above
     # (prehrana: no note): the landing prints the amount and the unit on a
@@ -198,6 +231,14 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     **{f"price.{plan}.{part}": Slot(text or "", CAP, f"Cijena · {plan}: {label}")
        for plan, row in REFERENCE_PRICES.items()
        for part, label, text in zip(("amount", "unit", "note"), ("iznos", "jedinica", "napomena"), row)},
+    # the words before a plan's price in a gym card's line of its other
+    # plans (Individualno's "u dvoje ili troje 25 € / trening ·
+    # rehabilitacija od 30 € / tretman", landing.html, plan_note), free
+    # text the gym owner retypes there since 20.10.2026; the number stays
+    # the plan's amount slot. Only these two: they are the plans a card has
+    # after its first (GYM_CARD_EXAMPLES), and nothing edits a card's plans.
+    "price.poluindividualni.word": Slot("u dvoje ili troje", CAP, "Cijena · poluindividualni: tekst ispred iznosa"),
+    "price.rehabilitacija.word": Slot("rehabilitacija", CAP, "Cijena · rehabilitacija: tekst ispred iznosa"),
     # the MojiMakrosi add-on's amount in €: online beside the landing's online
     # tiers, both in the prehrana plan's hint (the gym's cards print none)
     "addon.online": Slot(MOJIMAKROSI_ADDON["online"], CAP, "MojiMakrosi dodatak uz online (€)"),
@@ -205,12 +246,10 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     # ---- landing: aktualno: rows since 18.10.2026, not slots (ANNOUNCEMENT_* below) ----
     # ---- landing: info ----
     "info.hours.h": Slot("Radno vrijeme", CAP, "Naslov: radno vrijeme"),
-    "info.hours.d1": Slot("pon · sri · čet · pet", CAP, "Radno vrijeme, dani 1"),
-    "info.hours.t1": Slot("07:00 – 20:00", CAP, "Radno vrijeme, sati 1"),
-    "info.hours.d2": Slot("uto", CAP, "Radno vrijeme, dani 2"),
-    "info.hours.t2": Slot("individualni termini", CAP, "Radno vrijeme, sati 2"),
-    "info.hours.d3": Slot("sub · ned", CAP, "Radno vrijeme, dani 3"),
-    "info.hours.t3": Slot("zatvoreno", CAP, "Radno vrijeme, sati 3"),
+    # the hours as rows (20.10.2026; six fixed slots info.hours.d1 … t3
+    # until migration 1a7c144b582a folded them in): days and hours per row
+    "info.hours.rows": RowsSlot((("pon · sri · čet · pet", "07:00 – 20:00"), ("uto", "individualni termini"),
+                                 ("sub · ned", "zatvoreno")), CAP_ITEMS, CAP, "Radno vrijeme", ("dani", "sati")),
     "info.where.h": Slot("Gdje smo", CAP, "Naslov: adresa"),
     "info.contact.h": Slot("Kontakt", CAP, "Naslov: kontakt"),
     "footer": Slot("© Quality Movement Training, Zagreb", CAP, "Podnožje"),
@@ -359,7 +398,8 @@ def clean(text: str) -> str:
     and the line is trimmed; blank lines at the start and the end go, and
     three or more line breaks in a row become two (one empty line at most).
     An empty result means nothing was written: the default comes back, or a
-    list item is removed (POST /copy/{key})."""
+    list item is removed (POST /copy/{key}); a row's cell is the exception,
+    it stays empty (RowsSlot)."""
     lines = (" ".join(line.split()) for line in text.splitlines())
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines).strip("\n"))
 
@@ -387,6 +427,37 @@ def items_for(key: str, texts: dict[str, str]) -> list[str]:
     """The items a page prints for list slot `key`, given the edited texts
     (db.copy_texts()). Templates call it as copy_items (see _copy.html)."""
     return load_items(texts.get(key), SLOTS[key])
+
+
+def load_rows(raw: str | None, slot: RowsSlot) -> list[list[str]]:
+    """A rows slot's rows, each [first, second], cleaned: the stored JSON
+    array of two-item arrays, or the default rows when nothing is stored
+    (or the row cannot be read as such an array). A cell may be empty; a
+    row whose two cells are both empty is dropped."""
+    default = [list(row) for row in slot.default]
+    if raw is None:
+        return default
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return default
+    if not isinstance(data, list) or not all(isinstance(row, list) and len(row) == 2 for row in data):
+        return default
+    rows = [[clean(str(a)), clean(str(b))] for a, b in data]
+    return [row for row in rows if any(row)]
+
+
+def dump_rows(rows) -> str:
+    """What a rows slot stores: a JSON array of [first, second] pairs of
+    cleaned texts, a row whose two cells are both empty dropped."""
+    cleaned = [[clean(a), clean(b)] for a, b in rows]
+    return json.dumps([row for row in cleaned if any(row)], ensure_ascii=False)
+
+
+def rows_for(key: str, texts: dict[str, str]) -> list[list[str]]:
+    """The rows a page prints for rows slot `key`, given the edited texts
+    (db.copy_texts()). Templates call it as copy_rows (see _copy.html)."""
+    return load_rows(texts.get(key), SLOTS[key])
 
 
 def online_tier_names(texts: dict[str, str]) -> dict[str, str]:

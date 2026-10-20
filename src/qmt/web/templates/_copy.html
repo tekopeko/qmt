@@ -69,3 +69,40 @@
   {%- set slot = COPY[key] -%}
   {{- field_points(key, copy_items(key, copy_texts), slot.label, slot) -}}
 {%- endmacro %}
+
+{# An editable TABLE of rows (copy.RowsSlot: the landing's opening hours,
+   20.10.2026): `c.rows("key")` prints the <table>, a <tr> per row, its
+   first cell td.d (the days, bold) and its second the hours. For an
+   editor each cell is an .ed span that saves with its row's index and its
+   part (0, 1), its bar label naming both ("Radno vrijeme, red 2: sati");
+   every row also gets a ✕ in a third cell (td.ed-xc) and the table a
+   "+ Dodaj red" after it, both shown only in edit mode (body.editing). An
+   empty cell is an empty .ed, which edit mode gives a box to click. The
+   editor redraws the rows from the server's answer, so the markup of one
+   row here and in base.html's script is one shape: <tr><td class="d"><span
+   class="ed t" …>days</span></td><td><span class="ed t" …>hours</span></td>
+   <td class="ed-xc"><button class="ed-x">✕</button></td></tr>. A visitor
+   gets plain cells (a .t span each, an empty cell an empty <td>), and
+   nothing at all for a table with no rows. #}
+{% macro rows(key) -%}
+  {%- set slot = COPY[key] -%}
+  {%- set entries = copy_rows(key, copy_texts) -%}
+  {%- if can_edit_copy -%}
+    <table data-rows="{{ key }}" data-max="{{ slot.max_chars }}" data-max-rows="{{ slot.max_rows }}" data-label="{{ slot.label }}" data-cell0="{{ slot.cell_labels[0] }}" data-cell1="{{ slot.cell_labels[1] }}">
+      {%- for row in entries %}{% set i = loop.index0 %}
+      <tr>
+        {%- for text in row -%}
+        <td{% if loop.first %} class="d"{% endif %}><span class="ed t" data-copy="{{ key }}" data-index="{{ i }}" data-part="{{ loop.index0 }}" data-max="{{ slot.max_chars }}" data-label="{{ slot.label }}, red {{ i + 1 }}: {{ slot.cell_labels[loop.index0] }}">{{ text }}</span></td>
+        {%- endfor -%}
+        <td class="ed-xc"><button type="button" class="ed-x" aria-label="Ukloni red {{ i + 1 }}">✕</button></td></tr>
+      {%- endfor %}
+    </table>
+    <button type="button" class="act ed-add"{% if entries | length >= slot.max_rows %} hidden{% endif %}>+ Dodaj red</button>
+  {%- elif entries -%}
+    <table>
+      {%- for row in entries %}
+      <tr><td class="d">{% if row[0] %}<span class="t">{{ row[0] }}</span>{% endif %}</td><td>{% if row[1] %}<span class="t">{{ row[1] }}</span>{% endif %}</td></tr>
+      {%- endfor %}
+    </table>
+  {%- endif -%}
+{%- endmacro %}

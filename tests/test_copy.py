@@ -6,8 +6,11 @@ najavu", the cap of eight, and the migration that made the two old sets of
 slots rows), their photos (POST /copy/{key}/slika, GET /slika/{name}), the
 gym's cards (rows since 20.10.2026, the same way: virtual keys, "+ Dodaj
 karticu" and "Obriši karticu", the cap of eight, their migration), the
-reference prices (the price.<plan>.* and addon.* slots), and the migration
-that turned the offer cards' bullets into lists.
+reference prices (the price.<plan>.* and addon.* slots), the migration
+that turned the offer cards' bullets into lists, and the opening hours'
+rows (a RowsSlot since 20.10.2026: cells, rows removed and added, and the
+migration that folded the six old slots in, with the QMove tiers' add-on
+words, one slot each since the same day).
 
 The browser half is the net under the texts. Their design limits were lifted
 on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
@@ -19,7 +22,8 @@ no design; that pass comes once the copy is final. On the way it walks the
 landing's rows of cards, the announcements' among them (one card per view;
 they move on by themselves, on a phone and on a desktop, and hold still when
 they must), the editor's switch and photo pills, adding and deleting a card, the
-gym's cards added, hidden and deleted, and the install banner's week between asks.
+gym's cards added, hidden and deleted, the opening hours' rows removed, added
+and emptied, and the install banner's week between asks.
 Beside the walk, on the same server: /clanarine's add form, whose script
 shows the tier select that fits the chosen plan (the online plan's QMove
 tiers are the landing cards' titles; the rest is in tests/test_clanarina.py).
@@ -48,7 +52,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from qmt import auth, config, copy, db, storage
-from qmt.models import PLAN_TYPES, Base, User
+from qmt.models import PLAN_TYPES, Base, SiteCopy, User
 from qmt.web.app import addon_amounts, app, reference_prices
 
 PAGES = ("/", "/moja-clanarina", "/prehrana")  # every page that has editable text
@@ -175,6 +179,147 @@ def test_a_list_slot_takes_edits_additions_and_removals_within_its_limits():
     assert d[1] not in start and d[2] not in start and "<ul>" not in start  # a visitor sees no bullets
     assert "Treniraj gdje god jesi." in start
     assert 'data-list="offer.online.points"' in t.get("/").text             # the editor can still add one
+
+
+# ---------- the opening hours: a rows slot ----------
+
+HOURS = "info.hours.rows"
+
+
+def hours(page: str) -> str:
+    """The landing's hours table (#kontakt), from its heading to the table's end."""
+    return page.split('id="kontakt"')[1].split("</table>")[0]
+
+
+def test_a_rows_slot_is_one_json_array_of_pairs_and_reads_anything_else_as_its_default():
+    """copy.RowsSlot (20.10.2026): a table of rows of two texts, stored as
+    one site_copy row, a JSON array of [days, hours] pairs, each cell
+    cleaned as a text is. A cell may be empty; a row whose two cells are
+    both empty is dropped, on the way in and on the way out. A stored text
+    that cannot be read as such an array reads as the default rows, and an
+    empty array is an emptied table."""
+    slot = copy.SLOTS[HOURS]
+    assert slot == copy.RowsSlot((("pon · sri · čet · pet", "07:00 – 20:00"), ("uto", "individualni termini"),
+                                  ("sub · ned", "zatvoreno")), 12, 2000, "Radno vrijeme", ("dani", "sati"))
+    assert copy.ROW_BLANK == ("dan", "sati")
+    assert not [k for k in copy.SLOTS if re.fullmatch(r"info\.hours\.[dt]\d", k)]   # the six old slots are gone
+    d = [list(row) for row in slot.default]
+    assert copy.load_rows(None, slot) == d and copy.rows_for(HOURS, {}) == d
+
+    rows = [["pon - pet", "07:00 – 21:00"], ["uto", ""], ["", "po dogovoru"]]
+    raw = copy.dump_rows(rows)
+    assert json.loads(raw) == rows and copy.load_rows(raw, slot) == rows and copy.rows_for(HOURS, {HOURS: raw}) == rows
+    assert "pon · sri" in copy.dump_rows(slot.default)                     # readable as stored (no \u escapes)
+    assert json.loads(copy.dump_rows([("  a   b ", " \n c \n\n\n d "), ("", " \n "), ("x", "")])) == [
+        ["a b", "c\n\nd"], ["x", ""]]                                       # cleaned; two empty cells: the row goes
+    assert copy.load_rows('[["a", "b"], ["", "  "], [" c ", ""]]', slot) == [["a", "b"], ["c", ""]]
+    assert copy.load_rows("[]", slot) == []                                 # an emptied table stays empty
+    for bad in ("", "nije json", "null", "{}", '"tekst"', "[1, 2]", '[["a"]]', '[["a", "b", "c"]]',
+                '[["a", "b"], "c"]', '{"0": ["a", "b"]}'):
+        assert copy.load_rows(bad, slot) == d, bad
+
+
+def test_a_rows_slot_takes_cells_and_rows_added_and_removed_within_its_limits():
+    """POST /copy/info.hours.rows, the editor's way: index + part + text
+    sets a cell (cleaned, the cap every text has), and an EMPTY text leaves
+    it empty: a row has no default per cell, the exception to "empty is the
+    default". A row left with two empty cells goes; index + remove=1
+    removes a row; add=1 appends one with the placeholders, at most twelve;
+    reset=1 puts the default rows back. The answer is always the whole
+    table, so the editor redraws it with fresh indexes. A rows slot takes
+    no photo, as a text slot takes none."""
+    make_user("ivan@test.local"); uid = make_user("trener@test.local", is_trainer=True)
+    slot, d = copy.SLOTS[HOURS], [list(row) for row in copy.SLOTS[HOURS].default]
+    assert TestClient(app).post(f"/copy/{HOURS}", data={"text": "x", "index": "0", "part": "0"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{HOURS}", data={"add": "1"}).status_code == 403
+    assert HOURS not in db.copy_texts()
+
+    t = client_for("trener@test.local")
+    def post(**data):
+        return t.post(f"/copy/{HOURS}", data=data)
+
+    r = post(text="  pon   -  pet ", index="0", part="0")                  # one cell, cleaned
+    assert r.status_code == 200 and r.json() == {"ok": True, "rows": [["pon - pet", d[0][1]], d[1], d[2]], "default": False}
+    assert post(text="07:00 – 21:00", index="0", part="1").json()["rows"][0] == ["pon - pet", "07:00 – 21:00"]
+    assert json.loads(db.copy_texts()[HOURS]) == [["pon - pet", "07:00 – 21:00"], d[1], d[2]]   # one row, pairs
+    r = post(text=" \n ", index="1", part="1")                              # emptied: the cell stays empty
+    assert r.json() == {"ok": True, "rows": [["pon - pet", "07:00 – 21:00"], ["uto", ""], d[2]], "default": False}
+    r = post(text="", index="1", part="0")                                  # and its other cell: the row goes
+    assert r.json()["rows"] == [["pon - pet", "07:00 – 21:00"], d[2]]
+    r = post(index="1", remove="1")                                         # ✕: a row goes
+    assert r.json() == {"ok": True, "rows": [["pon - pet", "07:00 – 21:00"]], "default": False}
+    r = post(add="1")                                                       # + Dodaj red: the placeholders, last
+    assert r.json() == {"ok": True, "rows": [["pon - pet", "07:00 – 21:00"], ["dan", "sati"]], "default": False}
+    assert json.loads(db.copy_texts()[HOURS]) == r.json()["rows"]
+
+    for bad in ({"text": "x"}, {"text": "x", "part": "0"}, {"text": "x", "index": "2", "part": "0"},
+                {"text": "x", "index": "-1", "part": "0"}, {"text": "x", "index": "dva", "part": "0"},
+                {"remove": "1"}, {"index": "2", "remove": "1"}):              # no such row
+        r = post(**bad)
+        assert r.status_code == 400 and r.json() == {"ok": False, "error": "Nepoznat red."}, bad
+    for bad in ({"text": "x", "index": "0"}, {"text": "x", "index": "0", "part": "2"},
+                {"text": "x", "index": "0", "part": "dani"}):              # no such cell
+        r = post(**bad)
+        assert r.status_code == 400 and r.json() == {"ok": False, "error": "Nepoznato polje."}, bad
+    r = post(text="x" * 2001, index="0", part="1")                          # the cap, every text's
+    assert r.status_code == 400 and r.json()["error"] == "Najviše 2000 znakova — ovo ih ima 2001."
+    assert post(text="x" * 2000, index="0", part="1").status_code == 200
+    r = post(text=" Prvi red \n\n\n drugi red ", index="0", part="0")      # a cell keeps its line breaks
+    assert r.json()["rows"][0][0] == "Prvi red\n\ndrugi red"
+    assert json.loads(db.copy_texts()[HOURS]) == r.json()["rows"]           # nothing refused was stored
+    for n in range(2, 12):                                                  # up to twelve rows...
+        assert len(post(add="1").json()["rows"]) == n + 1
+    r = post(add="1")                                                       # ...and not one more
+    assert r.status_code == 400 and r.json() == {"ok": False, "error": "Najviše 12 redova."}
+    assert len(json.loads(db.copy_texts()[HOURS])) == 12
+    assert t.post(f"/copy/{HOURS}/slika", files={"slika": ("foto.jpg", picture(300, 200), "image/jpeg")}).json() == {
+        "ok": False, "error": "Ovdje ne ide slika."}                        # no photo, as a text slot
+
+    r = post(text="ignoriran", reset="1")                                   # Zadano: the whole default table
+    assert r.json() == {"ok": True, "rows": d, "default": True} and HOURS not in db.copy_texts()
+    for _ in d:                                                             # an emptied table stays empty...
+        assert post(index="0", remove="1").status_code == 200
+    assert db.copy_texts()[HOURS] == "[]"
+    with db.session_scope() as s:                                           # who wrote it
+        assert s.get(SiteCopy, HOURS).updated_by == uid
+    page = TestClient(app).get("/").text                                    # ...a visitor gets no table
+    assert "<table" not in page.split('id="kontakt"')[1].split("</section>")[0]
+    after = t.get("/").text.split(f'<table data-rows="{HOURS}" data-max="2000" data-max-rows="12" '
+                                  'data-label="Radno vrijeme" data-cell0="dani" data-cell1="sati">')[1]
+    assert "<tr>" not in after.split("</table>")[0]                         # ...the editor an empty one to add to
+    assert after.split("</table>")[1].lstrip().startswith('<button type="button" class="act ed-add">+ Dodaj red</button>')
+
+
+def test_the_landing_prints_the_hours_from_their_rows():
+    """The hours print from the slot: on a fresh database its three default
+    rows, the days in td.d, the hours beside them; an emptied cell an empty
+    <td> for a visitor (an empty .ed to click for the editor); a removed row
+    is gone. The editor's cells name their row and cell in the bar ("Radno
+    vrijeme, red 2: sati"), each row has its ✕, the table its "+ Dodaj
+    red", which is gone at twelve rows."""
+    make_user("trener@test.local", is_trainer=True)
+    page = TestClient(app).get("/").text
+    assert hours(page).count("<tr>") == 3
+    for days, time in copy.SLOTS[HOURS].default:
+        assert f'<tr><td class="d"><span class="t">{days}</span></td><td><span class="t">{time}</span></td></tr>' in page
+    t = client_for("trener@test.local")
+    t.post(f"/copy/{HOURS}", data={"text": "", "index": "1", "part": "1"})    # "uto", nothing beside it
+    t.post(f"/copy/{HOURS}", data={"index": "2", "remove": "1"})              # sub · ned: gone
+    table = hours(TestClient(app).get("/").text)
+    assert '<tr><td class="d"><span class="t">uto</span></td><td></td></tr>' in table
+    assert table.count("<tr>") == 2 and "sub · ned" not in table and "zatvoreno" not in table
+    table = hours(t.get("/").text)
+    cell = ('<td><span class="ed t" data-copy="info.hours.rows" data-index="1" data-part="1" data-max="2000" '
+            'data-label="Radno vrijeme, red 2: sati"></span></td>')
+    assert ('<tr><td class="d"><span class="ed t" data-copy="info.hours.rows" data-index="1" data-part="0" data-max="2000" '
+            f'data-label="Radno vrijeme, red 2: dani">uto</span></td>{cell}<td class="ed-xc"><button type="button" '
+            'class="ed-x" aria-label="Ukloni red 2">✕</button></td></tr>') in table
+    assert table.count('class="ed-x"') == 2
+    assert '<button type="button" class="act ed-add">+ Dodaj red</button>' in t.get("/").text
+    for _ in range(10):
+        t.post(f"/copy/{HOURS}", data={"add": "1"})
+    page = t.get("/").text                                                  # twelve: no more to add
+    assert hours(page).count("<tr>") == 12 and '<button type="button" class="act ed-add" hidden>+ Dodaj red</button>' in page
 
 
 # ---------- the announcements: rows, edited through virtual keys ----------
@@ -841,6 +986,64 @@ def test_the_migration_folds_the_old_bullet_slots_into_lists():
     assert texts["offer.individualno.p2"] == "U paru" and not [k for k in texts if k.endswith(".points")]
 
 
+TIER_ADDONS = ("offer.online.addon", "offer.online2.addon", "offer.online3.addon")
+
+
+def test_the_migration_folds_the_hours_into_rows_and_the_addon_into_each_tier():
+    """1a7c144b582a: the six info.hours.* rows of site_copy become one
+    info.hours.rows row holding the three rows as the site showed them: on
+    prod the gym owner had retyped "pon - pet", "07:00 – 21:00" and
+    "konzultacije po dogovoru", and they must come through; the cells nobody
+    edited are the old defaults (its own copy, which must agree with
+    copy.py's), and who touched the hours last, and when, is the latest of
+    the six. An edited offer.addon becomes every tier's word. Nothing
+    edited: nothing written. The old rows go, the rest stays. And back,
+    only what differs from the defaults."""
+    mig = _migration("1a7c144b582a_hours_rows.py")
+    uid = make_user("trener@test.local", is_trainer=True); other = make_user("ivan@test.local")
+    assert [list(row) for row in mig.OLD_HOURS] == [list(row) for row in copy.SLOTS[HOURS].default]
+    assert all(mig.OLD_ADDON == copy.SLOTS[key].default for key in TIER_ADDONS) and mig.TIER_ADDONS == TIER_ADDONS
+    with db.engine.begin() as conn:                                         # nobody edited them: nothing to fold,
+        mig.fold_hours(conn); mig.fold_addon(conn)
+    with db.engine.begin() as conn:                                         # nor to unfold
+        mig.unfold_hours(conn); mig.unfold_addon(conn)
+    assert db.copy_texts() == {}
+
+    for key, text, by in [("info.hours.d1", "pon - pet", uid), ("offer.addon", "MM prehrana", uid),
+                          ("info.hours.t1", "07:00 – 21:00", uid), ("hero.kicker", "Ostaje kakav jest.", uid),
+                          ("info.hours.t2", "konzultacije po dogovoru", other)]:   # prod's three, the last by another
+        db.set_copy(key, text, by)
+    with db.session_scope() as s:
+        last = s.get(SiteCopy, "info.hours.t2").updated_at
+    with db.engine.begin() as conn:
+        mig.fold_hours(conn); mig.fold_addon(conn)
+    texts = db.copy_texts()
+    assert json.loads(texts[HOURS]) == [["pon - pet", "07:00 – 21:00"], ["uto", "konzultacije po dogovoru"],
+                                        ["sub · ned", "zatvoreno"]]
+    assert [texts[key] for key in TIER_ADDONS] == ["MM prehrana"] * 3
+    assert set(texts) == {HOURS, *TIER_ADDONS, "hero.kicker"}               # the old rows gone, the rest kept
+    with db.session_scope() as s:                                           # the latest of the six
+        assert (s.get(SiteCopy, HOURS).updated_at, s.get(SiteCopy, HOURS).updated_by) == (last, other)
+    page = TestClient(app).get("/").text                                    # and the page reads them
+    for days, time in json.loads(texts[HOURS]):
+        assert f'<tr><td class="d"><span class="t">{days}</span></td><td><span class="t">{time}</span></td></tr>' in page
+    assert page.count('<p class="addon"><span class="t">MM prehrana</span>') == 3
+
+    with db.engine.begin() as conn:                                         # the way back: what differs from the defaults
+        mig.unfold_hours(conn); mig.unfold_addon(conn)
+    assert db.copy_texts() == {"hero.kicker": "Ostaje kakav jest.", "info.hours.d1": "pon - pet",
+                               "info.hours.t1": "07:00 – 21:00", "info.hours.t2": "konzultacije po dogovoru",
+                               "offer.addon": "MM prehrana"}
+    # best effort, as its docstring says: an emptied cell goes back as an
+    # empty text, a removed row as its old default (three fixed rows)
+    for key in ("offer.addon", "info.hours.d1", "info.hours.t1", "info.hours.t2"):
+        db.reset_copy(key)
+    db.set_copy(HOURS, copy.dump_rows([["pon - pet", ""], ["uto", "individualni termini"]]), uid)
+    with db.engine.begin() as conn:
+        mig.unfold_hours(conn); mig.unfold_addon(conn)
+    assert db.copy_texts() == {"hero.kicker": "Ostaje kakav jest.", "info.hours.d1": "pon - pet", "info.hours.t1": ""}
+
+
 def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
     """Every slot is on a page the editor opens, so none is out of his reach.
     It may be on more than one (18.10.2026): a price (price.<plan>.*)
@@ -862,6 +1065,9 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
                 if isinstance(slot, copy.ListSlot):     # one list, an editable span per item
                     assert page.count(f'data-list="{key}"') == 1, key
                     assert page.count(f'data-copy="{key}"') == len(slot.default), key
+                if isinstance(slot, copy.RowsSlot):     # one table, an editable span per cell
+                    assert page.count(f'data-rows="{key}"') == 1, key
+                    assert page.count(f'data-copy="{key}"') == 2 * len(slot.default), key
                 if isinstance(slot, copy.FlagSlot):     # a switch: its toggle, once
                     assert page.count(f'data-copy="{key}"') == 1 and f'class="ed-flag" data-copy="{key}"' in page, key
                 if isinstance(slot, copy.ImageSlot):    # a photo: its "Dodaj sliku", once (none is set here;
@@ -872,7 +1078,8 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
         for path in PAGES:
             page = c.get(path).text
             if c.get(path, follow_redirects=False).status_code == 200:
-                for mark in ("data-copy", "copyToggle", "data-list", 'class="ed-x"', 'ed-add"', 'class="ed-flag"', "data-flag",
+                for mark in ("data-copy", "copyToggle", "data-list", "data-rows", "data-part", 'class="ed-xc"',
+                             'class="ed-x"', 'ed-add"', 'class="ed-flag"', "data-flag",
                              'class="ed-img"', "data-image", 'class="ed-ann-x"', 'class="ed-add-ann"', 'action="/aktualno/',
                              'class="ed-pills"', 'class="ed-gym-x"', 'class="ed-add-gym"', 'action="/dvorana/', "; --cols-edit:"):
                     assert mark not in page, (path, mark)
@@ -957,7 +1164,7 @@ def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     offer, gym = page.split('id="usluge"')[1].split('id="dvorana"')
     start = offer.split('class="card offer')[1]
     assert "45 € / mjesečno" in shown(start)
-    assert offer.count('+<span class="t">5</span> € / mjesečno') == 3      # the online tiers keep theirs
+    assert offer.count('+<span class="t">5</span> <span class="t">€ / mjesečno</span>') == 3   # the online tiers keep theirs
     dvorana, individualno = gym.split('class="card offer')[1:3]
     for c in (dvorana, individualno):                                      # no add-on line on the gym's cards
         assert 'class="addon"' not in c and '+<span class="t">4</span>' not in c
@@ -988,12 +1195,73 @@ def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     assert "50 € / mjesečno" in shown(TestClient(app).get("/").text.split('id="usluge"')[1].split('class="card offer')[1])
 
 
+def test_the_words_around_a_price_are_free_text_and_the_number_its_own_slot():
+    """20.10.2026 (the owner, of Individualno's line: "a third option where
+    there is free text, but the number has to be input somewhere separately
+    and if there is no input number, it falls back to the default"): the
+    words before each price in the line are slots (price.<plan>.word), the
+    number stays the plan's amount slot (on /moja-clanarina too), and an
+    emptied amount is its default again on both pages. The QMove tiers'
+    MojiMakrosi line the same way ("a similar treatment of the three QMOVE
+    tabs"): each tier's own words before and after the one amount
+    (offer.online*.addon / .addon_unit; addon.online, which all three
+    print), so an edit on one tier changes that tier's line only."""
+    make_user("ivan@test.local", plans=("online",)); make_user("trener@test.local", is_trainer=True)
+    gym_examples()
+    t = client_for("trener@test.local")
+
+    def line(page: str) -> str:                     # Individualno's line, as a visitor reads it
+        card = page.split('id="dvorana"')[1].split('class="card offer')[2]
+        return shown(card.split('<p class="price-note">')[1].split("</p>")[0])
+
+    assert line(TestClient(app).get("/").text) == "u dvoje ili troje 25 € / trening · rehabilitacija od 30 € / tretman"
+    r = t.post("/copy/price.poluindividualni.word", data={"text": "  u   paru "})
+    assert r.json() == {"ok": True, "text": "u paru", "default": False}
+    assert t.post("/copy/price.rehabilitacija.word", data={"text": "rehab"}).json()["text"] == "rehab"
+    assert t.post("/copy/price.poluindividualni.amount", data={"text": "28"}).json()["text"] == "28"
+    page = TestClient(app).get("/").text
+    assert line(page) == "u paru 28 € / trening · rehab od 30 € / tretman"
+    dvorana = page.split('id="dvorana"')[1].split('class="card offer')[1]  # its room copy follows the words
+    assert '<p class="price-note room" aria-hidden="true"><span class="t">u paru</span>' in dvorana
+    r = t.post("/copy/price.poluindividualni.amount", data={"text": " "})  # no number: the default comes back,
+    assert r.json() == {"ok": True, "text": "25", "default": True}
+    assert line(TestClient(app).get("/").text) == "u paru 25 € / trening · rehab od 30 € / tretman"
+    assert "25 € / trening" in shown(card_on(client_for("ivan@test.local").get("/moja-clanarina").text, "poluindividualni"))
+    individualno = t.get("/").text.split('id="dvorana"')[1].split('class="card offer')[2]   # the editor's: slots
+    assert ('<span class="ed t" data-copy="price.poluindividualni.word" data-max="2000" '
+            'data-label="Cijena · poluindividualni: tekst ispred iznosa">u paru</span>') in individualno
+    assert ('<span class="ed t" data-copy="price.rehabilitacija.word" data-max="2000" '
+            'data-label="Cijena · rehabilitacija: tekst ispred iznosa">rehab</span>') in individualno
+    t.post("/copy/price.poluindividualni.word", data={"reset": "1"})       # Zadano: the shipped words
+    assert line(TestClient(app).get("/").text).startswith("u dvoje ili troje 25 € / trening · rehab")
+
+    def addons(page: str) -> list[str]:             # the three tiers' MojiMakrosi lines, as a visitor reads them
+        tiers = page.split('id="usluge"')[1].split('id="dvorana"')[0].split('class="card offer')[1:]
+        return [" ".join(unescape(re.sub(r"<[^>]+>", "", c.split('<p class="addon">')[1].split("</p>")[0])).split())
+                for c in tiers]
+
+    assert addons(TestClient(app).get("/").text) == ["MojiMakrosi prehrana +5 € / mjesečno"] * 3
+    assert t.post("/copy/offer.online2.addon_unit", data={"text": "€ mjesečno uz PRO"}).json()["default"] is False
+    assert addons(TestClient(app).get("/").text) == ["MojiMakrosi prehrana +5 € / mjesečno",
+                                                     "MojiMakrosi prehrana +5 € mjesečno uz PRO",
+                                                     "MojiMakrosi prehrana +5 € / mjesečno"]   # PRO's line only
+    t.post("/copy/offer.online3.addon", data={"text": "Prehrana"}); t.post("/copy/addon.online", data={"text": "6"})
+    assert addons(TestClient(app).get("/").text) == ["MojiMakrosi prehrana +6 € / mjesečno",
+                                                     "MojiMakrosi prehrana +6 € mjesečno uz PRO", "Prehrana +6 € / mjesečno"]
+    offer = t.get("/").text.split('id="usluge"')[1].split('id="dvorana"')[0]
+    for n, slot in enumerate(("offer.online", "offer.online2", "offer.online3"), start=1):   # each tier's own slots
+        assert offer.count(f'data-copy="{slot}.addon" data-max="2000" data-label="Online {n}: dodatak za prehranu">') == 1
+        assert offer.count(f'data-copy="{slot}.addon_unit" data-max="2000" data-label="Online {n}: uz cijenu dodatka">') == 1
+    assert offer.count('data-copy="addon.online"') == 3 and "offer.addon" not in copy.SLOTS
+
+
 # ---------- the layout, measured in a browser ----------
 #
 # No slot has a design limit since 16.10.2026 (src/qmt/copy.py): the copy
 # comes first, and a design pass fits the boxes to it once it is final. So
 # this proves no design at a limit; it proves the net under the texts. Long
-# texts (300 characters, lists of 12 items of 60) and line breaks may make a
+# texts (300 characters, lists of 12 items of 60, the hours' table 12 rows of
+# 300-character cells, its ✕s too in edit mode) and line breaks may make a
 # box tall, but nothing may widen a page or leave the topbar's pill, an
 # editable span never changes a font, nothing is cut by a box that hides its
 # overflow, and the cards' prices stay level across each row. The first
@@ -1312,22 +1580,48 @@ GYM_EDIT = r"""() => {
   return out;
 }"""
 
-# Mjesečno / Godišnje: one choice, two switches (under the tiers, under the
-# gym), Godišnje on load. Every card of both sections shows exactly the
-# chosen price, and both switches say it.
-PERIOD = r"""(p) => {
+# Mjesečno / Godišnje: a switch under each row (the tiers', the gym's), each
+# its own section's choice since 20.10.2026 (the owner: "unlink them"): the
+# tiers open on Godišnje, the gym on Mjesečno. Every card of a section shows
+# exactly its own switch's price, and each switch says it.
+PERIOD = r"""([tiers, gym]) => {
   const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && el.getBoundingClientRect().width > 0; };
-  const out = [];
+  const want = {usluge: tiers, dvorana: gym}, out = [];
   for (const c of document.querySelectorAll('#usluge .offer, #dvorana .offer')) {
-    const shown = [...c.querySelectorAll('.price')].filter(vis).map(x => x.dataset.period);
-    if (shown.join() !== p) out.push(`a card in #${c.closest('section').id} shows "${shown.join('+')}" for ${p}`);
+    const sec = c.closest('section').id, shown = [...c.querySelectorAll('.price')].filter(vis).map(x => x.dataset.period);
+    if (shown.join() !== want[sec]) out.push(`a card in #${sec} shows "${shown.join('+')}" for ${want[sec]}`);
   }
   const switches = [...document.querySelectorAll('.period')], where = switches.map(s => s.closest('section').id);
   if (where.join() !== 'usluge,dvorana') out.push(`switches in: ${where.join(', ')}`);
   for (const sw of switches) {
-    const said = [...sw.querySelectorAll('[aria-selected="true"]')].map(b => b.dataset.period);
-    if (said.join() !== p) out.push(`the #${sw.closest('section').id} switch says "${said.join('+')}" for ${p}`);
+    const sec = sw.closest('section').id, said = [...sw.querySelectorAll('[aria-selected="true"]')].map(b => b.dataset.period);
+    if (said.join() !== want[sec]) out.push(`the #${sec} switch says "${said.join('+')}" for ${want[sec]}`);
   }
+  return out;
+}"""
+
+# The opening hours in edit mode (a rows slot, #kontakt): a ✕ per row,
+# each in its own cell and a 32px target; the page and the table's column
+# no wider than their boxes; nothing of the table (its cells' texts, its ✕s,
+# "+ Dodaj red") outside the info card, and no ✕ past the table. Scoped, as
+# EDIT_ROW is: MEASURE in edit mode would count the lists' ✕, which hangs
+# past its item on purpose.
+EDIT_HOURS = r"""() => {
+  const vis = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const out = [], de = document.documentElement, box = el => el.getBoundingClientRect();
+  const table = document.querySelector('#kontakt table[data-rows]');
+  if (!table) return ['no hours table for the editor'];
+  const card = box(table.closest('.info-card')), col = table.parentElement, edge = box(table).right;
+  if (de.scrollWidth - de.clientWidth > 0) out.push(`the page overflows by ${de.scrollWidth - de.clientWidth}px`);
+  if (col.scrollWidth - col.clientWidth > 0) out.push(`the hours' column overflows by ${col.scrollWidth - col.clientWidth}px`);
+  const rows = table.querySelectorAll('tr').length, xs = [...table.querySelectorAll('.ed-x')].filter(vis);
+  if (xs.length !== rows) out.push(`${xs.length} ✕ shown for ${rows} rows`);
+  for (const x of xs) { const b = box(x);
+    if (b.width < 32 || b.height < 32) out.push(`a row's ✕ is ${b.width}x${b.height}`);
+    if (b.right > edge + 1) out.push(`a row's ✕ reaches ${Math.round(b.right - edge)}px past the table`); }
+  for (const el of [...table.querySelectorAll('span.t, .ed-x'), ...col.querySelectorAll('.ed-add')].filter(vis)) { const b = box(el);
+    if (b.left < card.left - 1 || b.right > card.right + 1 || b.top < card.top - 1 || b.bottom > card.bottom + 1)
+      out.push(`"${el.textContent.trim().slice(0, 12)}…" leaves the info card`); }
   return out;
 }"""
 
@@ -1357,6 +1651,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 continue
             if isinstance(slot, copy.ListSlot):         # every list 12 items long, each item 60 characters
                 db.set_copy(key, copy.dump_items([make(min(slot.max_chars, ITEM))] * min(slot.max_items, ITEMS)), None)
+            elif isinstance(slot, copy.RowsSlot):       # every table 12 rows long, each cell 300 characters
+                db.set_copy(key, copy.dump_rows([[make(min(slot.max_chars, LONG))] * 2] * min(slot.max_rows, ITEMS)), None)
             else:                                       # every text 300 characters
                 db.set_copy(key, make(min(slot.max, LONG)), None)
         for a in db.announcements(all=True):            # and every text of every announcement; they stay
@@ -1612,6 +1908,97 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             pg.context.browser.close()
         return [f"[gym rows] {p}" for p in out + [f"js: {e}" for e in errs]]
 
+    def hours_rows(pw):
+        """The opening hours as rows in a browser, the editor's way, with the
+        default rows, at 390px on a touch screen and at 1280px. In edit mode
+        every row carries its ✕ and the table its "+ Dodaj red". The ✕ on
+        the second row asks first ("Ukloni?", the row still stored); its
+        second tap removes it, and the table is redrawn with two rows,
+        renumbered (the cells' indexes and bar labels, the ✕s' names), as
+        stored. "+ Dodaj red" adds a third, "dan" / "sati". A cell emptied
+        and saved stays, empty (the bar says so before Spremi), its row
+        kept, and a visitor's table has that empty cell. Nothing of the
+        table leaves its card (EDIT_HOURS); no page errors. The default rows
+        are put back for the walks after this one."""
+        out, errs, slot = [], [], copy.SLOTS[HOURS]
+        d = [list(row) for row in slot.default]
+        stored = lambda: copy.load_rows(db.copy_texts().get(HOURS), slot)
+        cells = """() => [...document.querySelectorAll('#kontakt table[data-rows] tr')].map(tr =>
+          [...tr.querySelectorAll('.ed')].map(s => [s.dataset.index, s.dataset.part, s.dataset.label, s.textContent])
+          .concat([tr.querySelector('.ed-x').getAttribute('aria-label')]))"""
+        rows = "(n) => document.querySelectorAll('#kontakt table[data-rows] tr').length === n"
+        for w in (390, 1280):
+            phone = w < 600
+            ctx = pw.chromium.launch().new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
+            pg = ctx.new_page(); pg.on("pageerror", lambda e, w=w: errs.append(f"{w}px: {e}"))
+            pg.goto(server + "/login"); pg.fill("main input[name=email]", "trener@test.local")
+            pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
+            pg.wait_for_load_state("networkidle")
+            pg.goto(server + "/#kontakt"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+            pg.click("#copyToggle")
+            table = pg.locator("#kontakt table[data-rows]")
+            add = pg.locator("#kontakt table[data-rows] + .ed-add")
+            seen = [table.locator("tr").count(), table.locator(".ed-x:visible").count(), add.is_visible()]
+            if seen != [3, 3, True]:
+                out.append(f"{w}px: in edit mode (rows, ✕ shown, + Dodaj red shown): {seen}")
+            out += [f"{w}px edit mode: {p}" for p in pg.evaluate(EDIT_HOURS)]
+
+            x = table.locator("tr").nth(1).locator(".ed-x")              # ✕ on the second row: two taps
+            x.click()
+            if x.text_content() != "Ukloni?" or stored() != d:
+                out.append(f"{w}px: one tap on a row's ✕: {x.text_content()!r}, stored {stored()}")
+            x.click()
+            try:
+                pg.wait_for_function(rows, arg=2, timeout=5000)
+            except PlaywrightTimeout:
+                out.append(f"{w}px: the second tap on the ✕ did not leave two rows")
+            want = [[["0", "0", "Radno vrijeme, red 1: dani", d[0][0]], ["0", "1", "Radno vrijeme, red 1: sati", d[0][1]], "Ukloni red 1"],
+                    [["1", "0", "Radno vrijeme, red 2: dani", d[2][0]], ["1", "1", "Radno vrijeme, red 2: sati", d[2][1]], "Ukloni red 2"]]
+            if pg.evaluate(cells) != want or stored() != [d[0], d[2]]:
+                out.append(f"{w}px: after the ✕ the table is {pg.evaluate(cells)}, stored {stored()}")
+
+            add.click()                                                   # + Dodaj red
+            try:
+                pg.wait_for_function(rows, arg=3, timeout=5000)
+            except PlaywrightTimeout:
+                out.append(f"{w}px: + Dodaj red added no row")
+            last = pg.evaluate(cells)[-1]
+            if [c[3] for c in last[:2]] != ["dan", "sati"] or last[2] != "Ukloni red 3" or stored() != [d[0], d[2], ["dan", "sati"]]:
+                out.append(f"{w}px: + Dodaj red left {last}, stored {stored()}")
+
+            hours_cell = table.locator("tr").nth(0).locator('[data-part="1"]')   # the first row's hours, emptied
+            hours_cell.click()
+            hours_cell.fill("")
+            bar = [pg.locator(f"#copyBar {s}").text_content() for s in (".cb-label", ".cb-msg")] + [pg.locator("#cbReset").text_content()]
+            if bar != ["Radno vrijeme, red 1: sati", "Prazno: Spremi ostavlja polje prazno.", "Zadano (cijela tablica)"]:
+                out.append(f"{w}px: the bar over an emptied cell says {bar}")
+            pg.click("#cbSave")
+            try:
+                pg.wait_for_function("""() => { const s = document.querySelector('#kontakt table[data-rows] [data-index="0"][data-part="1"]');
+                  return s && s.textContent === '' && document.getElementById('copyBar').hidden; }""", timeout=5000)
+            except PlaywrightTimeout:
+                out.append(f"{w}px: the emptied cell did not save as an empty cell")
+            if stored() != [[d[0][0], ""], d[2], ["dan", "sati"]] or pg.evaluate(cells)[0][1][3] != "":
+                out.append(f"{w}px: after emptying a cell the table is {pg.evaluate(cells)}, stored {stored()}")
+            out += [f"{w}px edit mode, changed: {p}" for p in pg.evaluate(EDIT_HOURS)]
+            pg.click("#copyToggle")                                       # Gotovo: the ✕s' column goes
+            if pg.evaluate("[...document.querySelectorAll('#kontakt td.ed-xc')].some(td => getComputedStyle(td).display !== 'none')"):
+                out.append(f"{w}px: out of edit mode the ✕s' column still shows")
+            visitor = TestClient(app).get("/").text.split('id="kontakt"')[1].split("</table>")[0]
+            if f'<tr><td class="d"><span class="t">{d[0][0]}</span></td><td></td></tr>' not in visitor or visitor.count("<tr>") != 3:
+                out.append(f"{w}px: a visitor's table is not the edited one with its empty cell")
+            db.reset_copy(HOURS)
+            ctx.browser.close()
+        return [f"[hours rows] {p}" for p in out + [f"js: {e}" for e in errs]]
+
+    def hours_edit(pg):
+        """The hours table in edit mode with the walk's texts (fill(): twelve
+        rows of 300-character cells): EDIT_HOURS, then Gotovo."""
+        pg.click("#copyToggle")
+        out = pg.evaluate(EDIT_HOURS)
+        pg.click("#copyToggle")
+        return out
+
     ROW = "document.querySelector('#aktualno')"
     STATE = f"() => [{ROW}.scrollLeft, [...document.querySelectorAll('#aktualno + .dots button')].map(d => d.getAttribute('aria-current')).join()]"
     IN_VIEW = f"() => window.scrollTo({{top: scrollY + {ROW}.getBoundingClientRect().top - 60, behavior: 'instant'}})"
@@ -1684,7 +2071,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         ctx.browser.close()
         return [f"[install banner 390px] {p}" for p in out]
 
-    def walk(pw, email, widths, label, strict=True, lines=False, switch=(), auto=(), photos=(), adds=(), one_line=False):
+    def walk(pw, email, widths, label, strict=True, lines=False, switch=(), auto=(), photos=(), adds=(), one_line=False,
+             hours=()):
         problems = []
         for w in widths:
             phone = w < 600
@@ -1708,15 +2096,21 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                     problems += [f"{where} {p}" for p in advance(pg, phone)]
                 if not all(pg.locator(f"{sec} .period").is_visible() for sec in ("#usluge", "#dvorana")):
                     problems.append(f"{where} no Mjesečno / Godišnje switch under each row"); continue
-                problems += [f"{where} on load: {p}" for p in pg.evaluate(PERIOD, "year")]    # yearly first
-                # either switch flips both sections: each pressed both ways,
-                # the same checks after every press
-                for sec, period in (("#usluge", "month"), ("#dvorana", "year"), ("#dvorana", "month"), ("#usluge", "year")):
+                problems += [f"{where} on load: {p}" for p in pg.evaluate(PERIOD, ["year", "month"])]   # the tiers yearly, the gym monthly
+                # each switch flips its own section only: each pressed both
+                # ways, the same checks after every press. The tiers'
+                # Mjesečno with the gym on Godišnje, and the gym's Mjesečno
+                # with the tiers on Godišnje: a press that reached the other
+                # section would show. The last press leaves both as they loaded.
+                for sec, period, now in (("#dvorana", "year", ["year", "year"]), ("#usluge", "month", ["month", "year"]),
+                                         ("#usluge", "year", ["year", "year"]), ("#dvorana", "month", ["year", "month"])):
                     pg.click(f'{sec} .period button[data-period="{period}"]')
                     did = f"{where} {sec} {period}:"
-                    problems += [f"{did} {p}" for p in pg.evaluate(PERIOD, period)]
+                    problems += [f"{did} {p}" for p in pg.evaluate(PERIOD, now)]
                     problems += [f"{did} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
                     problems += [f"{did} {p}" for p in pg.evaluate(LANDING, [w, strict])]
+                if w in hours:                              # the editor's hours table in edit mode, long cells
+                    problems += [f"{where} hours: {p}" for p in hours_edit(pg)]
                 if w in photos:                             # the editor's photo pills, on a phone
                     problems += [f"{where} photo: {p}" for p in photo_edit(pg)]
                 if w in switch:                             # the editor's switch, on a phone and a wide screen
@@ -1731,18 +2125,19 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         photo_on()                                    # the default texts, the first announcement over a photo:
         problems = walk(pw, None, (900, 1280), "defaults", one_line=True)   # a plain one is one line on a wide screen
         problems += gym_rows(pw)                      # the gym's cards added, hidden and deleted (the default texts)
-        fill(words)                                   # long texts: 300 characters, lists of 12
+        problems += hours_rows(pw)                    # the hours' rows removed, added and emptied (the default rows)
+        fill(words)                                   # long texts: 300 characters, lists of 12, the hours 12 rows
         problems += walk(pw, None, (360, 390, 900, 1280), "words", auto=(390, 1280))
         problems += still(pw)                         # under reduced motion: never by themselves
         problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280), photos=(390,),
-                         adds=(390, 1280))
+                         adds=(390, 1280), hours=(390,))
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")
         problems += banner(pw)                        # the install banner's week between asks
         db.set_announcement_field(one, "body", LINES, None)   # line breaks: the first announcement's text in three lines
         problems += walk(pw, None, (390, 1280), "lines", lines=True)
         problems += walk(pw, "trener@test.local", (390,), "lines", lines=True)
         fill(lambda n: "W" * n)                       # one unbreakable word: must wrap, never widen
-        problems += walk(pw, "trener@test.local", (360, 1280), "one-word", strict=False)
+        problems += walk(pw, "trener@test.local", (360, 1280), "one-word", strict=False, hours=(360,))
     print("\n".join(problems))
     assert not problems, f"{len(problems)} layout problems, listed above"
 
