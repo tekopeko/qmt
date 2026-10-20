@@ -494,14 +494,19 @@ def test_the_trainer_records_the_online_tier_and_the_flash_names_it():
     assert loc == f"/clanarine?ok=Online trening (QMove ELITE): uplata evidentirana — sljedeća {m.next_payment:{D}}"
     db.set_copy("offer.online3.title", "QMove ELITE+", None)            # the card renamed: the tier with it
     assert uplata(plan="online", tier="elite").startswith("/clanarine?ok=Online trening (QMove ELITE+): uplata evidentirana — ")
-    assert "(QMove START)" in uplata(plan="online") and db.online_tier(uid) == "start"   # none sent
+    # none sent: the row's tier is kept (a Stripe renewal names none); a new row with none sent is START
+    assert "(QMove ELITE+)" in uplata(plan="online") and db.online_tier(uid) == "elite"
+    fresh = make_user("sara@test.local")
+    assert "(QMove START)" in unquote(t.post(f"/clanarine/{fresh}/uplata", data={"plan": "online"},
+                                              follow_redirects=False).headers["location"])
+    assert db.online_tier(fresh) == "start"
     loc = uplata(plan="grupni", tier="pro", sessions="12")              # grupni: the tier ignored
     g = {x.plan: x for x in db.memberships_for(uid)}["grupni"]
     assert g.tier is None and g.sessions_per_cycle == 12
     assert loc.startswith("/clanarine?ok=Grupni trening (12 treninga/mj): uplata evidentirana — ") and "QMove" not in loc
     r = client_for("ivan@test.local").post(f"/clanarine/{uid}/uplata", data={"plan": "online", "tier": "pro"},
                                            follow_redirects=False)
-    assert r.status_code == 403 and db.online_tier(uid) == "start"
+    assert r.status_code == 403 and db.online_tier(uid) == "elite"      # a client changes nothing
 
 
 def tier_cards(page: str) -> dict[str, str]:
