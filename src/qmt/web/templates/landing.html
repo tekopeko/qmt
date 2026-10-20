@@ -461,6 +461,38 @@
   .socials svg { width: 20px; height: 20px; fill: currentColor; display: block; }
 
   footer { padding: 26px clamp(16px, 4vw, 40px) 40px; color: var(--muted); font-size: .84rem; text-align: center; }
+  /* ---- extra lines (20.10.2026, the owner: "Can we also create a
+     functionality to add text cells?"): plain lines of text the editor
+     adds with "+ Dodaj tekst" (each with its ✕) under every card's
+     bullets, under the hours and the contact rows, and under the
+     headline: c.lines (_copy.html), the bullets' own markup, the <ul>
+     classed .lines. No dot and no gutter: the body text at .95rem, 1.5
+     lines, 6px apart, in --text; in the hero the old lead's look (muted,
+     1.05rem, 60ch at most, centred as the headline is, 16px under it, as
+     .hero p.lead sat until 16.10.2026; the announcements keep their own
+     distance under the lines, as under the headline); in the contact
+     block the hours' muted colour. A visitor gets no <ul> for an empty
+     list, so nothing changes until a line exists; the editor's empty one
+     takes no room, in edit mode or out of it ("+ Dodaj tekst" stands for
+     it there). ---- */
+  ul.lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px;
+             font: 400 .95rem/1.5 var(--font-body); color: var(--text); }
+  ul.lines:not(:has(> li)) { display: none; }
+  /* the list's font and colour, over .offer li's, and no dot (.offer li::before) */
+  ul.lines li { display: flex; align-items: flex-start; gap: 12px; font: inherit; color: inherit; }
+  ul.lines li::before { content: none; }
+  .offer ul.lines { margin-top: 14px; gap: 6px; }
+  .hero ul.lines { max-width: 60ch; margin: 16px auto 0; font-size: 1.05rem; color: var(--muted); }
+  .hero ul.lines li { justify-content: center; }
+  .info ul.lines { margin-top: 10px; color: var(--muted); }
+  /* edit mode: "+ Dodaj tekst" on a line of its own (under the hours'
+     "+ Dodaj red" too), centred in the hero; a line's ✕ beside its text in
+     the hero, centred with it, and inside the contact block's column (its
+     usual 6px past the line would reach past the column) */
+  body.editing ul.lines + .ed-add:not([hidden]) { display: flex; width: fit-content; }
+  body.editing .hero ul.lines + .ed-add:not([hidden]) { margin-inline: auto; }
+  body.editing .hero ul.lines .ed-x { margin-left: 0; }
+  body.editing .info ul.lines .ed-x { margin-right: 0; }
   /* An emptied text stays empty since 20.10.2026, and the shape around it
      goes with it: the hero's kicker pill, a chip on the photo, an
      announcement's chip, its when line (and its dot), its text (the room
@@ -483,7 +515,7 @@
      text (span.t, pre-line) wraps now, where .tag alone would not. */
   .hero h1, .hero .kicker, .stage .copy, .stage .tags, .sec-kicker, section.band h2, .offer h3, .offer .lead,
   .offer li, .offer .addon, .offer .price, .offer .price-note, .event h2, .event .tag, .event .when, .event .text,
-  .event .act, .info h3, .info td, footer { overflow-wrap: anywhere; }
+  .event .act, .info h3, .info td, ul.lines li, footer { overflow-wrap: anywhere; }
 </style>
 {% endblock %}
 {% block content %}
@@ -491,7 +523,7 @@
 <section class="hero">
   <div class="hero-inner">
     <span class="kicker">{{ c.t("hero.kicker") }}</span>
-    <h1>{{ c.t("hero.h1a") }} <span class="red">{{ c.t("hero.h1b") }}</span></h1>
+    <h1>{{ c.t("hero.h1a") }} <span class="red">{{ c.t("hero.h1b") }}</span></h1>{{ c.lines("hero.extra") }}{# the headline's extra lines (20.10.2026), on its line: with none, not a byte more #}
 
     {# Aktualno: the owner's announcements for the month, the first thing on
        the page since 16.10.2026 (his call): cards under the headline, above
@@ -611,7 +643,9 @@
         {%- if card | attr(unit) or can_edit_copy %}<span>{{ gym_field(slot, card, n, unit) }}</span>{% endif %}</div>
     {%- endmacro %}
     {# keys: the plans a card stands for, the first one prices it. slot: the
-       card's copy prefix (slot.title / .lead / .points in src/qmt/copy.py).
+       card's copy prefix (slot.title / .lead / .points in src/qmt/copy.py;
+       .extra its lines under the bullets, plain lines the editor adds with
+       "+ Dodaj tekst", none until he does: c.lines, 20.10.2026).
        addon_at: where its MojiMakrosi add-on is sold ("online"), the amount
        the addon.<addon_at> slot and the words around it the card's own,
        slot.addon before it and slot.addon_unit after it (20.10.2026: each
@@ -638,7 +672,7 @@
        card: a gym card to print instead of slots (a row of gym_cards,
        20.10.2026; #dvorana below), n its place among them. Its texts are
        its row's, under virtual keys: slot is dvorana.<id>, and each field
-       slot.title / .lead / .points / .price / .unit / .year_price /
+       slot.title / .lead / .points / .extra / .price / .unit / .year_price /
        .year_unit. keys are its plans; with none (real false) its own price
        is its monthly one and its button "Javi nam se →" for everyone: there
        is nothing in the app to buy for it. An editor's card carries its
@@ -658,7 +692,8 @@
           <form method="post" action="/dvorana/{{ card.id }}/obrisi" class="ed-gym-x"><button type="submit" aria-label="Obriši karticu">Obriši karticu</button></form></div>{% endif %}
         <h3>{% if card is not none %}{{ gym_field(slot, card, n, "title") }}{% else %}{{ c.t(slot ~ ".title") }}{% endif %}</h3>
         <p class="lead">{% if card is not none %}{{ gym_field(slot, card, n, "lead") }}{% else %}{{ c.t(slot ~ ".lead") }}{% endif %}</p>
-        {% if card is not none %}{{ c.field_points(slot ~ ".points", card.point_items, "Kartica " ~ n ~ ": " ~ GYM["points"].label, GYM["points"]) }}{% else %}{{ c.points(slot ~ ".points") }}{% endif %}
+        {% if card is not none %}{{ c.field_points(slot ~ ".points", card.point_items, "Kartica " ~ n ~ ": " ~ GYM["points"].label, GYM["points"]) }}{{ c.field_lines(slot ~ ".extra", card.extra_items, "Kartica " ~ n ~ ": " ~ GYM["extra"].label, GYM["extra"]) }}
+        {%- else %}{{ c.points(slot ~ ".points") }}{{ c.lines(slot ~ ".extra") }}{% endif %}
         <div class="foot">
           {% if addon_at %}{% set addon_on = copy_flag(slot ~ ".addon_on", copy_texts) %}<p class="addon{% if not addon_on %} is-off{% endif %}"{% if can_edit_copy %} data-flag="{{ slot }}.addon_on"{% elif not addon_on %} aria-hidden="true"{% endif %}>
             {%- if can_edit_copy %}<button type="button" class="ed-flag" data-copy="{{ slot }}.addon_on" data-label="{{ COPY[slot ~ '.addon_on'].label }}"
@@ -819,8 +854,11 @@
         <div>
           <h3>{{ c.t("info.hours.h") }}</h3>
           {# rows since 20.10.2026 (copy.RowsSlot): the gym owner empties a
-             cell, removes a row with its ✕, adds one with "+ Dodaj red" #}
-          {{ c.rows("info.hours.rows") }}
+             cell, removes a row with its ✕, adds one with "+ Dodaj red";
+             under the table his extra lines (c.lines, the same day), none
+             until he adds one with "+ Dodaj tekst", as under the contact
+             rows #}
+          {{ c.rows("info.hours.rows") }}{{ c.lines("info.hours.extra") }}
         </div>
         <div>
           <h3>{{ c.t("info.where.h") }}</h3>
@@ -840,7 +878,7 @@
           <a class="crow" href="mailto:qualitymovementtraining@gmail.com">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             qualitymovementtraining@gmail.com
-          </a>
+          </a>{{ c.lines("info.contact.extra") }}
           <div class="socials" aria-label="Društvene mreže">
             <a href="https://www.instagram.com/quality_movement_training/" target="_blank" rel="noopener" aria-label="Instagram" title="Instagram">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C8.74 0 8.333.015 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.012 8.333 0 8.74 0 12s.015 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.015 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.015-3.667-.072-4.947c-.06-1.277-.262-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.012 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zm0 3.678c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z"/></svg>

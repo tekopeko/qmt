@@ -12,7 +12,9 @@ rows (a RowsSlot since 20.10.2026: cells, rows removed and added, and the
 migration that folded the six old slots in, with the QMove tiers' add-on
 words, one slot each since the same day), and an emptied text, which stays
 empty since 20.10.2026 but for a number, with each tier's MojiMakrosi line
-and its switch.
+and its switch, and the extra lines (the same day: plain lines added with
+"+ Dodaj tekst" under every card's bullets, in the contact block and under
+the headline, and the migration that gave a gym card its own).
 
 The browser half is the net under the texts. Their design limits were lifted
 on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
@@ -51,8 +53,11 @@ os.environ["OWNER_EMAIL"] = "trener@test.local"
 
 import httpx
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from fastapi.testclient import TestClient
 from PIL import Image
+from sqlalchemy import inspect as sa_inspect, text as sa_text
 
 from qmt import auth, config, copy, db, storage
 from qmt.models import PLAN_TYPES, Base, SiteCopy, User
@@ -726,7 +731,7 @@ def gym_texts(card_id: int) -> dict:
     """A gym card's row, spelled as copy.GYM_CARD_EXAMPLES spells one."""
     g = db.gym_card(card_id)
     return {**{column: getattr(g, column) for column in copy.GYM_CARD_COLUMNS.values()},
-            "points": tuple(g.point_items), "plans": g.plans}
+            "points": tuple(g.point_items), "extra": tuple(g.extra_items), "plans": g.plans}
 
 
 def test_a_gym_cards_texts_are_edited_in_place_through_their_virtual_keys():
@@ -1065,7 +1070,9 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
         page = t.get(path).text
         assert 'id="copyToggle"' in page, path
         for key, slot in copy.SLOTS.items():
-            if f'data-copy="{key}"' in page:
+            # an empty list (the extra lines' default) has no item to carry
+            # data-copy: the editor's <ul data-list> is what is on the page
+            if f'data-copy="{key}"' in page or f'data-list="{key}"' in page:
                 seen.setdefault(key, []).append(path)
                 if isinstance(slot, copy.ListSlot):     # one list, an editable span per item
                     assert page.count(f'data-list="{key}"') == 1, key
@@ -1416,17 +1423,168 @@ def test_a_tiers_mojimakrosi_line_switches_off_and_keeps_its_room():
     assert f'<p class="addon">{words}' in tier_cards(TestClient(app).get("/").text)[2]
 
 
+# ---------- the extra lines (20.10.2026) ----------
+#
+# The owner: "Can we also create a functionality to add text cells?", and
+# of the proposal he approved ("+ Dodaj tekst" under every card's bullets,
+# in the contact block and under the headline): "It doesnt change anything
+# with the current design right? Only if someone actually adds the text
+# does it change, right?" A list whose default is empty, printed as plain
+# lines (c.lines: the bullets' markup, the <ul> classed .lines).
+
+EXTRA = {"hero.extra": "Naslovnica: dodatni tekst", "offer.online.extra": "Online 1: dodatni tekst",
+         "offer.online2.extra": "Online 2: dodatni tekst", "offer.online3.extra": "Online 3: dodatni tekst",
+         "info.hours.extra": "Radno vrijeme: dodatni tekst", "info.contact.extra": "Kontakt: dodatni tekst"}
+ADD_LINE = '<button type="button" class="act ed-add">+ Dodaj tekst</button>'
+
+
+def test_the_extra_lines_are_lists_that_start_empty():
+    """Six list slots whose default is empty, at the places the owner
+    approved: under the headline, under each QMove tier's bullets, under
+    the hours and under the contact rows; and a gym card's own, its row's
+    extra column (copy.GYM_CARD_SLOTS["extra"]), which a new card and the
+    seed's two start without. Each has every list's caps: 12 lines of 2000
+    characters."""
+    assert {key: slot for key, slot in copy.SLOTS.items() if key.endswith(".extra")} == {
+        key: copy.ListSlot((), 12, 2000, label) for key, label in EXTRA.items()}
+    assert copy.GYM_CARD_SLOTS["extra"] == copy.ListSlot((), 12, 2000, "dodatni tekst")
+    assert copy.GYM_CARD_BLANK["extra"] == () and [e["extra"] for e in copy.GYM_CARD_EXAMPLES] == [(), ()]
+    one, _ = gym_examples()
+    for card_id in (one, db.add_gym_card(None).id):                         # the seed's and a new one
+        g = db.gym_card(card_id)
+        assert (g.extra, g.extra_items, g.list_items("extra")) == ("[]", [], [])
+    with pytest.raises(ValueError):                                         # a list's setter takes a list's column only
+        db.set_gym_card_list(one, "title", ["x"], None)
+
+
+def test_with_no_extra_line_a_visitor_gets_none_and_the_editor_an_empty_list():
+    """Until a line exists a visitor's landing carries no trace of the
+    extra lines: no <ul class="lines">, no "+ Dodaj tekst", no list's key
+    (a guest, a member). The editor gets each list in its place, empty,
+    and its "+ Dodaj tekst" after it; outside edit mode neither takes
+    room: the button is an .ed-add, which base.html hides outside
+    body.editing, as the bullets' "+ Dodaj stavku", and an empty ul.lines
+    is not displayed (landing.html). The browser walk measures that."""
+    make_user("ivan@test.local", plans=("online",)); make_user("trener@test.local", is_trainer=True)
+    one, two = gym_examples()
+    for c in (TestClient(app), client_for("ivan@test.local")):
+        page = c.get("/").text
+        assert 'class="lines"' not in page and "+ Dodaj tekst</button>" not in page and '.extra"' not in page
+    page = client_for("trener@test.local").get("/").text
+    lists = {**EXTRA, f"dvorana.{one}.extra": "Kartica 1: dodatni tekst", f"dvorana.{two}.extra": "Kartica 2: dodatni tekst"}
+    for key, label in lists.items():                                        # empty, the button after it
+        assert re.search(rf'<ul class="lines" data-list="{re.escape(key)}" data-max="2000" data-max-items="12" '
+                         rf'data-label="{re.escape(label)}">\s*</ul>\s*{re.escape(ADD_LINE)}', page), key
+    assert page.count(ADD_LINE) == len(lists) == 8
+    assert ".ed-x, .ed-add { display: none; }" in page                      # no button outside edit mode (base.html)
+    assert "ul.lines:not(:has(> li)) { display: none; }" in page            # and no room for an empty list (landing.html)
+
+
+def test_an_extra_line_is_a_list_item_and_shows_in_its_place():
+    """POST /copy/{key} takes an extra line as a list item: index n
+    appends, an index replaces, an empty text removes, at most 12 lines of
+    2000 characters; Zadano (reset=1) empties the list, its default (a
+    slot's row goes, a gym card's column is "[]" again). Everyone reads a
+    line in its place, in a <ul class="lines">: under the headline, before
+    the announcements; under a tier's bullets and a gym card's, above the
+    card's foot; under the hours' table; under the contact rows, before
+    the social icons. The editor's is the list's markup, each line an .ed
+    with its ✕."""
+    make_user("ivan@test.local"); uid = make_user("trener@test.local", is_trainer=True)
+    examples(); one, _ = gym_examples()                                     # the announcements and the gym's cards
+    gym = f"dvorana.{one}.extra"
+    assert TestClient(app).post("/copy/hero.extra", data={"text": "x", "index": "0"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{gym}", data={"text": "x", "index": "0"}).status_code == 403
+
+    t = client_for("trener@test.local")
+    keys = ("offer.online2.extra", "hero.extra", "info.hours.extra", "info.contact.extra", gym)
+    for key in keys:
+        r = t.post(f"/copy/{key}", data={"text": f"  Prvi   red: {key} ", "index": "0"})   # n appends, cleaned
+        assert r.status_code == 200 and r.json() == {"ok": True, "items": [f"Prvi red: {key}"], "default": False}, key
+        r = t.post(f"/copy/{key}", data={"text": f"Drugi red: {key}", "index": "1"})
+        assert r.json()["items"] == [f"Prvi red: {key}", f"Drugi red: {key}"], key
+    assert json.loads(db.copy_texts()["hero.extra"]) == ["Prvi red: hero.extra", "Drugi red: hero.extra"]   # one row
+    g = db.gym_card(one)                                                    # the card's own column
+    assert json.loads(g.extra) == [f"Prvi red: {gym}", f"Drugi red: {gym}"] and g.updated_by == uid
+    assert g.point_items == list(copy.GYM_CARD_EXAMPLES[0]["points"])      # its bullets untouched
+
+    def after(where: str, mark: str, key: str) -> int:
+        """Where key's two lines start, in order, in a <ul class="lines"> straight after mark."""
+        at = where.index(f'{mark}<ul class="lines">')
+        block = where[at:where.index("</ul>", at + len(mark))]
+        assert block.index(f'<li><span class="t">Prvi red: {key}</span></li>') < block.index(f"Drugi red: {key}"), key
+        return at
+
+    page = TestClient(app).get("/").text                                    # a visitor's landing
+    hero = page.split('<section class="hero">')[1]
+    assert after(hero, "</h1>", "hero.extra") < hero.index('id="aktualno"')   # under the headline
+    start, pro, elite = tier_cards(page)
+    assert after(pro, "</ul>", "offer.online2.extra") < pro.index('<div class="foot">')   # under PRO's bullets
+    assert 'class="lines"' not in start + elite                             # the other tiers: none
+    dvorana = page.split('id="dvorana"')[1].split('class="card offer')[1]
+    assert after(dvorana, "</ul>", gym) < dvorana.index('<div class="foot">')   # under a gym card's bullets
+    kontakt = page.split('id="kontakt"')[1]
+    after(kontakt, "</table>", "info.hours.extra")                          # under the hours
+    assert after(kontakt, "</a>", "info.contact.extra") < kontakt.index('class="socials"')   # under the contact rows
+    editor = tier_cards(t.get("/").text)[1]
+    assert ('<ul class="lines" data-list="offer.online2.extra" data-max="2000" data-max-items="12" '
+            'data-label="Online 2: dodatni tekst">') in editor
+    assert ('<li><span class="ed t" data-copy="offer.online2.extra" data-index="1" data-max="2000" '
+            'data-label="Online 2: dodatni tekst">Drugi red: offer.online2.extra</span><button type="button" '
+            'class="ed-x" aria-label="Ukloni stavku 2">✕</button></li>') in editor
+
+    r = t.post("/copy/hero.extra", data={"text": " \n ", "index": "0"})     # an empty text removes the line
+    assert r.json() == {"ok": True, "items": ["Drugi red: hero.extra"], "default": False}
+    r = t.post(f"/copy/{gym}", data={"text": "Prvi, iznova\ns prijelomom", "index": "0"})   # an index replaces
+    assert r.json()["items"] == ["Prvi, iznova\ns prijelomom", f"Drugi red: {gym}"]
+    for n in range(2, 12):                                                  # up to twelve...
+        assert t.post(f"/copy/{gym}", data={"text": f"Red {n}", "index": str(n)}).status_code == 200
+    r = t.post(f"/copy/{gym}", data={"text": "Trinaesti", "index": "12"})   # ...and not one more
+    assert r.status_code == 400 and r.json()["error"] == "Najviše 12 stavki." and len(db.gym_card(one).extra_items) == 12
+    r = t.post("/copy/info.contact.extra", data={"text": "x" * 2001, "index": "0"})
+    assert r.status_code == 400 and r.json()["error"] == "Najviše 2000 znakova — ovo ih ima 2001."
+    for key in keys:                                                        # Zadano: the default, no line at all
+        r = t.post(f"/copy/{key}", data={"text": "ignoriran", "reset": "1"})
+        assert r.json() == {"ok": True, "items": [], "default": True}, key
+    assert db.copy_texts() == {} and db.gym_card(one).extra == "[]"
+    assert 'class="lines"' not in TestClient(app).get("/").text             # the page as it was
+
+
+def test_the_migration_gives_the_gym_cards_their_extra_lines_and_back():
+    """c138157ff6bb adds gym_cards.extra: "[]" for every card already there
+    (no lines, the page as it was), and for a row written without it. Run
+    for real on qmt_test, as a database from before the revision is: the
+    rows there, the column not. Downgrade drops the column."""
+    mig = _migration("c138157ff6bb_gym_cards_extra.py")
+    assert (mig.revision, mig.down_revision) == ("c138157ff6bb", "1a7c144b582a")
+    gym_examples()
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("ALTER TABLE gym_cards DROP COLUMN extra"))
+    with db.engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        mig.upgrade()
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("INSERT INTO gym_cards (position) VALUES (3)"))    # a row written without it
+        rows = [tuple(r) for r in conn.execute(sa_text("SELECT position, extra FROM gym_cards ORDER BY position"))]
+    assert rows == [(1, "[]"), (2, "[]"), (3, "[]")]
+    assert [g.extra_items for g in db.gym_cards(all=True)] == [[], [], []]
+    assert 'class="lines"' not in TestClient(app).get("/").text             # the page reads them: no line
+    with db.engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        mig.downgrade()
+    assert "extra" not in {c["name"] for c in sa_inspect(db.engine).get_columns("gym_cards")}
+
+
 # ---------- the layout, measured in a browser ----------
 #
 # No slot has a design limit since 16.10.2026 (src/qmt/copy.py): the copy
 # comes first, and a design pass fits the boxes to it once it is final. So
 # this proves no design at a limit; it proves the net under the texts. Long
-# texts (300 characters, lists of 12 items of 60, the hours' table 12 rows of
-# 300-character cells, its ✕s too in edit mode) and line breaks may make a
-# box tall, but nothing may widen a page or leave the topbar's pill, an
-# editable span never changes a font, nothing is cut by a box that hides its
-# overflow, and the cards' prices stay level across each row. The first
-# announcement sits on a photo all along: a long text makes it taller too.
+# texts (300 characters, lists of 12 items of 60, the extra lines 12 of 300
+# characters, the hours' table 12 rows of 300-character cells, its ✕s too in
+# edit mode) and line breaks may make a box tall, but nothing may widen a
+# page or leave the topbar's pill, an editable span never changes a font,
+# nothing is cut by a box that hides its overflow, and the cards' prices
+# stay level across each row. The first announcement sits on a photo all
+# along: a long text makes it taller too.
 # A few optional texts are empty in the long walks (fill()): an emptied
 # text stays empty since 20.10.2026, and its box goes with it.
 
@@ -1799,6 +1957,43 @@ EVENT_TEXT = r"""() => {
   return n < 2.5 ? [`the three-line announcement text shows as ${n.toFixed(1)} lines`] : [];
 }"""
 
+# The extra lines in their places (extra_lines, the default texts, one line
+# under PRO's bullets and one under the headline). The hero's: 16px under
+# the headline (the old lead's margin), centred as it is, in the kicker's
+# muted colour, above the announcements. PRO's: 14px under its bullets (a
+# list's margin), above the card's foot, no dot and no gutter (its text
+# where the bullets' list starts). Every tier's shown price under its
+# lines, and from 900px the three prices' tops level.
+PLACED = r"""([w, proText, heroText]) => {
+  const vis = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const box = el => el.getBoundingClientRect(), out = [];
+  const said = ul => ul ? [...ul.querySelectorAll('span.t')].map(s => s.textContent).join(' | ') : 'none';   // not the editor's ✕
+  const h1 = document.querySelector('.hero h1'), hl = document.querySelector('.hero ul.lines'), ev = document.querySelector('#aktualno .event');
+  if (!vis(hl) || said(hl) !== heroText) out.push(`the hero's lines: ${said(hl)}`);
+  else {
+    const l = box(hl), t = box(hl.querySelector('span.t')), h = box(h1);
+    if (Math.abs(l.top - h.bottom - 16) > 1) out.push(`the hero's line is ${l.top - h.bottom}px under the headline, not 16`);
+    if (l.bottom > box(ev).top - 1) out.push(`the hero's line reaches the announcements: ${l.bottom}, ${box(ev).top}`);
+    if (Math.abs((t.left + t.right) / 2 - (h.left + h.right) / 2) > 1) out.push("the hero's line is not centred as the headline is");
+    if (getComputedStyle(hl).color !== getComputedStyle(document.querySelector('.hero .kicker')).color) out.push("the hero's line is not muted");
+  }
+  const cards = [...document.querySelectorAll('#usluge .offer')], price = c => [...c.querySelectorAll('.price')].find(vis);
+  const pro = cards[1], lines = pro.querySelector('ul.lines');
+  if (!vis(lines) || said(lines) !== proText) out.push(`PRO's lines: ${said(lines)}`);
+  else {
+    const bullets = box(pro.querySelector('ul:not(.lines)')), l = box(lines), li = lines.querySelector('li');
+    if (Math.abs(l.top - bullets.bottom - 14) > 1) out.push(`PRO's line is ${l.top - bullets.bottom}px under its bullets, not 14`);
+    if (l.bottom > box(pro.querySelector('.foot')).top + .5) out.push("PRO's line reaches its foot");
+    if (getComputedStyle(li, '::before').content !== 'none') out.push("PRO's line has a dot");
+    if (Math.abs(box(li.querySelector('span.t')).left - bullets.left) > 1) out.push("PRO's line has a gutter");
+  }
+  cards.forEach((c, i) => { const l = c.querySelector('ul.lines');
+    if (vis(l) && box(price(c)).top < box(l).bottom) out.push(`tier ${i + 1}'s price overlaps its lines`); });
+  const tops = cards.map(c => box(price(c)).top);
+  if (w >= 900 && Math.max(...tops) - Math.min(...tops) > 1) out.push(`the tiers' prices are not level: ${tops.join(', ')}`);
+  return out;
+}"""
+
 
 def test_layout_holds_with_long_texts_and_line_breaks(server):
     pytest.importorskip("playwright")
@@ -1812,8 +2007,9 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         for key, slot in copy.SLOTS.items():
             if isinstance(slot, (copy.FlagSlot, copy.ImageSlot)):   # a switch and a photo, not texts
                 continue
-            if isinstance(slot, copy.ListSlot):         # every list 12 items long, each item 60 characters
-                db.set_copy(key, copy.dump_items([make(min(slot.max_chars, ITEM))] * min(slot.max_items, ITEMS)), None)
+            if isinstance(slot, copy.ListSlot):         # every list 12 items long: a bullet 60 characters,
+                n = LONG if key.endswith(".extra") else ITEM   # an extra line 300 (c.lines: the hero, the cards, the contact)
+                db.set_copy(key, copy.dump_items([make(min(slot.max_chars, n))] * min(slot.max_items, ITEMS)), None)
             elif isinstance(slot, copy.RowsSlot):       # every table 12 rows long, each cell 300 characters
                 db.set_copy(key, copy.dump_rows([[make(min(slot.max_chars, LONG))] * 2] * min(slot.max_rows, ITEMS)), None)
             else:                                       # every text 300 characters
@@ -1821,10 +2017,11 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         for a in db.announcements(all=True):            # and every text of every announcement; they stay
             for column in copy.ANNOUNCEMENT_BLANK:      # on (both show), the photo below
                 db.set_announcement_field(a.id, column, make(LONG), None)
-        for g in db.gym_cards(all=True):                # every text of every gym card, its bullets 12 of 60
-            for column in copy.GYM_CARD_COLUMNS.values():
+        for g in db.gym_cards(all=True):                # every text of every gym card, its bullets 12 of 60,
+            for column in copy.GYM_CARD_COLUMNS.values():   # its extra lines 12 of 300
                 db.set_gym_card_field(g.id, column, make(LONG), None)
-            db.set_gym_card_points(g.id, [make(ITEM)] * ITEMS, None)
+            db.set_gym_card_list(g.id, "points", [make(ITEM)] * ITEMS, None)
+            db.set_gym_card_list(g.id, "extra", [make(LONG)] * ITEMS, None)
         # and an empty optional text here and there, which stays empty since
         # 20.10.2026 and takes its box along, on the landing alone: the word
         # before Individualno's first other price, PRO's add-on words, the
@@ -2323,6 +2520,94 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         db.reset_copy(key)
         return [f"[add-on off] {p}" for p in out + [f"js: {e}" for e in errs]]
 
+    def extra_lines(pw):
+        """The extra lines in a browser, the editor's way (20.10.2026), with
+        the default texts, at 1280px and at 390px on a touch screen. With
+        none yet the trainer's page out of edit mode has no box for them,
+        no empty list's and no "+ Dodaj tekst", and a guest's distance from
+        the headline to the announcements. In edit mode "+ Dodaj tekst" (a
+        32px pill) under PRO's bullets opens a new line, the bar naming it
+        ("Online 2: dodatni tekst 1"): typed and saved (Spremi), it is
+        stored; the hero's adds one the same way. Out of edit mode
+        (reloaded), and for a guest, both are in their places (PLACED: the
+        hero's between the headline and the announcements, PRO's under its
+        bullets, every tier's price under its lines, from 900px the three
+        level), and nothing overflows (MEASURE, LANDING). A line's ✕ asks first
+        ("Ukloni?", the line still stored); its second tap removes it, the
+        list is stored empty and takes no room, and "+ Dodaj tekst" stays.
+        No page errors, nothing in the console. Both lists are emptied
+        again for the walks after this one."""
+        out, errs, pro, hero = [], [], "offer.online2.extra", "hero.extra"
+        said = {pro: "Uz PRO: tjedna provjera napretka s trenerom.", hero: "Novi termini od studenog — javi se na vrijeme."}
+        stored = lambda key: copy.load_items(db.copy_texts().get(key), copy.SLOTS[key])
+        none = """() => [[...document.querySelectorAll('ul.lines, ul.lines + .ed-add')].filter(e => e.getClientRects().length).length,
+          document.querySelectorAll('ul.lines').length,
+          document.querySelector('#aktualno .event').getBoundingClientRect().top - document.querySelector('.hero h1').getBoundingClientRect().bottom]"""
+        for w in (1280, 390):
+            phone, browser = w < 600, pw.chromium.launch()
+
+            def opened(email, w=w, phone=phone):
+                pg = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+                pg.on("pageerror", lambda e: errs.append(f"{w}px: {e}"))
+                pg.on("console", lambda m: m.type == "error" and errs.append(f"{w}px console: {m.text}"))
+                if email:
+                    pg.goto(server + "/login"); pg.fill("main input[name=email]", email)
+                    pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
+                    pg.wait_for_load_state("networkidle")
+                pg.goto(server + "/"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+                return pg
+
+            pg, guest = opened("trener@test.local"), opened(None)
+            mine, theirs = pg.evaluate(none), guest.evaluate(none)
+            if mine[:2] != [0, 8] or abs(mine[2] - theirs[2]) > .5:
+                out.append(f"{w}px: with no line the editor's page (boxes shown, lists, headline to announcement) "
+                           f"is {mine}, a guest's {theirs}")
+            pg.click("#copyToggle")
+            for key in (pro, hero):                                    # + Dodaj tekst, typed, Spremi
+                add = pg.locator(f'ul[data-list="{key}"] + .ed-add')
+                size = add.bounding_box()
+                if not add.is_visible() or not size or size["height"] < 32 or add.text_content() != "+ Dodaj tekst":
+                    out.append(f"{w}px: {key}'s + Dodaj tekst in edit mode: {size}, {add.text_content()!r}")
+                    continue
+                add.click()
+                pg.keyboard.type(said[key])
+                if pg.locator("#copyBar .cb-label").inner_text() != copy.SLOTS[key].label + " 1":
+                    out.append(f"{w}px: the bar over {key}'s new line says {pg.locator('#copyBar .cb-label').inner_text()!r}")
+                pg.click("#cbSave")
+                try:
+                    pg.wait_for_function("""([key, text]) => { const s = document.querySelector(`ul[data-list="${key}"] .ed`);
+                      return !!s && s.textContent === text && !s.hasAttribute('data-fresh') && document.getElementById('copyBar').hidden; }""",
+                                         arg=[key, said[key]], timeout=5000)
+                except PlaywrightTimeout:
+                    out.append(f"{w}px: {key}'s new line did not save")
+                if stored(key) != [said[key]]:
+                    out.append(f"{w}px: {key} stored {stored(key)}")
+            pg.click("#copyToggle")                                    # Gotovo, reloaded: his page is a visitor's
+            for page in (pg, guest):                                   # (a reload: edit mode's stacked rows leave
+                page.reload(); page.wait_for_load_state("networkidle"); page.evaluate("document.fonts.ready")   # a dot lit)
+            for who, page in (("the trainer", pg), ("a guest", guest)):
+                out += [f"{w}px {who}: {p}" for p in page.evaluate(PLACED, [w, said[pro], said[hero]])]
+                out += [f"{w}px {who}: {p}" for p in page.evaluate(MEASURE, True)["problems"]]
+                out += [f"{w}px {who}: {p}" for p in page.evaluate(LANDING, [w, True])]
+            pg.click("#copyToggle")                                    # a line's ✕: two taps
+            x = pg.locator(f'ul[data-list="{pro}"] .ed-x')
+            x.click()
+            if x.text_content() != "Ukloni?" or stored(pro) != [said[pro]]:
+                out.append(f"{w}px: one tap on a line's ✕: {x.text_content()!r}, stored {stored(pro)}")
+            x.click()
+            try:
+                pg.wait_for_function("(key) => !document.querySelector(`ul[data-list=\"${key}\"] li`)", arg=pro, timeout=5000)
+            except PlaywrightTimeout:
+                out.append(f"{w}px: the second tap on a line's ✕ did not remove it")
+            seen = pg.evaluate("""(key) => { const ul = document.querySelector(`ul[data-list="${key}"]`), add = ul.nextElementSibling;
+              return [ul.getClientRects().length, add.getClientRects().length > 0]; }""", pro)
+            if stored(pro) != [] or seen != [0, True]:
+                out.append(f"{w}px: after the ✕ the list is stored {stored(pro)}, (its boxes, + Dodaj tekst shown) {seen}")
+            pg.click("#copyToggle")
+            db.reset_copy(pro); db.reset_copy(hero)
+            browser.close()
+        return [f"[extra lines] {p}" for p in out + [f"js: {e}" for e in errs]]
+
     def hours_edit(pg):
         """The hours table in edit mode with the walk's texts (fill(): twelve
         rows of 300-character cells): EDIT_HOURS, then Gotovo."""
@@ -2460,7 +2745,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         problems += hours_rows(pw)                    # the hours' rows removed, added and emptied (the default rows)
         problems += emptied(pw)                       # an emptied text stays empty, a number does not (the default texts)
         problems += addon_off(pw)                     # ELITE's MojiMakrosi line off: its room kept, the prices level
-        fill(words)                                   # long texts: 300 characters, lists of 12, the hours 12 rows
+        problems += extra_lines(pw)                   # a line added under PRO's bullets and the headline, then removed
+        fill(words)                                   # long texts: 300 characters, lists of 12 (the extra lines 12 of 300), the hours 12 rows
         problems += walk(pw, None, (360, 390, 900, 1280), "words", auto=(390, 1280))
         problems += still(pw)                         # under reduced motion: never by themselves
         problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280), photos=(390,),

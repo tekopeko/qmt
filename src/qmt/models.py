@@ -293,7 +293,9 @@ class GymCard(Base):
     stays empty since 20.10.2026, and Zadano puts its placeholder back
     (copy.GYM_CARD_BLANK). `points`
     is its bullets, a JSON array of strings, as a ListSlot's site_copy row
-    holds them. `plans` is the plans the card stands for, comma-separated
+    holds them, and `extra` its extra lines under them the same way
+    (20.10.2026: plain lines, none until the editor adds one; migration
+    c138157ff6bb). `plans` is the plans the card stands for, comma-separated
     ("grupni", "individualni,poluindividualni,rehabilitacija"), "" for
     none: the first prices the card (its price.<plan>.* slots, the ones
     /moja-clanarina prints), the others are the muted line under that
@@ -312,6 +314,7 @@ class GymCard(Base):
     title: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     lead: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     points: Mapped[str] = mapped_column(Text, server_default=text("'[]'"), default="[]")
+    extra: Mapped[str] = mapped_column(Text, server_default=text("'[]'"), default="[]")
     price: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     unit: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     year_price: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
@@ -331,11 +334,20 @@ class GymCard(Base):
 
     @property
     def point_items(self) -> list[str]:
-        """The bullets: the points column read, a JSON array of strings
+        """The bullets: the points column read (list_items)."""
+        return self.list_items("points")
+
+    @property
+    def extra_items(self) -> list[str]:
+        """The extra lines under the bullets: the extra column read (list_items)."""
+        return self.list_items("extra")
+
+    def list_items(self, column: str) -> list[str]:
+        """A list column read, points or extra: a JSON array of strings
         (copy.dump_items writes it); [] when it holds none, or none that
         can be read."""
         try:
-            data = json.loads(self.points or "[]")
+            data = json.loads(getattr(self, column) or "[]")
         except ValueError:
             return []
         return [x for x in data if isinstance(x, str) and x] if isinstance(data, list) else []

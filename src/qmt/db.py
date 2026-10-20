@@ -277,7 +277,8 @@ def add_gym_card(user_id: int | None, values: dict | None = None) -> GymCard | N
     never pass the cap together nor take one position twice, and the
     landing's plain reads never wait on it."""
     card = dict(copy.GYM_CARD_BLANK if values is None else values)
-    card["points"] = copy.dump_items(list(card["points"]))      # a JSON array, as a list slot's row
+    for column in ("points", "extra"):                          # a JSON array each, as a list slot's row
+        card[column] = copy.dump_items(list(card[column]))
     with session_scope() as s:
         s.execute(sa_text("LOCK TABLE gym_cards IN SHARE ROW EXCLUSIVE MODE"))
         n, last = s.execute(select(func.count(), func.coalesce(func.max(GymCard.position), 0))
@@ -329,18 +330,24 @@ def set_gym_card_field(card_id: int, column: str, text: str, user_id: int | None
     return cleaned
 
 
-def set_gym_card_points(card_id: int, items: list[str], user_id: int | None) -> list[str]:
-    """Set a card's bullets, the whole list: each item cleaned as copy is,
-    the empty ones dropped, stored as a list slot's row is
-    (copy.dump_items). An empty list is a card without bullets. Returns
-    what is stored. ValueError: more than copy.CAP_ITEMS items, or one past
-    copy.CAP; LookupError: no such card."""
+def set_gym_card_list(card_id: int, column: str, items: list[str], user_id: int | None) -> list[str]:
+    """Set one of a card's lists, the whole list: `column` is points (its
+    bullets) or extra (its extra lines under them, 20.10.2026), the
+    fields copy.GYM_CARD_SLOTS edits as lists. Each item cleaned as copy
+    is, the empty ones dropped, stored as a list slot's row is
+    (copy.dump_items). An empty list is a card without bullets, or without
+    extra lines. Returns what is stored. ValueError: not such a column,
+    more than copy.CAP_ITEMS items, or one past copy.CAP; LookupError: no
+    such card."""
+    if not isinstance(copy.GYM_CARD_SLOTS.get(column), copy.ListSlot):
+        raise ValueError(f"not a list of a gym card: {column!r}")
     kept = [t for t in (copy.clean(x) for x in items) if t]
     if len(kept) > copy.CAP_ITEMS or any(len(t) > copy.CAP for t in kept):
         raise ValueError(f"{len(kept)} items, at most {copy.CAP_ITEMS} of {copy.CAP} characters")
     with session_scope() as s:
         g = _gym_card_row(s, card_id)
-        g.points, g.updated_by = copy.dump_items(kept), user_id
+        setattr(g, column, copy.dump_items(kept))
+        g.updated_by = user_id
     return kept
 
 

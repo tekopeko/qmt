@@ -419,21 +419,22 @@ def _copy_save_gym_card(card_id: int, field: str, slot, text: str, index: str, r
     """One change to a gym card's field (dvorana.<id>.<field>), answered as
     copy_save answers for a slot of its type: the switch and a text as an
     announcement's (_copy_save_row; an emptied text stays empty, reset=1 is
-    the new card's placeholder again, copy.GYM_CARD_BLANK); the bullets as
-    a list slot's, one item at a time by `index` (_edit_list), and reset=1
-    puts the new card's two bullets back. A card deleted meanwhile answers
-    404, as an unknown key does."""
+    the new card's placeholder again, copy.GYM_CARD_BLANK); a list, the
+    bullets or the extra lines (20.10.2026), as a list slot's, one item at
+    a time by `index` (_edit_list), kept in the column its field names, and
+    reset=1 puts the new card's back: its two bullets, no extra lines. A
+    card deleted meanwhile answers 404, as an unknown key does."""
     try:
         if isinstance(slot, copy.ListSlot):
             if reset == "1":
-                items = db.set_gym_card_points(card_id, list(slot.default), user_id)
+                items = db.set_gym_card_list(card_id, field, list(slot.default), user_id)
                 return JSONResponse({"ok": True, "items": items, "default": True})
             card = db.gym_card(card_id)
             if card is None:
                 raise LookupError(f"no gym card {card_id}")
-            items = card.point_items
+            items = card.list_items(field)
             return _edit_list(items, items == list(slot.default), slot, text, index,
-                              lambda changed: db.set_gym_card_points(card_id, changed, user_id))
+                              lambda changed: db.set_gym_card_list(card_id, field, changed, user_id))
         return _copy_save_row(
             slot, text, reset, lambda on: db.set_gym_card_shown(card_id, on, user_id),
             lambda cleaned: db.set_gym_card_field(card_id, copy.GYM_CARD_COLUMNS[field], cleaned, user_id))
@@ -503,7 +504,7 @@ def _copy_save_rows(key: str, slot: copy.RowsSlot, text: str, index: str, part: 
 
 def _edit_list(items: list[str], untouched: bool, slot: copy.ListSlot, text: str, index: str,
                write) -> JSONResponse:
-    """One change to a list (a list slot's, a gym card's bullets): `index`
+    """One change to a list (a list slot's, a gym card's lists): `index`
     says which item: 0..n-1 replaces that item with `text`, n appends `text`
     as a new one, and an empty text removes the item at `index` (with no
     index, or at n, there is nothing to remove and nothing changes: the

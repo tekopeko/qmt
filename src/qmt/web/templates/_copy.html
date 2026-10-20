@@ -46,17 +46,20 @@
    POST /copy/{key} takes item by item as it takes a list slot's, `entries`
    what the row holds, `label` what the editor's bar names ("Kartica 2:
    stavka", and the item's number after it) and `slot` its limits
-   (copy.GYM_CARD_SLOTS["points"]). #}
-{% macro field_points(key, entries, label, slot) -%}
+   (copy.GYM_CARD_SLOTS["points"]). `cls`, a class for the <ul>, and
+   `add_label`, the words of the editor's button, are the extra lines'
+   (field_lines, below: "lines" and "+ Dodaj tekst"); the bullets pass
+   neither. #}
+{% macro field_points(key, entries, label, slot, cls="", add_label="+ Dodaj stavku") -%}
   {%- if can_edit_copy -%}
-    <ul data-list="{{ key }}" data-max="{{ slot.max_chars }}" data-max-items="{{ slot.max_items }}" data-label="{{ label }}">
+    <ul{% if cls %} class="{{ cls }}"{% endif %} data-list="{{ key }}" data-max="{{ slot.max_chars }}" data-max-items="{{ slot.max_items }}" data-label="{{ label }}">
       {%- for text in entries %}
       <li><span class="ed t" data-copy="{{ key }}" data-index="{{ loop.index0 }}" data-max="{{ slot.max_chars }}" data-label="{{ label }}">{{ text }}</span><button type="button" class="ed-x" aria-label="Ukloni stavku {{ loop.index }}">✕</button></li>
       {%- endfor %}
     </ul>
-    <button type="button" class="act ed-add"{% if entries | length >= slot.max_items %} hidden{% endif %}>+ Dodaj stavku</button>
+    <button type="button" class="act ed-add"{% if entries | length >= slot.max_items %} hidden{% endif %}>{{ add_label }}</button>
   {%- elif entries -%}
-    <ul>
+    <ul{% if cls %} class="{{ cls }}"{% endif %}>
       {%- for text in entries %}
       <li><span class="t">{{ text }}</span></li>
       {%- endfor %}
@@ -76,6 +79,27 @@
 {% macro points(key) -%}
   {%- set slot = COPY[key] -%}
   {{- field_points(key, copy_items(key, copy_texts), slot.label, slot) -}}
+{%- endmacro %}
+
+{# EXTRA LINES (a copy.ListSlot whose default is empty, 20.10.2026: the
+   owner's "text cells"): plain lines of text, no bullet, under every
+   card's bullets on the landing, in its contact block and under its
+   headline. `c.lines("key")` prints a slot's, `c.field_lines(key,
+   entries, label, slot)` a row's field (a gym card's dvorana.<id>.extra),
+   in the very markup c.points / c.field_points print, the <ul> classed
+   "lines" (the landing's CSS takes the dots away) and the editor's button
+   saying "+ Dodaj tekst", so base.html's list editor works them as it
+   works the bullets. A visitor gets nothing at all for an empty list, so
+   a page is as it was until a line exists; an editor gets the empty <ul>,
+   which takes no room (the landing's CSS: ul.lines with no item is not
+   displayed), and the button, in edit mode only. #}
+{% macro field_lines(key, entries, label, slot) -%}
+  {{- field_points(key, entries, label, slot, cls="lines", add_label="+ Dodaj tekst") -}}
+{%- endmacro %}
+
+{% macro lines(key) -%}
+  {%- set slot = COPY[key] -%}
+  {{- field_lines(key, copy_items(key, copy_texts), slot.label, slot) -}}
 {%- endmacro %}
 
 {# An editable TABLE of rows (copy.RowsSlot: the landing's opening hours,

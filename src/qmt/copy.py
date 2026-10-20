@@ -32,6 +32,16 @@ site_copy row whose text is a JSON array of cleaned, non-empty strings; no row
 means the default list. Its caps are a count (max_items) and a length per item
 (max_chars). Printed with `{{ c.points("the.key") }}`.
 
+The extra lines are ListSlots too, whose default is empty (20.10.2026, the
+owner: "Can we also create a functionality to add text cells?"): plain
+lines of text, no bullet, that the editor adds with "+ Dodaj tekst" and
+removes with a ✕, under every card's bullets on the landing, in its contact
+block and under its headline (the *.extra slots below; a gym card's are its
+row's, GYM_CARD_SLOTS["extra"]). Printed with `{{ c.lines("the.key") }}`,
+the same list as c.points prints. Until a line exists a visitor gets
+nothing for one, so the page is as it was ("It doesnt change anything with
+the current design right? Only if someone actually adds the text").
+
 A RowsSlot is a table of rows of two texts the editor can add to and remove
 from, not only retype — the landing's opening hours (20.10.2026, the owner's
 friend: he emptied "uto" and the box stayed; "make it rows which can be
@@ -80,8 +90,9 @@ The gym's cards (#dvorana, under the online tiers) went the same way on
 offers beside them now, hides and deletes them, up to eight
 (models.GymCard, db.py). The editor names their fields with virtual keys,
 dvorana.<id>.<field>, on POST /copy/{key}: GYM_CARD_SLOTS below says how
-each is edited (a text a Slot, the bullets a ListSlot, the switch a
-FlagSlot; no photo) and GYM_CARD_COLUMNS where a row keeps a text.
+each is edited (a text a Slot, the bullets and the extra lines a ListSlot
+each, the switch a FlagSlot; no photo) and GYM_CARD_COLUMNS where a row
+keeps a text.
 
 The price slots (18.10.2026) are plain Slots with one job: every price the
 site shows, whether or not Stripe is configured (app.py, reference_prices
@@ -189,6 +200,8 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "hero.kicker": Slot("Zagreb · Dubrava", CAP, "Mala oznaka iznad naslova"),
     "hero.h1a": Slot("Kvaliteta pokreta", CAP, "Naslov, bijeli red"),
     "hero.h1b": Slot("prije svega", CAP, "Naslov, crveni red"),
+    # lines under the headline, none until the editor adds one (20.10.2026)
+    "hero.extra": ListSlot((), CAP_ITEMS, CAP, "Naslovnica: dodatni tekst"),
     # ---- landing: the photo card ----
     "stage.title": Slot("Dvorana u Dubravi", CAP, "Naslov na fotografiji"),
     "stage.text": Slot("Jedan prostor za sve — grupni treninzi, individualni rad i rehabilitacija, "
@@ -211,9 +224,12 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # tabs"; one offer.addon for all three until then), and .addon_on its
     # switch (the same day: ELITE's bullets say MojiMakrosi is in it): off,
     # the line keeps its room on the card, unseen (landing.html).
+    # .extra: the tier's lines under its bullets, none until the editor adds
+    # one (20.10.2026).
     "offer.online.title": Slot("QMove START", CAP, "Online 1: naziv"),
     "offer.online.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 1: podnaslov"),
     "offer.online.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 1: stavka"),
+    "offer.online.extra": ListSlot((), CAP_ITEMS, CAP, "Online 1: dodatni tekst"),
     "offer.online.addon": Slot("MojiMakrosi prehrana", CAP, "Online 1: dodatak za prehranu"),
     "offer.online.addon_unit": Slot("€ / mjesečno", CAP, "Online 1: uz cijenu dodatka"),
     "offer.online.addon_on": FlagSlot(True, "Online 1: MojiMakrosi linija"),
@@ -222,6 +238,7 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "offer.online2.title": Slot("QMove PRO", CAP, "Online 2: naziv"),
     "offer.online2.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 2: podnaslov"),
     "offer.online2.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 2: stavka"),
+    "offer.online2.extra": ListSlot((), CAP_ITEMS, CAP, "Online 2: dodatni tekst"),
     "offer.online2.addon": Slot("MojiMakrosi prehrana", CAP, "Online 2: dodatak za prehranu"),
     "offer.online2.addon_unit": Slot("€ / mjesečno", CAP, "Online 2: uz cijenu dodatka"),
     "offer.online2.addon_on": FlagSlot(True, "Online 2: MojiMakrosi linija"),
@@ -232,6 +249,7 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "offer.online3.title": Slot("QMove ELITE", CAP, "Online 3: naziv"),
     "offer.online3.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 3: podnaslov"),
     "offer.online3.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 3: stavka"),
+    "offer.online3.extra": ListSlot((), CAP_ITEMS, CAP, "Online 3: dodatni tekst"),
     "offer.online3.addon": Slot("MojiMakrosi prehrana", CAP, "Online 3: dodatak za prehranu"),
     "offer.online3.addon_unit": Slot("€ / mjesečno", CAP, "Online 3: uz cijenu dodatka"),
     "offer.online3.addon_on": FlagSlot(True, "Online 3: MojiMakrosi linija"),
@@ -274,8 +292,12 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # until migration 1a7c144b582a folded them in): days and hours per row
     "info.hours.rows": RowsSlot((("pon · sri · čet · pet", "07:00 – 20:00"), ("uto", "individualni termini"),
                                  ("sub · ned", "zatvoreno")), CAP_ITEMS, CAP, "Radno vrijeme", ("dani", "sati")),
+    # lines under the hours' table and under the contact rows, none until
+    # the editor adds one (20.10.2026)
+    "info.hours.extra": ListSlot((), CAP_ITEMS, CAP, "Radno vrijeme: dodatni tekst"),
     "info.where.h": Slot("Gdje smo", CAP, "Naslov: adresa"),
     "info.contact.h": Slot("Kontakt", CAP, "Naslov: kontakt"),
+    "info.contact.extra": ListSlot((), CAP_ITEMS, CAP, "Kontakt: dodatni tekst"),
     "footer": Slot("© Quality Movement Training, Zagreb", CAP, "Podnožje"),
     # ---- cjenik (members) ----
     "cjenik.hint": Slot("Svaka usluga je zasebna članarina — plaća se mjesečno, sljedeća uplata dospijeva "
@@ -372,9 +394,10 @@ ANNOUNCEMENT_COLUMNS = {"tag": "tag", "title": "title", "when": "when_text", "te
 # the row's columns. A card stands for plans or for none (models.GymCard);
 # one he adds stands for none: his own price and the contact.
 
-# a new card ("+ Dodaj karticu"): these placeholders to retype, shown, no plans
+# a new card ("+ Dodaj karticu"): these placeholders to retype, shown, no
+# plans, no extra lines
 GYM_CARD_BLANK = {"title": "Nova kartica", "lead": "Kratki opis — klikni i upiši.",
-                  "points": ("Prva stavka — klikni i upiši", "Druga stavka"),
+                  "points": ("Prva stavka — klikni i upiši", "Druga stavka"), "extra": (),
                   "price": "na upit", "unit": "", "year_price": "na upit", "year_unit": ""}
 
 # the two cards the landing shipped with (the offer.dvorana.* /
@@ -385,12 +408,12 @@ GYM_CARD_BLANK = {"title": "Nova kartica", "lead": "Kratki opis — klikni i upi
 GYM_CARD_EXAMPLES = (
     {"title": "Dvorana", "lead": "Grupni treninzi u Dubravi.",
      "points": ("Male grupe do 8 polaznika", "8, 12 ili 16 treninga mjesečno", "Termin rezerviraš u aplikaciji"),
-     "price": "", "unit": "", "year_price": "na upit", "year_unit": "", "plans": "grupni"},
+     "extra": (), "price": "", "unit": "", "year_price": "na upit", "year_unit": "", "plans": "grupni"},
     {"title": "Individualno", "lead": "Trener samo za tebe.",
      # their prices are the line under the card's price (landing.html,
      # .price-note), so a bullet is free text
      "points": ("Rad 1:1, po dogovoru", "U dvoje ili troje", "Rehabilitacija"),
-     "price": "", "unit": "", "year_price": "na upit", "year_unit": "",
+     "extra": (), "price": "", "unit": "", "year_price": "na upit", "year_unit": "",
      "plans": "individualni,poluindividualni,rehabilitacija"},
 )
 
@@ -398,22 +421,26 @@ GYM_CARD_EXAMPLES = (
 # and how each is edited: a text as a Slot, its default the placeholder
 # Zadano puts back (an emptied one stays empty since 20.10.2026: none is
 # required); the bullets as a ListSlot (Zadano puts the new card's two
-# back); the switch as a FlagSlot, on by default. The label is the field's
-# word in the editor's bar, after the card's number ("Kartica 2: naziv",
-# landing.html). price / unit print only on a card that stands for no plan:
-# a plan's card prints the plan's price slots.
+# back), and its extra lines under them as one too (20.10.2026: none until
+# the editor adds one, and Zadano empties them); the switch as a FlagSlot,
+# on by default. The label is the field's word in the editor's bar, after
+# the card's number ("Kartica 2: naziv", landing.html). price / unit print
+# only on a card that stands for no plan: a plan's card prints the plan's
+# price slots.
 GYM_CARD_SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
     "title": Slot(GYM_CARD_BLANK["title"], CAP, "naziv"),
     "lead": Slot(GYM_CARD_BLANK["lead"], CAP, "podnaslov"),
     "points": ListSlot(GYM_CARD_BLANK["points"], CAP_ITEMS, CAP, "stavka"),
+    "extra": ListSlot(GYM_CARD_BLANK["extra"], CAP_ITEMS, CAP, "dodatni tekst"),
     "price": Slot(GYM_CARD_BLANK["price"], CAP, "mjesečna cijena"),
     "unit": Slot(GYM_CARD_BLANK["unit"], CAP, "uz mjesečnu cijenu"),
     "year_price": Slot(GYM_CARD_BLANK["year_price"], CAP, "godišnja cijena"),
     "year_unit": Slot(GYM_CARD_BLANK["year_unit"], CAP, "uz godišnju cijenu"),
     "show": FlagSlot(True, "prikazano"),
 }
-# where a row keeps each text (the bullets and the switch have setters of
-# their own: db.set_gym_card_points, db.set_gym_card_shown)
+# where a row keeps each text (its lists, the bullets and the extra lines,
+# and the switch have setters of their own: db.set_gym_card_list, each list
+# in the column its field names, and db.set_gym_card_shown)
 GYM_CARD_COLUMNS = {"title": "title", "lead": "lead", "price": "price", "unit": "unit",
                     "year_price": "year_price", "year_unit": "year_unit"}
 
