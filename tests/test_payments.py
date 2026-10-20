@@ -17,7 +17,7 @@ import pytest
 import stripe
 from fastapi.testclient import TestClient
 
-from qmt import auth, config, db, payments
+from qmt import auth, config, copy, db, payments
 from qmt.models import Base, Membership, Payment
 from qmt.web.app import app
 
@@ -406,6 +406,8 @@ def test_the_owners_prices_print_everywhere_even_with_stripe_prices(stripe_on, m
     price_table = payments.price_table
     monkeypatch.setattr(payments, "price_table", lambda: asked.append(1) or price_table())
     make_user("trener@test.local")                                 # the owner, who edits the texts
+    for example in copy.GYM_CARD_EXAMPLES:                         # the gym's two cards (rows since 20.10.2026)
+        db.add_gym_card(None, example)
     t = client_for("trener@test.local")
     for c in (t, TestClient(app)):                                 # the editor's landing, a visitor's
         page = c.get("/").text

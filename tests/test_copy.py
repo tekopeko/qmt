@@ -4,6 +4,8 @@ the landing's announcements (rows since 18.10.2026: their fields edited
 through virtual keys on the same routes, "+ Dodaj najavu" and "Obriši
 najavu", the cap of eight, and the migration that made the two old sets of
 slots rows), their photos (POST /copy/{key}/slika, GET /slika/{name}), the
+gym's cards (rows since 20.10.2026, the same way: virtual keys, "+ Dodaj
+karticu" and "Obriši karticu", the cap of eight, their migration), the
 reference prices (the price.<plan>.* and addon.* slots), and the migration
 that turned the offer cards' bullets into lists.
 
@@ -16,8 +18,8 @@ Nothing may overflow or be cut, and the cards' prices stay level. It proves
 no design; that pass comes once the copy is final. On the way it walks the
 landing's rows of cards, the announcements' among them (one card per view;
 they move on by themselves, on a phone and on a desktop, and hold still when
-they must), the editor's switch and photo pills, adding and deleting a card, and the
-install banner's week between asks.
+they must), the editor's switch and photo pills, adding and deleting a card, the
+gym's cards added, hidden and deleted, and the install banner's week between asks.
 """
 
 from __future__ import annotations
@@ -119,7 +121,7 @@ def test_only_a_trainer_saves_and_the_limit_and_reset_hold():
 
 def test_a_list_slot_takes_edits_additions_and_removals_within_its_limits():
     make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
-    key, slot = "offer.dvorana.points", copy.SLOTS["offer.dvorana.points"]
+    key, slot = "offer.online.points", copy.SLOTS["offer.online.points"]
     d = list(slot.default)
 
     assert TestClient(app).post(f"/copy/{key}", data={"text": "x", "index": "0"}).status_code == 401
@@ -166,9 +168,10 @@ def test_a_list_slot_takes_edits_additions_and_removals_within_its_limits():
     for _ in d:                                                             # an emptied list stays empty...
         post(text="", index="0")
     assert json.loads(db.copy_texts()[key]) == []
-    page = TestClient(app).get("/").text                                    # ...and a visitor sees no bullets
-    assert d[1] not in page and d[2] not in page and "Grupni treninzi u Dubravi." in page
-    assert 'data-list="offer.dvorana.points"' in t.get("/").text            # the editor can still add one
+    start = TestClient(app).get("/").text.split('id="usluge"')[1].split('class="card offer')[1]   # QMove START's card:
+    assert d[1] not in start and d[2] not in start and "<ul>" not in start  # a visitor sees no bullets
+    assert "Treniraj gdje god jesi." in start
+    assert 'data-list="offer.online.points"' in t.get("/").text             # the editor can still add one
 
 
 # ---------- the announcements: rows, edited through virtual keys ----------
@@ -558,6 +561,258 @@ def test_the_migration_turns_the_two_announcement_slots_into_rows():
                                "event2.cta": "Prijavi se"}
 
 
+# ---------- the gym's cards: rows, edited through virtual keys ----------
+
+def gym_examples() -> list[int]:
+    """The gym's two cards, Dvorana and Individualno, as the migration
+    leaves a database where nobody edited them (copy.GYM_CARD_EXAMPLES,
+    their plans with them): their ids, in order."""
+    return [db.add_gym_card(None, example).id for example in copy.GYM_CARD_EXAMPLES]
+
+
+def gym_texts(card_id: int) -> dict:
+    """A gym card's row, spelled as copy.GYM_CARD_EXAMPLES spells one."""
+    g = db.gym_card(card_id)
+    return {**{column: getattr(g, column) for column in copy.GYM_CARD_COLUMNS.values()},
+            "points": tuple(g.point_items), "plans": g.plans}
+
+
+def test_a_gym_cards_texts_are_edited_in_place_through_their_virtual_keys():
+    make_user("ivan@test.local"); uid = make_user("trener@test.local", is_trainer=True)
+    one, two = gym_examples()
+    key = f"dvorana.{one}.title"
+    assert TestClient(app).post(f"/copy/{key}", data={"text": "x"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "x"}).status_code == 403
+    assert db.gym_card(one).title == "Dvorana"
+
+    t = client_for("trener@test.local")
+    r = t.post(f"/copy/{key}", data={"text": "  Grupa   do\n 10  "})           # cleaned as a slot's text is
+    assert r.status_code == 200 and r.json() == {"ok": True, "text": "Grupa do\n10", "default": False}
+    assert db.gym_card(one).title == "Grupa do\n10" and db.gym_card(one).updated_by == uid
+    page = TestClient(app).get("/").text                                    # everyone reads it, in a .t span
+    assert '<h3><span class="t">Grupa do\n10</span></h3>' in page and f'data-copy="{key}"' not in page
+    assert (f'<h3><span class="ed t" data-copy="{key}" data-max="2000" data-label="Kartica 1: naziv">'
+            "Grupa do\n10</span></h3>") in t.get("/").text                 # the editor's span names its card
+    words = {"lead": "podnaslov", "price": "mjesečna cijena", "unit": "uz mjesečnu cijenu",
+             "year_price": "godišnja cijena", "year_unit": "uz godišnju cijenu"}
+    third = db.add_gym_card(None).id                                        # a card of no plan: its own price shows
+    for field in words:
+        r = t.post(f"/copy/dvorana.{third}.{field}", data={"text": f"Novo: {field}"})
+        assert r.json() == {"ok": True, "text": f"Novo: {field}", "default": False}, field
+        assert getattr(db.gym_card(third), field) == f"Novo: {field}", field
+    page = t.get("/").text
+    for field, word in words.items():
+        assert (f'data-copy="dvorana.{third}.{field}" data-max="2000" data-label="Kartica 3: {word}">'
+                f"Novo: {field}</span>") in page, field
+
+    r = t.post(f"/copy/{key}", data={"text": "x" * 2001})                   # the cap, as a slot's
+    assert r.status_code == 400 and r.json()["error"] == "Najviše 2000 znakova — ovo ih ima 2001."
+    assert t.post(f"/copy/{key}", data={"text": "x" * 2000}).status_code == 200
+    for field in ("title", "lead", "price", "unit", "year_price", "year_unit"):
+        blank = copy.GYM_CARD_BLANK[field]                                  # empty: the new card's placeholder,
+        t.post(f"/copy/dvorana.{two}.{field}", data={"text": "Nešto."})      # as an emptied slot's default
+        r = t.post(f"/copy/dvorana.{two}.{field}", data={"text": " \n \n\n "})
+        assert r.json() == {"ok": True, "text": blank, "default": True}, field
+        assert getattr(db.gym_card(two), field) == blank, field
+        t.post(f"/copy/dvorana.{two}.{field}", data={"text": "Opet."})       # reset=1 (Zadano) does the same
+        r = t.post(f"/copy/dvorana.{two}.{field}", data={"text": "ignoriran", "reset": "1"})
+        assert r.json() == {"ok": True, "text": blank, "default": True}, field
+    assert db.gym_card(two).plans == copy.GYM_CARD_EXAMPLES[1]["plans"]     # its plans: no key reaches them
+
+    for bad in ("dvorana.99.title", f"dvorana.{one}.naziv", f"dvorana.{one}.shown", f"dvorana.{one}.plans",
+                f"dvorana.{one}.image", f"dvorana.{one}.position", f"dvorana.{one}.Title", f"dvorana.{one}",
+                f"dvorana.{one}.title.x", "dvorana.x.title", f"dvorana.0{one}.title", "dvorana.1234567890.title",
+                f"aktualno.{one}.title", "offer.dvorana.title", "offer.individualno.points"):   # no such card, field or slot
+        assert t.post(f"/copy/{bad}", data={"text": "x"}).status_code == 404, bad
+    assert db.copy_texts() == {}                                            # none of it lands in site_copy
+
+
+def test_a_gym_cards_bullets_are_a_list_edited_item_by_item():
+    """dvorana.<id>.points is edited as a list slot is: an item by its
+    index, n appends, an empty text removes, at most 12 items of 2000
+    characters; Zadano (reset=1) puts the new card's two placeholder
+    bullets back. The row keeps them as a JSON array."""
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    one, _ = gym_examples()
+    key, d = f"dvorana.{one}.points", list(copy.GYM_CARD_EXAMPLES[0]["points"])
+    assert TestClient(app).post(f"/copy/{key}", data={"text": "x", "index": "0"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "x", "index": "0"}).status_code == 403
+
+    t = client_for("trener@test.local")
+    def post(**data):
+        return t.post(f"/copy/{key}", data=data)
+
+    r = post(text="  Male grupe   do 10 polaznika ", index="0")              # edit one item (prod's own words)
+    first = "Male grupe do 10 polaznika"
+    assert r.status_code == 200 and r.json() == {"ok": True, "items": [first, d[1], d[2]], "default": False}
+    r = post(text="Četvrta stavka", index="3")                              # index == count appends
+    assert r.json()["items"] == [first, d[1], d[2], "Četvrta stavka"]
+    assert json.loads(db.gym_card(one).points) == r.json()["items"]         # the row's column, a JSON array
+    page = TestClient(app).get("/").text                                    # everyone reads it...
+    assert '<li><span class="t">Četvrta stavka</span></li>' in page and f'data-copy="{key}"' not in page
+    page = t.get("/").text                                                  # ...the editor gets a span per item
+    assert page.count(f'data-copy="{key}"') == 4
+    assert f'<ul data-list="{key}" data-max="2000" data-max-items="12" data-label="Kartica 1: stavka">' in page
+
+    r = post(text="", index="1")                                            # empty text removes the item
+    left = [first, d[2], "Četvrta stavka"]
+    assert r.json() == {"ok": True, "items": left, "default": False}
+    assert post(text="").json()["items"] == left                            # no index: nothing to remove
+    assert post(text="  ", index="3").json()["items"] == left               # nothing at n
+    for bad in ({"text": "x"}, {"text": "x", "index": "9"}, {"text": "x", "index": "-1"}, {"text": "x", "index": "dva"}):
+        assert post(**bad).status_code == 400, bad
+    for n in range(3, 12):                                                  # up to twelve...
+        assert post(text=f"Stavka {n}", index=str(n)).status_code == 200
+    r = post(text="Trinaesta", index="12")                                  # ...and not one more
+    assert r.status_code == 400 and r.json()["error"] == "Najviše 12 stavki."
+    r = post(text="x" * 2001, index="0")
+    assert r.status_code == 400 and r.json()["error"] == "Najviše 2000 znakova — ovo ih ima 2001."
+    assert len(db.gym_card(one).point_items) == 12
+
+    r = post(text="ignoriran", reset="1")                                   # Zadano: the new card's two bullets
+    blank = list(copy.GYM_CARD_BLANK["points"])
+    assert r.json() == {"ok": True, "items": blank, "default": True} and db.gym_card(one).point_items == blank
+    for _ in blank:                                                         # an emptied list stays empty...
+        post(text="", index="0")
+    assert db.gym_card(one).points == "[]"
+    dvorana = TestClient(app).get("/").text.split('id="dvorana"')[1].split('class="card offer')[1]
+    assert "<ul>" not in dvorana and "Grupni treninzi u Dubravi." in dvorana   # ...and a visitor sees no bullets
+    assert f'data-list="{key}"' in t.get("/").text                          # the editor can still add one
+    assert db.copy_texts() == {}
+
+
+def test_a_gym_card_is_switched_on_and_off_and_takes_nothing_else():
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    one, _ = gym_examples()
+    key = f"dvorana.{one}.show"
+    assert TestClient(app).post(f"/copy/{key}", data={"text": "off"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "off"}).status_code == 403
+    assert db.gym_card(one).shown is True
+
+    t = client_for("trener@test.local")
+    r = t.post(f"/copy/{key}", data={"text": "off"})                        # answered as a FlagSlot is
+    assert r.status_code == 200 and r.json() == {"ok": True, "on": False, "default": False}
+    assert db.gym_card(one).shown is False
+    r = t.post(f"/copy/{key}", data={"text": "on"})
+    assert r.json() == {"ok": True, "on": True, "default": False} and db.gym_card(one).shown is True
+    for bad in ("maybe", "", " off", "OFF", "1"):                          # exactly "on" or "off"
+        r = t.post(f"/copy/{key}", data={"text": bad})
+        assert r.status_code == 400 and r.json() == {"ok": False, "error": "Nepoznata vrijednost."}, bad
+    assert db.gym_card(one).shown is True                                   # a refused value changes nothing
+    t.post(f"/copy/{key}", data={"text": "off"})                            # reset=1: on again
+    r = t.post(f"/copy/{key}", data={"text": "off", "reset": "1"})
+    assert r.json() == {"ok": True, "on": True, "default": True} and db.gym_card(one).shown is True
+    assert f'class="ed-flag" data-copy="{key}" data-label="Kartica 1: prikazano"' in t.get("/").text
+    assert db.copy_texts() == {}
+
+
+ADD_GYM = '<form method="post" action="/dvorana/nova" class="ed-add-gym"><button type="submit" class="act">+ Dodaj karticu</button></form>'
+DROP_GYM = '<button type="submit" aria-label="Obriši karticu">Obriši karticu</button></form>'
+
+
+def test_the_editor_adds_gym_cards_up_to_eight_and_deletes_them():
+    make_user("ivan@test.local"); uid = make_user("trener@test.local", is_trainer=True)
+    for path in ("/dvorana/nova", "/dvorana/1/obrisi"):                    # a guest logs in first; a client may not
+        r = TestClient(app).post(path, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/login", path
+        assert client_for("ivan@test.local").post(path, follow_redirects=False).status_code == 403, path
+    assert db.gym_cards(all=True) == []
+
+    t = client_for("trener@test.local")                                     # none at all: the editor's section is
+    gym = t.get("/").text.split('id="dvorana"')[1].split("</section>")[0]  # empty but for "+ Dodaj karticu"
+    assert 'class="card offer' not in gym and ADD_GYM in gym
+    assert 'id="dvorana"' not in TestClient(app).get("/").text             # a visitor gets nothing
+
+    one, two = gym_examples()
+    for _ in range(6):
+        r = t.post("/dvorana/nova", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/#dvorana"
+    cards = db.gym_cards(all=True)
+    assert [g.position for g in cards] == list(range(1, 9)) and [g.id for g in cards[:2]] == [one, two]
+    texts = {column: copy.GYM_CARD_BLANK[column] for column in copy.GYM_CARD_COLUMNS.values()}
+    for g in cards[2:]:                                                     # the placeholders, shown, no plan
+        assert {column: getattr(g, column) for column in texts} == texts
+        assert g.point_items == list(copy.GYM_CARD_BLANK["points"]) and g.shown and g.plans == "" and g.plan_keys == []
+        assert g.updated_by == uid
+    assert TestClient(app).get("/").text.split('id="dvorana"')[1].count('class="card offer') == 8
+    page = t.get("/").text
+    assert ADD_GYM not in page and page.count(DROP_GYM) == 8                # full: no "+ Dodaj karticu"
+    for n, g in enumerate(cards, start=1):                                  # each card's own, and its place in the bar
+        assert f'<form method="post" action="/dvorana/{g.id}/obrisi" class="ed-gym-x">{DROP_GYM}' in page
+        assert f'data-copy="dvorana.{g.id}.title" data-max="2000" data-label="Kartica {n}: naziv">' in page
+    r = t.post("/dvorana/nova", follow_redirects=False)                     # a ninth is refused, and he is told
+    assert r.status_code == 303 and r.headers["location"] == "/?error=Najvi%C5%A1e+8+kartica.#dvorana"
+    assert len(db.gym_cards(all=True)) == 8
+    assert '<span>Najviše 8 kartica.</span>' in t.get(r.headers["location"]).text
+
+    assert client_for("ivan@test.local").post(f"/dvorana/{one}/obrisi", follow_redirects=False).status_code == 403
+    assert db.gym_card(one) is not None
+    r = t.post(f"/dvorana/{one}/obrisi", follow_redirects=False)            # Obriši karticu: the card goes,
+    assert r.status_code == 303 and r.headers["location"] == "/#dvorana"   # Dvorana's as any other
+    assert db.gym_card(one) is None and "Dvorana</span></h3>" not in TestClient(app).get("/").text
+    r = t.post(f"/dvorana/{one}/obrisi", follow_redirects=False)            # gone already: nothing to do
+    assert r.status_code == 303 and r.headers["location"] == "/#dvorana" and len(db.gym_cards(all=True)) == 7
+    assert ADD_GYM in t.get("/").text                                       # room again,
+    t.post("/dvorana/nova")                                                 # and a new card comes last
+    assert [g.position for g in db.gym_cards(all=True)] == list(range(2, 10))
+
+
+def test_two_quick_gym_adds_never_pass_the_cap():
+    """Eight is the cap even when taps race, as for the announcements: with
+    six cards, six adds at once land two (the count and the next position
+    are read under a lock), and no position is taken twice."""
+    for _ in range(6):
+        db.add_gym_card(None)
+    landed = []
+    threads = [threading.Thread(target=lambda: landed.append(db.add_gym_card(None) is not None)) for _ in range(6)]
+    for th in threads: th.start()
+    for th in threads: th.join()
+    assert sorted(landed) == [False] * 4 + [True] * 2
+    assert [g.position for g in db.gym_cards(all=True)] == list(range(1, 9))
+
+
+def test_the_migration_turns_the_two_gym_slots_into_rows():
+    """78d539161185: the offer.dvorana.* / offer.individualno.* rows of
+    site_copy become the first two gym cards, what was edited where it was
+    (on prod the gym owner had retyped Dvorana's title, "Grupa", and its
+    first bullet: they must survive), else the old defaults (its own copy,
+    which must agree with copy.GYM_CARD_EXAMPLES), each with its plans; the
+    folded rows gone, the rest kept. And back, only what differs from the
+    defaults."""
+    mig = _migration("78d539161185_gym_cards.py"); uid = make_user("trener@test.local", is_trainer=True)
+    with db.engine.begin() as conn:                                         # nobody edited them: the two examples
+        mig.fold_gym(conn)
+    cards = db.gym_cards()
+    assert [gym_texts(g.id) for g in cards] == [dict(example) for example in copy.GYM_CARD_EXAMPLES]
+    assert [(g.position, g.shown, g.updated_by) for g in cards] == [(1, True, None), (2, True, None)]
+    with db.engine.begin() as conn:                                         # and back: nothing differs, no row
+        mig.unfold_gym(conn)
+    assert db.copy_texts() == {}
+    for g in cards:
+        db.delete_gym_card(g.id)
+
+    bullets = ["Male grupe do 10 polaznika", "8, 12 ili 16 treninga mjesečno", "Termin rezerviraš u aplikaciji"]
+    for key, text in [("offer.dvorana.title", "Grupa"), ("offer.dvorana.points", json.dumps(bullets, ensure_ascii=False)),
+                      ("offer.individualno.year_price", "1200"), ("offer.individualno.points", "nije lista"),
+                      ("hero.kicker", "Ostaje kakav jest.")]:
+        db.set_copy(key, text, uid)
+    with db.engine.begin() as conn:
+        mig.fold_gym(conn)
+    dvorana, individualno = db.gym_cards(all=True)
+    assert gym_texts(dvorana.id) == {**copy.GYM_CARD_EXAMPLES[0], "title": "Grupa", "points": tuple(bullets)}
+    assert (dvorana.position, dvorana.shown, dvorana.updated_by) == (1, True, uid)
+    assert gym_texts(individualno.id) == {**copy.GYM_CARD_EXAMPLES[1], "year_price": "1200"}   # a list it cannot read: the defaults
+    assert db.copy_texts() == {"hero.kicker": "Ostaje kakav jest."}         # the folded rows gone, the rest kept
+    page = TestClient(app).get("/").text                                    # and the page reads the rows
+    assert '<h3><span class="t">Grupa</span></h3>' in page and '<span class="t">Male grupe do 10 polaznika</span>' in page
+
+    with db.engine.begin() as conn:                                         # the way back: what differs from the defaults
+        mig.unfold_gym(conn)
+    assert db.copy_texts() == {"hero.kicker": "Ostaje kakav jest.", "offer.dvorana.title": "Grupa",
+                               "offer.dvorana.points": json.dumps(bullets, ensure_ascii=False),
+                               "offer.individualno.year_price": "1200"}
+
+
 def test_the_migration_folds_the_old_bullet_slots_into_lists():
     mig = _migration("1b09c249c2c6_offer_points_lists.py"); uid = make_user("trener@test.local", is_trainer=True)
     for key, text in [("offer.online.p1", "Prva"), ("offer.online.p2", "Druga"), ("offer.online.p3", "Treća"),
@@ -573,8 +828,8 @@ def test_the_migration_folds_the_old_bullet_slots_into_lists():
     assert "offer.dvorana.points" not in texts                              # never edited: no row, new defaults
     assert not [k for k in texts if re.fullmatch(r"offer\.\w+\.p\d", k)]   # the old rows are gone
     assert texts["hero.kicker"] == "Ostaje kakav jest."
-    page = TestClient(app).get("/").text
-    assert "U paru" in page and "Treća" in page                             # and the page reads them
+    page = TestClient(app).get("/").text                                    # and the page reads them (the gym's
+    assert "Treća" in page                                                  # lists: rows since 78d539161185)
 
     with db.engine.begin() as conn:                                         # the way back
         mig.split_points(conn)
@@ -591,9 +846,9 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
     one fact in both places, and a save updates every copy of it on the
     page it is made on. A list, a switch and a photo keep their shape on
     each page they are on; a visitor and a client get no editor markup, the
-    announcements' (rows, not slots) included."""
+    announcements' and the gym's cards' (rows, not slots) included."""
     make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
-    examples()
+    examples(); gym_examples()
     t = client_for("trener@test.local"); seen: dict[str, list[str]] = {}
     for path in PAGES:
         page = t.get(path).text
@@ -615,7 +870,8 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
             page = c.get(path).text
             if c.get(path, follow_redirects=False).status_code == 200:
                 for mark in ("data-copy", "copyToggle", "data-list", 'class="ed-x"', 'ed-add"', 'class="ed-flag"', "data-flag",
-                             'class="ed-img"', "data-image", 'class="ed-ann-x"', 'class="ed-add-ann"', 'action="/aktualno/'):
+                             'class="ed-img"', "data-image", 'class="ed-ann-x"', 'class="ed-add-ann"', 'action="/aktualno/',
+                             'class="ed-pills"', 'class="ed-gym-x"', 'class="ed-add-gym"', 'action="/dvorana/', "; --cols-edit:"):
                     assert mark not in page, (path, mark)
 
 
@@ -679,15 +935,18 @@ def card_on(page: str, key: str) -> str:
 def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     """The gym owner retypes a price in place and it shows, as typed with
     " €" after it, wherever that plan's price does: QMove START's card on the
-    landing and the online plan's card on /moja-clanarina. The dvorana
-    add-on's amount the same, in the prehrana plan's hint on /moja-clanarina
-    (one slot, no number of its own there), and on no landing card: the
-    gym's cards carry no add-on line since 20.10.2026. Individualno's line
-    reads the two other plans' slots. "Zadano" brings the shop's number back
-    and leaves no row."""
+    landing and the online plan's card on /moja-clanarina, and the same for
+    a gym card that stands for a plan (a row since 20.10.2026): Dvorana's
+    price is grupni's slot, the one /moja-clanarina's grupni card prints.
+    The dvorana add-on's amount the same, in the prehrana plan's hint on
+    /moja-clanarina (one slot, no number of its own there), and on no
+    landing card: the gym's cards carry no add-on line since 20.10.2026.
+    Individualno's line reads the two other plans' slots. "Zadano" brings
+    the shop's number back and leaves no row."""
     make_user("ivan@test.local", plans=("online",)); make_user("trener@test.local", is_trainer=True)
+    gym_examples()
     t = client_for("trener@test.local")
-    for key, text in (("price.online.amount", "45"), ("addon.dvorana", "4"),
+    for key, text in (("price.online.amount", "45"), ("addon.dvorana", "4"), ("price.grupni.amount", "65"),
                       ("price.poluindividualni.amount", "28"), ("price.rehabilitacija.unit", "/ dolazak")):
         assert t.post(f"/copy/{key}", data={"text": text}).json() == {"ok": True, "text": text, "default": False}, key
 
@@ -700,15 +959,19 @@ def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     for c in (dvorana, individualno):                                      # no add-on line on the gym's cards
         assert 'class="addon"' not in c and '+<span class="t">4</span>' not in c
     assert "u dvoje ili troje 28 € / trening · rehabilitacija od 30 € / dolazak" in shown(individualno)
+    assert "65 € / paket" in shown(dvorana) and "60–80" not in dvorana     # the gym's plan card: grupni's slot
     mine = client_for("ivan@test.local").get("/moja-clanarina").text
     assert "Cijena 45 € / mjesečno" in shown(card_on(mine, "online"))
+    assert "65 € / paket" in shown(card_on(mine, "grupni")) and "60–80" not in card_on(mine, "grupni")
     assert "od 3 € / mjesečno 4 € uz dvoranu, 5 € uz online" in shown(card_on(mine, "prehrana"))
 
     page = t.get("/").text                                                  # the editor gets them as slots
     start = page.split('id="usluge"')[1].split('class="card offer')[1]
     assert ('<b><span class="ed t" data-copy="price.online.amount" data-max="2000" '
             'data-label="Cijena · online: iznos">45</span> €</b>') in start
-    individualno = page.split('id="dvorana"')[1].split('class="card offer')[2]
+    dvorana, individualno = page.split('id="dvorana"')[1].split('class="card offer')[1:3]
+    assert ('<b><span class="ed t" data-copy="price.grupni.amount" data-max="2000" '
+            'data-label="Cijena · grupni: iznos">65</span> €</b>') in dvorana   # the same slot, his to open here
     for key in ("poluindividualni.amount", "poluindividualni.unit", "rehabilitacija.amount", "rehabilitacija.unit"):
         assert f'data-copy="price.{key}"' in individualno.split('class="price-note"')[1], key
     mc = t.get("/moja-clanarina").text
@@ -817,7 +1080,8 @@ MEASURE = r"""(strict) => {
 }"""
 
 # The landing's two offer sections, each a row of cards (.swipe-row): the three
-# online tiers and the gym's two. On a wide screen the tiers are three columns
+# online tiers and the gym's two (its rows, as the migration leaves them; the
+# editor's third is GYM's, below). On a wide screen the tiers are three columns
 # and the gym two; below 900px each is a swipe row of cards 92% as wide as its
 # content (a card and a sliver of the next, the owner's call of 17.10.2026)
 # with a dot per card (made by the script, so the count and the labels follow
@@ -985,6 +1249,66 @@ EDIT_ROW = r"""() => {
   return out;
 }"""
 
+# The gym's cards (#dvorana; rows since 20.10.2026), n of them shown, measured
+# with the default texts (a price is one line, so their tops can be compared).
+# From 900px a grid of min(n, 3) columns, each at most 380px: two cards the
+# 760px they always were, three as wide as the tiers' row; centred, the shown
+# prices' tops level in each row of the grid. Below 900px the swipe row: every
+# card 92% of the row's content, a sliver of the next in view, a dot per card
+# (none for one). Never wider than the page.
+GYM = r"""(n) => {
+  const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().width > 0; };
+  const out = [], row = document.querySelector('#dvorana .gym-grid'), de = document.documentElement, box = el => el.getBoundingClientRect();
+  if (!row) return ['no gym row'];
+  const cards = [...row.children].filter(vis), price = c => [...c.querySelectorAll('.price')].find(vis);
+  if (cards.length !== n) out.push(`${cards.length} gym cards shown, not ${n}`);
+  if (de.scrollWidth - de.clientWidth > 0) out.push(`the page overflows by ${de.scrollWidth - de.clientWidth}px`);
+  if (innerWidth >= 900) {
+    const cols = Math.min(n, 3), got = getComputedStyle(row).gridTemplateColumns.split(' ').length;
+    if (got !== cols) out.push(`the gym cards are in ${got} columns, not ${cols}`);
+    const r = box(row), want = Math.min(cols * 380, row.parentElement.clientWidth);
+    if (Math.abs(r.width - want) > 1) out.push(`the gym row is ${r.width}px wide, not ${want}px`);
+    if (Math.abs(r.left + r.width / 2 - de.clientWidth / 2) > 1) out.push(`the gym row is not centred: ${r.left}-${r.right}`);
+    const rows = {};
+    for (const c of cards) (rows[Math.round(box(c).top)] ||= []).push(box(price(c)).top);
+    for (const tops of Object.values(rows))
+      if (Math.max(...tops) - Math.min(...tops) > 1) out.push(`the gym prices' tops are not level: ${tops.map(Math.round).join(', ')}`);
+  } else {
+    const cs = getComputedStyle(row), room = row.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    cards.forEach((c, i) => { const w = box(c).width;
+      if (Math.abs(w - .92 * room) > 1) out.push(`gym card ${i + 1} is ${Math.round(w)}px, not 92% of its row's ${Math.round(room)}px`); });
+    if (cards.length > 1 && box(row).right - box(cards[1]).left < 8) out.push('no sliver of the second gym card in view');
+    const dots = [...document.querySelectorAll('#dvorana .dots button')].filter(vis);
+    if (dots.length !== (n > 1 ? n : 0)) out.push(`${dots.length} dots under ${n} gym cards`);
+  }
+  return out;
+}"""
+
+# The gym's cards in edit mode on a phone: one under the other, each the
+# row's width, a grid that does not scroll, no dots; the switch and "Obriši
+# karticu" side by side at a card's top, and nothing of a card outside it;
+# "+ Dodaj karticu" under them; nothing wider than the page.
+GYM_EDIT = r"""() => {
+  const vis = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const out = [], row = document.querySelector('#dvorana .gym-grid'), de = document.documentElement, box = el => el.getBoundingClientRect();
+  const cards = [...row.children].filter(vis), cs = getComputedStyle(row);
+  const room = row.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  if (cs.display !== 'grid' || row.scrollWidth > row.clientWidth) out.push(`the gym row is ${cs.display}, ${row.scrollWidth - row.clientWidth}px to scroll`);
+  if (!cards.every((c, i) => !i || box(c).top >= box(cards[i - 1]).bottom - 1)) out.push('the gym cards are not one under the other');
+  cards.forEach((c, i) => { if (Math.abs(box(c).width - room) > 1) out.push(`gym card ${i + 1} is ${box(c).width}px, its row's ${room}px`); });
+  if (getComputedStyle(row.nextElementSibling).display !== 'none') out.push('dots under the stacked gym cards');
+  if (de.scrollWidth - de.clientWidth > 0) out.push(`the page overflows by ${de.scrollWidth - de.clientWidth}px`);
+  for (const c of cards) { const b = box(c), f = c.querySelector('.ed-flag'), x = c.querySelector('.ed-gym-x > button');
+    if (!f || !x || !vis(f) || !vis(x)) { out.push("a gym card without its pills"); continue; }
+    if (Math.abs(box(f).top - box(x).top) > 1) out.push("a gym card's pills are not side by side");
+    for (const el of c.querySelectorAll('.ed-flag, .ed-gym-x > button, span.t')) { if (!vis(el)) continue; const e = box(el);
+      if (e.left < b.left - 1 || e.right > b.right + 1 || e.top < b.top - 1 || e.bottom > b.bottom + 1)
+        out.push(`"${el.textContent.trim().slice(0, 12)}…" leaves its gym card`); } }
+  const add = document.querySelector('#dvorana .ed-add-gym');
+  if (!add || !vis(add) || box(add).top < box(row).bottom - 1) out.push('no "+ Dodaj karticu" under the gym cards');
+  return out;
+}"""
+
 # Mjesečno / Godišnje: one choice, two switches (under the tiers, under the
 # gym), Godišnje on load. Every card of both sections shows exactly the
 # chosen price, and both switches say it.
@@ -1022,6 +1346,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     make_user("trener@test.local", is_trainer=True); make_user("ivan@test.local", plans=("grupni",))
     one, two = examples()                             # the landing's two announcements, as the migration leaves them
     CARD = f'[data-image="aktualno.{one}.image"]'     # the first one, in the editor's markup
+    gym_examples()                                    # and the gym's two cards
 
     def fill(make):
         for key, slot in copy.SLOTS.items():
@@ -1034,6 +1359,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         for a in db.announcements(all=True):            # and every text of every announcement; they stay
             for column in copy.ANNOUNCEMENT_BLANK:      # on (both show), the photo below
                 db.set_announcement_field(a.id, column, make(LONG), None)
+        for g in db.gym_cards(all=True):                # every text of every gym card, its bullets 12 of 60
+            for column in copy.GYM_CARD_COLUMNS.values():
+                db.set_gym_card_field(g.id, column, make(LONG), None)
+            db.set_gym_card_points(g.id, [make(ITEM)] * ITEMS, None)
         photo_on()
 
     def photo_on():
@@ -1190,6 +1519,96 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         pg.click("#copyToggle")                                        # Gotovo
         return out
 
+    def gym_rows(pw):
+        """The gym's cards as rows in a browser, the editor's way, with the
+        default texts. At 1280px the two cards are two columns. In edit mode
+        "+ Dodaj karticu" adds a third: the page comes back on #dvorana,
+        still in edit mode, the new card last with its placeholders and no
+        plan; out of edit mode the three are three columns, as wide as the
+        tiers' row, the prices level, the new card's own "na upit" its price
+        and "Javi nam se →" its button. At 390px they are the swipe row, a
+        card 92% wide and a sliver of the next; in edit mode they stack,
+        without dots, and the third switched off stays, dimmed but for its
+        switch. Reloaded out of edit mode it is gone, and at 1280px the row
+        is two columns again, for the editor and for a guest. Its "Obriši
+        karticu" asks first ("Obriši?", the card still there); the second
+        tap deletes it: the two cards the walks after this one expect. No
+        page errors on the way."""
+        out, errs = [], []
+
+        def opened(w, email):
+            phone = w < 600
+            ctx = pw.chromium.launch().new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
+            pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(f"{w}px: {e}"))
+            if email:
+                pg.goto(server + "/login"); pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
+                pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+            pg.goto(server + "/#dvorana"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+            return pg
+
+        wide = opened(1280, "trener@test.local")
+        out += [f"1280px, two cards: {p}" for p in wide.evaluate(GYM, 2)]
+        wide.click("#copyToggle")
+        with wide.expect_navigation():
+            wide.click(".ed-add-gym button")
+        wide.wait_for_load_state("networkidle")
+        cards = db.gym_cards(all=True)
+        third = cards[-1].id
+        if len(cards) != 3 or cards[2].plan_keys or cards[2].title != copy.GYM_CARD_BLANK["title"]:
+            out.append(f"+ Dodaj karticu left the cards {[(g.id, g.title[:12], g.plans) for g in cards]}")
+        seen = wide.evaluate("""() => [document.body.classList.contains('editing'), location.hash,
+                                       document.querySelectorAll('#dvorana .gym-grid > .offer').length]""")
+        if seen != [True, "#dvorana", 3]:
+            out.append(f"after + Dodaj karticu (edit mode, the address' #, the cards): {seen}")
+        wide.click("#copyToggle")                                      # Gotovo: the visitor's view
+        out += [f"1280px, three cards: {p}" for p in wide.evaluate(GYM, 3)]
+        new = f'[data-flag="dvorana.{third}.show"]'
+        seen = wide.evaluate("""(card) => { const c = document.querySelector(card);
+          return [[...c.querySelectorAll('.price')].filter(p => getComputedStyle(p).display !== 'none').map(p => p.textContent.trim()).join(),
+                  c.querySelector('.foot a').textContent.trim()]; }""", new)
+        if seen != ["na upit", "Javi nam se →"]:
+            out.append(f"the new card's price and button: {seen}")
+
+        phone = opened(390, "trener@test.local")
+        out += [f"390px, three cards: {p}" for p in phone.evaluate(GYM, 3)]
+        phone.click("#copyToggle")
+        out += [f"390px edit mode: {p}" for p in phone.evaluate(GYM_EDIT)]
+        phone.locator(f"{new} .ed-flag").click()
+        try:
+            phone.wait_for_function("(card) => document.querySelector(card).classList.contains('is-off')", arg=new, timeout=5000)
+        except PlaywrightTimeout:
+            out.append("the new card's switch did not switch it off")
+        seen = phone.evaluate("""(card) => { const c = document.querySelector(card), o = el => +getComputedStyle(el).opacity;
+          return [c.getBoundingClientRect().height > 0, o(c.querySelector('h3')), o(c.querySelector('.ed-flag')),
+                  o(c.querySelector('.ed-gym-x > button'))]; }""", new)
+        if seen != [True, 0.55, 1, 0.55]:
+            out.append(f"a gym card switched off in edit mode (shown, its title's, its switch's and its Obriši karticu's opacity): {seen}")
+        out += [f"390px edit mode, one off: {p}" for p in phone.evaluate(GYM_EDIT)]
+        if db.gym_card(third).shown:
+            out.append("the switch was not stored")
+        phone.click("#copyToggle"); phone.reload(); phone.wait_for_load_state("networkidle")   # out of edit mode
+        out += [f"390px, one off: {p}" for p in phone.evaluate(GYM, 2)]
+        wide.reload(); wide.wait_for_load_state("networkidle")
+        out += [f"1280px, one off: {p}" for p in wide.evaluate(GYM, 2)]
+        guest = opened(1280, None)
+        out += [f"1280px guest, one off: {p}" for p in guest.evaluate(GYM, 2)]
+
+        wide.click("#copyToggle")                                      # Obriši karticu: two taps
+        x = wide.locator(f"{new} .ed-gym-x > button")
+        x.click()
+        if x.text_content() != "Obriši?" or db.gym_card(third) is None:
+            out.append(f"one tap on Obriši karticu: {x.text_content()!r}, the card {'there' if db.gym_card(third) else 'gone'}")
+        with wide.expect_navigation():
+            x.click()
+        wide.wait_for_load_state("networkidle")
+        left, shown = [g.id for g in db.gym_cards(all=True)], wide.locator("#dvorana .gym-grid > .offer").count()
+        if len(left) != 2 or third in left or shown != 2:
+            out.append(f"the second tap on Obriši karticu left the cards {left}, {shown} on the page")
+        wide.click("#copyToggle")                                      # Gotovo
+        for pg in (wide, phone, guest):
+            pg.context.browser.close()
+        return [f"[gym rows] {p}" for p in out + [f"js: {e}" for e in errs]]
+
     ROW = "document.querySelector('#aktualno')"
     STATE = f"() => [{ROW}.scrollLeft, [...document.querySelectorAll('#aktualno + .dots button')].map(d => d.getAttribute('aria-current')).join()]"
     IN_VIEW = f"() => window.scrollTo({{top: scrollY + {ROW}.getBoundingClientRect().top - 60, behavior: 'instant'}})"
@@ -1308,6 +1727,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     with sync_playwright() as pw:
         photo_on()                                    # the default texts, the first announcement over a photo:
         problems = walk(pw, None, (900, 1280), "defaults", one_line=True)   # a plain one is one line on a wide screen
+        problems += gym_rows(pw)                      # the gym's cards added, hidden and deleted (the default texts)
         fill(words)                                   # long texts: 300 characters, lists of 12
         problems += walk(pw, None, (360, 390, 900, 1280), "words", auto=(390, 1280))
         problems += still(pw)                         # under reduced motion: never by themselves
@@ -1328,6 +1748,7 @@ def test_an_amount_without_a_number_prints_without_the_euro_sign():
     """"na upit" is a price the owner may type; "na upit €" is not. A number
     keeps its sign: "50 €"."""
     make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
+    gym_examples()                                                          # Individualno's line prints it on the landing
     db.set_copy("price.rehabilitacija.amount", "na upit", None)
     landing = TestClient(app).get("/").text
     mine = client_for("ivan@test.local").get("/moja-clanarina").text

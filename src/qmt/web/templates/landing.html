@@ -123,6 +123,11 @@
   .ed-add-ann { display: none; }
   body.editing .ed-add-ann { display: flex; justify-content: center; }
   body.editing .ed-add-ann .act { min-height: 32px; }
+  /* the gym's "+ Dodaj karticu" (POST /dvorana/nova) is the same pill, under
+     its row of cards, centred */
+  .ed-add-gym { display: none; }
+  body.editing .ed-add-gym { display: flex; justify-content: center; margin-top: 18px; }
+  body.editing .ed-add-gym .act { min-height: 32px; }
   @media (max-width: 699px) {
     .event { flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 20px; }
     .event .text { flex-basis: auto; }
@@ -239,8 +244,8 @@
   /* ---- the offer: three tiers of the online plan side by side, the popular
      one taller than its neighbours. Shape's pricing block in QMT's colours, and
      little text on purpose: a name, one line, a few facts, the price, one
-     button. The gym's two cards are the same .offer in a quieter section
-     below (#dvorana, .gym-grid). ---- */
+     button. The gym's cards are the same .offer in a quieter section below
+     (#dvorana, .gym-grid). ---- */
   .offer-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
   .offer { position: relative; padding: 30px 28px 26px; display: flex; flex-direction: column;
            border-radius: var(--r-xl); }
@@ -251,7 +256,7 @@
      and ends on the same lines as its neighbours'. */
   @media (min-width: 900px) { .offer.featured { margin-block: -16px; padding-block: 46px 42px; } }
   /* Phones and tablets: each row of cards (.swipe-row: the three tiers, the
-     gym's two) is one swipe row (Shape's pricing on a phone), not a stack — a
+     gym's) is one swipe row (Shape's pricing on a phone), not a stack — a
      card and a bit of the next, snapping to the centre, with a dot per card
      under it. The band gives up its side padding so the row runs to the
      screen's edges and the scroller carries the gutter itself; nothing but the
@@ -278,7 +283,8 @@
      and only then shows their box, so without it there are no dots that do
      nothing. The tiers' and the gym's on a phone only, where their row is
      a swipe row: on a desktop every card is seen. The announcements' at
-     every width, where one card is seen at a time (.evs, above). */
+     every width, where one card is seen at a time (.evs, above). Edit mode
+     hides the announcements' and the gym's: their cards stack. */
   .dots { display: none; justify-content: center; }
   .dots[hidden] { display: none; }
   .dots button { width: 32px; height: 32px; padding: 0; border: none; background: none; box-shadow: none;
@@ -305,10 +311,45 @@
   .period button:hover { transform: none; color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
   .period button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent-tint-ink); }
   @media (max-width: 899px) { .period { margin-top: 10px; } }
-  /* the gym: two cards, each about as wide as a tier above; below 900px they
-     are a swipe row like the tiers (.swipe-row) */
-  @media (min-width: 900px) { .gym-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
-                                          max-width: 760px; margin-inline: auto; } }
+  /* The gym: its cards in as many columns as there are cards, up to three
+     (20.10.2026: they are rows now, and the owner's friend adds his own
+     offers beside Dvorana and Individualno), each column 380px at most: two
+     cards are the 760px they always were, three as wide as the tiers' row,
+     one a tier's width, centred; a fourth and on wrap into a second row of
+     the grid, where the .foot pin keeps the prices level again. The
+     template counts them: --cols is the cards a visitor sees (an editor
+     outside edit mode sees what a visitor does), --cols-edit every card,
+     for edit mode, where a hidden one shows too. Below 900px a swipe row
+     like the tiers (.swipe-row); edit mode stacks it there (further down). */
+  @media (min-width: 900px) {
+    .gym-grid { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 16px;
+                max-width: calc(var(--cols, 2) * 380px); margin-inline: auto; }
+    body.editing .gym-grid { grid-template-columns: repeat(var(--cols-edit, var(--cols, 2)), minmax(0, 1fr));
+                             max-width: calc(var(--cols-edit, var(--cols, 2)) * 380px); }
+  }
+  /* Edit mode, below 900px: the gym's cards one under the other, each the
+     row's width, as the announcements' are (body.editing .evs), so the
+     editor reaches a card that is off, which has no dot; not a scroller
+     then, and no dots. */
+  @media (max-width: 899px) {
+    body.editing .gym-grid { display: grid; grid-template-columns: minmax(0, 1fr); overflow: visible; }
+    body.editing .gym-grid + .dots { display: none; }
+  }
+  /* A gym card the editor switched off is on his page only, as .is-off,
+     and so is the section when none is on: hidden, so outside edit mode he
+     sees the visitor's page; edit mode shows them, the card's content
+     dimmed but not its switch, which stays readable to switch it back on
+     (the announcements' rule). "Obriši karticu" is dimmed by a rule of its
+     own: its form has no box (display: contents, base.html). */
+  #dvorana.is-off, .gym-grid > .offer.is-off { display: none; }
+  body.editing #dvorana.is-off { display: block; }
+  body.editing .gym-grid > .offer.is-off { display: flex; }
+  body.editing .offer.is-off > :not(.ed-pills), body.editing .offer.is-off .ed-gym-x > button { opacity: .55; }
+  /* the editor's pills on a gym card, its first line in edit mode: the
+     switch and "Obriši karticu" side by side (base.html styles both) */
+  .offer .ed-pills { display: none; }
+  body.editing .offer .ed-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  body.editing .offer .ed-pills .ed-flag, body.editing .offer .ed-pills .ed-gym-x > button { margin: 0; }
   .offer h3 { font: 700 italic 1.5rem var(--font-display); text-transform: uppercase; letter-spacing: .01em; }
   /* two lines kept free, so the three lists start level when a lead wraps */
   .offer .lead { color: var(--muted); font-size: .95rem; margin-top: 6px; min-height: 2.9em; }
@@ -334,9 +375,10 @@
   /* Three columns between 900 and 1100px leave a card 209-273px inside, where a
      long price wraps its unit under the number; the
      second line is reserved there so the three stay level. Wider, and on a
-     phone with the smaller number below, the limits fit one line. The gym's
+     phone with the smaller number below, the limits fit one line. Two gym
      cards are 314px inside at those widths, where the limits fit one line,
-     so they do not reserve it (.offer-grid: the tiers only). */
+     so they do not reserve it (.offer-grid: the tiers only); three are a
+     tier's width, and their prices stay level at their bottom edge. */
   @media (min-width: 900px) and (max-width: 1100px) {
     .offer-grid .offer .price { min-height: calc(2.1rem + 8px + 1.1rem); align-content: flex-start; }
   }
@@ -344,13 +386,14 @@
   .offer .price.quiet { font: 600 .9rem/2.1rem var(--font-body); color: var(--muted); }
   /* a tier carries a monthly and a yearly price; the switch shows one */
   .offer .price[hidden] { display: none; }
-  /* Individualno's other prices, one muted line under its own. The Dvorana
-     card beside it holds the same room, so the two prices and buttons stay
-     level: since the line is the owner's text (the price slots, 18.10.2026)
-     it may run to any length, so the room is an invisible copy of it
-     (.room, aria-hidden), as tall as the line whatever is typed (the cards
-     are equally wide), and two lines at least in both. Beside it at every
-     width: two columns, or the swipe row on a phone. */
+  /* A gym card's other plans' prices (Individualno's), one muted line under
+     its own. Every gym card without such a line holds the same room, so the
+     prices and buttons stay level: since the line is the owner's text (the
+     price slots, 18.10.2026) it may run to any length, so the room is an
+     invisible copy of the row's longest line (.room, aria-hidden), as tall
+     as the line whatever is typed (the cards are equally wide), and two
+     lines at least in all. Beside it at every width: the grid's columns,
+     or the swipe row on a phone. */
   .offer .price-note { margin-top: -8px; font-size: .82rem; line-height: 1.4; color: var(--muted); }
   .offer .price-note:empty { display: none; }
   .gym-grid .offer .price-note { display: block; min-height: 2.8em; }
@@ -517,6 +560,20 @@
       <div class="price" data-period="{{ period }}"{% if hidden %} hidden{% endif %}><b>{{ c.t(price_key) }}</b>
         {%- if unit or can_edit_copy %}<span>{{ c.t(unit_key) }}</span>{% endif %}</div>
     {%- endmacro %}
+    {# A gym card's text (a row of gym_cards, #dvorana below), printed as c.t
+       prints a slot: its virtual key slot.field (slot: dvorana.<id>), what
+       the row holds, and the editor's label, the card's place n and the
+       field's word ("Kartica 2: naziv", GYM: copy.GYM_CARD_SLOTS). #}
+    {% macro gym_field(slot, card, n, field) -%}
+      {{- c.field(slot ~ "." ~ field, card | attr(field), "Kartica " ~ n ~ ": " ~ GYM[field].label) -}}
+    {%- endmacro %}
+    {# A gym card's own price, as text_price prints two slots: its yearly one
+       (year_price, year_unit), and the monthly one (price, unit) of a card
+       that stands for no plan. #}
+    {% macro row_price(slot, card, n, amount, unit, period, hidden=false) -%}
+      <div class="price" data-period="{{ period }}"{% if hidden %} hidden{% endif %}><b>{{ gym_field(slot, card, n, amount) }}</b>
+        {%- if card | attr(unit) or can_edit_copy %}<span>{{ gym_field(slot, card, n, unit) }}</span>{% endif %}</div>
+    {%- endmacro %}
     {# keys: the plans a card stands for, the first one prices it. slot: the
        card's copy prefix (slot.title / .lead / .points in src/qmt/copy.py).
        addon_at: where its MojiMakrosi add-on is sold ("online"), the amount
@@ -532,31 +589,43 @@
        owner's text, the price.<plan>.amount and .unit slots, which the gym
        owner retypes in place; no Stripe Price prints instead (18.10.2026,
        the owner's call). A guest sees no price at all while
-       PUBLIC_PRICES=off, which also hides the add-on's amount. #}
-    {% macro offer(keys, slot, addon_at=none, featured=false, tier=false, real=true, note=none, room=none) -%}
-      <div class="card offer{% if featured %} featured{% endif %}{% if keys | select('in', my_plans) | list %} mine{% endif %}">
-        {% if featured %}<span class="featured-tag">Najpopularnije</span>{% endif %}
-        <h3>{{ c.t(slot ~ ".title") }}</h3>
-        <p class="lead">{{ c.t(slot ~ ".lead") }}</p>
-        {{ c.points(slot ~ ".points") }}
+       PUBLIC_PRICES=off, which also hides the add-on's amount.
+       card: a gym card to print instead of slots (a row of gym_cards,
+       20.10.2026; #dvorana below), n its place among them. Its texts are
+       its row's, under virtual keys: slot is dvorana.<id>, and each field
+       slot.title / .lead / .points / .price / .unit / .year_price /
+       .year_unit. keys are its plans; with none (real false) its own price
+       is its monthly one and its button "Javi nam se →" for everyone: there
+       is nothing in the app to buy for it. An editor's card carries its
+       switch (slot.show) and "Obriši karticu" at its top, and a hidden one
+       is .is-off. #}
+    {% macro offer(keys, slot, addon_at=none, featured=false, tier=false, real=true, note=none, room=none, card=none, n=none) -%}
+      <div class="card offer{% if featured %} featured{% endif %}{% if keys | select('in', my_plans) | list %} mine{% endif %}{% if card is not none and not card.shown %} is-off{% endif %}"{% if card is not none and can_edit_copy %} data-flag="{{ slot }}.show"{% endif %}>
+        {% if featured %}<span class="featured-tag">Najpopularnije</span>{% endif %}{% if card is not none and can_edit_copy %}<div class="ed-pills"><button type="button" class="ed-flag" data-copy="{{ slot }}.show" data-label="Kartica {{ n }}: {{ GYM['show'].label }}"
+                aria-pressed="{{ 'true' if card.shown else 'false' }}">{{ "Prikazano" if card.shown else "Skriveno" }}</button>
+          <form method="post" action="/dvorana/{{ card.id }}/obrisi" class="ed-gym-x"><button type="submit" aria-label="Obriši karticu">Obriši karticu</button></form></div>{% endif %}
+        <h3>{% if card is not none %}{{ gym_field(slot, card, n, "title") }}{% else %}{{ c.t(slot ~ ".title") }}{% endif %}</h3>
+        <p class="lead">{% if card is not none %}{{ gym_field(slot, card, n, "lead") }}{% else %}{{ c.t(slot ~ ".lead") }}{% endif %}</p>
+        {% if card is not none %}{{ c.field_points(slot ~ ".points", card.point_items, "Kartica " ~ n ~ ": " ~ GYM["points"].label, GYM["points"]) }}{% else %}{{ c.points(slot ~ ".points") }}{% endif %}
         <div class="foot">
           {% if addon_at %}<p class="addon">{{ c.t("offer.addon") }}{% if show_prices %} <b>+{{ c.t("addon." ~ addon_at) }} € / mjesečno</b>{% endif %}</p>{% endif %}
           {% if not show_prices %}<div class="price quiet">Cijene nakon prijave</div>
           {% else %}
             {% if real %}{% set plan = keys[0] %}
             <div class="price"{% if tier %} data-period="month" hidden{% endif %}><b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b><span>{{ c.t("price." ~ plan ~ ".unit") }}</span></div>
-            {% else %}{{ text_price(slot ~ ".price", slot ~ ".unit", "month", hidden=tier) }}{% endif %}
-            {% if tier %}{{ text_price(slot ~ ".year_price", slot ~ ".year_unit", "year") }}{% endif %}
+            {% else %}{% if card is not none %}{{ row_price(slot, card, n, "price", "unit", "month", hidden=tier) }}{% else %}{{ text_price(slot ~ ".price", slot ~ ".unit", "month", hidden=tier) }}{% endif %}{% endif %}
+            {% if tier %}{% if card is not none %}{{ row_price(slot, card, n, "year_price", "year_unit", "year") }}{% else %}{{ text_price(slot ~ ".year_price", slot ~ ".year_unit", "year") }}{% endif %}{% endif %}
             {% if note is not none %}<p class="price-note">{{ note }}</p>
             {%- elif room is not none %}<p class="price-note room" aria-hidden="true">{{ room }}</p>{% endif %}
           {% endif %}
-          {{ offer_cta(keys, featured) }}
+          {% if keys %}{{ offer_cta(keys, featured) }}{% else %}<a class="btn btn-sm cta" href="#kontakt">Javi nam se →</a>{% endif %}
         </div>
       </div>
     {%- endmacro %}
     {# Mjesečno / Godišnje, under each row of cards (the tiers, the gym): two
        switches, one choice — the script keeps them in step and shows the
-       chosen price on every card of both. Godišnje is chosen on load
+       chosen price on every card of both (one switch when the gym's section
+       is not on the page: no card of it shown). Godišnje is chosen on load
        (20.10.2026, the owner's call: yearly first, monthly only when the
        visitor picks it), as the cards' prices are. Hidden until the script
        works it; none at all while a guest sees no prices. #}
@@ -581,42 +650,79 @@
   </div>
 </section>
 
-{# The gym: a quieter section under the online tiers, same cards. Both are
-   tiers too: the monthly price is the plan's own, the yearly one text until a
-   plan exists for it, and the switch under them is one choice with the tiers'.
-   No MojiMakrosi add-on line on either (20.10.2026, the owner: "remove the
-   mojimakrosi price completely in the 'treninzi u dvorani' section"); its
-   amount beside the dvorana stays in the prehrana plan's hint on
-   /moja-clanarina (the addon.dvorana slot).
-   Individualno names its other two prices under its own, in both periods;
-   they used to follow its bullets, which are free text now. Each is the
-   owner's text, the price.<plan>.amount and .unit slots the gym owner
-   retypes in place (no Stripe Price instead, 18.10.2026). A
-   price and its unit never part at a line break ("od 30 €" over "/ tretman"
-   read as two things): non-breaking spaces join the amount, "€" and the
-   unit, and the three are one inline block (.whole), so no break falls
-   inside the owner's own text either while the price fits its line. #}
+{# The gym: a quieter section under the online tiers, same cards. Rows of
+   the gym_cards table since 20.10.2026 (the owner: "lets add an option so
+   that my friend can add new tabs, just like in the announcement part"):
+   Dvorana and Individualno, which migration 78d539161185 made the first two
+   rows, and the offers the gym owner adds beside them ("Treninzi za
+   penziće", "Pilates za cure"), up to eight, in creation order
+   (db.gym_cards). Every card is a tier too, a monthly and a yearly price,
+   and the switch under them is one choice with the tiers'. No MojiMakrosi
+   add-on line on any (20.10.2026, the owner: "remove the mojimakrosi price
+   completely in the 'treninzi u dvorani' section"); its amount beside the
+   dvorana stays in the prehrana plan's hint on /moja-clanarina (the
+   addon.dvorana slot).
+   A card stands for plans or for none (its row's plans). One with plans is
+   priced by its first plan's price.<plan>.amount and .unit, the very slots
+   /moja-clanarina prints (edit one, both change; no Stripe Price instead,
+   18.10.2026), and its button follows them (offer_cta); its other plans'
+   prices are the muted line under its price, in both periods (plan_note:
+   Individualno's "u dvoje ili troje … · rehabilitacija …"; they used to
+   follow its bullets, which are free text now). One with none (every card
+   the gym owner adds) is his text alone: its own monthly price, and "Javi
+   nam se →" to the contact for everyone. A card with no such line keeps
+   the room of the row's longest one, invisibly (.price-note.room), so the
+   prices stay level in every row of the grid; no line on any card, no room.
+   A price and its unit never part at a line break ("od 30 €" over
+   "/ tretman" read as two things): non-breaking spaces join the amount, "€"
+   and the unit, and the three are one inline block (.whole), so no break
+   falls inside the owner's own text either while the price fits its line.
+   A visitor gets the cards that are on, and no section at all when none
+   is. An editor gets every card, a hidden one .is-off (shown, dimmed, in
+   edit mode only), and the section always (.is-off when no card is on, as
+   the announcements' box: the data-flag marks are for base.html's flag(),
+   which keeps both in step at a click); each card's switch and "Obriši
+   karticu" (a plain form its pill sends at the second tap) and, under the
+   row, "+ Dodaj karticu" while there are fewer than eight (can_add_gym):
+   with every card deleted, that form is how he starts again. The grid's
+   columns follow the cards (--cols: the cards a visitor sees, up to three;
+   --cols-edit: every card, for edit mode; see .gym-grid). #}
 {% macro note_price(plan) -%}
   <span class="whole">
   {{- c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %}&nbsp;€{% endif %}&nbsp;{{ c.t("price." ~ plan ~ ".unit") -}}
   </span>
 {%- endmacro %}
-{% set gym_note %}u dvoje ili troje {{ note_price("poluindividualni") }} · rehabilitacija {{ note_price("rehabilitacija") }}{% endset %}
-<section class="band" id="dvorana" style="padding-top:0;">
+{# a card's line: its plans after the first, each "<word> <price>", joined
+   by " · "; the word is the plan's name in lower case, or the gym's own
+   ("u dvoje ili troje"). Empty for a card of one plan, or none. #}
+{% macro plan_note(keys) -%}
+  {%- for plan in keys[1:] -%}
+    {{ " · " if not loop.first else "" }}{{ {"poluindividualni": "u dvoje ili troje"}.get(plan, plan_labels[plan] | lower) }} {{ note_price(plan) }}
+  {%- endfor -%}
+{%- endmacro %}
+{% set gym_shown = gym_cards | selectattr("shown") | list | length %}
+{% if gym_shown or can_edit_copy %}
+{% set gym_room = namespace(note="", size=0) %}
+{% for card in gym_cards %}{% set note = plan_note(card.plan_keys) %}{% if note | striptags | length > gym_room.size %}{% set gym_room.note = note %}{% set gym_room.size = note | striptags | length %}{% endif %}{% endfor %}
+<section class="band{% if not gym_shown %} is-off{% endif %}" id="dvorana" style="padding-top:0;"{% if can_edit_copy %} data-flag-group{% endif %}>
   <div class="band-inner">
     <div class="sec-head">
       <div class="sec-kicker">{{ c.t("gym.kicker") }}</div>
       <h2>{{ c.t("gym.h2") }}</h2>
     </div>
-    <div class="gym-grid swipe-row">
-      {{ offer(["grupni"], "offer.dvorana", tier=true, room=gym_note) }}
-      {{ offer(["individualni", "poluindividualni", "rehabilitacija"], "offer.individualno",
-               tier=true, note=gym_note) }}
+    <div class="gym-grid swipe-row" style="--cols: {{ [[gym_shown, 1] | max, 3] | min }}{% if can_edit_copy %}; --cols-edit: {{ [[gym_cards | length, 1] | max, 3] | min }}{% endif %}">
+      {% for card in gym_cards %}{% set note = plan_note(card.plan_keys) %}
+      {{ offer(card.plan_keys, "dvorana." ~ card.id, tier=true, real=card.plan_keys | length > 0,
+               note=note if note else none, room=gym_room.note if (not note and gym_room.note) else none,
+               card=card, n=loop.index) }}
+      {% endfor %}
     </div>
-    <div class="dots" role="group" aria-label="Kartice ponude" hidden></div>
+    <div class="dots" role="group" aria-label="Kartice ponude" hidden></div>{% if can_add_gym %}
+    <form method="post" action="/dvorana/nova" class="ed-add-gym"><button type="submit" class="act">+ Dodaj karticu</button></form>{% endif %}
     {{ period_switch() }}
   </div>
 </section>
+{% endif %}
 
 {% if gallery | length > 1 %}
 <section class="band" id="galerija" style="padding-top:0;">
@@ -701,7 +807,7 @@
   // card in view is lit, a tapped dot brings its card to the centre. A row
   // starts on its .featured card when it has one (the tiers: QMove PRO in the
   // middle, START a swipe to the left, ELITE to the right), else on its first
-  // card (the announcements, the gym's two). At once, not gliding there: the
+  // card (the announcements, the gym's). At once, not gliding there: the
   // page opens on it. Only where the row scrolls, so a desktop grid (900px
   // and up: the tiers, the gym) is left alone; without the script a row
   // starts on its first card.
@@ -801,9 +907,10 @@
     });
   })();
   // Mjesečno / Godišnje: one choice, two switches (under the tiers, under the
-  // gym). The page opens on Godišnje, as the server renders it (the yearly
-  // prices shown, the monthly hidden, Godišnje selected), so nothing runs on
-  // load. Pressing either shows that price on every card of both sections and
+  // gym; one when the gym's section is not on the page, no card of it shown:
+  // the loops below take any number). The page opens on Godišnje, as the
+  // server renders it (the yearly prices shown, the monthly hidden, Godišnje
+  // selected), so nothing runs on load. Pressing either shows that price on every card of both sections and
   // marks both switches alike; it is per page view, nothing is remembered.
   (function () {
     var switches = [].slice.call(document.querySelectorAll(".period"));

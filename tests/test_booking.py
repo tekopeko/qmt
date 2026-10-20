@@ -19,7 +19,7 @@ os.environ["OWNER_EMAIL"] = "trener@test.local"
 import pytest
 from fastapi.testclient import TestClient
 
-from qmt import auth, config, db
+from qmt import auth, config, copy, db
 from qmt.models import Base, Booking, SessionTemplate, TrainingSession, User
 from qmt.web.app import app
 
@@ -52,6 +52,13 @@ def client_for(email: str) -> TestClient:
     r = c.post("/login", data={"email": email, "password": "lozinka123"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/", "login failed"
     return c
+
+
+def gym_examples() -> list[int]:
+    """The landing's two gym cards (#dvorana), Dvorana and Individualno, as
+    the migration leaves a database where nobody edited them (rows since
+    20.10.2026, copy.GYM_CARD_EXAMPLES): their ids, in order."""
+    return [db.add_gym_card(None, example).id for example in copy.GYM_CARD_EXAMPLES]
 
 
 def future_session(hours_from_now: float = 24, capacity: int = 8, **kw) -> int:
@@ -524,6 +531,7 @@ def test_landing_hero_follows_the_membership():
     make_user("ivan@test.local", plans=("grupni",))
     make_user("ana@test.local", plans=())
     make_user("sara@test.local", plans=("online",))      # not a bookable kind
+    gym_examples()
 
     for c in (TestClient(app), *(client_for(e) for e in ("ivan@test.local", "ana@test.local", "sara@test.local"))):
         page = c.get("/").text
@@ -740,6 +748,7 @@ def test_cjenik_is_members_only_and_landing_plan_cta_states():
     there since 18.10.2026), so it is for members: a guest who opens either
     is sent to log in, and no public page links to them. The one public
     place with prices is the landing's offer (since 5.10.2026)."""
+    gym_examples()
     guest = TestClient(app)
     r = guest.get("/cjenik", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/login?next=/cjenik"
@@ -775,6 +784,7 @@ def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
     The photo above them is a link to that section. Since 15.10.2026 the
     offer is three tiers of the online plan, and the gym's two cards sit in a
     section below it."""
+    gym_examples()
     page = TestClient(app).get("/").text
     offer, gym = page.split('id="usluge"')[1].split('id="dvorana"')
     assert offer.count('class="card offer') == 3 and gym.count('class="card offer') == 2
@@ -826,6 +836,7 @@ def test_public_prices_switch_hides_them_from_guests_only(monkeypatch):
     """PUBLIC_PRICES=off is the one-variable way back to the 28.9. rule: guests
     see the offer without a single price, members see everything."""
     assert config.prices_public()                       # the default since 5.10.2026
+    gym_examples()
     monkeypatch.setenv("PUBLIC_PRICES", "off")
     assert not config.prices_public()
     page = TestClient(app).get("/").text
@@ -839,6 +850,74 @@ def test_public_prices_switch_hides_them_from_guests_only(monkeypatch):
     assert "50 € / mjesečno" in shown(page) and '+<span class="t">5</span> € / mjesečno' in page
     assert "Cijene nakon prijave" not in page
     assert page.count('class="period"') == 2            # a member gets both switches
+
+
+def gym_section(page: str) -> str:
+    """The landing's gym section (#dvorana), from its tag to its end."""
+    return page.split('id="dvorana"')[1].split("</section>")[0]
+
+
+def test_landing_gym_cards_are_rows_the_editor_adds_hides_and_prices():
+    """The gym's cards are rows since 20.10.2026 (the owner: his friend adds
+    offers there "just like in the announcement part"). The two the
+    migration leaves print their texts, in order, two columns from 900px. A
+    card the editor adds stands for no plan: its own price, the longest
+    note's room under it so the prices stay level, and "Javi nam se →" for
+    everyone, a member too: there is nothing in the app to buy for it. The
+    columns follow the cards a visitor sees. A hidden card is on the
+    editor's page only, marked off; with none shown a visitor gets no gym
+    section at all, its switch and dots with it, and the editor still gets
+    it (his "+ Dodaj karticu" is in it)."""
+    make_user("trener@test.local", is_trainer=True, plans=())
+    make_user("ivan@test.local")                        # owns grupni
+    dvorana, individualno = gym_examples()
+    gym = gym_section(TestClient(app).get("/").text)
+    texts = [text for example in copy.GYM_CARD_EXAMPLES
+             for text in (example["title"], example["lead"], *example["points"])]
+    at = [gym.index(f'<span class="t">{text}</span>') for text in texts]   # every text, in order
+    assert at == sorted(at) and gym.count('class="card offer') == 2
+    assert '<div class="gym-grid swipe-row" style="--cols: 2">' in gym
+
+    third = db.add_gym_card(None).id                    # the editor's new card, priced by its own text
+    for column, text in (("title", "Pilates za cure"), ("price", "40"), ("unit", "/ mjesečno"),
+                         ("year_price", "400"), ("year_unit", "/ godišnje")):
+        db.set_gym_card_field(third, column, text, None)
+    for c in (TestClient(app), client_for("ivan@test.local")):   # a guest and a member alike
+        gym = gym_section(c.get("/").text)
+        assert '<div class="gym-grid swipe-row" style="--cols: 3">' in gym
+        card = gym.split('class="card offer')[3]
+        assert card.startswith('">') and '<h3><span class="t">Pilates za cure</span></h3>' in card   # no plan: never mine
+        assert ('<div class="price" data-period="month" hidden><b><span class="t">40</span></b>'
+                '<span><span class="t">/ mjesečno</span></span></div>') in card
+        assert ('<div class="price" data-period="year"><b><span class="t">400</span></b>'
+                '<span><span class="t">/ godišnje</span></span></div>') in card
+        assert "€" not in card.split('class="price-note')[0]                # typed as it is: no plan's "€"
+        assert '<p class="price-note room" aria-hidden="true">u dvoje ili troje' in card   # Individualno's line, unseen
+        assert card.count('<a class="btn btn-sm cta" href="#kontakt">Javi nam se →</a>') == 1
+        assert "Odaberi plan" not in card and "owned" not in card
+    member = gym_section(client_for("ivan@test.local").get("/").text)
+    assert 'class="card offer mine"' in member and "✓ Rezerviraj termin →" in member.split('class="card offer')[1]
+
+    db.set_gym_card_shown(third, False)                 # hidden: the editor's alone, marked off
+    for c in (TestClient(app), client_for("ivan@test.local")):
+        gym = gym_section(c.get("/").text)
+        assert "Pilates za cure" not in gym and "is-off" not in gym and "data-flag" not in gym
+        assert '<div class="gym-grid swipe-row" style="--cols: 2">' in gym and gym.count('class="card offer') == 2
+    gym = gym_section(client_for("trener@test.local").get("/").text)
+    assert "Pilates za cure" in gym and gym.count('class="card offer') == 3
+    assert f'<div class="card offer is-off" data-flag="dvorana.{third}.show">' in gym
+    assert '<div class="gym-grid swipe-row" style="--cols: 2; --cols-edit: 3">' in gym   # a visitor's columns, and edit mode's
+
+    for card_id in (dvorana, individualno):             # none shown: no section for a visitor
+        db.set_gym_card_shown(card_id, False)
+    for c in (TestClient(app), client_for("ivan@test.local")):
+        page = c.get("/").text
+        assert 'id="dvorana"' not in page and "Pilates za cure" not in page and '<span class="t">Individualno</span>' not in page
+        assert page.count('class="period"') == 1 and page.count('aria-label="Kartice ponude"') == 1   # the tiers' alone
+    page = client_for("trener@test.local").get("/").text                # the editor keeps it, marked off
+    assert '<section class="band is-off" id="dvorana" style="padding-top:0;" data-flag-group>' in page
+    gym = gym_section(page)
+    assert gym.count('<div class="card offer is-off') == 3 and 'action="/dvorana/nova"' in gym
 
 
 def test_payment_ledger_accumulates_and_stats():

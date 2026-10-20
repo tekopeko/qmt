@@ -8,6 +8,7 @@ created one-off.
 
 from __future__ import annotations
 
+import json
 from datetime import date as SADate, datetime, timedelta
 
 from sqlalchemy import (
@@ -263,6 +264,66 @@ class Announcement(Base):
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     __table_args__ = (UniqueConstraint("position", name="uq_announcements_position"),)
+
+
+class GymCard(Base):
+    """One of the landing's gym cards (#dvorana, the section under the online
+    tiers: Dvorana, Individualno, and what the gym owner adds beside them,
+    "Treninzi za penziće", "Pilates za cure"). Since 20.10.2026 a row the
+    trainer or owner adds, hides and deletes in edit mode, at most
+    db.MAX_GYM_CARDS of them, as he does the announcements; before, two
+    fixed sets of copy slots (offer.dvorana.* / offer.individualno.*, which
+    migration 78d539161185 turned into the first two rows). Its texts are
+    edited in place like copy, through virtual keys dvorana.<id>.<field>
+    (app.py, copy_save), cleaned as copy is (copy.clean) and never empty:
+    an emptied one is its placeholder again (copy.GYM_CARD_BLANK). `points`
+    is its bullets, a JSON array of strings, as a ListSlot's site_copy row
+    holds them. `plans` is the plans the card stands for, comma-separated
+    ("grupni", "individualni,poluindividualni,rehabilitacija"), "" for
+    none: the first prices the card (its price.<plan>.* slots, the ones
+    /moja-clanarina prints), the others are the muted line under that
+    price, and the button follows them. A card with none (every card the
+    owner adds: nothing edits `plans` in place) is his text alone, `price`
+    and `unit` its monthly price, its button the contact. `year_price` /
+    `year_unit` are every card's yearly price. `position` is creation
+    order, 1-based; `shown` the switch: a hidden card is on an editor's
+    page only."""
+
+    __tablename__ = "gym_cards"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    position: Mapped[int] = mapped_column(Integer)
+    shown: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    title: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    lead: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    points: Mapped[str] = mapped_column(Text, server_default=text("'[]'"), default="[]")
+    price: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    unit: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    year_price: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    year_unit: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    plans: Mapped[str] = mapped_column(String(80), server_default=text("''"), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                 onupdate=func.now())
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (UniqueConstraint("position", name="uq_gym_cards_position"),)
+
+    @property
+    def plan_keys(self) -> list[str]:
+        """The plans, in order: the first prices the card. [] for a card
+        that stands for none; a key that is no plan is left out."""
+        return [p for p in (k.strip() for k in (self.plans or "").split(",")) if p in PLAN_TYPES]
+
+    @property
+    def point_items(self) -> list[str]:
+        """The bullets: the points column read, a JSON array of strings
+        (copy.dump_items writes it); [] when it holds none, or none that
+        can be read."""
+        try:
+            data = json.loads(self.points or "[]")
+        except ValueError:
+            return []
+        return [x for x in data if isinstance(x, str) and x] if isinstance(data, list) else []
 
 
 class ReminderLog(Base):

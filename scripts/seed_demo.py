@@ -174,6 +174,22 @@ def seed_announcements() -> None:
     print(f"  {len(ANNOUNCEMENT_EXAMPLES)} najave (primjeri)")
 
 
+def seed_gym_cards() -> None:
+    """The landing's two gym cards (copy.GYM_CARD_EXAMPLES: Dvorana and
+    Individualno, with the plans they stand for), in place of whatever cards
+    there were: a dev RESET, as the rest."""
+    from sqlalchemy import delete
+
+    from qmt.copy import GYM_CARD_EXAMPLES
+    from qmt.models import GymCard
+
+    with db.session_scope() as s:
+        s.execute(delete(GymCard))
+    for example in GYM_CARD_EXAMPLES:
+        db.add_gym_card(None, example)
+    print(f"  {len(GYM_CARD_EXAMPLES)} kartice (Dvorana, Individualno)")
+
+
 def seed_karton() -> None:
     """Ivan: filled upitnik + two diary entries — the karton demo."""
     import json
@@ -211,3 +227,5 @@ if __name__ == "__main__":
     seed_karton()
     print("aktualno:")
     seed_announcements()
+    print("dvorana:")
+    seed_gym_cards()

@@ -54,6 +54,7 @@ templates.env.globals["copy_flag"] = copy.flag_on      # a flag slot: on or off
 templates.env.globals["copy_image"] = copy.image_name  # an image slot: its file's name, or None
 templates.env.globals["CAP"] = copy.CAP                # a text's cap, where no slot says it (_copy.html, field)
 templates.env.globals["ANNOUNCEMENT"] = copy.ANNOUNCEMENT_SLOTS   # an announcement's fields (landing.html, #aktualno)
+templates.env.globals["GYM"] = copy.GYM_CARD_SLOTS     # a gym card's fields (landing.html, #dvorana)
 # a price slot's text as the page prints it, and whether it is a number at
 # all: "€" follows "50" and "od 30", not "na upit" (landing.html, _plan_price.html)
 templates.env.globals["copy_text"] = lambda key, texts: texts.get(key, copy.SLOTS[key].default)
@@ -278,7 +279,8 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
     which removes its photo; a photo goes up through POST /copy/{key}/slika,
     so no text can ever land in an image slot. An announcement's field (a
     row, not a slot: aktualno.<id>.<field>) is edited the same way, by the
-    type its field has (see _copy_save_announcement)."""
+    type its field has (see _copy_save_announcement), and so is a gym
+    card's (dvorana.<id>.<field>, see _copy_save_gym_card)."""
     user = current_user(request)
     if user is None:
         return JSONResponse({"ok": False, "error": "Prijava je istekla — prijavi se ponovno."}, status_code=401)
@@ -287,9 +289,12 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
     slot = copy.SLOTS.get(key)
     if slot is None:
         found = _announcement_field(key)
-        if found is None:
-            return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
-        return _copy_save_announcement(key, *found, text, reset, user.id)
+        if found is not None:
+            return _copy_save_announcement(key, *found, text, reset, user.id)
+        found = _gym_card_field(key)
+        if found is not None:
+            return _copy_save_gym_card(*found, text, index, reset, user.id)
+        return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
     if isinstance(slot, copy.ListSlot):
         return _copy_save_list(key, slot, text, index, reset, user.id)
     if isinstance(slot, copy.FlagSlot):
@@ -320,39 +325,68 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
     return JSONResponse({"ok": True, "text": cleaned, "default": False})
 
 
-# An announcement's field as the editor names it: aktualno.<id>.<field>. At
-# most nine digits, so no id is past what the column can hold.
+# A row's field as the editor names it: an announcement's
+# aktualno.<id>.<field>, a gym card's dvorana.<id>.<field> (year_price: an
+# underscore). At most nine digits, so no id is past what the column can hold.
 _ANNOUNCEMENT_KEY = re.compile(r"aktualno\.([1-9][0-9]{0,8})\.([a-z]+)")
+_GYM_CARD_KEY = re.compile(r"dvorana\.([1-9][0-9]{0,8})\.([a-z_]+)")
+
+
+def _row_field(pattern: re.Pattern, slots: dict, get, key: str) -> tuple[int, str, object] | None:
+    """A virtual key's row, field and slot (`slots`: how each field is
+    edited), or None: not such a key (`pattern`), a field such a row does
+    not have, or a row that is not there (`get`, by id)."""
+    m = pattern.fullmatch(key)
+    if m is None or m.group(2) not in slots or get(int(m.group(1))) is None:
+        return None
+    return int(m.group(1)), m.group(2), slots[m.group(2)]
 
 
 def _announcement_field(key: str) -> tuple[int, str, copy.Slot | copy.FlagSlot | copy.ImageSlot] | None:
     """A virtual key's card, field and slot (copy.ANNOUNCEMENT_SLOTS: how
     the field is edited), or None: not such a key, a field a card does not
     have, or a card that is not there."""
-    m = _ANNOUNCEMENT_KEY.fullmatch(key)
-    if m is None or m.group(2) not in copy.ANNOUNCEMENT_SLOTS or db.announcement(int(m.group(1))) is None:
-        return None
-    return int(m.group(1)), m.group(2), copy.ANNOUNCEMENT_SLOTS[m.group(2)]
+    return _row_field(_ANNOUNCEMENT_KEY, copy.ANNOUNCEMENT_SLOTS, db.announcement, key)
+
+
+def _gym_card_field(key: str) -> tuple[int, str, copy.Slot | copy.ListSlot | copy.FlagSlot] | None:
+    """The same for a gym card (dvorana.<id>.<field>, copy.GYM_CARD_SLOTS)."""
+    return _row_field(_GYM_CARD_KEY, copy.GYM_CARD_SLOTS, db.gym_card, key)
+
+
+def _copy_save_row(slot, text: str, reset: str, set_shown, set_text) -> JSONResponse:
+    """A row's switch or text (an announcement's, a gym card's), answered as
+    copy_save answers for a slot of its type: the switch takes "on" or
+    "off" (reset=1: its default, on) and hands it to set_shown(on); a text
+    is cleaned and capped and handed to set_text(cleaned), which stores it
+    and returns what it stored: for an empty one (or reset=1) the row's
+    placeholder, "default": true. A setter's LookupError (the row deleted
+    meanwhile) is the caller's to answer."""
+    if isinstance(slot, copy.FlagSlot):
+        if reset == "1":
+            on = slot.default
+        elif text in ("on", "off"):
+            on = text == "on"
+        else:
+            return JSONResponse({"ok": False, "error": "Nepoznata vrijednost."}, status_code=400)
+        set_shown(on)
+        return JSONResponse({"ok": True, "on": on, "default": reset == "1"})
+    cleaned = "" if reset == "1" else copy.clean(text)
+    if len(cleaned) > slot.max:
+        return JSONResponse({"ok": False, "error": f"Najviše {slot.max} znakova — ovo ih ima {len(cleaned)}."},
+                            status_code=400)
+    return JSONResponse({"ok": True, "text": set_text(cleaned), "default": not cleaned})
 
 
 def _copy_save_announcement(key: str, ann_id: int, field: str, slot, text: str, reset: str,
                             user_id: int) -> JSONResponse:
     """One change to an announcement's field, answered as copy_save answers
-    for a slot of its type: the switch takes "on" or "off" (reset=1: on);
-    the photo only reset=1, which removes the row's name and the file; a text is
-    cleaned and capped, and an empty one (or reset=1) is the new card's
-    placeholder again (copy.ANNOUNCEMENT_BLANK), "default": true. A card
-    deleted meanwhile answers 404, as an unknown key does."""
+    for a slot of its type: the switch and a text as _copy_save_row does
+    (an empty text the new card's placeholder again,
+    copy.ANNOUNCEMENT_BLANK); the photo only reset=1, which removes the
+    row's name and the file. A card deleted meanwhile answers 404, as an
+    unknown key does."""
     try:
-        if isinstance(slot, copy.FlagSlot):
-            if reset == "1":
-                on = slot.default
-            elif text in ("on", "off"):
-                on = text == "on"
-            else:
-                return JSONResponse({"ok": False, "error": "Nepoznata vrijednost."}, status_code=400)
-            db.set_announcement_shown(ann_id, on, user_id)
-            return JSONResponse({"ok": True, "on": on, "default": reset == "1"})
         if isinstance(slot, copy.ImageSlot):
             if reset != "1":
                 return JSONResponse({"ok": False, "error": f"Sliku šalje /copy/{key}/slika."}, status_code=400)
@@ -360,46 +394,80 @@ def _copy_save_announcement(key: str, ann_id: int, field: str, slot, text: str, 
             if old:
                 storage.delete(old)
             return JSONResponse({"ok": True, "url": None, "default": True})
-        cleaned = "" if reset == "1" else copy.clean(text)
-        if len(cleaned) > slot.max:
-            return JSONResponse({"ok": False, "error": f"Najviše {slot.max} znakova — ovo ih ima {len(cleaned)}."},
-                                status_code=400)
-        stored = db.set_announcement_field(ann_id, copy.ANNOUNCEMENT_COLUMNS[field], cleaned, user_id)
-        return JSONResponse({"ok": True, "text": stored, "default": not cleaned})
+        return _copy_save_row(
+            slot, text, reset, lambda on: db.set_announcement_shown(ann_id, on, user_id),
+            lambda cleaned: db.set_announcement_field(ann_id, copy.ANNOUNCEMENT_COLUMNS[field], cleaned, user_id))
+    except LookupError:
+        return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
+
+
+def _copy_save_gym_card(card_id: int, field: str, slot, text: str, index: str, reset: str,
+                        user_id: int) -> JSONResponse:
+    """One change to a gym card's field (dvorana.<id>.<field>), answered as
+    copy_save answers for a slot of its type: the switch and a text as an
+    announcement's (_copy_save_row; an empty text the new card's
+    placeholder again, copy.GYM_CARD_BLANK); the bullets as a list slot's,
+    one item at a time by `index` (_edit_list), and reset=1 puts the new
+    card's two bullets back. A card deleted meanwhile answers 404, as an
+    unknown key does."""
+    try:
+        if isinstance(slot, copy.ListSlot):
+            if reset == "1":
+                items = db.set_gym_card_points(card_id, list(slot.default), user_id)
+                return JSONResponse({"ok": True, "items": items, "default": True})
+            card = db.gym_card(card_id)
+            if card is None:
+                raise LookupError(f"no gym card {card_id}")
+            items = card.point_items
+            return _edit_list(items, items == list(slot.default), slot, text, index,
+                              lambda changed: db.set_gym_card_points(card_id, changed, user_id))
+        return _copy_save_row(
+            slot, text, reset, lambda on: db.set_gym_card_shown(card_id, on, user_id),
+            lambda cleaned: db.set_gym_card_field(card_id, copy.GYM_CARD_COLUMNS[field], cleaned, user_id))
     except LookupError:
         return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
 
 
 def _copy_save_list(key: str, slot: copy.ListSlot, text: str, index: str, reset: str,
                     user_id: int) -> JSONResponse:
-    """One change to a list slot. reset=1 puts the default list back. Otherwise
-    `index` says which item: 0..n-1 replaces that item with `text`, n appends
-    `text` as a new one, and an empty text removes the item at `index` (with no
-    index, or at n, there is nothing to remove and nothing changes). The answer
-    is always the whole list, so the editor can redraw it with fresh indexes."""
+    """One change to a list slot. reset=1 puts the default list back; any
+    other change is _edit_list's, made to the stored list (no row: the
+    default list) and stored as the slot's one row."""
+    if reset == "1":
+        db.reset_copy(key)
+        return JSONResponse({"ok": True, "items": list(slot.default), "default": True})
+    stored = db.copy_texts().get(key)
+    return _edit_list(copy.load_items(stored, slot), stored is None, slot, text, index,
+                      lambda items: db.set_copy(key, copy.dump_items(items), user_id))
+
+
+def _edit_list(items: list[str], untouched: bool, slot: copy.ListSlot, text: str, index: str,
+               write) -> JSONResponse:
+    """One change to a list (a list slot's, a gym card's bullets): `index`
+    says which item: 0..n-1 replaces that item with `text`, n appends `text`
+    as a new one, and an empty text removes the item at `index` (with no
+    index, or at n, there is nothing to remove and nothing changes: the
+    answer's "default" is then `untouched`). The slot's limits hold. A
+    changed list goes to write(items). The answer is always the whole list,
+    so the editor can redraw it with fresh indexes."""
     def ok(items: list[str], default: bool) -> JSONResponse:
         return JSONResponse({"ok": True, "items": items, "default": default})
 
     def bad(error: str) -> JSONResponse:
         return JSONResponse({"ok": False, "error": error}, status_code=400)
 
-    if reset == "1":
-        db.reset_copy(key)
-        return ok(list(slot.default), True)
-    stored = db.copy_texts().get(key)
-    items = copy.load_items(stored, slot)
     cleaned = copy.clean(text)
     try:
         i = int(index) if index.strip() else None
     except ValueError:
         return bad("Nepoznata stavka.")
     if i is None:
-        return bad("Nepoznata stavka.") if cleaned else ok(items, stored is None)
+        return bad("Nepoznata stavka.") if cleaned else ok(items, untouched)
     if not 0 <= i <= len(items):
         return bad("Nepoznata stavka.")
     if not cleaned:
         if i == len(items):
-            return ok(items, stored is None)
+            return ok(items, untouched)
         del items[i]
     else:
         if len(cleaned) > slot.max_chars:
@@ -410,7 +478,7 @@ def _copy_save_list(key: str, slot: copy.ListSlot, text: str, index: str, reset:
             items.append(cleaned)
         else:
             items[i] = cleaned
-    db.set_copy(key, copy.dump_items(items), user_id)
+    write(items)
     return ok(items, False)
 
 
@@ -572,10 +640,14 @@ def landing(request: Request):
     # while there is room for another
     editor = _can_edit_copy(user)
     news = db.announcements(all=editor)
+    # the gym's cards (#dvorana) the same way, and "+ Dodaj karticu"; a
+    # card's note names its other plans (plan_labels)
+    gym = db.gym_cards(all=editor)
     return templates.TemplateResponse(request, "landing.html", _ctx(
         request, user, copy_texts=texts, gallery=gallery, my_plans=plans,
         show_prices=show_prices, announcements=news,
-        can_add=editor and len(news) < db.MAX_ANNOUNCEMENTS))
+        can_add=editor and len(news) < db.MAX_ANNOUNCEMENTS,
+        gym_cards=gym, can_add_gym=editor and len(gym) < db.MAX_GYM_CARDS, plan_labels=PLAN_LABELS))
 
 
 # ---------- the announcements: add and delete (their fields: POST /copy/{key}) ----------
@@ -606,6 +678,33 @@ def aktualno_obrisi(request: Request, ann_id: int):
     if image:
         storage.delete(image)
     return RedirectResponse("/#aktualno", status_code=303)
+
+
+# ---------- the gym's cards: add and delete (their fields: POST /copy/{key}) ----------
+
+@app.post("/dvorana/nova")
+def dvorana_nova(request: Request):
+    """The editor's "+ Dodaj karticu" (edit mode, a plain form): a new card
+    after the last of the gym's, with placeholder texts to retype in place,
+    shown, standing for no plan (its own price, the contact for a button).
+    Back to the gym's section; at the cap with a sentence why."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    if db.add_gym_card(user.id) is None:
+        return RedirectResponse(f"/?error=Najviše+{db.MAX_GYM_CARDS}+kartica.#dvorana", status_code=303)
+    return RedirectResponse("/#dvorana", status_code=303)
+
+
+@app.post("/dvorana/{card_id}/obrisi")
+def dvorana_obrisi(request: Request, card_id: int):
+    """The editor's "Obriši karticu" (edit mode, a plain form the pill sends
+    at its second tap). A card already gone is nothing to do."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    db.delete_gym_card(card_id)
+    return RedirectResponse("/#dvorana", status_code=303)
 
 
 @app.get("/cjenik")

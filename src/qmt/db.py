@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import config, copy
-from .models import (PLAN_LABELS, SESSION_KINDS, Announcement, Base, Booking, Membership,
+from .models import (PLAN_LABELS, SESSION_KINDS, Announcement, Base, Booking, GymCard, Membership,
                      OnboardingResponse, Payment, Program, ProgramItem, ReminderLog,
                      SessionTemplate, SiteCopy, TrainingLog, TrainingSession, User)
 
@@ -244,6 +244,109 @@ def set_announcement_image(ann_id: int, name: str | None, user_id: int | None = 
         old = a.image
         a.image, a.updated_by = name, user_id
         return old
+
+
+# ---------- the landing's gym cards (#dvorana; models.GymCard) ----------
+
+MAX_GYM_CARDS = 8              # as many as the announcements (20.10.2026)
+
+
+def gym_cards(all: bool = False) -> list[GymCard]:
+    """In position order (creation order): the shown ones, or with all=True
+    every one, the hidden too (an editor's page)."""
+    with session_scope() as s:
+        q = select(GymCard).order_by(GymCard.position)
+        return list(s.scalars(q if all else q.where(GymCard.shown)))
+
+
+def gym_card(card_id: int) -> GymCard | None:
+    with session_scope() as s:
+        return s.get(GymCard, card_id)
+
+
+def add_gym_card(user_id: int | None, values: dict | None = None) -> GymCard | None:
+    """A new card after the last one: the placeholder texts
+    (copy.GYM_CARD_BLANK), shown, standing for no plan. `values` is a
+    whole card instead, in the blank's shape plus its plans (one of
+    copy.GYM_CARD_EXAMPLES: the demo seed's cards); no route passes it.
+    None at the cap (MAX_GYM_CARDS). The count and the next position are
+    read under a table lock, as add_announcement reads them: two quick taps
+    never pass the cap together nor take one position twice, and the
+    landing's plain reads never wait on it."""
+    card = dict(copy.GYM_CARD_BLANK if values is None else values)
+    card["points"] = copy.dump_items(list(card["points"]))      # a JSON array, as a list slot's row
+    with session_scope() as s:
+        s.execute(sa_text("LOCK TABLE gym_cards IN SHARE ROW EXCLUSIVE MODE"))
+        n, last = s.execute(select(func.count(), func.coalesce(func.max(GymCard.position), 0))
+                            .select_from(GymCard)).one()
+        if n >= MAX_GYM_CARDS:
+            return None
+        g = GymCard(position=last + 1, updated_by=user_id, **card)
+        s.add(g)
+        s.flush()
+        return g
+
+
+def _gym_card_row(s: Session, card_id: int) -> GymCard:
+    """The card, locked for this transaction; LookupError when it is gone."""
+    g = s.get(GymCard, card_id, with_for_update=True)
+    if g is None:
+        raise LookupError(f"no gym card {card_id}")
+    return g
+
+
+def delete_gym_card(card_id: int) -> bool:
+    """Delete a card. False when it was gone already."""
+    with session_scope() as s:
+        try:
+            g = _gym_card_row(s, card_id)
+        except LookupError:
+            return False
+        s.delete(g)
+        return True
+
+
+def set_gym_card_field(card_id: int, column: str, text: str, user_id: int | None) -> str:
+    """Set one text of a card. `column` is where the row keeps it
+    (copy.GYM_CARD_COLUMNS: title, lead, price, unit, year_price,
+    year_unit). The text is cleaned as copy is (copy.clean); an empty one
+    is the field's placeholder again (copy.GYM_CARD_BLANK), as an emptied
+    slot is its default. Returns what is stored. ValueError: not such a
+    column, or a text past copy.CAP; LookupError: no such card."""
+    if column not in copy.GYM_CARD_COLUMNS.values():
+        raise ValueError(f"not a text of a gym card: {column!r}")
+    cleaned = copy.clean(text)
+    if len(cleaned) > copy.CAP:
+        raise ValueError(f"{len(cleaned)} characters, at most {copy.CAP}")
+    stored = cleaned or copy.GYM_CARD_BLANK[column]
+    with session_scope() as s:
+        g = _gym_card_row(s, card_id)
+        setattr(g, column, stored)
+        g.updated_by = user_id
+    return stored
+
+
+def set_gym_card_points(card_id: int, items: list[str], user_id: int | None) -> list[str]:
+    """Set a card's bullets, the whole list: each item cleaned as copy is,
+    the empty ones dropped, stored as a list slot's row is
+    (copy.dump_items). An empty list is a card without bullets. Returns
+    what is stored. ValueError: more than copy.CAP_ITEMS items, or one past
+    copy.CAP; LookupError: no such card."""
+    kept = [t for t in (copy.clean(x) for x in items) if t]
+    if len(kept) > copy.CAP_ITEMS or any(len(t) > copy.CAP for t in kept):
+        raise ValueError(f"{len(kept)} items, at most {copy.CAP_ITEMS} of {copy.CAP} characters")
+    with session_scope() as s:
+        g = _gym_card_row(s, card_id)
+        g.points, g.updated_by = copy.dump_items(kept), user_id
+    return kept
+
+
+def set_gym_card_shown(card_id: int, shown: bool, user_id: int | None = None) -> None:
+    """The card's switch: shown to everyone, or on an editor's page only.
+    LookupError: no such card."""
+    with session_scope() as s:
+        g = _gym_card_row(s, card_id)
+        g.shown, g.updated_by = shown, user_id
 
 
 def set_trainer_id(user_id: int, is_trainer: bool) -> bool:

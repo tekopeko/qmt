@@ -51,6 +51,15 @@ an ImageSlot) and ANNOUNCEMENT_COLUMNS where a row keeps a text. No entry of
 SLOTS is a flag or a photo since; the types stay for the announcements, and
 for any slot that is one.
 
+The gym's cards (#dvorana, under the online tiers) went the same way on
+20.10.2026: Dvorana and Individualno were two fixed sets of slots
+(offer.dvorana.* / offer.individualno.*), and the gym owner adds his own
+offers beside them now, hides and deletes them, up to eight
+(models.GymCard, db.py). The editor names their fields with virtual keys,
+dvorana.<id>.<field>, on POST /copy/{key}: GYM_CARD_SLOTS below says how
+each is edited (a text a Slot, the bullets a ListSlot, the switch a
+FlagSlot; no photo) and GYM_CARD_COLUMNS where a row keeps a text.
+
 The price slots (18.10.2026) are plain Slots with one job: every price the
 site shows, whether or not Stripe is configured (app.py, reference_prices
 and _offer_prices). No Stripe Price overrides them (the owner's call, the
@@ -173,25 +182,10 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     "offer.online3.year_price": Slot("na upit", CAP, "Online 3: godišnja cijena"),
     "offer.online3.year_unit": Slot("", CAP, "Online 3: uz godišnju cijenu"),
     # ---- landing: the gym, a quieter section below the online tiers ----
-    # Both cards are tiers too: the monthly price is the plan's own, the yearly
-    # one text until a plan exists for it; the gym's own "Mjesečno / Godišnje"
-    # switch is one choice with the tiers'.
+    # Its cards are rows since 20.10.2026, not slots (GYM_CARD_* below); the
+    # section's kicker and heading stay slots.
     "gym.kicker": Slot("Dvorana", CAP, "Mala oznaka iznad dvorane"),
     "gym.h2": Slot("Treninzi u dvorani", CAP, "Naslov: dvorana"),
-    "offer.dvorana.title": Slot("Dvorana", CAP, "Dvorana: naziv"),
-    "offer.dvorana.lead": Slot("Grupni treninzi u Dubravi.", CAP, "Dvorana: podnaslov"),
-    "offer.dvorana.points": ListSlot(("Male grupe do 8 polaznika", "8, 12 ili 16 treninga mjesečno",
-                                      "Termin rezerviraš u aplikaciji"), CAP_ITEMS, CAP, "Dvorana: stavka"),
-    "offer.dvorana.year_price": Slot("na upit", CAP, "Dvorana: godišnja cijena"),
-    "offer.dvorana.year_unit": Slot("", CAP, "Dvorana: uz godišnju cijenu"),
-    "offer.individualno.title": Slot("Individualno", CAP, "Individualno: naziv"),
-    "offer.individualno.lead": Slot("Trener samo za tebe.", CAP, "Individualno: podnaslov"),
-    # the prices of these used to follow the bullets; they are one line under
-    # the card's price now (landing.html, .price-note), so a bullet is free text
-    "offer.individualno.points": ListSlot(("Rad 1:1, po dogovoru", "U dvoje ili troje", "Rehabilitacija"),
-                                          CAP_ITEMS, CAP, "Individualno: stavka"),
-    "offer.individualno.year_price": Slot("na upit", CAP, "Individualno: godišnja cijena"),
-    "offer.individualno.year_unit": Slot("", CAP, "Individualno: uz godišnju cijenu"),
     "offer.addon": Slot("MojiMakrosi prehrana", CAP, "Naziv dodatka za prehranu"),
     # ---- prices: every price the site shows (no Stripe Price overrides them) ----
     # Per plan its amount, unit and note, the defaults REFERENCE_PRICES above
@@ -300,6 +294,60 @@ ANNOUNCEMENT_SLOTS: dict[str, Slot | FlagSlot | ImageSlot] = {
 }
 # where a row keeps each text ("when" is a keyword in too many places)
 ANNOUNCEMENT_COLUMNS = {"tag": "tag", "title": "title", "when": "when_text", "text": "body", "cta": "cta"}
+
+# ---- the landing's gym cards (#dvorana, under the online tiers) ----
+# Rows of the gym_cards table (models.GymCard), not slots, since 20.10.2026
+# (the owner: "lets add an option so that my friend can add new tabs, just
+# like in the announcement part"): Dvorana, Individualno and the offers the
+# gym owner adds beside them, up to db.MAX_GYM_CARDS. Each is switched off
+# in edit mode when it is over (a hidden card is not on a visitor's page,
+# and with none shown neither is the section). The dicts below are keyed by
+# the row's columns. A card stands for plans or for none (models.GymCard);
+# one he adds stands for none: his own price and the contact.
+
+# a new card ("+ Dodaj karticu"): these placeholders to retype, shown, no plans
+GYM_CARD_BLANK = {"title": "Nova kartica", "lead": "Kratki opis — klikni i upiši.",
+                  "points": ("Prva stavka — klikni i upiši", "Druga stavka"),
+                  "price": "na upit", "unit": "", "year_price": "na upit", "year_unit": ""}
+
+# the two cards the landing shipped with (the offer.dvorana.* /
+# offer.individualno.* slots' defaults until 20.10.2026) and the plans they
+# stand for, the first pricing each: the cards of the demo seed
+# (scripts/seed_demo.py); the migration that made them rows carries its own
+# copy. Their own price and unit are empty: a plan prices them.
+GYM_CARD_EXAMPLES = (
+    {"title": "Dvorana", "lead": "Grupni treninzi u Dubravi.",
+     "points": ("Male grupe do 8 polaznika", "8, 12 ili 16 treninga mjesečno", "Termin rezerviraš u aplikaciji"),
+     "price": "", "unit": "", "year_price": "na upit", "year_unit": "", "plans": "grupni"},
+    {"title": "Individualno", "lead": "Trener samo za tebe.",
+     # their prices are the line under the card's price (landing.html,
+     # .price-note), so a bullet is free text
+     "points": ("Rad 1:1, po dogovoru", "U dvoje ili troje", "Rehabilitacija"),
+     "price": "", "unit": "", "year_price": "na upit", "year_unit": "",
+     "plans": "individualni,poluindividualni,rehabilitacija"},
+)
+
+# A card's fields as the editor's virtual keys name them, dvorana.<id>.<field>,
+# and how each is edited: a text as a Slot, its default the placeholder an
+# empty save (or Zadano) puts back; the bullets as a ListSlot (Zadano puts
+# the new card's two back); the switch as a FlagSlot, on by default. The
+# label is the field's word in the editor's bar, after the card's number
+# ("Kartica 2: naziv", landing.html). price / unit print only on a card
+# that stands for no plan: a plan's card prints the plan's price slots.
+GYM_CARD_SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
+    "title": Slot(GYM_CARD_BLANK["title"], CAP, "naziv"),
+    "lead": Slot(GYM_CARD_BLANK["lead"], CAP, "podnaslov"),
+    "points": ListSlot(GYM_CARD_BLANK["points"], CAP_ITEMS, CAP, "stavka"),
+    "price": Slot(GYM_CARD_BLANK["price"], CAP, "mjesečna cijena"),
+    "unit": Slot(GYM_CARD_BLANK["unit"], CAP, "uz mjesečnu cijenu"),
+    "year_price": Slot(GYM_CARD_BLANK["year_price"], CAP, "godišnja cijena"),
+    "year_unit": Slot(GYM_CARD_BLANK["year_unit"], CAP, "uz godišnju cijenu"),
+    "show": FlagSlot(True, "prikazano"),
+}
+# where a row keeps each text (the bullets and the switch have setters of
+# their own: db.set_gym_card_points, db.set_gym_card_shown)
+GYM_CARD_COLUMNS = {"title": "title", "lead": "lead", "price": "price", "unit": "unit",
+                    "year_price": "year_price", "year_unit": "year_unit"}
 
 
 def clean(text: str) -> str:

@@ -31,21 +31,19 @@
   {%- endif -%}
 {%- endmacro %}
 
-{# An editable LIST (copy.ListSlot): `c.points("key")` prints the <ul>. Each
-   item is an .ed span that saves with its index; for an editor every item
-   also gets a ✕ and the list a "+ Dodaj stavku" after it, both shown only in
-   edit mode (body.editing). The editor redraws the items from the server's
-   answer, so the markup of one item here and in base.html's script is one
-   shape: <li><span class="ed t" …>text</span><button class="ed-x">✕</button></li>.
-   A visitor gets plain items (a .t span each, so an item's line breaks show
-   too), and nothing at all for an emptied list. #}
-{% macro points(key) -%}
-  {%- set slot = COPY[key] -%}
-  {%- set entries = copy_items(key, copy_texts) -%}
+{# A list that is no slot: a gym card's bullets (a row of gym_cards,
+   landing.html's #dvorana). `c.field_points(key, entries, label, slot)`
+   prints it as c.points prints a list slot (below), the same markup for
+   the same viewers: `key` is its virtual key (dvorana.<id>.points), which
+   POST /copy/{key} takes item by item as it takes a list slot's, `entries`
+   what the row holds, `label` what the editor's bar names ("Kartica 2:
+   stavka", and the item's number after it) and `slot` its limits
+   (copy.GYM_CARD_SLOTS["points"]). #}
+{% macro field_points(key, entries, label, slot) -%}
   {%- if can_edit_copy -%}
-    <ul data-list="{{ key }}" data-max="{{ slot.max_chars }}" data-max-items="{{ slot.max_items }}" data-label="{{ slot.label }}">
+    <ul data-list="{{ key }}" data-max="{{ slot.max_chars }}" data-max-items="{{ slot.max_items }}" data-label="{{ label }}">
       {%- for text in entries %}
-      <li><span class="ed t" data-copy="{{ key }}" data-index="{{ loop.index0 }}" data-max="{{ slot.max_chars }}" data-label="{{ slot.label }}">{{ text }}</span><button type="button" class="ed-x" aria-label="Ukloni stavku {{ loop.index }}">✕</button></li>
+      <li><span class="ed t" data-copy="{{ key }}" data-index="{{ loop.index0 }}" data-max="{{ slot.max_chars }}" data-label="{{ label }}">{{ text }}</span><button type="button" class="ed-x" aria-label="Ukloni stavku {{ loop.index }}">✕</button></li>
       {%- endfor %}
     </ul>
     <button type="button" class="act ed-add"{% if entries | length >= slot.max_items %} hidden{% endif %}>+ Dodaj stavku</button>
@@ -56,4 +54,18 @@
       {%- endfor %}
     </ul>
   {%- endif -%}
+{%- endmacro %}
+
+{# An editable LIST (copy.ListSlot): `c.points("key")` prints the <ul>. Each
+   item is an .ed span that saves with its index; for an editor every item
+   also gets a ✕ and the list a "+ Dodaj stavku" after it, both shown only in
+   edit mode (body.editing). The editor redraws the items from the server's
+   answer, so the markup of one item here and in base.html's script is one
+   shape: <li><span class="ed t" …>text</span><button class="ed-x">✕</button></li>.
+   A visitor gets plain items (a .t span each, so an item's line breaks show
+   too), and nothing at all for an emptied list. The markup is
+   field_points' (above), one shape for a slot's list and a row's. #}
+{% macro points(key) -%}
+  {%- set slot = COPY[key] -%}
+  {{- field_points(key, copy_items(key, copy_texts), slot.label, slot) -}}
 {%- endmacro %}
