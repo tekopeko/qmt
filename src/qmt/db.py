@@ -18,8 +18,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import config, copy
-from .models import (PLAN_LABELS, SESSION_KINDS, Announcement, Base, Booking, GymCard, Membership,
-                     OnboardingResponse, Payment, Program, ProgramItem, ReminderLog,
+from .models import (ONLINE_TIERS, PLAN_LABELS, SESSION_KINDS, Announcement, Base, Booking, GymCard,
+                     Membership, OnboardingResponse, Payment, Program, ProgramItem, ReminderLog,
                      SessionTemplate, SiteCopy, TrainingLog, TrainingSession, User)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
@@ -788,6 +788,21 @@ def active_plan_kinds(user_id: int, s: Session | None = None) -> set[str]:
         return set(scope.scalars(q))
 
 
+def online_tier(user_id: int) -> str | None:
+    """The tier of the client's online plan while it runs (one of
+    ONLINE_TIERS: the landing's QMove card that is his), "start" for a row
+    that names none; None without an active online plan. Active as
+    active_plan_kinds has it: until dospijeće passes."""
+    cutoff = config.today() - timedelta(days=Membership.GRACE_DAYS)
+    with session_scope() as s:
+        row = s.execute(select(Membership.tier).where(
+            Membership.user_id == user_id, Membership.plan == "online",
+            Membership.next_payment >= cutoff)).first()
+    if row is None:
+        return None
+    return row.tier if row.tier in ONLINE_TIERS else "start"
+
+
 def memberships_for(user_id: int) -> list[Membership]:
     with session_scope() as s:
         return list(s.scalars(select(Membership).where(Membership.user_id == user_id)
@@ -880,9 +895,17 @@ def release_reminder(user_id: int, kind: str, ref: str) -> None:
 def record_payment(user_id: int, plan: str, method: str = "gotovina",
                    amount_eur=None, stripe_invoice_id: str | None = None,
                    stripe_subscription_id: str | None = None,
-                   sessions_per_cycle: int | None = None) -> Membership:
+                   sessions_per_cycle: int | None = None,
+                   tier: str | None = None) -> Membership:
     """An uplata — cash/card at the gym, or a paid Stripe invoice: start the
     plan or extend it by a month.
+
+    Each uplata restates the plan's tier: grupni's treninga a month
+    (`sessions_per_cycle`), and the online plan's QMove tier (`tier`, one of
+    ONLINE_TIERS; none named, or one that is no tier: the tier the row has,
+    "start", the base tier, for a new one — so a Stripe renewal, which names
+    none, never demotes a member). No other plan has a tier: theirs is NULL
+    whatever is passed.
 
     Paying early extends from the CURRENT due date, not from today — a payment
     a week ahead must never shorten the cycle. A lapsed plan restarts from
@@ -912,6 +935,12 @@ def record_payment(user_id: int, plan: str, method: str = "gotovina",
             m.stripe_subscription_id = stripe_subscription_id
             m.cancel_at_period_end = False
         m.sessions_per_cycle = sessions_per_cycle        # each uplata (re)states the tier
+        # the online tier: the one named; none named (the Stripe webhook, which
+        # knows no tiers yet), the row's own, "start" for a new row
+        if plan == "online":
+            m.tier = tier if tier in ONLINE_TIERS else (m.tier if m.tier in ONLINE_TIERS else "start")
+        else:
+            m.tier = None
         s.add(Payment(user_id=user_id, plan=plan, method=method, paid_on=today,
                       amount_eur=amount_eur, stripe_invoice_id=stripe_invoice_id))
         s.flush()

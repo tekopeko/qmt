@@ -81,7 +81,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from .models import PLAN_LABELS
+from .models import ONLINE_TIER_SLOTS, PLAN_LABELS
 
 CAP = 2000       # characters per text or list item, counted after clean()
 CAP_ITEMS = 12   # items per list
@@ -161,7 +161,10 @@ SLOTS: dict[str, Slot | ListSlot | FlagSlot | ImageSlot] = {
     # three tiers of the online plan. Tier 1's monthly price is the online
     # plan's own (the price.online.* slots); every other price is text until
     # a plan exists for it. The "Mjesečno / Godišnje" switch under the
-    # cards shows one price per card.
+    # cards shows one price per card. Each card is a tier of the online
+    # plan (models.ONLINE_TIER_SLOTS, 20.10.2026) and its title is the
+    # tier's name everywhere in the app: /clanarine's selects and flash,
+    # the Paket fact on /moja-clanarina (online_tier_names below).
     "offer.online.title": Slot("QMove START", CAP, "Online 1: naziv"),
     "offer.online.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 1: podnaslov"),
     "offer.online.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 1: stavka"),
@@ -384,6 +387,14 @@ def items_for(key: str, texts: dict[str, str]) -> list[str]:
     """The items a page prints for list slot `key`, given the edited texts
     (db.copy_texts()). Templates call it as copy_items (see _copy.html)."""
     return load_items(texts.get(key), SLOTS[key])
+
+
+def online_tier_names(texts: dict[str, str]) -> dict[str, str]:
+    """Each online tier (models.ONLINE_TIERS) -> its name, given the edited
+    texts (db.copy_texts()): its QMove card's title slot as the gym owner
+    typed it, else the default ("QMove START"), as c.t prints it."""
+    return {tier: texts.get(f"{slot}.title", SLOTS[f"{slot}.title"].default)
+            for tier, slot in ONLINE_TIER_SLOTS.items()}
 
 
 def flag_on(key: str, texts: dict[str, str]) -> bool:

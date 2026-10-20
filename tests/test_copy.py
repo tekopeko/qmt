@@ -20,6 +20,9 @@ landing's rows of cards, the announcements' among them (one card per view;
 they move on by themselves, on a phone and on a desktop, and hold still when
 they must), the editor's switch and photo pills, adding and deleting a card, the
 gym's cards added, hidden and deleted, and the install banner's week between asks.
+Beside the walk, on the same server: /clanarine's add form, whose script
+shows the tier select that fits the chosen plan (the online plan's QMove
+tiers are the landing cards' titles; the rest is in tests/test_clanarina.py).
 """
 
 from __future__ import annotations
@@ -1742,6 +1745,43 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         problems += walk(pw, "trener@test.local", (360, 1280), "one-word", strict=False)
     print("\n".join(problems))
     assert not problems, f"{len(problems)} layout problems, listed above"
+
+
+def test_the_clanarine_add_form_shows_the_select_that_fits_the_plan(server):
+    """/clanarine's add form in a browser at 1280px, as the trainer: the
+    plan chosen decides which of its two tier selects shows, Treninga
+    mjesečno for grupni, Paket (the online plan's QMove tiers) for online,
+    neither for another plan, on load and at every change (the page's
+    script). Without JavaScript both show, as before. No page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("trener@test.local", is_trainer=True)
+    uid = make_user("ivan@test.local")                # no plan: every plan to add, grupni first
+    form = f'form[action="/clanarine/{uid}/uplata"]:has(select[name="plan"])'
+    seen, errs = [], []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        for js in (True, False):
+            ctx = browser.new_context(viewport={"width": 1280, "height": 900}, java_script_enabled=js)
+            pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e)))
+            pg.goto(server + "/login"); pg.fill("main input[name=email]", "trener@test.local")
+            pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
+            pg.wait_for_load_state("networkidle")
+            pg.goto(server + "/clanarine"); pg.wait_for_load_state("networkidle")
+            f = pg.locator(form)
+            shows = lambda: tuple(f.locator(f'select[name="{name}"]').is_visible() for name in ("sessions", "tier"))
+            seen.append((js, "load", shows()))
+            for plan in ("online", "grupni", "individualni", "online", "prehrana"):
+                f.locator('select[name="plan"]').select_option(plan)
+                seen.append((js, plan, shows()))
+            ctx.close()
+        browser.close()
+    # (sessions shown, tier shown) after each choice
+    script = [("load", (True, False)), ("online", (False, True)), ("grupni", (True, False)),
+              ("individualni", (False, False)), ("online", (False, True)), ("prehrana", (False, False))]
+    plain = [(step, (True, True)) for step, _ in script]
+    assert seen == [(True, *s) for s in script] + [(False, *s) for s in plain], seen
+    assert not errs, errs
 
 
 def test_an_amount_without_a_number_prints_without_the_euro_sign():

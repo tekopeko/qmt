@@ -50,6 +50,9 @@ PLANS = {
     "petra@qmt.local": ("grupni", "individualni"),
     "luka@qmt.local": ("grupni",),
 }
+# ivan's online plan is QMove PRO, the featured middle card: the landing
+# shows a member one owned tier of the three
+ONLINE_TIER = {"ivan@qmt.local": "pro"}
 
 
 def upsert_user(email: str, name: str, password: str, is_trainer: bool) -> None:
@@ -103,7 +106,7 @@ def main() -> None:
     for email, plans in PLANS.items():
         u = db.get_user_by_email(email)
         for plan in plans:
-            db.record_payment(u.id, plan)
+            db.record_payment(u.id, plan, tier=ONLINE_TIER.get(email) if plan == "online" else None)
             n += 1
     print(f"  {n} članarina (sara@qmt.local namjerno bez — demo blokade)")
 

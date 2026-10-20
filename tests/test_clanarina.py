@@ -3,24 +3,35 @@ ledger, on one page (Shape Club's billing page in QMT's look). It took over
 /cjenik's price list (the old address leads here) and /profil's članarina
 and payment history; the links that led to either now lead here. The Stripe
 states (a card subscription, its tier switch, the portal) are in
-tests/test_payments.py, which fakes Stripe."""
+tests/test_payments.py, which fakes Stripe.
+
+The online plan's tiers (20.10.2026: Membership.tier, QMove START / PRO /
+ELITE, the landing's three cards) are here too, on every page they show
+on: their migration, the uplata that records one on /clanarine and its
+forms, the landing's one owned card and the Paket fact here. The browser
+half of /clanarine's form is in tests/test_copy.py, beside its walk."""
 
 from __future__ import annotations
 
+import importlib.util
 import os
+import pathlib
 import re
 from datetime import date, datetime, timedelta
+from urllib.parse import unquote
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
 os.environ["ALLOWED_EMAILS"] = "ivan@test.local,ana@test.local,sara@test.local"
 os.environ["OWNER_EMAIL"] = "trener@test.local"
 
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import inspect as sa_inspect, select, text as sa_text
 
 from qmt import auth, config, copy, db
-from qmt.models import PLAN_TYPES, Base, Membership, Payment, User
+from qmt.models import PLAN_TYPES, Base, Membership, Payment, User, add_month
 from qmt.web.app import app
 
 
@@ -393,3 +404,235 @@ def test_the_trainers_page_leads_to_the_members_page():
     assert client_for("ivan@test.local").get("/clanarine").status_code == 403
     r = TestClient(app).get("/clanarine", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/login"
+
+
+# ---------- the online plan's tiers (20.10.2026) ----------
+#
+# The owner: "The online training tiers should be the same as the QMOVE tabs
+# and depending which tier is paid/unlocked, that tier the user is only
+# allowed to use." Membership.tier (start / pro / elite: the landing's three
+# QMove cards), recorded with each uplata on /clanarine; the landing owns one
+# card, this page names it. The app's gates stay per plan: any active online
+# plan opens /treninzi (tests/test_karton.py), whatever its tier.
+
+def _migration(file: str):
+    """An Alembic revision's module, loaded from its file."""
+    path = pathlib.Path(__file__).parents[1] / "alembic" / "versions" / file
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return mod
+
+
+def _run(step) -> None:
+    """A revision's upgrade() or downgrade(), run for real on qmt_test."""
+    with db.engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        step()
+
+
+def test_the_migration_gives_every_online_membership_the_base_tier_and_back():
+    """914d4b4556e5 adds memberships.tier and gives every online row already
+    there 'start', the base tier (prod has one, Marko Horvat's); every other
+    plan's stays NULL. Run on qmt_test as a database from before the revision
+    is: the rows there, the column not. Downgrade drops the column."""
+    mig = _migration("914d4b4556e5_membership_online_tier.py")
+    ivan = make_user("ivan@test.local", plans=("online", "grupni"))
+    ana = make_user("ana@test.local", plans=("online",))
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("ALTER TABLE memberships DROP COLUMN tier"))
+    _run(mig.upgrade)
+    with db.engine.begin() as conn:
+        rows = {tuple(r) for r in conn.execute(sa_text("SELECT user_id, plan, tier FROM memberships"))}
+    assert rows == {(ivan, "online", "start"), (ivan, "grupni", None), (ana, "online", "start")}
+    assert db.online_tier(ivan) == "start"                              # the app reads it
+    _run(mig.downgrade)
+    assert "tier" not in {c["name"] for c in sa_inspect(db.engine).get_columns("memberships")}
+
+
+def test_each_uplata_restates_the_online_tier_and_no_other_plan_has_one():
+    """record_payment(tier=): an online uplata names its QMove tier and the
+    next one restates it; none named, or a word that is no tier, keeps the
+    row's tier (a Stripe renewal names none: it never demotes a member),
+    START for a new row. No other plan has one, whatever is passed (grupni keeps its own, the
+    treninga a month). db.online_tier is the running online plan's: a row
+    from before the tiers (NULL) reads as START, a lapsed plan or none as
+    None."""
+    uid = make_user("ivan@test.local")
+    assert db.online_tier(uid) is None                                  # no online plan
+    assert db.record_payment(uid, "online", tier="pro").tier == "pro"
+    assert db.online_tier(uid) == "pro"
+    assert db.record_payment(uid, "online", tier="elite").tier == "elite"   # the next uplata restates it
+    assert db.online_tier(uid) == "elite"
+    assert db.record_payment(uid, "online").tier == "elite"             # none named: the row's tier kept
+    assert db.record_payment(uid, "online", tier="gold").tier == "elite"    # no such tier: kept too
+    other = make_user("sara@test.local")
+    assert db.record_payment(other, "online").tier == "start"           # a new row, none named: the base tier
+    g = db.record_payment(uid, "grupni", tier="pro", sessions_per_cycle=12)
+    assert g.tier is None and g.sessions_per_cycle == 12                # grupni: no QMove tier, its own kept
+    set_membership(uid, "online", tier=None)                            # a row from before the tiers
+    assert db.online_tier(uid) == "start"
+    set_membership(uid, "online", tier="pro", next_payment=config.today() - timedelta(days=8))
+    assert db.online_tier(uid) is None and db.active_plan_kinds(uid) == {"grupni"}   # lapsed yesterday
+
+
+def test_the_trainer_records_the_online_tier_and_the_flash_names_it():
+    """POST /clanarine/{id}/uplata takes the QMove tier with plan=online, and
+    the flash names it by its card's title, as grupni's names its treninga;
+    the card renamed, the flash says the new name. None sent is START. With
+    another plan a tier sent is ignored. A client is refused, as before."""
+    make_user("trener@test.local", is_trainer=True)
+    uid = make_user("ivan@test.local")
+    t = client_for("trener@test.local")
+
+    def uplata(**data) -> str:
+        r = t.post(f"/clanarine/{uid}/uplata", data=data, follow_redirects=False)
+        assert r.status_code == 303, r.status_code
+        return unquote(r.headers["location"])
+
+    loc = uplata(plan="online", tier="elite")
+    m = {x.plan: x for x in db.memberships_for(uid)}["online"]
+    assert m.tier == "elite"
+    assert loc == f"/clanarine?ok=Online trening (QMove ELITE): uplata evidentirana — sljedeća {m.next_payment:{D}}"
+    db.set_copy("offer.online3.title", "QMove ELITE+", None)            # the card renamed: the tier with it
+    assert uplata(plan="online", tier="elite").startswith("/clanarine?ok=Online trening (QMove ELITE+): uplata evidentirana — ")
+    assert "(QMove START)" in uplata(plan="online") and db.online_tier(uid) == "start"   # none sent
+    loc = uplata(plan="grupni", tier="pro", sessions="12")              # grupni: the tier ignored
+    g = {x.plan: x for x in db.memberships_for(uid)}["grupni"]
+    assert g.tier is None and g.sessions_per_cycle == 12
+    assert loc.startswith("/clanarine?ok=Grupni trening (12 treninga/mj): uplata evidentirana — ") and "QMove" not in loc
+    r = client_for("ivan@test.local").post(f"/clanarine/{uid}/uplata", data={"plan": "online", "tier": "pro"},
+                                           follow_redirects=False)
+    assert r.status_code == 403 and db.online_tier(uid) == "start"
+
+
+def tier_cards(page: str) -> dict[str, str]:
+    """The landing's three QMove cards (#usluge) by their titles (a
+    visitor's span or an editor's), each from its class list on."""
+    offer = page.split('id="usluge"')[1].split("</section>")[0]
+    return {re.search(r'<h3><span class="(?:ed )?t"[^>]*>(.*?)</span></h3>', markup).group(1): markup
+            for markup in offer.split('<div class="card offer')[1:]}
+
+
+def owned(cards: dict[str, str]) -> list[str]:
+    """The cards marked as the visitor's own (.mine)."""
+    return [name for name, markup in cards.items() if "mine" in markup[:markup.index('"')].split()]
+
+
+def test_the_landing_owns_only_the_card_of_the_members_tier():
+    """A member with the online plan owns one QMove card, his tier's: its
+    border (.mine) and its button into the app, "✓ Otvori online
+    treninge →". The other two offer him what any member gets, "Odaberi
+    plan →" to the plan's card here. An uplata that moves him moves the
+    card; a row from before the tiers (NULL) owns START; a member without
+    the plan, or with a lapsed one, owns none. The gym's cards follow their
+    plans as before."""
+    ivan = make_user("ivan@test.local", plans=("grupni",))
+    db.record_payment(ivan, "online", tier="pro")
+    ana = make_user("ana@test.local")
+    with db.session_scope() as s:                                       # inserted as before the tiers: NULL
+        s.add(Membership(user_id=ana, plan="online", paid_on=config.today(), next_payment=add_month(config.today())))
+    make_user("sara@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    db.add_gym_card(None, copy.GYM_CARD_EXAMPLES[0])                    # Dvorana: his grupni's card
+    c = client_for("ivan@test.local")
+    choose = 'href="/moja-clanarina#plan-online">Odaberi plan →</a>'
+
+    page = c.get("/").text
+    cards = tier_cards(page)
+    assert list(cards) == ["QMove START", "QMove PRO", "QMove ELITE"]
+    assert owned(cards) == ["QMove PRO"] and cards["QMove PRO"].startswith(' featured mine">')
+    assert '<a class="btn btn-sm owned" href="/treninzi"' in cards["QMove PRO"]
+    assert 'title="Aktivna članarina">✓ Otvori online treninge →</a>' in cards["QMove PRO"]
+    assert page.count("Otvori online treninge") == 1
+    for name in ("QMove START", "QMove ELITE"):
+        assert f'<a class="btn btn-sm cta" {choose}' in cards[name] and "owned" not in cards[name], name
+    gym = page.split('id="dvorana"')[1]                                 # the gym's cards: as before
+    assert '<div class="card offer mine">' in gym and 'title="Aktivna članarina">✓ Rezerviraj termin →</a>' in gym
+
+    client_for("trener@test.local").post(f"/clanarine/{ivan}/uplata", data={"plan": "online", "tier": "elite"})
+    cards = tier_cards(c.get("/").text)                                 # moved to ELITE: the card moves
+    assert owned(cards) == ["QMove ELITE"] and "✓ Otvori online treninge →" in cards["QMove ELITE"]
+    assert f'<a class="btn btn-sm" {choose}' in cards["QMove PRO"]      # featured: the red button again
+    assert f'<a class="btn btn-sm cta" {choose}' in cards["QMove START"]
+
+    assert owned(tier_cards(client_for("ana@test.local").get("/").text)) == ["QMove START"]
+    cards = tier_cards(client_for("sara@test.local").get("/").text)    # no online plan: none
+    assert owned(cards) == [] and all(choose in markup for markup in cards.values())
+    set_membership(ivan, "online", next_payment=config.today() - timedelta(days=8))   # lapsed: none
+    assert owned(tier_cards(c.get("/").text)) == []
+    assert owned(tier_cards(client_for("trener@test.local").get("/").text)) == []   # no plans of his own
+
+
+def test_moja_clanarina_names_the_online_tier_by_its_cards_title():
+    """The online plan's card here says its tier as grupni's says "12
+    treninga mjesečno": a Paket fact, the tier's name, printed through the
+    slot that titles its QMove card on the landing, so a rename through
+    /copy/ shows on both pages. Grupni's Paket is as it was; a plan with no
+    tier has none."""
+    ivan = make_user("ivan@test.local", plans=("grupni", "individualni"))
+    db.record_payment(ivan, "online", tier="pro")
+    set_membership(ivan, "grupni", sessions_per_cycle=12)
+    make_user("trener@test.local", is_trainer=True)
+    c = client_for("ivan@test.local")
+
+    page = c.get("/moja-clanarina").text
+    online = card(page, "online")
+    assert '<div><dt>Paket</dt><dd><span class="t">QMove PRO</span></dd></div>' in online
+    assert "Paket QMove PRO" in text(online)
+    assert "Paket 12 treninga mjesečno" in text(card(page, "grupni")) and "QMove" not in card(page, "grupni")
+    assert "<dt>Paket</dt>" not in card(page, "individualni")
+
+    r = client_for("trener@test.local").post("/copy/offer.online2.title", data={"text": "QMove PRO+"})
+    assert r.json() == {"ok": True, "text": "QMove PRO+", "default": False}
+    assert '<dd><span class="t">QMove PRO+</span></dd>' in card(c.get("/moja-clanarina").text, "online")
+    assert owned(tier_cards(c.get("/").text)) == ["QMove PRO+"]        # the landing's card, the same slot
+
+
+def member_card(page: str, email: str) -> str:
+    """A member's card on /clanarine, up to the next member's."""
+    head = '<div class="card" style="padding:14px 18px; margin-bottom:14px; max-width:860px;">'
+    return next(m for m in page.split(head)[1:] if f'<span class="hint">{email}</span>' in m)
+
+
+def select_in(html: str, opening: str) -> list[tuple[str, bool, str]]:
+    """The options of the select that opens with `opening`: (value, selected, text)."""
+    select = html[html.index(opening):]
+    return [(value, bool(sel), name) for value, sel, name in
+            re.findall(r'<option value="([^"]*)"( selected)?>([^<]*)</option>', select[:select.index("</select>")])]
+
+
+def test_the_clanarine_forms_offer_the_tiers_by_name():
+    """/clanarine records the tier: the add form has a Paket select, the
+    three QMove names, beside grupni's Treninga mjesečno, and an online row
+    its own, on the member's tier, so the next uplata can move him (a row
+    from before the tiers is on START). The names are the cards' titles,
+    the gym owner's text. The markup carries both of the add form's selects
+    (without JavaScript both show); the page's script shows the one that
+    fits the chosen plan (tests/test_copy.py, in a browser)."""
+    make_user("trener@test.local", is_trainer=True)
+    ivan = make_user("ivan@test.local", plans=("grupni",))
+    db.record_payment(ivan, "online", tier="pro")
+    make_user("sara@test.local")
+    db.set_copy("offer.online3.title", "QMove ELITE+", None)
+    t = client_for("trener@test.local")
+    names = [("start", "QMove START"), ("pro", "QMove PRO"), ("elite", "QMove ELITE+")]
+
+    page = t.get("/clanarine").text
+    add = member_card(page, "sara@test.local")
+    add = add[add.index('<select name="plan"'):add.index("</form>")]
+    assert select_in(add, '<select name="tier" aria-label="Paket (samo online)"') == [(v, False, n) for v, n in names]
+    assert select_in(add, '<select name="sessions" aria-label="Treninga mjesečno (samo grupni)"')[0] == ("", False, "neograničeno")
+    assert " hidden" not in add                                         # the server hides neither
+
+    def rows(page: str) -> dict[str, str]:
+        """ivan's plan rows' uplata forms, by plan."""
+        html = member_card(page, "ivan@test.local")
+        return {plan: html[html.index(f'<input type="hidden" name="plan" value="{plan}">'):].split("</form>")[0]
+                for plan in ("grupni", "online")}
+
+    online = rows(page)["online"]
+    assert select_in(online, '<select name="tier" aria-label="Paket"') == [(v, v == "pro", n) for v, n in names]
+    assert 'name="tier"' not in rows(page)["grupni"] and 'name="sessions"' in rows(page)["grupni"]
+    assert 'name="sessions"' not in online
+    set_membership(ivan, "online", tier=None)                           # a row from before the tiers: START
+    online = rows(t.get("/clanarine").text)["online"]
+    assert select_in(online, '<select name="tier" aria-label="Paket"') == [(v, v == "start", n) for v, n in names]

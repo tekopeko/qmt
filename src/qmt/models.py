@@ -29,6 +29,14 @@ PLAN_LABELS = {
     "online": "Online trening",
     "prehrana": "Prehrana",
 }
+# The online plan is sold in three tiers (20.10.2026), the landing's three
+# QMove cards: Membership.tier holds one of them for an online membership.
+# A tier's name everywhere in the app is its card's title slot,
+# "<slot>.title" in src/qmt/copy.py ("QMove START" by default), as the gym
+# owner typed it: renaming a card renames the tier on every page.
+ONLINE_TIERS = ("start", "pro", "elite")
+ONLINE_TIER_SLOTS = {"start": "offer.online", "pro": "offer.online2", "elite": "offer.online3"}
+
 # Post-training feedback (the Strava pattern): RPE number + how it felt.
 FEELING_LABELS = {"slabo": "Slabo", "dobro": "Dobro", "odlicno": "Odlično"}
 
@@ -182,6 +190,11 @@ class Membership(Base):
     # The shop sells grupni as 8/12/16 treninga a month; NULL means unlimited
     # (every other plan, and cash uplate recorded without a tier).
     sessions_per_cycle: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The online plan's tier (20.10.2026): one of ONLINE_TIERS, the
+    # landing's QMove card that is the member's, for an online membership;
+    # NULL for every other plan. Each uplata restates it (db.record_payment);
+    # a NULL on an online row reads as "start", the base tier.
+    tier: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("user_id", "plan", name="uq_membership_user_plan"),)

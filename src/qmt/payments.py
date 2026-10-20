@@ -264,6 +264,11 @@ def handle_event(event) -> str:
         if db.get_user(user_id) is None:
             return "ignored: unknown user"
         cents = _get(obj, "amount_paid", default=0) or 0
+        # No tier passed: an online subscription lands on START, the base
+        # QMove tier (record_payment's default). Stripe is dormant and has
+        # one flat online Price; at go-live the online plan needs three,
+        # one per tier (as grupni has three), and this passes the tier its
+        # Price stands for.
         db.record_payment(user_id, plan, method="stripe",
                           amount_eur=Decimal(cents) / 100,
                           stripe_invoice_id=_get(obj, "id"),

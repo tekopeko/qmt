@@ -543,9 +543,10 @@
     {# What a card's button does depends on who is looking: an owner of the plan
        goes into the app, a member picks the plan on /moja-clanarina, a guest registers
        when registration is open to anyone and otherwise gets the studio's
-       contact (closed, or invite-only: the trainer is who hands out invites). #}
-    {% macro offer_cta(keys, featured) -%}
-      {% set owned = keys | select("in", my_plans) | list %}
+       contact (closed, or invite-only: the trainer is who hands out invites).
+       owned: the card's plans the visitor holds, as offer() works them out
+       (a tier card's only when the tier is his). #}
+    {% macro offer_cta(keys, featured, owned) -%}
       {% if owned %}<a class="btn btn-sm owned" href="{{ plan_links[owned[0]][0] }}"
          title="Aktivna članarina">✓ {{ plan_links[owned[0]][1] }} →</a>
       {%- elif user %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="/moja-clanarina#plan-{{ keys[0] }}">Odaberi plan →</a>
@@ -598,9 +599,16 @@
        is its monthly one and its button "Javi nam se →" for everyone: there
        is nothing in the app to buy for it. An editor's card carries its
        switch (slot.show) and "Obriši karticu" at its top, and a hidden one
-       is .is-off. #}
-    {% macro offer(keys, slot, addon_at=none, featured=false, tier=false, real=true, note=none, room=none, card=none, n=none) -%}
-      <div class="card offer{% if featured %} featured{% endif %}{% if keys | select('in', my_plans) | list %} mine{% endif %}{% if card is not none and not card.shown %} is-off{% endif %}"{% if card is not none and can_edit_copy %} data-flag="{{ slot }}.show"{% endif %}>
+       is .is-off.
+       tier_key: the online tier the card stands for (models.ONLINE_TIERS,
+       20.10.2026: the three QMove cards are the online plan's tiers). Such a
+       card is a member's ("mine", and his button into the app) only when
+       his online plan is of that tier (my_tier, db.online_tier); the other
+       two offer him what any member gets, "Odaberi plan →". A card without
+       one (the gym's) is his when he holds any of its plans. #}
+    {% macro offer(keys, slot, addon_at=none, featured=false, tier=false, real=true, note=none, room=none, card=none, n=none, tier_key=none) -%}
+      {%- set owned = (keys | select("in", my_plans) | list) if (tier_key is none or tier_key == my_tier) else [] -%}
+      <div class="card offer{% if featured %} featured{% endif %}{% if owned %} mine{% endif %}{% if card is not none and not card.shown %} is-off{% endif %}"{% if card is not none and can_edit_copy %} data-flag="{{ slot }}.show"{% endif %}>
         {% if featured %}<span class="featured-tag">Najpopularnije</span>{% endif %}{% if card is not none and can_edit_copy %}<div class="ed-pills"><button type="button" class="ed-flag" data-copy="{{ slot }}.show" data-label="Kartica {{ n }}: {{ GYM['show'].label }}"
                 aria-pressed="{{ 'true' if card.shown else 'false' }}">{{ "Prikazano" if card.shown else "Skriveno" }}</button>
           <form method="post" action="/dvorana/{{ card.id }}/obrisi" class="ed-gym-x"><button type="submit" aria-label="Obriši karticu">Obriši karticu</button></form></div>{% endif %}
@@ -618,7 +626,7 @@
             {% if note is not none %}<p class="price-note">{{ note }}</p>
             {%- elif room is not none %}<p class="price-note room" aria-hidden="true">{{ room }}</p>{% endif %}
           {% endif %}
-          {% if keys %}{{ offer_cta(keys, featured) }}{% else %}<a class="btn btn-sm cta" href="#kontakt">Javi nam se →</a>{% endif %}
+          {% if keys %}{{ offer_cta(keys, featured, owned) }}{% else %}<a class="btn btn-sm cta" href="#kontakt">Javi nam se →</a>{% endif %}
         </div>
       </div>
     {%- endmacro %}
@@ -637,13 +645,16 @@
       </div>
       {% endif %}
     {%- endmacro %}
-    {# Three tiers of the online plan. They all stand for the online plan
-       (button and "yours" follow it); tier 1 is priced by it. The dots under
-       a .swipe-row are the script's, one per card. #}
+    {# Three tiers of the online plan (Membership.tier since 20.10.2026: the
+       owner, "depending which tier is paid/unlocked, that tier the user is
+       only allowed to use"). They all stand for the online plan, each for
+       one of its tiers (tier_key): a member's own is the card of his tier
+       alone, the other two offer him "Odaberi plan →". Tier 1 is priced by
+       the plan. The dots under a .swipe-row are the script's, one per card. #}
     <div class="offer-grid swipe-row">
-      {{ offer(["online"], "offer.online", "online", tier=true) }}
-      {{ offer(["online"], "offer.online2", "online", featured=true, tier=true, real=false) }}
-      {{ offer(["online"], "offer.online3", "online", tier=true, real=false) }}
+      {{ offer(["online"], "offer.online", "online", tier=true, tier_key="start") }}
+      {{ offer(["online"], "offer.online2", "online", featured=true, tier=true, real=false, tier_key="pro") }}
+      {{ offer(["online"], "offer.online3", "online", tier=true, real=false, tier_key="elite") }}
     </div>
     <div class="dots" role="group" aria-label="Kartice ponude" hidden></div>
     {{ period_switch() }}

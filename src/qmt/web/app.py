@@ -19,8 +19,8 @@ from contextlib import asynccontextmanager
 from starlette.middleware.sessions import SessionMiddleware
 
 from .. import auth, config, copy, db, mailer, payments, reminders, storage, upitnik
-from ..models import (FEELING_LABELS, PAYMENT_METHODS, PLAN_ABBR, PLAN_LABELS,
-                      PLAN_TYPES, SESSION_KINDS, add_month, sub_month)
+from ..models import (FEELING_LABELS, ONLINE_TIER_SLOTS, ONLINE_TIERS, PAYMENT_METHODS, PLAN_ABBR,
+                      PLAN_LABELS, PLAN_TYPES, SESSION_KINDS, add_month, sub_month)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -55,6 +55,8 @@ templates.env.globals["copy_image"] = copy.image_name  # an image slot: its file
 templates.env.globals["CAP"] = copy.CAP                # a text's cap, where no slot says it (_copy.html, field)
 templates.env.globals["ANNOUNCEMENT"] = copy.ANNOUNCEMENT_SLOTS   # an announcement's fields (landing.html, #aktualno)
 templates.env.globals["GYM"] = copy.GYM_CARD_SLOTS     # a gym card's fields (landing.html, #dvorana)
+# an online tier's QMove card, whose title slot is the tier's name (moja_clanarina.html, Paket)
+templates.env.globals["ONLINE_TIER_SLOTS"] = ONLINE_TIER_SLOTS
 # a price slot's text as the page prints it, and whether it is a number at
 # all: "€" follows "50" and "od 30", not "na upit" (landing.html, _plan_price.html)
 templates.env.globals["copy_text"] = lambda key, texts: texts.get(key, copy.SLOTS[key].default)
@@ -632,6 +634,8 @@ def landing(request: Request):
     ) if gallery_dir.is_dir() else []
     user = current_user(request)
     plans = db.active_plan_kinds(user.id) if user else set()
+    # the online plan's tier: of the three QMove cards, the one that is his
+    my_tier = db.online_tier(user.id) if user else None
     # members always see prices; guests see them unless PUBLIC_PRICES=off
     show_prices = bool(user) or config.prices_public()
     texts = db.copy_texts()
@@ -644,7 +648,7 @@ def landing(request: Request):
     # card's note names its other plans (plan_labels)
     gym = db.gym_cards(all=editor)
     return templates.TemplateResponse(request, "landing.html", _ctx(
-        request, user, copy_texts=texts, gallery=gallery, my_plans=plans,
+        request, user, copy_texts=texts, gallery=gallery, my_plans=plans, my_tier=my_tier,
         show_prices=show_prices, announcements=news,
         can_add=editor and len(news) < db.MAX_ANNOUNCEMENTS,
         gym_cards=gym, can_add_gym=editor and len(gym) < db.MAX_GYM_CARDS, plan_labels=PLAN_LABELS))
@@ -781,6 +785,10 @@ def moja_clanarina(request: Request):
                       "overdue": active and today > m.next_payment,
                       "paid_on": m.paid_on, "next_payment": m.next_payment, "dospijece": m.dospijece,
                       "sessions": m.sessions_per_cycle,
+                      # the online plan's QMove tier, its Paket fact (NULL: the base tier);
+                      # "tier" below is Stripe's, a card subscription's
+                      "tier_key": ((m.tier if m.tier in ONLINE_TIERS else "start")
+                                   if m.plan == "online" else None),
                       # "n od N u ovom ciklusu" means something only while the plan runs
                       "usage": db.cycle_usage(user.id, m.plan) if active else None,
                       "subscribed": bool(m.stripe_subscription_id),
@@ -1925,14 +1933,19 @@ def clanarine_page(request: Request):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
+    texts = db.copy_texts()
+    # the online tiers by name for the forms' Paket selects: the QMove
+    # cards' titles, the gym owner's text (renaming a card renames the tier)
     return templates.TemplateResponse(request, "clanarine.html", _ctx(
-        request, user, rows=db.memberships_overview(),
-        plans=PLAN_TYPES, plan_labels=PLAN_LABELS, today=config.today()))
+        request, user, copy_texts=texts, rows=db.memberships_overview(),
+        plans=PLAN_TYPES, plan_labels=PLAN_LABELS, today=config.today(),
+        online_tier_names=copy.online_tier_names(texts)))
 
 
 @app.post("/clanarine/{user_id}/uplata")
 def clanarine_uplata(request: Request, user_id: int, plan: str = Form(...),
-                     method: str = Form("gotovina"), sessions: int | None = Form(None)):
+                     method: str = Form("gotovina"), sessions: int | None = Form(None),
+                     tier: str | None = Form(None)):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -1942,11 +1955,15 @@ def clanarine_uplata(request: Request, user_id: int, plan: str = Form(...),
         target = s.get(db.User, user_id)
     if target is None:
         raise HTTPException(status_code=404)
-    # the tier only means something for grupni; anything else is unlimited
-    tier = sessions if (plan in config.STRIPE_TIER_PRICES and sessions in config.GRUPNI_TIERS) else None
-    m = db.record_payment(user_id, plan, method, sessions_per_cycle=tier)
+    # the treninga a month only mean something for grupni; anything else is unlimited
+    quota = sessions if (plan in config.STRIPE_TIER_PRICES and sessions in config.GRUPNI_TIERS) else None
+    # the QMove tier only for online (none named: record_payment keeps the row's, START for a new one)
+    online_tier = tier if (plan == "online" and tier in ONLINE_TIERS) else None
+    m = db.record_payment(user_id, plan, method, sessions_per_cycle=quota, tier=online_tier)
     from urllib.parse import quote
-    msg = (f"{PLAN_LABELS[plan]}{f' ({tier} treninga/mj)' if tier else ''}: uplata evidentirana — "
+    # the flash names the tier as grupni's names its treninga: by its card's title
+    named = f" ({copy.online_tier_names(db.copy_texts())[m.tier]})" if plan == "online" else ""
+    msg = (f"{PLAN_LABELS[plan]}{f' ({quota} treninga/mj)' if quota else ''}{named}: uplata evidentirana — "
            f"sljedeća {m.next_payment.strftime('%-d.%-m.%Y.')}")
     return RedirectResponse(f"/clanarine?ok={quote(msg)}", status_code=303)
 

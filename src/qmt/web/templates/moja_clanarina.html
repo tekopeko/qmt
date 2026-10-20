@@ -182,6 +182,9 @@
         <div><dt>Sljedeća uplata</dt><dd>{{ next_payment }}</dd></div>
         <div><dt>Vrijedi do</dt><dd>{{ dospijece }}</dd></div>
         {% if p.sessions %}<div><dt>Paket</dt><dd>{{ p.sessions }} treninga mjesečno</dd></div>{% endif %}
+        {# the online plan's tier by its name: its QMove card's title on the
+           landing, the same slot, so an edit here renames the card there #}
+        {% if p.tier_key %}<div><dt>Paket</dt><dd>{{ c.t(ONLINE_TIER_SLOTS[p.tier_key] ~ ".title") }}</dd></div>{% endif %}
         {% if p.usage %}<div><dt>Iskorišteno</dt><dd>{{ p.usage.used }} od {{ p.usage.quota }} u ovom ciklusu</dd></div>{% endif %}
       </dl>
       {# the state in one plain sentence; a date ends in its own full stop #}
@@ -270,6 +273,9 @@
       {{ pp.price(key) }}
       <div class="foot">
       {% if key in sellable %}
+        {# online: START's price and one flat Price; the online plan's tier
+           picker (three Prices, one per QMove tier, as grupni has three) is
+           Stripe's job at go-live: until then a card subscription is START #}
         <form method="post" action="/placanje/{{ key }}">
           {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
           <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
