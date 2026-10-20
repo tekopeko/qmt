@@ -16,6 +16,16 @@ Adding a slot is one line here plus `{{ c.t("the.key") }}` in the template
 (see _copy.html). The tests pick it up by themselves: every slot must appear
 on a page, and no page may overflow with it.
 
+An emptied text stays empty since 20.10.2026 (the owner: "once he removes
+the text, the text box and the space it occupies gets removed"): POST
+/copy/{key} stores it as "", a visitor gets nothing for it (_copy.html), and
+the editor keeps an empty box to click in edit mode. Zadano (reset=1) is
+how a default comes back. The numbers are the exception, a Slot with
+required=True (every price.<plan>.amount, addon.online, addon.dvorana: "the
+number is the only thing that is not free text"): emptied, its default
+comes back, as every text's did until that day. A list's emptied item goes
+and a row's emptied cell stays empty, as before.
+
 A ListSlot is a list of short texts the editor can add to and remove from, not
 only retype — the bullets on the landing's offer cards. It is stored as ONE
 site_copy row whose text is a JSON array of cleaned, non-empty strings; no row
@@ -36,7 +46,9 @@ A FlagSlot is a switch, not a text: whether a part of a page shows at all.
 It is stored like any slot, as the text "on" or "off"; no row means the
 default. Read with `copy_flag("the.key", copy_texts)` (flag_on below). In
 edit mode the editor flips it with a toggle (.ed-flag, base.html); a visitor
-never gets the markup of what a flag hides.
+never gets the markup of what a flag hides. The one exception is the QMove
+tiers' MojiMakrosi line (offer.online*.addon_on, 20.10.2026): switched off,
+it keeps its room on the card, invisible (landing.html).
 
 An ImageSlot is a photo, not a text, the way Shape's photo cards carry
 theirs. It is stored like any slot, its text the stored file's name; no row
@@ -58,8 +70,9 @@ same routes (POST /copy/{key} and /copy/{key}/slika, app.py):
 ANNOUNCEMENT_SLOTS below says how each field is edited (a text is a Slot
 whose default is a new card's placeholder, the switch a FlagSlot, the photo
 an ImageSlot) and ANNOUNCEMENT_COLUMNS where a row keeps a text. No entry of
-SLOTS is a flag or a photo since; the types stay for the announcements, and
-for any slot that is one.
+SLOTS was a flag or a photo from then until the tiers' three add-on
+switches (20.10.2026); the types stay for the announcements, and for any
+slot that is one.
 
 The gym's cards (#dvorana, under the online tiers) went the same way on
 20.10.2026: Dvorana and Individualno were two fixed sets of slots
@@ -102,6 +115,9 @@ class Slot:
     default: str
     max: int        # characters, counted after clean(); CAP for every slot
     label: str      # what the editor sees while editing
+    # a number (price.<plan>.amount, addon.*): emptied, its default comes
+    # back; any other text stays empty when emptied (20.10.2026)
+    required: bool = False
 
 
 @dataclass(frozen=True)
@@ -192,12 +208,15 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # Each tier's MojiMakrosi line is its own words around the one amount
     # (addon.online, below): .addon before it, .addon_unit after it
     # (20.10.2026, the owner: "a similar treatment of the three QMOVE
-    # tabs"; one offer.addon for all three until then).
+    # tabs"; one offer.addon for all three until then), and .addon_on its
+    # switch (the same day: ELITE's bullets say MojiMakrosi is in it): off,
+    # the line keeps its room on the card, unseen (landing.html).
     "offer.online.title": Slot("QMove START", CAP, "Online 1: naziv"),
     "offer.online.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 1: podnaslov"),
     "offer.online.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 1: stavka"),
     "offer.online.addon": Slot("MojiMakrosi prehrana", CAP, "Online 1: dodatak za prehranu"),
     "offer.online.addon_unit": Slot("€ / mjesečno", CAP, "Online 1: uz cijenu dodatka"),
+    "offer.online.addon_on": FlagSlot(True, "Online 1: MojiMakrosi linija"),
     "offer.online.year_price": Slot("na upit", CAP, "Online 1: godišnja cijena"),
     "offer.online.year_unit": Slot("", CAP, "Online 1: uz godišnju cijenu"),
     "offer.online2.title": Slot("QMove PRO", CAP, "Online 2: naziv"),
@@ -205,6 +224,7 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "offer.online2.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 2: stavka"),
     "offer.online2.addon": Slot("MojiMakrosi prehrana", CAP, "Online 2: dodatak za prehranu"),
     "offer.online2.addon_unit": Slot("€ / mjesečno", CAP, "Online 2: uz cijenu dodatka"),
+    "offer.online2.addon_on": FlagSlot(True, "Online 2: MojiMakrosi linija"),
     "offer.online2.price": Slot("na upit", CAP, "Online 2: mjesečna cijena"),
     "offer.online2.unit": Slot("", CAP, "Online 2: uz mjesečnu cijenu"),
     "offer.online2.year_price": Slot("na upit", CAP, "Online 2: godišnja cijena"),
@@ -214,6 +234,7 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "offer.online3.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 3: stavka"),
     "offer.online3.addon": Slot("MojiMakrosi prehrana", CAP, "Online 3: dodatak za prehranu"),
     "offer.online3.addon_unit": Slot("€ / mjesečno", CAP, "Online 3: uz cijenu dodatka"),
+    "offer.online3.addon_on": FlagSlot(True, "Online 3: MojiMakrosi linija"),
     "offer.online3.price": Slot("na upit", CAP, "Online 3: mjesečna cijena"),
     "offer.online3.unit": Slot("", CAP, "Online 3: uz mjesečnu cijenu"),
     "offer.online3.year_price": Slot("na upit", CAP, "Online 3: godišnja cijena"),
@@ -228,7 +249,9 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # (prehrana: no note): the landing prints the amount and the unit on a
     # card (Individualno's muted line two more plans'), /moja-clanarina all
     # three, with or without a Stripe Price for the plan (app.py, _offer_prices).
-    **{f"price.{plan}.{part}": Slot(text or "", CAP, f"Cijena · {plan}: {label}")
+    # The amount is required (a number: emptied, its default comes back);
+    # the unit and the note are free text, which an editor may empty.
+    **{f"price.{plan}.{part}": Slot(text or "", CAP, f"Cijena · {plan}: {label}", required=part == "amount")
        for plan, row in REFERENCE_PRICES.items()
        for part, label, text in zip(("amount", "unit", "note"), ("iznos", "jedinica", "napomena"), row)},
     # the words before a plan's price in a gym card's line of its other
@@ -240,9 +263,10 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "price.poluindividualni.word": Slot("u dvoje ili troje", CAP, "Cijena · poluindividualni: tekst ispred iznosa"),
     "price.rehabilitacija.word": Slot("rehabilitacija", CAP, "Cijena · rehabilitacija: tekst ispred iznosa"),
     # the MojiMakrosi add-on's amount in €: online beside the landing's online
-    # tiers, both in the prehrana plan's hint (the gym's cards print none)
-    "addon.online": Slot(MOJIMAKROSI_ADDON["online"], CAP, "MojiMakrosi dodatak uz online (€)"),
-    "addon.dvorana": Slot(MOJIMAKROSI_ADDON["dvorana"], CAP, "MojiMakrosi dodatak uz dvoranu (€)"),
+    # tiers, both in the prehrana plan's hint (the gym's cards print none);
+    # numbers, so required
+    "addon.online": Slot(MOJIMAKROSI_ADDON["online"], CAP, "MojiMakrosi dodatak uz online (€)", required=True),
+    "addon.dvorana": Slot(MOJIMAKROSI_ADDON["dvorana"], CAP, "MojiMakrosi dodatak uz dvoranu (€)", required=True),
     # ---- landing: aktualno: rows since 18.10.2026, not slots (ANNOUNCEMENT_* below) ----
     # ---- landing: info ----
     "info.hours.h": Slot("Radno vrijeme", CAP, "Naslov: radno vrijeme"),
@@ -321,10 +345,11 @@ ANNOUNCEMENT_EXAMPLES = (
 )
 
 # A card's fields as the editor's virtual keys name them, aktualno.<id>.<field>,
-# and how each is edited: a text as a Slot, its default the placeholder an
-# empty save (or Zadano) puts back; the switch as a FlagSlot, on by default;
-# the photo as an ImageSlot. The label is the field's word in the editor's
-# bar, after the card's number ("Najava 2: naslov", landing.html).
+# and how each is edited: a text as a Slot, its default the placeholder
+# Zadano puts back (an emptied one stays empty since 20.10.2026: none is
+# required); the switch as a FlagSlot, on by default; the photo as an
+# ImageSlot. The label is the field's word in the editor's bar, after the
+# card's number ("Najava 2: naslov", landing.html).
 ANNOUNCEMENT_SLOTS: dict[str, Slot | FlagSlot | ImageSlot] = {
     "tag": Slot(ANNOUNCEMENT_BLANK["tag"], CAP, "oznaka"),
     "title": Slot(ANNOUNCEMENT_BLANK["title"], CAP, "naslov"),
@@ -370,12 +395,13 @@ GYM_CARD_EXAMPLES = (
 )
 
 # A card's fields as the editor's virtual keys name them, dvorana.<id>.<field>,
-# and how each is edited: a text as a Slot, its default the placeholder an
-# empty save (or Zadano) puts back; the bullets as a ListSlot (Zadano puts
-# the new card's two back); the switch as a FlagSlot, on by default. The
-# label is the field's word in the editor's bar, after the card's number
-# ("Kartica 2: naziv", landing.html). price / unit print only on a card
-# that stands for no plan: a plan's card prints the plan's price slots.
+# and how each is edited: a text as a Slot, its default the placeholder
+# Zadano puts back (an emptied one stays empty since 20.10.2026: none is
+# required); the bullets as a ListSlot (Zadano puts the new card's two
+# back); the switch as a FlagSlot, on by default. The label is the field's
+# word in the editor's bar, after the card's number ("Kartica 2: naziv",
+# landing.html). price / unit print only on a card that stands for no plan:
+# a plan's card prints the plan's price slots.
 GYM_CARD_SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
     "title": Slot(GYM_CARD_BLANK["title"], CAP, "naziv"),
     "lead": Slot(GYM_CARD_BLANK["lead"], CAP, "podnaslov"),
@@ -397,9 +423,9 @@ def clean(text: str) -> str:
     base.html). Within a line every run of spaces and tabs becomes one space
     and the line is trimmed; blank lines at the start and the end go, and
     three or more line breaks in a row become two (one empty line at most).
-    An empty result means nothing was written: the default comes back, or a
-    list item is removed (POST /copy/{key}); a row's cell is the exception,
-    it stays empty (RowsSlot)."""
+    An empty result is an emptied text (POST /copy/{key}): stored as "",
+    except a required slot's (a number), whose default comes back; a list
+    item is removed; a row's cell stays empty (RowsSlot)."""
     lines = (" ".join(line.split()) for line in text.splitlines())
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines).strip("\n"))
 
@@ -464,7 +490,9 @@ def online_tier_names(texts: dict[str, str]) -> dict[str, str]:
     """Each online tier (models.ONLINE_TIERS) -> its name, given the edited
     texts (db.copy_texts()): its QMove card's title slot as the gym owner
     typed it, else the default ("QMove START"), as c.t prints it."""
-    return {tier: texts.get(f"{slot}.title", SLOTS[f"{slot}.title"].default)
+    # an emptied title (stored "", since 20.10.2026) is no name for a
+    # record: the default stands in on /clanarine and /moja-clanarina
+    return {tier: texts.get(f"{slot}.title") or SLOTS[f"{slot}.title"].default
             for tier, slot in ONLINE_TIER_SLOTS.items()}
 
 

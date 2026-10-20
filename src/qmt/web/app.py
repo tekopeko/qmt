@@ -275,8 +275,11 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
               reset: str = Form(""), part: str = Form(""), remove: str = Form(""), add: str = Form("")):
     """Save one edited text (the in-place editor in base.html posts here).
     JSON in both directions: this is called by fetch, never by a form. The
-    limit is the slot's, enforced here as well as in the browser; an empty
-    text, or reset=1, puts the template's default back. A list slot is edited
+    limit is the slot's, enforced here as well as in the browser; reset=1
+    puts the template's default back. An emptied text is stored empty
+    since 20.10.2026 (a visitor then gets nothing for it), except a
+    required slot's, a number (copy.Slot.required), whose default comes
+    back, as every text's did before. A list slot is edited
     one item at a time (see _copy_save_list); a flag slot is switched, its
     text "on" or "off" and nothing else. An image slot takes only reset=1,
     which removes its photo; a photo goes up through POST /copy/{key}/slika,
@@ -325,10 +328,10 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
     if len(cleaned) > slot.max:
         return JSONResponse({"ok": False, "error": f"Najviše {slot.max} znakova — ovo ih ima {len(cleaned)}."},
                             status_code=400)
-    if not cleaned:
+    if reset == "1" or (not cleaned and slot.required):
         db.reset_copy(key)
         return JSONResponse({"ok": True, "text": slot.default, "default": True})
-    db.set_copy(key, cleaned, user.id)
+    db.set_copy(key, cleaned, user.id)      # an emptied optional text is stored as ""
     return JSONResponse({"ok": True, "text": cleaned, "default": False})
 
 
@@ -366,8 +369,9 @@ def _copy_save_row(slot, text: str, reset: str, set_shown, set_text) -> JSONResp
     copy_save answers for a slot of its type: the switch takes "on" or
     "off" (reset=1: its default, on) and hands it to set_shown(on); a text
     is cleaned and capped and handed to set_text(cleaned), which stores it
-    and returns what it stored: for an empty one (or reset=1) the row's
-    placeholder, "default": true. A setter's LookupError (the row deleted
+    and returns what it stored: an emptied one stays empty (no row's text
+    is required), and reset=1 hands it the row's placeholder, the slot's
+    default, "default": true. A setter's LookupError (the row deleted
     meanwhile) is the caller's to answer."""
     if isinstance(slot, copy.FlagSlot):
         if reset == "1":
@@ -378,20 +382,22 @@ def _copy_save_row(slot, text: str, reset: str, set_shown, set_text) -> JSONResp
             return JSONResponse({"ok": False, "error": "Nepoznata vrijednost."}, status_code=400)
         set_shown(on)
         return JSONResponse({"ok": True, "on": on, "default": reset == "1"})
-    cleaned = "" if reset == "1" else copy.clean(text)
+    if reset == "1":
+        return JSONResponse({"ok": True, "text": set_text(slot.default), "default": True})
+    cleaned = copy.clean(text)
     if len(cleaned) > slot.max:
         return JSONResponse({"ok": False, "error": f"Najviše {slot.max} znakova — ovo ih ima {len(cleaned)}."},
                             status_code=400)
-    return JSONResponse({"ok": True, "text": set_text(cleaned), "default": not cleaned})
+    return JSONResponse({"ok": True, "text": set_text(cleaned), "default": False})
 
 
 def _copy_save_announcement(key: str, ann_id: int, field: str, slot, text: str, reset: str,
                             user_id: int) -> JSONResponse:
     """One change to an announcement's field, answered as copy_save answers
     for a slot of its type: the switch and a text as _copy_save_row does
-    (an empty text the new card's placeholder again,
-    copy.ANNOUNCEMENT_BLANK); the photo only reset=1, which removes the
-    row's name and the file. A card deleted meanwhile answers 404, as an
+    (an emptied text stays empty, reset=1 is the new card's placeholder
+    again, copy.ANNOUNCEMENT_BLANK); the photo only reset=1, which removes
+    the row's name and the file. A card deleted meanwhile answers 404, as an
     unknown key does."""
     try:
         if isinstance(slot, copy.ImageSlot):
@@ -412,11 +418,11 @@ def _copy_save_gym_card(card_id: int, field: str, slot, text: str, index: str, r
                         user_id: int) -> JSONResponse:
     """One change to a gym card's field (dvorana.<id>.<field>), answered as
     copy_save answers for a slot of its type: the switch and a text as an
-    announcement's (_copy_save_row; an empty text the new card's
-    placeholder again, copy.GYM_CARD_BLANK); the bullets as a list slot's,
-    one item at a time by `index` (_edit_list), and reset=1 puts the new
-    card's two bullets back. A card deleted meanwhile answers 404, as an
-    unknown key does."""
+    announcement's (_copy_save_row; an emptied text stays empty, reset=1 is
+    the new card's placeholder again, copy.GYM_CARD_BLANK); the bullets as
+    a list slot's, one item at a time by `index` (_edit_list), and reset=1
+    puts the new card's two bullets back. A card deleted meanwhile answers
+    404, as an unknown key does."""
     try:
         if isinstance(slot, copy.ListSlot):
             if reset == "1":

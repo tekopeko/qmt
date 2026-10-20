@@ -253,8 +253,9 @@ class Announcement(Base):
     before, two fixed sets of copy slots (event1.* / event2.*, which
     migration b48179fcf538 turned into the first two rows). Its texts are
     edited in place like copy, through virtual keys aktualno.<id>.<field>
-    (app.py, copy_save), cleaned as copy is (copy.clean) and never empty:
-    an emptied one is its placeholder again (copy.ANNOUNCEMENT_BLANK).
+    (app.py, copy_save), cleaned as copy is (copy.clean); an emptied one
+    stays empty since 20.10.2026, and Zadano puts its placeholder back
+    (copy.ANNOUNCEMENT_BLANK).
     `position` is creation order, 1-based: the order the landing shows them
     in (nothing reorders them yet; a deleted card leaves a gap). `shown` is
     the switch: a hidden card is on an editor's page only. `image` is the
@@ -288,8 +289,9 @@ class GymCard(Base):
     fixed sets of copy slots (offer.dvorana.* / offer.individualno.*, which
     migration 78d539161185 turned into the first two rows). Its texts are
     edited in place like copy, through virtual keys dvorana.<id>.<field>
-    (app.py, copy_save), cleaned as copy is (copy.clean) and never empty:
-    an emptied one is its placeholder again (copy.GYM_CARD_BLANK). `points`
+    (app.py, copy_save), cleaned as copy is (copy.clean); an emptied one
+    stays empty since 20.10.2026, and Zadano puts its placeholder back
+    (copy.GYM_CARD_BLANK). `points`
     is its bullets, a JSON array of strings, as a ListSlot's site_copy row
     holds them. `plans` is the plans the card stands for, comma-separated
     ("grupni", "individualni,poluindividualni,rehabilitacija"), "" for

@@ -10,7 +10,9 @@ reference prices (the price.<plan>.* and addon.* slots), the migration
 that turned the offer cards' bullets into lists, and the opening hours'
 rows (a RowsSlot since 20.10.2026: cells, rows removed and added, and the
 migration that folded the six old slots in, with the QMove tiers' add-on
-words, one slot each since the same day).
+words, one slot each since the same day), and an emptied text, which stays
+empty since 20.10.2026 but for a number, with each tier's MojiMakrosi line
+and its switch.
 
 The browser half is the net under the texts. Their design limits were lifted
 on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
@@ -23,7 +25,8 @@ landing's rows of cards, the announcements' among them (one card per view;
 they move on by themselves, on a phone and on a desktop, and hold still when
 they must), the editor's switch and photo pills, adding and deleting a card, the
 gym's cards added, hidden and deleted, the opening hours' rows removed, added
-and emptied, and the install banner's week between asks.
+and emptied, a text emptied and brought back with Zadano, a tier's
+MojiMakrosi line switched off, and the install banner's week between asks.
 Beside the walk, on the same server: /clanarine's add form, whose script
 shows the tier select that fits the chosen plan (the online plan's QMove
 tiers are the landing cards' titles; the rest is in tests/test_clanarina.py).
@@ -115,13 +118,14 @@ def test_only_a_trainer_saves_and_the_limit_and_reset_hold():
     assert t.post(f"/copy/{key}", data={"text": "x" * 2000}).status_code == 200
     assert t.post("/copy/no.such.slot", data={"text": "x"}).status_code == 404
 
-    for blank in ("   ", " \n \n\n "):                                       # empty = back to the default,
+    for blank in ("   ", " \n \n\n "):                                       # emptied, it stays empty (20.10.2026):
         t.post(f"/copy/{key}", data={"text": "Nešto."})                     # line breaks alone are empty too
         r = t.post(f"/copy/{key}", data={"text": blank})
-        assert r.json() == {"ok": True, "text": slot.default, "default": True}
-    assert slot.default in TestClient(app).get("/").text and db.copy_texts() == {}
+        assert r.json() == {"ok": True, "text": "", "default": False} and db.copy_texts() == {key: ""}
+    page = TestClient(app).get("/").text                                    # a visitor gets nothing in its pill
+    assert '<span class="kicker"></span>' in page and slot.default not in page
 
-    t.post(f"/copy/{key}", data={"text": "Opet novi."})                     # reset=1 does the same
+    t.post(f"/copy/{key}", data={"text": "Opet novi."})                     # reset=1 (Zadano): the default, no row
     r = t.post(f"/copy/{key}", data={"text": "ignoriran", "reset": "1"})
     assert r.json() == {"ok": True, "text": slot.default, "default": True} and db.copy_texts() == {}
 
@@ -363,13 +367,13 @@ def test_an_announcements_texts_are_edited_in_place_through_their_virtual_keys()
     r = t.post(f"/copy/{key}", data={"text": "x" * 2001})                   # the cap, as a slot's
     assert r.status_code == 400 and r.json()["error"] == "Najviše 2000 znakova — ovo ih ima 2001."
     assert t.post(f"/copy/{key}", data={"text": "x" * 2000}).status_code == 200
-    for blank in ("   ", " \n \n\n "):                                       # empty: the new card's placeholder,
-        t.post(f"/copy/{key}", data={"text": "Nešto."})                     # as an emptied slot's default
+    for blank in ("   ", " \n \n\n "):                                       # emptied, it stays empty (20.10.2026),
+        t.post(f"/copy/{key}", data={"text": "Nešto."})                     # as an emptied slot does
         r = t.post(f"/copy/{key}", data={"text": blank})
-        assert r.json() == {"ok": True, "text": "Nova najava", "default": True} and db.announcement(one).title == "Nova najava"
-    t.post(f"/copy/{key}", data={"text": "Opet."})                          # reset=1 (Zadano) does the same
+        assert r.json() == {"ok": True, "text": "", "default": False} and db.announcement(one).title == ""
+    t.post(f"/copy/{key}", data={"text": "Opet."})                          # reset=1 (Zadano): the new card's placeholder
     r = t.post(f"/copy/{key}", data={"text": "ignoriran", "reset": "1"})
-    assert r.json() == {"ok": True, "text": "Nova najava", "default": True}
+    assert r.json() == {"ok": True, "text": "Nova najava", "default": True} and db.announcement(one).title == "Nova najava"
 
     for bad in ("aktualno.99.title", f"aktualno.{one}.naslov", f"aktualno.{one}.when_text", f"aktualno.{one}",
                 f"aktualno.{one}.title.x", "aktualno.x.title", f"aktualno.0{one}.title", "aktualno.1234567890.title",
@@ -757,14 +761,15 @@ def test_a_gym_cards_texts_are_edited_in_place_through_their_virtual_keys():
     assert r.status_code == 400 and r.json()["error"] == "Najviše 2000 znakova — ovo ih ima 2001."
     assert t.post(f"/copy/{key}", data={"text": "x" * 2000}).status_code == 200
     for field in ("title", "lead", "price", "unit", "year_price", "year_unit"):
-        blank = copy.GYM_CARD_BLANK[field]                                  # empty: the new card's placeholder,
-        t.post(f"/copy/dvorana.{two}.{field}", data={"text": "Nešto."})      # as an emptied slot's default
+        blank = copy.GYM_CARD_BLANK[field]                                  # emptied, it stays empty (20.10.2026),
+        t.post(f"/copy/dvorana.{two}.{field}", data={"text": "Nešto."})      # as an emptied slot does
         r = t.post(f"/copy/dvorana.{two}.{field}", data={"text": " \n \n\n "})
-        assert r.json() == {"ok": True, "text": blank, "default": True}, field
-        assert getattr(db.gym_card(two), field) == blank, field
-        t.post(f"/copy/dvorana.{two}.{field}", data={"text": "Opet."})       # reset=1 (Zadano) does the same
+        assert r.json() == {"ok": True, "text": "", "default": False}, field
+        assert getattr(db.gym_card(two), field) == "", field
+        t.post(f"/copy/dvorana.{two}.{field}", data={"text": "Opet."})       # reset=1 (Zadano): the new card's placeholder
         r = t.post(f"/copy/dvorana.{two}.{field}", data={"text": "ignoriran", "reset": "1"})
         assert r.json() == {"ok": True, "text": blank, "default": True}, field
+        assert getattr(db.gym_card(two), field) == blank, field
     assert db.gym_card(two).plans == copy.GYM_CARD_EXAMPLES[1]["plans"]     # its plans: no key reaches them
 
     for bad in ("dvorana.99.title", f"dvorana.{one}.naziv", f"dvorana.{one}.shown", f"dvorana.{one}.plans",
@@ -1078,7 +1083,7 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
         for path in PAGES:
             page = c.get(path).text
             if c.get(path, follow_redirects=False).status_code == 200:
-                for mark in ("data-copy", "copyToggle", "data-list", "data-rows", "data-part", 'class="ed-xc"',
+                for mark in ("data-copy", "data-required", "copyToggle", "data-list", "data-rows", "data-part", 'class="ed-xc"',
                              'class="ed-x"', 'ed-add"', 'class="ed-flag"', "data-flag",
                              'class="ed-img"', "data-image", 'class="ed-ann-x"', 'class="ed-add-ann"', 'action="/aktualno/',
                              'class="ed-pills"', 'class="ed-gym-x"', 'class="ed-add-gym"', 'action="/dvorana/', "; --cols-edit:"):
@@ -1124,8 +1129,9 @@ def test_the_price_slots_start_as_the_shops_prices():
             slot = copy.SLOTS[f"price.{plan}.{part}"]
             assert type(slot) is copy.Slot and slot.max == copy.CAP, (plan, part)
             assert slot.default == default and slot.label == f"Cijena · {plan}: {label}", (plan, part)
-    assert copy.SLOTS["addon.online"] == copy.Slot("5", copy.CAP, "MojiMakrosi dodatak uz online (€)")
-    assert copy.SLOTS["addon.dvorana"] == copy.Slot("3", copy.CAP, "MojiMakrosi dodatak uz dvoranu (€)")
+            assert slot.required is (part == "amount"), (plan, part)          # the number: never left empty
+    assert copy.SLOTS["addon.online"] == copy.Slot("5", copy.CAP, "MojiMakrosi dodatak uz online (€)", required=True)
+    assert copy.SLOTS["addon.dvorana"] == copy.Slot("3", copy.CAP, "MojiMakrosi dodatak uz dvoranu (€)", required=True)
     assert reference_prices({}) == SHOP and addon_amounts({}) == {"dvorana": "3", "online": "5"}
     edited = {"price.online.amount": "45", "price.grupni.note": "Paketi", "addon.dvorana": "4",
               "price.prehrana.note": "3 € uz dvoranu"}
@@ -1178,10 +1184,10 @@ def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     page = t.get("/").text                                                  # the editor gets them as slots
     start = page.split('id="usluge"')[1].split('class="card offer')[1]
     assert ('<b><span class="ed t" data-copy="price.online.amount" data-max="2000" '
-            'data-label="Cijena · online: iznos">45</span> €</b>') in start
+            'data-label="Cijena · online: iznos" data-required>45</span> €</b>') in start
     dvorana, individualno = page.split('id="dvorana"')[1].split('class="card offer')[1:3]
     assert ('<b><span class="ed t" data-copy="price.grupni.amount" data-max="2000" '
-            'data-label="Cijena · grupni: iznos">65</span> €</b>') in dvorana   # the same slot, his to open here
+            'data-label="Cijena · grupni: iznos" data-required>65</span> €</b>') in dvorana   # the same slot, his to open here
     for key in ("poluindividualni.amount", "poluindividualni.unit", "rehabilitacija.amount", "rehabilitacija.unit"):
         assert f'data-copy="price.{key}"' in individualno.split('class="price-note"')[1], key
     mc = t.get("/moja-clanarina").text
@@ -1255,6 +1261,161 @@ def test_the_words_around_a_price_are_free_text_and_the_number_its_own_slot():
     assert offer.count('data-copy="addon.online"') == 3 and "offer.addon" not in copy.SLOTS
 
 
+# ---------- an emptied text stays empty, but a number (20.10.2026) ----------
+
+def tier_cards(page: str) -> list[str]:
+    """The landing's three QMove cards (#usluge), START, PRO, ELITE."""
+    return page.split('id="usluge"')[1].split('id="dvorana"')[0].split('class="card offer')[1:]
+
+
+def test_an_emptied_text_stays_empty_and_only_a_number_gets_its_default_back():
+    """20.10.2026 (the owner, of Individualno's "/ tretman": "I still cant
+    delete the 'tretman' cell"; earlier that day: "once he removes the
+    text, the text box and the space it occupies gets removed", and of the
+    numbers: "if there is no input number, it falls back to the default").
+    An emptied optional slot is a row whose text is "", "default": false,
+    and a page prints nothing for it, nor the space or the box around it:
+    Individualno's unit and the space before it, its word, START's unit
+    span, a tier's add-on words; on /moja-clanarina an emptied unit prints
+    nothing either (_plan_price.html). Zadano (reset=1) brings the default
+    back, no row. A required slot, a number (every price.<plan>.amount,
+    addon.online, addon.dvorana), emptied, is its default again, as every
+    text was before; the editor's span says which it is (data-required)."""
+    make_user("ivan@test.local", plans=("rehabilitacija",)); make_user("trener@test.local", is_trainer=True)
+    gym_examples()
+    t = client_for("trener@test.local")
+    assert {k for k, s in copy.SLOTS.items() if isinstance(s, copy.Slot) and s.required} == {
+        *(f"price.{plan}.amount" for plan in PLAN_TYPES), "addon.online", "addon.dvorana"}
+    assert copy.clean("") == "" and copy.clean(" \n\t \n ") == ""             # what an emptied text stores
+
+    def line(page: str) -> str:                     # Individualno's line, its markup
+        card = page.split('id="dvorana"')[1].split('class="card offer')[2]
+        return card.split('<p class="price-note">')[1].split("</p>")[0]
+
+    optional = ("price.rehabilitacija.unit", "price.poluindividualni.word", "price.online.unit",
+                "offer.online2.addon", "offer.online2.addon_unit")
+    for key in optional:
+        assert not copy.SLOTS[key].required, key
+        r = t.post(f"/copy/{key}", data={"text": " \n "})
+        assert r.json() == {"ok": True, "text": "", "default": False}, key
+    assert db.copy_texts() == dict.fromkeys(optional, "")                     # rows whose text is ""
+    page = TestClient(app).get("/").text
+    note = line(page)
+    assert shown(note) == "25 € / trening · rehabilitacija od 30 €"            # no word, no unit
+    assert note.startswith(' <span class="whole">')                           # nothing before the first price but
+                                                                               # a space at the line's start (never shown)
+    assert note.endswith('<span class="t">od 30</span>&nbsp;€</span>')         # nothing after the €, no space
+    start, pro, elite = tier_cards(page)
+    assert '<div class="price" data-period="month" hidden><b><span class="t">50</span> €</b></div>' in start   # no unit span
+    assert '<p class="addon"> <b>+<span class="t">5</span> </b></p>' in pro   # PRO's add-on: the amount alone
+    assert '<p class="addon"><span class="t">MojiMakrosi prehrana</span> <b>+<span class="t">5</span> ' in elite
+    mine = client_for("ivan@test.local").get("/moja-clanarina").text           # _plan_price.html copes
+    assert '<div class="price"><span class="t">od 30</span> € <small></small></div>' in card_on(mine, "rehabilitacija")
+
+    editor = t.get("/").text                                                   # the editor keeps an empty box
+    assert ('<span class="unit">&nbsp;<span class="ed t" data-copy="price.rehabilitacija.unit" data-max="2000" '
+            'data-label="Cijena · rehabilitacija: jedinica"></span></span>') in line(editor)
+    assert ('<span class="ed t" data-copy="price.rehabilitacija.amount" data-max="2000" '
+            'data-label="Cijena · rehabilitacija: iznos" data-required>od 30</span>') in line(editor)
+    assert ('<span><span class="ed t" data-copy="price.online.unit" data-max="2000" '
+            'data-label="Cijena · online: jedinica"></span></span></div>') in tier_cards(editor)[0]
+
+    for key in optional:                                                       # Zadano: the default, no row
+        r = t.post(f"/copy/{key}", data={"text": "ignoriran", "reset": "1"})
+        assert r.json() == {"ok": True, "text": copy.SLOTS[key].default, "default": True}, key
+    assert db.copy_texts() == {}
+    assert shown(line(TestClient(app).get("/").text)) == "u dvoje ili troje 25 € / trening · rehabilitacija od 30 € / tretman"
+
+    for key, default in (("price.rehabilitacija.amount", "od 30"), ("addon.online", "5")):   # a number: emptied,
+        assert t.post(f"/copy/{key}", data={"text": "40"}).json()["text"] == "40", key     # its default again
+        r = t.post(f"/copy/{key}", data={"text": "  "})
+        assert r.json() == {"ok": True, "text": default, "default": True} and key not in db.copy_texts(), key
+
+
+def test_an_emptied_row_text_stays_empty_and_takes_its_shape_along():
+    """The rows' texts the same way (20.10.2026). Emptied, an
+    announcement's text is stored as "", and a visitor gets no chip for an
+    empty tag, no when line for an empty when, no paragraph for an empty
+    text and no link for an empty cta (its title's h2 stays: empty, it
+    takes no room); the editor keeps each piece with an empty .ed in it, a
+    box to click in edit mode (outside it the landing's CSS hides it).
+    A gym card's emptied lead keeps its <p class="lead"> for a visitor
+    (its min-height keeps the lists level), with nothing in it. Zadano
+    brings a placeholder back."""
+    make_user("trener@test.local", is_trainer=True)
+    _, two = examples(); dvorana, _ = gym_examples()
+    t = client_for("trener@test.local")
+    for field in ("tag", "when", "text", "cta"):
+        r = t.post(f"/copy/aktualno.{two}.{field}", data={"text": " "})
+        assert r.json() == {"ok": True, "text": "", "default": False}, field
+
+    def cards(page: str) -> list[str]:              # the announcements, in order
+        return page.split('id="aktualno"')[1].split('class="dots"')[0].split('<article class="card event')[1:]
+
+    first, second = cards(TestClient(app).get("/").text)
+    for piece in ('<span class="tag">', '<p class="when">', '<p class="text">',
+                  '<div class="foot"><a class="act" href="/#kontakt">'):
+        assert piece in first and piece not in second, piece                # the first keeps its own
+    assert '<div class="head"><h2><span class="t">Pilates za cure</span></h2></div>' in second
+    assert "<a " not in second and "Javi nam se" not in second
+    editor = cards(t.get("/").text)[1]                                      # the editor: every piece, empty
+    for field, word in (("tag", "oznaka"), ("when", "termin"), ("text", "tekst"), ("cta", "gumb")):
+        assert f'data-copy="aktualno.{two}.{field}" data-max="2000" data-label="Najava 2: {word}"></span>' in editor, field
+    assert f'<div class="foot"><a class="act" href="/#kontakt"><span class="ed t" data-copy="aktualno.{two}.cta"' in editor
+    r = t.post(f"/copy/aktualno.{two}.cta", data={"reset": "1"})            # Zadano: the placeholder, the link back
+    assert r.json() == {"ok": True, "text": "Javi nam se", "default": True}
+    assert '<a class="act" href="/#kontakt"><span class="t">Javi nam se</span></a>' in cards(TestClient(app).get("/").text)[1]
+
+    r = t.post(f"/copy/dvorana.{dvorana}.lead", data={"text": ""})           # a gym card's lead
+    assert r.json() == {"ok": True, "text": "", "default": False} and db.gym_card(dvorana).lead == ""
+    card = TestClient(app).get("/").text.split('id="dvorana"')[1].split('class="card offer')[1]
+    assert '<p class="lead"></p>' in card and "Grupni treninzi u Dubravi." not in card
+    card = t.get("/").text.split('id="dvorana"')[1].split('class="card offer')[1]
+    assert (f'<p class="lead"><span class="ed t" data-copy="dvorana.{dvorana}.lead" data-max="2000" '
+            'data-label="Kartica 1: podnaslov"></span></p>') in card
+
+
+def test_a_tiers_mojimakrosi_line_switches_off_and_keeps_its_room():
+    """Each QMove tier's MojiMakrosi line has its switch (20.10.2026: ELITE's
+    bullets say MojiMakrosi is in it), offer.online*.addon_on, a FlagSlot.
+    Off, a visitor's line on that tier keeps its room, unread, so the
+    card's foot does not shift: the same <p class="addon">, .is-off
+    (visibility: hidden) and aria-hidden. The other two are as they were.
+    The editor's line carries the toggle as its first child, the line its
+    data-flag box (.is-off when off, and no aria-hidden: his toggle is in
+    it); reset=1 is on again."""
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    key = "offer.online3.addon_on"
+    assert [copy.SLOTS[f"{slot}.addon_on"] for slot in ("offer.online", "offer.online2", "offer.online3")] == [
+        copy.FlagSlot(True, f"Online {n}: MojiMakrosi linija") for n in (1, 2, 3)]
+    words = ('<span class="t">MojiMakrosi prehrana</span> <b>+<span class="t">5</span> '
+             '<span class="t">€ / mjesečno</span></b></p>')
+    assert [c.count(f'<p class="addon">{words}') for c in tier_cards(TestClient(app).get("/").text)] == [1, 1, 1]
+
+    assert TestClient(app).post(f"/copy/{key}", data={"text": "off"}).status_code == 401
+    assert client_for("ivan@test.local").post(f"/copy/{key}", data={"text": "off"}).status_code == 403
+    t = client_for("trener@test.local")
+    r = t.post(f"/copy/{key}", data={"text": "off"})
+    assert r.json() == {"ok": True, "on": False, "default": False} and db.copy_texts() == {key: "off"}
+    for c in (TestClient(app), client_for("ivan@test.local")):
+        start, pro, elite = tier_cards(c.get("/").text)
+        assert f'<p class="addon">{words}' in start and f'<p class="addon">{words}' in pro   # the other two as they were
+        assert f'<p class="addon is-off" aria-hidden="true">{words}' in elite              # ELITE's: its room, unread
+        assert elite.count('class="addon') == 1
+    start, _, elite = tier_cards(t.get("/").text)
+    assert ('<p class="addon is-off" data-flag="offer.online3.addon_on"><button type="button" class="ed-flag" '
+            'data-copy="offer.online3.addon_on" data-label="Online 3: MojiMakrosi linija"') in elite
+    assert 'aria-pressed="false">Skriveno</button><span class="ed t" data-copy="offer.online3.addon"' in elite
+    assert "aria-hidden" not in elite.split('class="addon')[1].split("</p>")[0]
+    assert ('<p class="addon" data-flag="offer.online.addon_on"><button type="button" class="ed-flag" '
+            'data-copy="offer.online.addon_on" data-label="Online 1: MojiMakrosi linija"') in start
+    assert 'aria-pressed="true">Prikazano</button>' in start
+
+    r = t.post(f"/copy/{key}", data={"text": "off", "reset": "1"})          # reset=1: on again, no row
+    assert r.json() == {"ok": True, "on": True, "default": True} and db.copy_texts() == {}
+    assert f'<p class="addon">{words}' in tier_cards(TestClient(app).get("/").text)[2]
+
+
 # ---------- the layout, measured in a browser ----------
 #
 # No slot has a design limit since 16.10.2026 (src/qmt/copy.py): the copy
@@ -1266,6 +1427,8 @@ def test_the_words_around_a_price_are_free_text_and_the_number_its_own_slot():
 # editable span never changes a font, nothing is cut by a box that hides its
 # overflow, and the cards' prices stay level across each row. The first
 # announcement sits on a photo all along: a long text makes it taller too.
+# A few optional texts are empty in the long walks (fill()): an emptied
+# text stays empty since 20.10.2026, and its box goes with it.
 
 WORDS = ("trening snaga pokret zdravlje tehnika grupa trener dvorana program "
          "ravnoteža mobilnost izdržljivost oporavak sprava").split()
@@ -1643,7 +1806,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     make_user("trener@test.local", is_trainer=True); make_user("ivan@test.local", plans=("grupni",))
     one, two = examples()                             # the landing's two announcements, as the migration leaves them
     CARD = f'[data-image="aktualno.{one}.image"]'     # the first one, in the editor's markup
-    gym_examples()                                    # and the gym's two cards
+    _, individualno = gym_examples()                  # and the gym's two cards
 
     def fill(make):
         for key, slot in copy.SLOTS.items():
@@ -1662,6 +1825,21 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             for column in copy.GYM_CARD_COLUMNS.values():
                 db.set_gym_card_field(g.id, column, make(LONG), None)
             db.set_gym_card_points(g.id, [make(ITEM)] * ITEMS, None)
+        # and an empty optional text here and there, which stays empty since
+        # 20.10.2026 and takes its box along, on the landing alone: the word
+        # before Individualno's first other price, PRO's add-on words, the
+        # second announcement's chip and link, the second gym card's lead
+        # (its <p class="lead"> stays). Not a unit: /moja-clanarina prints
+        # those too, and nothing pins its "Dodaj plan" cards' prices, which
+        # stay level (measured at their bottom edge) only while each card's
+        # name, description and price are as long as its neighbours', as
+        # an empty unit beside 300-character ones is not; emptied() walks
+        # "/ tretman" with the default texts instead.
+        for key in ("price.poluindividualni.word", "offer.online2.addon"):
+            db.set_copy(key, "", None)
+        for column in ("tag", "cta"):
+            db.set_announcement_field(two, column, "", None)
+        db.set_gym_card_field(individualno, "lead", "", None)
         photo_on()
 
     def photo_on():
@@ -1991,6 +2169,160 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             ctx.browser.close()
         return [f"[hours rows] {p}" for p in out + [f"js: {e}" for e in errs]]
 
+    def emptied(pw):
+        """An emptied text in a browser, the editor's way (20.10.2026: it
+        stays empty, a number gets its default back), with the default
+        texts, at 390px on a touch screen and at 1280px. In edit mode the
+        trainer opens Individualno's "/ tretman" (rehabilitacija's unit)
+        and empties it: the bar says "Prazno: Spremi ostavlja prazno." (on
+        a wide screen "… · Zadano vraća izvorni tekst.", where there is
+        room), and Spremi stores it empty; its box stays, empty and still
+        clickable (it has a size, and a click opens it again). Its amount,
+        a number, emptied says "Prazno: Spremi vraća izvorni tekst." (then
+        Odustani). The second announcement's emptied link keeps a box in
+        edit mode too. Out of edit mode and reloaded, his line reads "… od
+        30 €" with nothing after it, the € its last ink, and that link is
+        gone, as on a guest's page; nothing overflows. Zadano brings
+        "/ tretman" back, its row gone. No page errors."""
+        out, errs, key = [], [], "price.rehabilitacija.unit"
+        unit = f'#dvorana .price-note:not(.room) [data-copy="{key}"]'
+        amount = '#dvorana .price-note:not(.room) [data-copy="price.rehabilitacija.amount"]'
+        cta = f'[data-copy="aktualno.{two}.cta"]'
+        line = r"""() => { const p = [...document.querySelectorAll('#dvorana .price-note')].find(n => !n.classList.contains('room'));
+          const whole = [...p.querySelectorAll('.whole')].pop(), tw = document.createTreeWalker(whole, NodeFilter.SHOW_TEXT);
+          let euro = null; for (let n = tw.nextNode(); n; n = tw.nextNode()) if (n.textContent.includes('€')) euro = n;
+          const r = document.createRange(); r.selectNodeContents(euro);
+          const foot = document.querySelectorAll('#aktualno .event')[1].querySelector('.foot');
+          return [p.innerText.replace(/\s+/g, ' ').trim(), Math.round(whole.getBoundingClientRect().right - r.getBoundingClientRect().right),
+                  !!foot && getComputedStyle(foot).display !== 'none']; }"""
+        db.set_announcement_field(two, "cta", "", None)
+        for w in (390, 1280):
+            phone = w < 600
+            browser = pw.chromium.launch()
+            ctx = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
+            pg = ctx.new_page(); pg.on("pageerror", lambda e, w=w: errs.append(f"{w}px: {e}"))
+            pg.goto(server + "/login"); pg.fill("main input[name=email]", "trener@test.local")
+            pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
+            pg.wait_for_load_state("networkidle")
+            pg.goto(server + "/#dvorana"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+            pg.click("#copyToggle")
+            box = pg.locator(unit)
+            box.click(); box.fill("")
+            bar = [pg.locator("#copyBar .cb-label").inner_text(), pg.locator("#copyBar .cb-msg").inner_text()]
+            said = "Prazno: Spremi ostavlja prazno." if phone else "Prazno: Spremi ostavlja prazno · Zadano vraća izvorni tekst."
+            if bar != ["Cijena · rehabilitacija: jedinica", said]:
+                out.append(f"{w}px: the bar over the emptied unit says {bar}")
+            pg.click("#cbSave")
+            try:
+                pg.wait_for_function(f"""() => document.querySelector('{unit}').textContent === ''
+                  && document.getElementById('copyBar').hidden""", timeout=5000)
+            except PlaywrightTimeout:
+                out.append(f"{w}px: the emptied unit did not save empty")
+            if db.copy_texts().get(key) != "":
+                out.append(f"{w}px: stored {db.copy_texts().get(key)!r} for the emptied unit")
+            size = box.bounding_box()
+            if not size or size["width"] < 20 or size["height"] < 8:
+                out.append(f"{w}px: the emptied unit's box in edit mode is {size}")
+            box.click()                                               # still clickable: it opens again
+            if pg.locator("#copyBar").is_hidden() or pg.locator("#copyBar .cb-label").inner_text() != "Cijena · rehabilitacija: jedinica":
+                out.append(f"{w}px: a click on the emptied unit's box does not open it")
+            pg.click("#cbCancel")
+            number = pg.locator(amount)                               # a number: Spremi would bring its default back
+            number.click(); number.fill("")
+            if pg.locator("#copyBar .cb-msg").inner_text() != "Prazno: Spremi vraća izvorni tekst.":
+                out.append(f"{w}px: the bar over the emptied amount says {pg.locator('#copyBar .cb-msg').inner_text()!r}")
+            pg.click("#cbCancel")
+            if number.text_content() != "od 30":
+                out.append(f"{w}px: Odustani left the amount {number.text_content()!r}")
+            link = pg.locator(cta).bounding_box()                    # the emptied link keeps a box in edit mode
+            if not link or link["width"] < 20 or link["height"] < 8:
+                out.append(f"{w}px: the emptied link's box in edit mode is {link}")
+            pg.click("#copyToggle"); pg.reload(); pg.wait_for_load_state("networkidle")   # Gotovo, reloaded
+            guest = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+            guest.goto(server + "/#dvorana"); guest.wait_for_load_state("networkidle"); guest.evaluate("document.fonts.ready")
+            for who, page in (("the trainer", pg), ("a guest", guest)):
+                seen = page.evaluate(line)
+                if seen != ["u dvoje ili troje 25 € / trening · rehabilitacija od 30 €", 0, False]:
+                    out.append(f"{w}px: {who} out of edit mode sees (the line, px after its €, the emptied link) {seen}")
+                out += [f"{w}px {who}: {p}" for p in page.evaluate(MEASURE, True)["problems"]]
+            pg.click("#copyToggle")                                    # Zadano brings it back
+            box.click(); pg.click("#cbReset")
+            try:
+                pg.wait_for_function(f"""() => document.querySelector('{unit}').textContent === '/ tretman'
+                  && document.getElementById('copyBar').hidden""", timeout=5000)
+            except PlaywrightTimeout:
+                out.append(f"{w}px: Zadano did not bring '/ tretman' back")
+            if key in db.copy_texts():
+                out.append(f"{w}px: after Zadano the unit still has a row")
+            pg.click("#copyToggle")
+            browser.close()
+        db.set_announcement_field(two, "cta", copy.ANNOUNCEMENT_EXAMPLES[1]["cta"], None)
+        return [f"[emptied] {p}" for p in out + [f"js: {e}" for e in errs]]
+
+    def addon_off(pw):
+        """ELITE's MojiMakrosi line switched off in a browser (20.10.2026),
+        with the default texts. The trainer at 390px, in edit mode, presses
+        the toggle that is the line's first line (a 32px pill over its
+        words): the line dims, the toggle says "Skriveno", the switch is
+        stored, and out of edit mode his page hides the line, as a
+        visitor's does. A guest then gets that line unseen and unread
+        (visibility: hidden, aria-hidden, none of it in the card's text)
+        and the other two as they were, and the three tiers' prices stay
+        level, their tops within 1px: at 1280px, and at 390px in the
+        carousel. Switched back on for what follows. No page errors."""
+        out, errs, key = [], [], "offer.online3.addon_on"
+        toggle = f'#usluge [data-copy="{key}"]'
+        feet = """() => [...document.querySelectorAll('#usluge .offer')].map(c => {
+          const a = c.querySelector('.addon'), p = [...c.querySelectorAll('.price')].find(x => getComputedStyle(x).display !== 'none');
+          return [getComputedStyle(a).visibility, a.getAttribute('aria-hidden'), c.innerText.includes('MojiMakrosi'),
+                  p.getBoundingClientRect().top]; })"""
+        browser = pw.chromium.launch()
+        pg = browser.new_context(viewport={"width": 390, "height": 900}, has_touch=True, is_mobile=True).new_page()
+        pg.on("pageerror", lambda e: errs.append(f"390px: {e}"))
+        pg.goto(server + "/login"); pg.fill("main input[name=email]", "trener@test.local")
+        pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        pg.goto(server + "/#usluge"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+        pg.click("#copyToggle")
+        seen = pg.evaluate("""(sel) => { const f = document.querySelector(sel), line = f.closest('.addon');
+          const words = line.querySelector('[data-copy$=".addon"]'), b = f.getBoundingClientRect();
+          return [f.closest('[data-flag]') === line, b.height >= 32, b.bottom <= words.getBoundingClientRect().top + 1,
+                  f.textContent, f.getAttribute('aria-pressed')]; }""", toggle)
+        if seen != [True, True, True, "Prikazano", "true"]:
+            out.append(f"390px edit mode: ELITE's toggle (in its line, 32px, over its words, its state) {seen}")
+        pg.locator(toggle).click()
+        try:
+            pg.wait_for_function("""(sel) => { const f = document.querySelector(sel);
+              return f.getAttribute('aria-pressed') === 'false' && f.closest('.addon').classList.contains('is-off'); }""",
+                                 arg=toggle, timeout=5000)
+        except PlaywrightTimeout:
+            out.append("390px: ELITE's toggle did not switch its line off")
+        seen = pg.evaluate("""(sel) => { const f = document.querySelector(sel), line = f.closest('.addon'), o = el => +getComputedStyle(el).opacity;
+          return [f.textContent, getComputedStyle(line).visibility, o(line.querySelector('[data-copy$=".addon"]')), o(f)]; }""", toggle)
+        if seen != ["Skriveno", "visible", 0.55, 1]:
+            out.append(f"390px edit mode, off (the toggle, the line's visibility, its words' and its toggle's opacity) {seen}")
+        if db.copy_texts().get(key) != "off":
+            out.append("the switch was not stored")
+        pg.click("#copyToggle")                                        # Gotovo: his page is a visitor's
+        if pg.evaluate(f"(sel) => getComputedStyle(document.querySelector(sel).closest('.addon')).visibility", toggle) != "hidden":
+            out.append("390px: out of edit mode the editor still sees ELITE's line")
+        for w in (1280, 390):
+            phone = w < 600
+            g = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+            g.on("pageerror", lambda e, w=w: errs.append(f"{w}px guest: {e}"))
+            g.goto(server + "/"); g.wait_for_load_state("networkidle"); g.evaluate("document.fonts.ready")
+            seen = g.evaluate(feet)
+            if [f[:3] for f in seen] != [["visible", None, True], ["visible", None, True], ["hidden", "true", False]]:
+                out.append(f"{w}px guest: the add-on lines (visibility, aria-hidden, read in the card) {[f[:3] for f in seen]}")
+            tops = [f[3] for f in seen]
+            if max(tops) - min(tops) > 1:
+                out.append(f"{w}px guest: the tiers' prices are not level with ELITE's line off: {tops}")
+            out += [f"{w}px guest: {p}" for p in g.evaluate(MEASURE, True)["problems"]]
+            out += [f"{w}px guest: {p}" for p in g.evaluate(LANDING, [w, True])]
+        browser.close()
+        db.reset_copy(key)
+        return [f"[add-on off] {p}" for p in out + [f"js: {e}" for e in errs]]
+
     def hours_edit(pg):
         """The hours table in edit mode with the walk's texts (fill(): twelve
         rows of 300-character cells): EDIT_HOURS, then Gotovo."""
@@ -2126,6 +2458,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         problems = walk(pw, None, (900, 1280), "defaults", one_line=True)   # a plain one is one line on a wide screen
         problems += gym_rows(pw)                      # the gym's cards added, hidden and deleted (the default texts)
         problems += hours_rows(pw)                    # the hours' rows removed, added and emptied (the default rows)
+        problems += emptied(pw)                       # an emptied text stays empty, a number does not (the default texts)
+        problems += addon_off(pw)                     # ELITE's MojiMakrosi line off: its room kept, the prices level
         fill(words)                                   # long texts: 300 characters, lists of 12, the hours 12 rows
         problems += walk(pw, None, (360, 390, 900, 1280), "words", auto=(390, 1280))
         problems += still(pw)                         # under reduced motion: never by themselves

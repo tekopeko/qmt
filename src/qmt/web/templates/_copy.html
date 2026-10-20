@@ -5,13 +5,19 @@
    the editor in base.html can open; everyone else a bare .t, so the public
    page carries no editor markup at all. The span and its text stay on one
    line here: a line break inside the span would print.
+   An emptied text (stored as "" since 20.10.2026; a required slot, a
+   number, is never empty: its default comes back) is nothing at all for a
+   visitor, as an emptied cell of the hours is, and an empty .ed for the
+   editor, which edit mode gives a box to click (base.html). A required
+   slot's .ed says so (data-required), so the editor's bar can tell him
+   what Spremi will do with an empty one.
    Use: {% import "_copy.html" as c with context %} … {{ c.t("hero.kicker") }} #}
 {% macro t(key) -%}
   {%- set slot = COPY[key] -%}
   {%- set text = copy_texts.get(key, slot.default) -%}
   {%- if can_edit_copy -%}
-    <span class="ed t" data-copy="{{ key }}" data-max="{{ slot.max }}" data-label="{{ slot.label }}">{{ text }}</span>
-  {%- else -%}
+    <span class="ed t" data-copy="{{ key }}" data-max="{{ slot.max }}" data-label="{{ slot.label }}"{% if slot.required %} data-required{% endif %}>{{ text }}</span>
+  {%- elif text -%}
     <span class="t">{{ text }}</span>
   {%- endif -%}
 {%- endmacro %}
@@ -19,14 +25,16 @@
 {# A text that is no slot: one of an announcement's (a row of the
    announcements table, landing.html's #aktualno). `c.field(key, text,
    label)` prints it as c.t prints a slot, the same span for the same
-   viewers: `key` is its virtual key (aktualno.<id>.<field>), which POST
-   /copy/{key} takes as it takes a slot's, `text` what the row holds, and
-   `label` what the editor's bar names ("Najava 2: naslov"); the cap is
-   every text's, CAP. #}
+   viewers (an emptied one nothing for a visitor): `key` is its virtual key
+   (aktualno.<id>.<field>), which POST /copy/{key} takes as it takes a
+   slot's, `text` what the row holds, and `label` what the editor's bar
+   names ("Najava 2: naslov"); the cap is every text's, CAP. Never
+   data-required: no text of a row is (copy.ANNOUNCEMENT_SLOTS,
+   copy.GYM_CARD_SLOTS), so an emptied one stays empty. #}
 {% macro field(key, text, label) -%}
   {%- if can_edit_copy -%}
     <span class="ed t" data-copy="{{ key }}" data-max="{{ CAP }}" data-label="{{ label }}">{{ text }}</span>
-  {%- else -%}
+  {%- elif text -%}
     <span class="t">{{ text }}</span>
   {%- endif -%}
 {%- endmacro %}

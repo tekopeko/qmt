@@ -492,6 +492,8 @@ def test_the_trainer_records_the_online_tier_and_the_flash_names_it():
     m = {x.plan: x for x in db.memberships_for(uid)}["online"]
     assert m.tier == "elite"
     assert loc == f"/clanarine?ok=Online trening (QMove ELITE): uplata evidentirana — sljedeća {m.next_payment:{D}}"
+    db.set_copy("offer.online3.title", "", None)                        # the title emptied: the default names the tier
+    assert copy.online_tier_names(db.copy_texts())["elite"] == "QMove ELITE"
     db.set_copy("offer.online3.title", "QMove ELITE+", None)            # the card renamed: the tier with it
     assert uplata(plan="online", tier="elite").startswith("/clanarine?ok=Online trening (QMove ELITE+): uplata evidentirana — ")
     # none sent: the row's tier is kept (a Stripe renewal names none); a new row with none sent is START

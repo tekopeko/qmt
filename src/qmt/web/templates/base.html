@@ -462,9 +462,11 @@
     .copy-bar .cb-count { font-variant-numeric: tabular-nums; }
     .copy-bar .cb-count.over { color: var(--accent); font-weight: 700; }
     /* how to save now that Enter is a new line; a phone keeps the bar small
-       (its keyboard has no Ctrl/⌘ — Spremi is the way there) */
+       (its keyboard has no Ctrl/⌘ — Spremi is the way there), and so the
+       message over an emptied text says how Zadano brings the default back
+       (.cb-more) only where there is room for it */
     .copy-bar .cb-hint { color: var(--muted); font-size: .78rem; }
-    @media (max-width: 599px) { .copy-bar .cb-hint { display: none; } }
+    @media (max-width: 599px) { .copy-bar .cb-hint, .copy-bar .cb-more { display: none; } }
     .copy-bar .cb-msg { color: var(--accent); font-weight: 600; }
     .copy-bar .cb-msg:empty { display: none; }
 
@@ -797,13 +799,22 @@
       return n + (d === 1 && h !== 11 ? " znak" : d >= 2 && d <= 4 && (h < 12 || h > 14) ? " znaka" : " znakova");
     }
     function caretEnd(el) { var r = document.createRange(), sel = window.getSelection(); r.selectNodeContents(el); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); }
+    // What Spremi does with an empty text, said while it is empty: a cell
+    // stays empty (or its row goes), an item goes, a required text (a
+    // number, data-required) gets its default back, and any other text
+    // stays empty since 20.10.2026, Zadano being how its default comes
+    // back (said where the bar has room, .cb-more).
     function tick() {
       if (!cur) return;
       var max = +cur.dataset.max, t = cur.textContent;
       if (t.length > max) { cur.textContent = t.slice(0, max); caretEnd(cur); t = cur.textContent; }
       count.textContent = chars(t.length); count.classList.toggle("over", t.length >= max);
-      if (!t.trim()) msg.textContent = isCell(cur) ? (twin(cur).trim() ? "Prazno: Spremi ostavlja polje prazno." : "Prazno: Spremi uklanja red.")
-        : isItem(cur) ? "Prazno: Spremi uklanja stavku." : "Prazno: Spremi vraća izvorni tekst.";
+      if (!t.trim()) {
+        if (isCell(cur)) msg.textContent = twin(cur).trim() ? "Prazno: Spremi ostavlja polje prazno." : "Prazno: Spremi uklanja red.";
+        else if (isItem(cur)) msg.textContent = "Prazno: Spremi uklanja stavku.";
+        else if (cur.hasAttribute("data-required")) msg.textContent = "Prazno: Spremi vraća izvorni tekst.";
+        else msg.innerHTML = 'Prazno: Spremi ostavlja prazno<span class="cb-more"> · Zadano vraća izvorni tekst</span>.';
+      }
       else if (msg.textContent.indexOf("Prazno") === 0) msg.textContent = "";
     }
     function begin(el, quiet) {

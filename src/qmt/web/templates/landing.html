@@ -365,6 +365,18 @@
   .offer .addon { align-self: stretch; padding-top: 14px; border-top: 1px solid var(--line);
                   font-size: .86rem; color: var(--muted); }
   .offer .addon b { color: var(--text); font-weight: 700; white-space: nowrap; }
+  /* A tier's MojiMakrosi line the editor switched off (offer.online*.addon_on,
+     a FlagSlot, 20.10.2026: ELITE's bullets say the prehrana is in it) keeps
+     its room rather than leave: the same line, unseen (visibility: hidden,
+     and aria-hidden for a visitor, so no one reads it), and the card's foot
+     stays as tall as its neighbours', so its price and button do not shift,
+     level with theirs whatever the row's height. Edit mode shows it, its
+     words dimmed but not its toggle, which is the line's first line there
+     (a block of its own, not base.html's pill inline before the words). */
+  .offer .addon.is-off { visibility: hidden; }
+  body.editing .offer .addon.is-off { visibility: visible; }
+  body.editing .offer .addon.is-off > :not(.ed-flag) { opacity: .55; }
+  body.editing .offer .addon .ed-flag { display: flex; width: fit-content; margin: 0 0 10px; }
   .offer .price { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   .offer .price b { font: 800 2.1rem/1 var(--font-body); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
   .offer .price > span { font: 600 .88rem/1.25 var(--font-body); color: var(--muted); }
@@ -449,6 +461,22 @@
   .socials svg { width: 20px; height: 20px; fill: currentColor; display: block; }
 
   footer { padding: 26px clamp(16px, 4vw, 40px) 40px; color: var(--muted); font-size: .84rem; text-align: center; }
+  /* An emptied text stays empty since 20.10.2026, and the shape around it
+     goes with it: the hero's kicker pill, a chip on the photo, an
+     announcement's chip, its when line (and its dot), its text (the room
+     it takes in the strip) and its link, a price's unit (its gap in
+     .price, the space before it in .price-note). A visitor gets none of
+     them: c.t prints nothing for an empty text, so a pill around one is
+     :empty, and the template prints an announcement's piece and a price's
+     unit only around a text. The editor gets each, its empty .ed a box to
+     click in edit mode (base.html); outside edit mode these rules take
+     them away, so his page is the visitor's, as with a card he switched
+     off. */
+  .hero .kicker:empty, .stage .tag:empty { display: none; }
+  body:not(.editing) .hero .kicker:has(> .ed:empty), body:not(.editing) .stage .tag:has(> .ed:empty),
+  body:not(.editing) .event :is(.tag, .when, .text, .foot):has(.ed:empty),
+  body:not(.editing) .offer .price > span:has(> .ed:empty),
+  body:not(.editing) .price-note .unit:has(> .ed:empty) { display: none; }
   /* everything the owner can retype: a word that does not fit its box breaks
      rather than widening the page. Since the limits were lifted (16.10.2026)
      this is the net under every such text. The chips are in it because their
@@ -497,7 +525,13 @@
        dots an editor gets "+ Dodaj najavu", a plain form too, while there
        are fewer than eight (can_add); with every card deleted his box is
        empty, and that form is how he starts again. A visitor gets none of
-       it, not even a line of white space. #}
+       it, not even a line of white space.
+       A text the editor emptied stays empty (20.10.2026): a visitor gets
+       no chip for an empty tag, no when line, no text and no link for an
+       empty cta (the title's h2 stays, empty: it takes no room); the editor
+       gets every piece, an empty one a box to click in edit mode only (a
+       rule in the style above hides it outside, so his page is the
+       visitor's). #}
     {% set ev_shown = announcements | selectattr("shown") | list | length %}
     {% if ev_shown or can_edit_copy %}
     <div class="evs swipe-row{% if ev_shown == 1 %} single{% endif %}{% if not ev_shown %} is-off{% endif %}" id="aktualno" data-auto="5000"{% if can_edit_copy %} data-flag-group{% endif %}>
@@ -510,10 +544,10 @@
         <button type="button" class="ed-img" data-copy="{{ ev }}.image" data-label="{{ n ~ ANNOUNCEMENT['image'].label }}">{{ "Promijeni sliku" if photo else "Dodaj sliku" }}</button>
         {% if photo %}<button type="button" class="ed-img-x" aria-label="Ukloni sliku" data-copy="{{ ev }}.image">Ukloni sliku</button>{% endif %}
         <form method="post" action="/aktualno/{{ a.id }}/obrisi" class="ed-ann-x"><button type="submit" aria-label="Obriši najavu">Obriši najavu</button></form>{% endif %}
-        <span class="tag">{{ c.field(ev ~ ".tag", a.tag, n ~ ANNOUNCEMENT["tag"].label) }}</span>
-        <div class="head"><h2>{{ c.field(ev ~ ".title", a.title, n ~ ANNOUNCEMENT["title"].label) }}</h2><p class="when">{{ c.field(ev ~ ".when", a.when_text, n ~ ANNOUNCEMENT["when"].label) }}</p></div>
-        <p class="text">{{ c.field(ev ~ ".text", a.body, n ~ ANNOUNCEMENT["text"].label) }}</p>
-        <div class="foot"><a class="act" href="/#kontakt">{{ c.field(ev ~ ".cta", a.cta, n ~ ANNOUNCEMENT["cta"].label) }}</a></div>
+        {% if a.tag or can_edit_copy %}<span class="tag">{{ c.field(ev ~ ".tag", a.tag, n ~ ANNOUNCEMENT["tag"].label) }}</span>{% endif %}
+        <div class="head"><h2>{{ c.field(ev ~ ".title", a.title, n ~ ANNOUNCEMENT["title"].label) }}</h2>{% if a.when_text or can_edit_copy %}<p class="when">{{ c.field(ev ~ ".when", a.when_text, n ~ ANNOUNCEMENT["when"].label) }}</p>{% endif %}</div>
+        {% if a.body or can_edit_copy %}<p class="text">{{ c.field(ev ~ ".text", a.body, n ~ ANNOUNCEMENT["text"].label) }}</p>{% endif %}
+        {% if a.cta or can_edit_copy %}<div class="foot"><a class="act" href="/#kontakt">{{ c.field(ev ~ ".cta", a.cta, n ~ ANNOUNCEMENT["cta"].label) }}</a></div>{% endif %}
       </article>
       {% endif %}
       {% endfor %}
@@ -582,7 +616,12 @@
        the addon.<addon_at> slot and the words around it the card's own,
        slot.addon before it and slot.addon_unit after it (20.10.2026: each
        tier its own words, one amount); none, no add-on line at all (the
-       gym's cards since 20.10.2026). tier: a monthly and a yearly price (the
+       gym's cards since 20.10.2026). The line has its switch,
+       slot.addon_on (a FlagSlot, the same day): an editor gets its toggle
+       as the line's first child (the line its data-flag box), and a line
+       switched off is .is-off, which keeps its room unseen (.addon.is-off,
+       above), aria-hidden for a visitor.
+       tier: a monthly and a yearly price (the
        yearly is the slot.year_price / .year_unit text), the switch under the
        row shows one; start is the one shown on load, the other hidden until
        the switch is pressed: "year" for the tiers, "month" for the gym's
@@ -621,11 +660,15 @@
         <p class="lead">{% if card is not none %}{{ gym_field(slot, card, n, "lead") }}{% else %}{{ c.t(slot ~ ".lead") }}{% endif %}</p>
         {% if card is not none %}{{ c.field_points(slot ~ ".points", card.point_items, "Kartica " ~ n ~ ": " ~ GYM["points"].label, GYM["points"]) }}{% else %}{{ c.points(slot ~ ".points") }}{% endif %}
         <div class="foot">
-          {% if addon_at %}<p class="addon">{{ c.t(slot ~ ".addon") }}{% if show_prices %} <b>+{{ c.t("addon." ~ addon_at) }} {{ c.t(slot ~ ".addon_unit") }}</b>{% endif %}</p>{% endif %}
+          {% if addon_at %}{% set addon_on = copy_flag(slot ~ ".addon_on", copy_texts) %}<p class="addon{% if not addon_on %} is-off{% endif %}"{% if can_edit_copy %} data-flag="{{ slot }}.addon_on"{% elif not addon_on %} aria-hidden="true"{% endif %}>
+            {%- if can_edit_copy %}<button type="button" class="ed-flag" data-copy="{{ slot }}.addon_on" data-label="{{ COPY[slot ~ '.addon_on'].label }}"
+                aria-pressed="{{ 'true' if addon_on else 'false' }}">{{ "Prikazano" if addon_on else "Skriveno" }}</button>{% endif -%}
+            {{ c.t(slot ~ ".addon") }}{% if show_prices %} <b>+{{ c.t("addon." ~ addon_at) }} {{ c.t(slot ~ ".addon_unit") }}</b>{% endif %}</p>{% endif %}
           {% if not show_prices %}<div class="price quiet">Cijene nakon prijave</div>
           {% else %}
             {% if real %}{% set plan = keys[0] %}
-            <div class="price"{% if tier %} data-period="month"{% if start == "year" %} hidden{% endif %}{% endif %}><b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b><span>{{ c.t("price." ~ plan ~ ".unit") }}</span></div>
+            <div class="price"{% if tier %} data-period="month"{% if start == "year" %} hidden{% endif %}{% endif %}><b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b>
+              {%- if copy_text("price." ~ plan ~ ".unit", copy_texts) or can_edit_copy %}<span>{{ c.t("price." ~ plan ~ ".unit") }}</span>{% endif %}</div>
             {% else %}{% if card is not none %}{{ row_price(slot, card, n, "price", "unit", "month", hidden=tier and start == "year") }}{% else %}{{ text_price(slot ~ ".price", slot ~ ".unit", "month", hidden=tier and start == "year") }}{% endif %}{% endif %}
             {% if tier %}{% if card is not none %}{{ row_price(slot, card, n, "year_price", "year_unit", "year", hidden=start == "month") }}{% else %}{{ text_price(slot ~ ".year_price", slot ~ ".year_unit", "year", hidden=start == "month") }}{% endif %}{% endif %}
             {% if note is not none %}<p class="price-note">{{ note }}</p>
@@ -706,9 +749,14 @@
    with every card deleted, that form is how he starts again. The grid's
    columns follow the cards (--cols: the cards a visitor sees, up to three;
    --cols-edit: every card, for edit mode; see .gym-grid). #}
+{# an emptied unit (20.10.2026) takes the space before it along: a
+   visitor gets neither, the editor both in .unit, an empty .ed a box in
+   edit mode, gone outside it (.price-note .unit, above) #}
 {% macro note_price(plan) -%}
+  {%- set unit = "price." ~ plan ~ ".unit" -%}
   <span class="whole">
-  {{- c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %}&nbsp;€{% endif %}&nbsp;{{ c.t("price." ~ plan ~ ".unit") -}}
+  {{- c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %}&nbsp;€{% endif %}
+  {%- if can_edit_copy %}<span class="unit">&nbsp;{{ c.t(unit) }}</span>{% elif copy_text(unit, copy_texts) %}&nbsp;{{ c.t(unit) }}{% endif -%}
   </span>
 {%- endmacro %}
 {# a card's line: its plans after the first, each "<word> <price>", joined

@@ -130,6 +130,9 @@ def copy_texts() -> dict[str, str]:
 
 
 def set_copy(key: str, text: str, user_id: int | None) -> None:
+    """Store a slot's text as given, "" too: an emptied optional text is a
+    row whose text is "" (20.10.2026), which pages print as nothing; only
+    reset_copy brings a default back."""
     with session_scope() as s:
         row = s.get(SiteCopy, key)
         if row is None:
@@ -206,9 +209,10 @@ def delete_announcement(ann_id: int) -> str | None:
 
 def set_announcement_field(ann_id: int, field: str, text: str, user_id: int | None) -> str:
     """Set one text of a card. `field` is its column: tag, title, when_text,
-    body or cta. The text is cleaned as copy is (copy.clean); an empty one
-    is the field's placeholder again (copy.ANNOUNCEMENT_BLANK), as an
-    emptied slot is its default, so a card is never blank. Returns what is
+    body or cta. The text is cleaned as copy is (copy.clean) and stored as
+    it is, an empty one too (20.10.2026: an emptied text stays empty, as an
+    emptied optional slot does; its placeholder, copy.ANNOUNCEMENT_BLANK,
+    comes back only when the caller passes it, Zadano). Returns what is
     stored. ValueError: an unknown field, or a text past copy.CAP;
     LookupError: no such card."""
     if field not in copy.ANNOUNCEMENT_BLANK:
@@ -216,12 +220,11 @@ def set_announcement_field(ann_id: int, field: str, text: str, user_id: int | No
     cleaned = copy.clean(text)
     if len(cleaned) > copy.CAP:
         raise ValueError(f"{len(cleaned)} characters, at most {copy.CAP}")
-    stored = cleaned or copy.ANNOUNCEMENT_BLANK[field]
     with session_scope() as s:
         a = _announcement_row(s, ann_id)
-        setattr(a, field, stored)
+        setattr(a, field, cleaned)
         a.updated_by = user_id
-    return stored
+    return cleaned
 
 
 def set_announcement_shown(ann_id: int, shown: bool, user_id: int | None = None) -> None:
@@ -309,21 +312,21 @@ def delete_gym_card(card_id: int) -> bool:
 def set_gym_card_field(card_id: int, column: str, text: str, user_id: int | None) -> str:
     """Set one text of a card. `column` is where the row keeps it
     (copy.GYM_CARD_COLUMNS: title, lead, price, unit, year_price,
-    year_unit). The text is cleaned as copy is (copy.clean); an empty one
-    is the field's placeholder again (copy.GYM_CARD_BLANK), as an emptied
-    slot is its default. Returns what is stored. ValueError: not such a
+    year_unit). The text is cleaned as copy is (copy.clean) and stored as
+    it is, an empty one too (20.10.2026, as an announcement's: its
+    placeholder, copy.GYM_CARD_BLANK, comes back only when the caller
+    passes it, Zadano). Returns what is stored. ValueError: not such a
     column, or a text past copy.CAP; LookupError: no such card."""
     if column not in copy.GYM_CARD_COLUMNS.values():
         raise ValueError(f"not a text of a gym card: {column!r}")
     cleaned = copy.clean(text)
     if len(cleaned) > copy.CAP:
         raise ValueError(f"{len(cleaned)} characters, at most {copy.CAP}")
-    stored = cleaned or copy.GYM_CARD_BLANK[column]
     with session_scope() as s:
         g = _gym_card_row(s, card_id)
-        setattr(g, column, stored)
+        setattr(g, column, cleaned)
         g.updated_by = user_id
-    return stored
+    return cleaned
 
 
 def set_gym_card_points(card_id: int, items: list[str], user_id: int | None) -> list[str]:
