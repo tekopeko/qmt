@@ -20,7 +20,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `ul[data-list]` / `.ed-x` / `.ed-add` | base (trainer, owner) | an editable list (`c.points`): each item an `.ed` with `data-index`, a 32px round `.ed-x` ✕ beside it (negative margin, so the line height holds) and an `.act.ed-add` "+ Dodaj stavku" after the list, hidden at the count limit; both only under `body.editing`. The bar names the item ("…: stavka 2") and its Zadano reads "Zadano (cijela lista)" |
 | `ul.lines` | landing (everyone; trainer, owner edit) | the extra lines (`c.lines` / `c.field_lines`, 20.10.2026: the owner's "text cells"): the list above printed as plain lines, no dot and no gutter (`li::before` none), the body text at .95rem / 1.5, 6px apart, in `--text`; 14px under a card's bullets; in the hero the old lead's look (`--muted`, 1.05rem, 60ch at most, centred, 16px under the h1; the announcements keep their own distance under it); in the contact block `--muted`. Its `.ed-add` reads "+ Dodaj tekst" and sits on a line of its own (centred in the hero); the ✕ and the bar as the bullets' ("Online 2: dodatni tekst 1"; the ✕ stays inside the contact block's column and sits beside its text in the hero). A visitor gets no `<ul>` for an empty list; the editor's empty one is not displayed (`ul.lines:not(:has(> li))`), so outside edit mode his page is the visitor's |
 | `table[data-rows]` / `td.ed-xc` | base (trainer, owner) | an editable table of rows (`c.rows`, a `copy.RowsSlot`: the landing's opening hours, 20.10.2026): each cell an `.ed` with `data-index` (the row) and `data-part` (0, 1), an emptied cell an empty `.ed` that keeps its click box; each row's ✕ is the list's `.ed-x` in a cell of its own, `td.ed-xc`, a column only under `body.editing` (outside it the editor's table is a visitor's), whose padding holds the ✕'s negative margin; "+ Dodaj red" is the list's `.act.ed-add` after the table, hidden at 12 rows. The bar names the cell ("Radno vrijeme, red 2: sati") and its Zadano reads "Zadano (cijela tablica)"; emptied, it says "Prazno: Spremi ostavlja polje prazno." (or "… uklanja red." when the other cell is empty too) |
-| `.ed-flag` / `.is-off` | base (trainer, owner) | the edit-mode toggle of a `copy.FlagSlot` (an on/off switch, the landing's announcements): the first child of the box it switches (`data-flag`), a 32px pill, green `--good-fill` "● Prikazano" / grey `--surface-2` "○ Skriveno", saved at a click, no confirm (hiding loses no text). A switched-off box is `.is-off`: hidden, shown only in edit mode with its content dimmed to .55 and the toggle at full strength; its `data-flag-group` follows its boxes (`.is-off` when none is on, `.single` on their row when one is). A visitor gets neither the toggle nor a hidden box, but for a QMove tier's `.addon` line (20.10.2026), whose room stays: unseen, `aria-hidden` (the landing's offer, below) |
+| `.ed-flag` / `.is-off` | base (trainer, owner) | the edit-mode toggle of a `copy.FlagSlot` (an on/off switch, the landing's announcements): the first child of the box it switches (`data-flag`), a 32px pill, green `--good-fill` "● Prikazano" / grey `--surface-2` "○ Skriveno", saved at a click, no confirm (hiding loses no text). A switched-off box is `.is-off`: hidden, shown only in edit mode with its content dimmed to .55 and the toggle at full strength; its `data-flag-group` follows its boxes (`.is-off` when none is on, `.single` on their row when one is). A visitor gets neither the toggle nor a hidden box |
 | `.ed-img` / `.ed-img-x` / `#edImgFile` | base (trainer, owner) | the edit-mode pills of a `copy.ImageSlot`, a photo behind a box (the landing's announcements; the box carries `data-image`): `.ed-img` "Dodaj sliku" / "Promijeni sliku" opens the hidden file picker (`#edImgFile`: jpg, png, webp) and posts to `/copy/<key>/slika`; the answer's URL becomes the box's first child, `img.bg`, and the box turns `.has-img` + `data-photo`. `.ed-img-x` "Ukloni sliku" (only with a photo) asks first, as an item's ✕ ("Ukloni?" for 4 s, then `reset=1`). 32px pills like `.ed-flag` (`--surface-2` / `--muted`), after it; on a photo (`[data-photo]`) a solid `--surface` pill with `--text` ink: the editor's controls, not text on a photograph. A failure is said in the bar |
 | `form.ed-ann-x` | base (trainer, owner) | "Obriši najavu", the edit-mode pill that deletes a landing announcement (`POST /aktualno/<id>/obrisi`, a plain form): the `.ed-img-x` pill to the pixel (32px, `--surface-2` / `--muted`, solid `--surface` on a photo), after the photo's pills; the form is `display: contents` in edit mode, so its button lines up with them as a flex item of the card. It asks first, as an item's ✕: one tap arms it into "Obriši?" (the accent tint, `aria-label` "Potvrdi brisanje") for 4 s, any other tap disarms it, the second tap sends the form; the page comes back without the card. On a card that is off it is dimmed with the card's content (a rule of its own: the form has no box to carry the opacity). Hidden outside edit mode; a visitor never gets it. The gym's "Obriši karticu" (`form.ed-gym-x`, `POST /dvorana/<id>/obrisi`, 20.10.2026) is the same pill and the same two taps |
 | `form.ed-add-ann` | landing (trainer, owner) | "+ Dodaj najavu": an `.act` pill (32px tall at every pointer) after the announcements' dots, centred in the hero under the stacked cards, in edit mode only; a plain form (`POST /aktualno/nova`) that comes back with a new card last (placeholder texts, shown, no photo). Not rendered at the cap (8 cards); with none left it is all the editor's empty box holds. A visitor never gets it. The gym's "+ Dodaj karticu" (`form.ed-add-gym`, `POST /dvorana/nova`) is the same pill under its row of cards, 18px under them |
@@ -97,17 +97,16 @@ offer, with a small `.go` arrow as the hint a phone needs (no hover there) and
 `data-photo` for the audit. **The offer** (`#usluge`): three tiers of the
 online plan as `.offer` cards in `.offer-grid` — italic uppercase title, one
 `.lead` line (two lines reserved), an editable list of dotted facts
-(`c.points`, up to six), then a `.foot` pinned to the bottom holding the
-`.addon` line (each tier's own words, `slot.addon` before the shared
-`addon.online` amount and `slot.addon_unit` after it, 20.10.2026), the
-`.price` (2.1rem number + muted unit) and one button, so add-on, price and
-button sit level across the row. Each tier's `.addon` line switches off
-(`slot.addon_on`, a `copy.FlagSlot`, 20.10.2026): in edit mode its
-`.ed-flag` is the line's first line, a block over the words (the line is
-its `data-flag` box); off, the same `p.addon` is `.is-off`, `visibility:
-hidden` (and `aria-hidden` for a visitor), so it keeps its room and the
-price and button under it do not shift; edit mode shows it dimmed to .55
-but for its toggle. Each tier has two `.price` blocks,
+(`c.points`, up to six), then a `.foot` pinned to the bottom
+(`margin-top: auto`; its 26px `padding-top` is the gap under the bullets,
+or the extra lines, of the row's tallest card) holding the `.price`
+(2.1rem number + muted unit) and one button, so price and button sit level
+across the row. No add-on line over them since 21.10.2026 (the owner:
+"lets leave out the moji makrosi out of here completely"): the tiers'
+`.addon` line, its words (`slot.addon`, `slot.addon_unit`) and its switch
+(`slot.addon_on`) went, as the gym cards' line had on 20.10.2026; the
+add-on's amounts are the prehrana hint on `/moja-clanarina`. Each tier has
+two `.price` blocks,
 `data-period="month"` (`hidden`) and `"year"`: the yearly shows first, and the
 tiers' switch renders Godišnje selected (20.10.2026); the `.period` switch
 under the cards (the `.auth-tabs` idiom on a `--surface` track — the tint over
@@ -136,9 +135,8 @@ a swipe to the left, ELITE to the right), else on its first; the script does
 it only where the row scrolls, so the desktop grid is untouched. The
 announcements' `.evs` is a `.swipe-row` too, at every width and one card per
 view (**Aktualno**, below).
-**The gym** (`#dvorana`, below): the same `.offer` cards, without the
-`.addon` line (20.10.2026: `offer()` prints it only with an `addon_at`),
-rows of the `gym_cards` table since 20.10.2026 (`offer(…, card=, n=)` prints
+**The gym** (`#dvorana`, below): the same `.offer` cards (no add-on line
+since 20.10.2026), rows of the `gym_cards` table since 20.10.2026 (`offer(…, card=, n=)` prints
 one: its texts under virtual keys `dvorana.<id>.<field>`, `c.field` and
 `c.field_points`), not featured. `.gym-grid` has as many columns as the
 cards a visitor sees, up to three (`--cols`, set by the template; in edit
@@ -170,7 +168,7 @@ amount slot. Buttons: accent `.btn-sm` on the featured card,
 neutral `.cta` beside it, green `.owned` for a plan the visitor has. A
 plan's own price is the owner's text, always (18.10.2026: no Stripe Price
 prints instead), the `price.<plan>.amount` / `.unit` copy slots printed with
-`c.t()` and edited in place (the add-on's amount: `addon.<where>`). Prices are public unless
+`c.t()` and edited in place. Prices are public unless
 `PUBLIC_PRICES=off` (which also hides both switches), and no public page links
 to `/moja-clanarina` (nor to the old `/cjenik`). **Aktualno** (`#aktualno`, in the hero since 16.10.2026,
 between the h1 and the photo: the first thing on the page): the owner's

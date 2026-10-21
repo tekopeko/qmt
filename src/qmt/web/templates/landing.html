@@ -358,25 +358,12 @@
   .offer li { display: flex; gap: 12px; align-items: flex-start; font-size: .95rem; line-height: 1.4; }
   .offer li::before { content: ""; flex: none; width: 8px; height: 8px; margin: .42em 4px 0; border-radius: 50%;
                       background: var(--accent); box-shadow: 0 0 0 5px var(--accent-dim); }
-  /* add-on (the tiers' only), price and button are one block pinned to the
-     bottom: level across the row */
+  /* price and button are one block pinned to the bottom: level across the
+     row, the padding the 26px under the bullets (or the extra lines) of the
+     row's tallest card. No add-on line over them since 21.10.2026 (the
+     tiers' went that day, the gym cards' the day before). */
   .offer .foot { margin-top: auto; padding-top: 26px; display: flex; flex-direction: column;
                  align-items: flex-start; gap: 16px; }
-  .offer .addon { align-self: stretch; padding-top: 14px; border-top: 1px solid var(--line);
-                  font-size: .86rem; color: var(--muted); }
-  .offer .addon b { color: var(--text); font-weight: 700; white-space: nowrap; }
-  /* A tier's MojiMakrosi line the editor switched off (offer.online*.addon_on,
-     a FlagSlot, 20.10.2026: ELITE's bullets say the prehrana is in it) keeps
-     its room rather than leave: the same line, unseen (visibility: hidden,
-     and aria-hidden for a visitor, so no one reads it), and the card's foot
-     stays as tall as its neighbours', so its price and button do not shift,
-     level with theirs whatever the row's height. Edit mode shows it, its
-     words dimmed but not its toggle, which is the line's first line there
-     (a block of its own, not base.html's pill inline before the words). */
-  .offer .addon.is-off { visibility: hidden; }
-  body.editing .offer .addon.is-off { visibility: visible; }
-  body.editing .offer .addon.is-off > :not(.ed-flag) { opacity: .55; }
-  body.editing .offer .addon .ed-flag { display: flex; width: fit-content; margin: 0 0 10px; }
   .offer .price { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   .offer .price b { font: 800 2.1rem/1 var(--font-body); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
   .offer .price > span { font: 600 .88rem/1.25 var(--font-body); color: var(--muted); }
@@ -514,7 +501,7 @@
      this is the net under every such text. The chips are in it because their
      text (span.t, pre-line) wraps now, where .tag alone would not. */
   .hero h1, .hero .kicker, .stage .copy, .stage .tags, .sec-kicker, section.band h2, .offer h3, .offer .lead,
-  .offer li, .offer .addon, .offer .price, .offer .price-note, .event h2, .event .tag, .event .when, .event .text,
+  .offer li, .offer .price, .offer .price-note, .event h2, .event .tag, .event .when, .event .text,
   .event .act, .info h3, .info td, ul.lines li, footer { overflow-wrap: anywhere; }
 </style>
 {% endblock %}
@@ -646,15 +633,10 @@
        card's copy prefix (slot.title / .lead / .points in src/qmt/copy.py;
        .extra its lines under the bullets, plain lines the editor adds with
        "+ Dodaj tekst", none until he does: c.lines, 20.10.2026).
-       addon_at: where its MojiMakrosi add-on is sold ("online"), the amount
-       the addon.<addon_at> slot and the words around it the card's own,
-       slot.addon before it and slot.addon_unit after it (20.10.2026: each
-       tier its own words, one amount); none, no add-on line at all (the
-       gym's cards since 20.10.2026). The line has its switch,
-       slot.addon_on (a FlagSlot, the same day): an editor gets its toggle
-       as the line's first child (the line its data-flag box), and a line
-       switched off is .is-off, which keeps its room unseen (.addon.is-off,
-       above), aria-hidden for a visitor.
+       No card carries a MojiMakrosi add-on line since 21.10.2026 (the
+       owner: "lets leave out the moji makrosi out of here completely"; the
+       gym's cards lost theirs on 20.10.2026): its amounts, the addon.*
+       slots, are the prehrana plan's hint on /moja-clanarina alone.
        tier: a monthly and a yearly price (the
        yearly is the slot.year_price / .year_unit text), the switch under the
        row shows one; start is the one shown on load, the other hidden until
@@ -668,7 +650,7 @@
        owner's text, the price.<plan>.amount and .unit slots, which the gym
        owner retypes in place; no Stripe Price prints instead (18.10.2026,
        the owner's call). A guest sees no price at all while
-       PUBLIC_PRICES=off, which also hides the add-on's amount.
+       PUBLIC_PRICES=off.
        card: a gym card to print instead of slots (a row of gym_cards,
        20.10.2026; #dvorana below), n its place among them. Its texts are
        its row's, under virtual keys: slot is dvorana.<id>, and each field
@@ -684,7 +666,7 @@
        his online plan is of that tier (my_tier, db.online_tier); the other
        two offer him what any member gets, "Odaberi plan →". A card without
        one (the gym's) is his when he holds any of its plans. #}
-    {% macro offer(keys, slot, addon_at=none, featured=false, tier=false, real=true, note=none, room=none, card=none, n=none, tier_key=none, start="year") -%}
+    {% macro offer(keys, slot, featured=false, tier=false, real=true, note=none, room=none, card=none, n=none, tier_key=none, start="year") -%}
       {%- set owned = (keys | select("in", my_plans) | list) if (tier_key is none or tier_key == my_tier) else [] -%}
       <div class="card offer{% if featured %} featured{% endif %}{% if owned %} mine{% endif %}{% if card is not none and not card.shown %} is-off{% endif %}"{% if card is not none and can_edit_copy %} data-flag="{{ slot }}.show"{% endif %}>
         {% if featured %}<span class="featured-tag">Najpopularnije</span>{% endif %}{% if card is not none and can_edit_copy %}<div class="ed-pills"><button type="button" class="ed-flag" data-copy="{{ slot }}.show" data-label="Kartica {{ n }}: {{ GYM['show'].label }}"
@@ -695,10 +677,6 @@
         {% if card is not none %}{{ c.field_points(slot ~ ".points", card.point_items, "Kartica " ~ n ~ ": " ~ GYM["points"].label, GYM["points"]) }}{{ c.field_lines(slot ~ ".extra", card.extra_items, "Kartica " ~ n ~ ": " ~ GYM["extra"].label, GYM["extra"]) }}
         {%- else %}{{ c.points(slot ~ ".points") }}{{ c.lines(slot ~ ".extra") }}{% endif %}
         <div class="foot">
-          {% if addon_at %}{% set addon_on = copy_flag(slot ~ ".addon_on", copy_texts) %}<p class="addon{% if not addon_on %} is-off{% endif %}"{% if can_edit_copy %} data-flag="{{ slot }}.addon_on"{% elif not addon_on %} aria-hidden="true"{% endif %}>
-            {%- if can_edit_copy %}<button type="button" class="ed-flag" data-copy="{{ slot }}.addon_on" data-label="{{ COPY[slot ~ '.addon_on'].label }}"
-                aria-pressed="{{ 'true' if addon_on else 'false' }}">{{ "Prikazano" if addon_on else "Skriveno" }}</button>{% endif -%}
-            {{ c.t(slot ~ ".addon") }}{% if show_prices %} <b>+{{ c.t("addon." ~ addon_at) }} {{ c.t(slot ~ ".addon_unit") }}</b>{% endif %}</p>{% endif %}
           {% if not show_prices %}<div class="price quiet">Cijene nakon prijave</div>
           {% else %}
             {% if real %}{% set plan = keys[0] %}
@@ -737,9 +715,9 @@
        alone, the other two offer him "Odaberi plan →". Tier 1 is priced by
        the plan. The dots under a .swipe-row are the script's, one per card. #}
     <div class="offer-grid swipe-row">
-      {{ offer(["online"], "offer.online", "online", tier=true, tier_key="start", start="year") }}
-      {{ offer(["online"], "offer.online2", "online", featured=true, tier=true, real=false, tier_key="pro", start="year") }}
-      {{ offer(["online"], "offer.online3", "online", tier=true, real=false, tier_key="elite", start="year") }}
+      {{ offer(["online"], "offer.online", tier=true, tier_key="start", start="year") }}
+      {{ offer(["online"], "offer.online2", featured=true, tier=true, real=false, tier_key="pro", start="year") }}
+      {{ offer(["online"], "offer.online3", tier=true, real=false, tier_key="elite", start="year") }}
     </div>
     <div class="dots" role="group" aria-label="Kartice ponude" hidden></div>
     {{ period_switch("year") }}

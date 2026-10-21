@@ -110,9 +110,10 @@ already preselected — give it a "najpopularnije" chip).
 Shape's shape: three tiers of ONE product (QMove START / PRO / ELITE, PRO
 featured and taller), a Mjesečno / Godišnje switch under them, and on phones a
 swipe row with three dots. The gym's two cards sit in a quieter section below.
-Each card is a name, one line, editable bullets, an add-on line, the price and
-one button. Shape's "less text" is the lesson — the six service cards
-described, these sell. The hero photo links to them, as Shape's do.
+Each card is a name, one line, editable bullets, the price and one button
+(an add-on line over the price until 21.10.2026). Shape's "less text" is the
+lesson — the six service cards described, these sell. The hero photo links to
+them, as Shape's do.
 
 ## 6. Social proof section
 

@@ -56,9 +56,7 @@ A FlagSlot is a switch, not a text: whether a part of a page shows at all.
 It is stored like any slot, as the text "on" or "off"; no row means the
 default. Read with `copy_flag("the.key", copy_texts)` (flag_on below). In
 edit mode the editor flips it with a toggle (.ed-flag, base.html); a visitor
-never gets the markup of what a flag hides. The one exception is the QMove
-tiers' MojiMakrosi line (offer.online*.addon_on, 20.10.2026): switched off,
-it keeps its room on the card, invisible (landing.html).
+never gets the markup of what a flag hides.
 
 An ImageSlot is a photo, not a text, the way Shape's photo cards carry
 theirs. It is stored like any slot, its text the stored file's name; no row
@@ -80,9 +78,9 @@ same routes (POST /copy/{key} and /copy/{key}/slika, app.py):
 ANNOUNCEMENT_SLOTS below says how each field is edited (a text is a Slot
 whose default is a new card's placeholder, the switch a FlagSlot, the photo
 an ImageSlot) and ANNOUNCEMENT_COLUMNS where a row keeps a text. No entry of
-SLOTS was a flag or a photo from then until the tiers' three add-on
-switches (20.10.2026); the types stay for the announcements, and for any
-slot that is one.
+SLOTS is a flag or a photo since then (but for the tiers' three add-on
+switches, from 20.10.2026 until their line went on 21.10.2026); the types
+stay for the announcements, and for any slot that is one.
 
 The gym's cards (#dvorana, under the online tiers) went the same way on
 20.10.2026: Dvorana and Individualno were two fixed sets of slots
@@ -103,8 +101,9 @@ the tier picker inside the checkout forms (_tiers.html) and a subscriber's
 tier switch show a Stripe amount, the one the card is charged. Per plan an
 amount, a unit and a note (price.<plan>.amount / .unit / .note; prehrana has
 no note, its hint is the add-on's two amounts), and the MojiMakrosi add-on's
-amount beside online and beside the dvorana (addon.online / addon.dvorana),
-so the gym owner retypes a price the way he retypes any text. The amount is
+amount beside online and beside the dvorana (addon.online / addon.dvorana:
+that hint is the one place they print since 21.10.2026), so the gym owner
+retypes a price the way he retypes any text. The amount is
 text, printed as typed with " €" after it ("60–80", "od 30"). Their
 defaults are REFERENCE_PRICES and MOJIMAKROSI_ADDON below, the shop's
 numbers. Most of them print on two pages, the landing and /moja-clanarina,
@@ -191,8 +190,8 @@ REFERENCE_PRICES = {
 # 5.10.2026: cheaper beside a plan in the dvorana, dearer for online-only
 # clients. The defaults of the addon.* slots (below), which the prehrana
 # plan's hint on /moja-clanarina prints ("3 € uz dvoranu, 5 € uz online",
-# _plan_price.html), and the landing's online tiers the online one (the gym's
-# cards carry no add-on line since 20.10.2026): one slot per number.
+# _plan_price.html): one slot per number. No landing card carries an add-on
+# line (the gym's since 20.10.2026, the QMove tiers' since 21.10.2026).
 MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
 
 SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
@@ -218,30 +217,24 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # plan (models.ONLINE_TIER_SLOTS, 20.10.2026) and its title is the
     # tier's name everywhere in the app: /clanarine's selects and flash,
     # the Paket fact on /moja-clanarina (online_tier_names below).
-    # Each tier's MojiMakrosi line is its own words around the one amount
-    # (addon.online, below): .addon before it, .addon_unit after it
-    # (20.10.2026, the owner: "a similar treatment of the three QMOVE
-    # tabs"; one offer.addon for all three until then), and .addon_on its
-    # switch (the same day: ELITE's bullets say MojiMakrosi is in it): off,
-    # the line keeps its room on the card, unseen (landing.html).
+    # No MojiMakrosi line on the tiers since 21.10.2026 (the owner: "lets
+    # leave out the moji makrosi out of here completely"): their add-on
+    # words and switches (offer.online*.addon / .addon_unit / .addon_on,
+    # 20.10.2026) left the registry, with no migration: a site_copy row a
+    # removed key left behind is never read. Their amount, addon.online
+    # (below), prints in the prehrana plan's hint alone now.
     # .extra: the tier's lines under its bullets, none until the editor adds
     # one (20.10.2026).
     "offer.online.title": Slot("QMove START", CAP, "Online 1: naziv"),
     "offer.online.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 1: podnaslov"),
     "offer.online.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 1: stavka"),
     "offer.online.extra": ListSlot((), CAP_ITEMS, CAP, "Online 1: dodatni tekst"),
-    "offer.online.addon": Slot("MojiMakrosi prehrana", CAP, "Online 1: dodatak za prehranu"),
-    "offer.online.addon_unit": Slot("€ / mjesečno", CAP, "Online 1: uz cijenu dodatka"),
-    "offer.online.addon_on": FlagSlot(True, "Online 1: MojiMakrosi linija"),
     "offer.online.year_price": Slot("na upit", CAP, "Online 1: godišnja cijena"),
     "offer.online.year_unit": Slot("", CAP, "Online 1: uz godišnju cijenu"),
     "offer.online2.title": Slot("QMove PRO", CAP, "Online 2: naziv"),
     "offer.online2.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 2: podnaslov"),
     "offer.online2.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 2: stavka"),
     "offer.online2.extra": ListSlot((), CAP_ITEMS, CAP, "Online 2: dodatni tekst"),
-    "offer.online2.addon": Slot("MojiMakrosi prehrana", CAP, "Online 2: dodatak za prehranu"),
-    "offer.online2.addon_unit": Slot("€ / mjesečno", CAP, "Online 2: uz cijenu dodatka"),
-    "offer.online2.addon_on": FlagSlot(True, "Online 2: MojiMakrosi linija"),
     "offer.online2.price": Slot("na upit", CAP, "Online 2: mjesečna cijena"),
     "offer.online2.unit": Slot("", CAP, "Online 2: uz mjesečnu cijenu"),
     "offer.online2.year_price": Slot("na upit", CAP, "Online 2: godišnja cijena"),
@@ -250,9 +243,6 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "offer.online3.lead": Slot("Treniraj gdje god jesi.", CAP, "Online 3: podnaslov"),
     "offer.online3.points": ListSlot(ONLINE_POINTS, CAP_ITEMS, CAP, "Online 3: stavka"),
     "offer.online3.extra": ListSlot((), CAP_ITEMS, CAP, "Online 3: dodatni tekst"),
-    "offer.online3.addon": Slot("MojiMakrosi prehrana", CAP, "Online 3: dodatak za prehranu"),
-    "offer.online3.addon_unit": Slot("€ / mjesečno", CAP, "Online 3: uz cijenu dodatka"),
-    "offer.online3.addon_on": FlagSlot(True, "Online 3: MojiMakrosi linija"),
     "offer.online3.price": Slot("na upit", CAP, "Online 3: mjesečna cijena"),
     "offer.online3.unit": Slot("", CAP, "Online 3: uz mjesečnu cijenu"),
     "offer.online3.year_price": Slot("na upit", CAP, "Online 3: godišnja cijena"),
@@ -280,9 +270,10 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # after its first (GYM_CARD_EXAMPLES), and nothing edits a card's plans.
     "price.poluindividualni.word": Slot("u dvoje ili troje", CAP, "Cijena · poluindividualni: tekst ispred iznosa"),
     "price.rehabilitacija.word": Slot("rehabilitacija", CAP, "Cijena · rehabilitacija: tekst ispred iznosa"),
-    # the MojiMakrosi add-on's amount in €: online beside the landing's online
-    # tiers, both in the prehrana plan's hint (the gym's cards print none);
-    # numbers, so required
+    # the MojiMakrosi add-on's amount in €, beside the dvorana and beside
+    # online: printed only in the prehrana plan's hint on /moja-clanarina
+    # ("3 € uz dvoranu, 5 € uz online", _plan_price.html), on no landing
+    # card since 21.10.2026 (the gym's since 20.10.2026); numbers, so required
     "addon.online": Slot(MOJIMAKROSI_ADDON["online"], CAP, "MojiMakrosi dodatak uz online (€)", required=True),
     "addon.dvorana": Slot(MOJIMAKROSI_ADDON["dvorana"], CAP, "MojiMakrosi dodatak uz dvoranu (€)", required=True),
     # ---- landing: aktualno: rows since 18.10.2026, not slots (ANNOUNCEMENT_* below) ----

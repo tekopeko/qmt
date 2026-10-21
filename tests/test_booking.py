@@ -779,8 +779,9 @@ def shown(html: str) -> str:
 
 def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
     """The homepage answers "what do you offer and what does it cost" by itself
-    (5.10.2026): cards, each with its price, visible to guests; the online
-    tiers carry the MojiMakrosi add-on, the gym's cards not since 20.10.2026.
+    (5.10.2026): cards, each with its price, visible to guests; no card
+    carries the MojiMakrosi add-on (the gym's since 20.10.2026, the online
+    tiers' since 21.10.2026).
     The photo above them is a link to that section. Since 15.10.2026 the
     offer is three tiers of the online plan, and the gym's two cards sit in a
     section below it."""
@@ -812,15 +813,14 @@ def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
     assert "od 60" not in shown(offer + gym)
     for amount, unit in (("25", "/ trening"), ("od 30", "/ tretman")):   # a price and its unit are held together
         assert f'<span class="t">{amount}</span>&nbsp;€&nbsp;<span class="t">{unit}</span>' in gym, amount
-    # MojiMakrosi: the online tiers' add-on, 5 €, each tier's own words
-    # around it (20.10.2026), and no add-on in the gym's section (the
-    # dvorana's 3 € is the prehrana plan's hint on /moja-clanarina)
-    addon = ('<p class="addon"><span class="t">MojiMakrosi prehrana</span> '
-             '<b>+<span class="t">5</span> <span class="t">€ / mjesečno</span></b></p>')
-    assert page.count(addon) == 3 == offer.count('<p class="addon">')
+    # MojiMakrosi: no add-on line on any card, the tiers' gone since
+    # 21.10.2026 (the owner: "lets leave out the moji makrosi out of here
+    # completely"), the gym's since 20.10.2026; its two amounts, 3 € and
+    # 5 €, are the prehrana plan's hint on /moja-clanarina
     dvorana = gym.split("</section>")[0]
-    assert 'class="addon"' not in dvorana and "MojiMakrosi" not in dvorana
-    assert '+<span class="t">3</span>' not in page
+    for section in (offer, dvorana):
+        assert 'class="addon"' not in section and "MojiMakrosi" not in section
+    assert '+<span class="t">5</span>' not in page and '+<span class="t">3</span>' not in page
     assert "Zoom poziv" in page                         # what the online plan includes
     assert '<a class="stage" href="#usluge"' in page and 'id="usluge"' in page
     for chip in ("Grupni", "1:1", "Rehabilitacija"):    # the photo carries no service chips any more
@@ -852,7 +852,7 @@ def test_public_prices_switch_hides_them_from_guests_only(monkeypatch):
 
     make_user("ana@test.local", plans=())
     page = client_for("ana@test.local").get("/").text
-    assert "50 € / mjesečno" in shown(page) and '+<span class="t">5</span> <span class="t">€ / mjesečno</span>' in page
+    assert "50 € / mjesečno" in shown(page) and "60–80 € / paket" in shown(page)   # a tier's price, a gym card's
     assert "Cijene nakon prijave" not in page
     assert page.count('class="period"') == 2            # a member gets both switches
 
