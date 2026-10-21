@@ -1,0 +1,22 @@
+{# Mjesečno / Godišnje: one switch per group of cards that carry a monthly
+   and a yearly price (.price[data-period] month / year): the landing's two
+   sections, the QMove tiers and the gym, and since 21.10.2026 the two
+   groups of /moja-clanarina's "Dodaj plan", the tiers and the gym's plans.
+   A group is the switch's closest [data-period-group]: base.html's script
+   shows the chosen price on that group's cards and marks this switch only,
+   never another group's (each its own choice since 20.10.2026, the owner:
+   "unlink them"). `start` is the period it opens on, as its cards' prices
+   do: the page is rendered that way (the other price hidden), so nothing
+   runs on load, and it is per page view, nothing remembered. Hidden until
+   the script can work it: without JS a group shows its opening price and
+   no switch. Its look is base.html's (.period), its place each page's
+   (under each row on the landing, under each group's heading on
+   /moja-clanarina); whether there is one at all is the caller's (the
+   landing: none while a guest sees no prices).
+   Use: {% from "_period.html" import period_switch %} … {{ period_switch("year") }} #}
+{% macro period_switch(start) -%}
+  <div class="period" role="tablist" aria-label="Razdoblje plaćanja" hidden>
+    <button type="button" role="tab" aria-selected="{{ 'true' if start == 'month' else 'false' }}" data-period="month">Mjesečno</button>
+    <button type="button" role="tab" aria-selected="{{ 'true' if start == 'year' else 'false' }}" data-period="year">Godišnje</button>
+  </div>
+{%- endmacro %}

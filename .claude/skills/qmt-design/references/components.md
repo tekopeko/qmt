@@ -25,6 +25,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `form.ed-ann-x` | base (trainer, owner) | "Obriši najavu", the edit-mode pill that deletes a landing announcement (`POST /aktualno/<id>/obrisi`, a plain form): the `.ed-img-x` pill to the pixel (32px, `--surface-2` / `--muted`, solid `--surface` on a photo), after the photo's pills; the form is `display: contents` in edit mode, so its button lines up with them as a flex item of the card. It asks first, as an item's ✕: one tap arms it into "Obriši?" (the accent tint, `aria-label` "Potvrdi brisanje") for 4 s, any other tap disarms it, the second tap sends the form; the page comes back without the card. On a card that is off it is dimmed with the card's content (a rule of its own: the form has no box to carry the opacity). Hidden outside edit mode; a visitor never gets it. The gym's "Obriši karticu" (`form.ed-gym-x`, `POST /dvorana/<id>/obrisi`, 20.10.2026) is the same pill and the same two taps |
 | `form.ed-add-ann` | landing (trainer, owner) | "+ Dodaj najavu": an `.act` pill (32px tall at every pointer) after the announcements' dots, centred in the hero under the stacked cards, in edit mode only; a plain form (`POST /aktualno/nova`) that comes back with a new card last (placeholder texts, shown, no photo). Not rendered at the cap (8 cards); with none left it is all the editor's empty box holds. A visitor never gets it. The gym's "+ Dodaj karticu" (`form.ed-add-gym`, `POST /dvorana/nova`) is the same pill under its row of cards, 18px under them |
 | `.featured-tag` | base | "Najpopularnije" chip in the top-right corner of a `position: relative` card: accent tint + `--accent-tint-ink`. Used by `/moja-clanarina`'s "Dodaj plan" and the landing's offer |
+| `.period` | base (`_period.html`) | Mjesečno / Godišnje (promoted from the landing 21.10.2026, when `/moja-clanarina` needed it): a switch per group of cards that carry a monthly and a yearly price, `.price[data-period]` month / year — the landing's two sections, `/moja-clanarina`'s two "Dodaj plan" groups. The `.auth-tabs` idiom on a `--surface` track with a hairline (the tint over `--surface-2` is 4.34:1 in dark): 36px pills in muted 600 .85rem, the chosen one `--accent-dim` with `--accent-tint-ink`. `period_switch(start)` renders it `hidden`, its `start` tab `aria-selected`, while the page renders its group's cards with the other line `hidden`; base.html's script shows it and, at a press, sets the lines inside its closest `[data-period-group]` and its own `aria-selected`, never another group's. Per page view, nothing remembered; without JS no switch, the opening price. Where it sits is the page's: centred under each row on the landing (34px, 10px below 900px), under each group's heading on `/moja-clanarina` |
 | `.alert` / `.alert.ok` | base | flash after a redirect (`?error=` / `?ok=`); `?cta=<plan>` adds a "Pogledaj cjenik →" pill to that plan's card on `/moja-clanarina` (`#plan-<key>`) |
 | `#authDlg` `.fb-modal.auth` | base (guests) | login + registration in one modal (login only, no tabs, while signup is closed), `.auth-tabs` segmented (accent-tinted selected), 48px inputs, `.pw-eye` toggle; opened by any `<a data-auth="login\|signup">`, hrefs stay as the no-JS fallback; `next` = current page |
 | `#a2hs` `.card.a2hs` | base (clients) | install banner: phones only (`pointer: coarse`, plus a `pointer: fine` CSS kill-switch), not in standalone mode, not on the first page load, back a week after each dismissal until installed (`localStorage qmt-a2hs`: when it was dismissed, or `installed` once the native prompt was accepted; the owner's call, 16.10.2026); iOS gets share-sheet steps, Chrome gets a real "Instaliraj" via `beforeinstallprompt` |
@@ -109,12 +110,13 @@ add-on's amounts are the prehrana hint on `/moja-clanarina`. Each tier has
 two `.price` blocks,
 `data-period="month"` (`hidden`) and `"year"`: the yearly shows first, and the
 tiers' switch renders Godišnje selected (20.10.2026); the `.period` switch
-under the cards (the `.auth-tabs` idiom on a `--surface` track — the tint over
-`--surface-2` is 4.34:1 in dark) shows one on all three, per page view, and is
+(base, above) under the cards shows one on all three, per page view, and is
 hidden until the script runs. Each `.period` is its own section's choice
-(`period_switch(start)`, `offer(…, start=)`): the script sets the
-`.price[data-period]` inside its own `section.band` and its own
-`aria-selected`, never the other switch's. Tier prices are mostly owner-typed text, so the
+(`period_switch(start)`, `offer(…, start=)`; each section a
+`[data-period-group]`): the script sets the `.price[data-period]` inside its
+own section and its own `aria-selected`, never the other switch's. A gym
+card a plan prices shows that plan's yearly slots (`price.<plan>.year_amount`
+/ `.year_unit`, 21.10.2026), one without plans its row's. Tier prices are mostly owner-typed text, so the
 cards (tiers and gym) reserve a second price line (`min-height`, 900–1100px)
 and stay level whatever is typed. `.featured` (tier 2) is taller, not shifted
 (`margin-block: -16px` + matching padding, desktop only) and carries
@@ -261,25 +263,49 @@ when it holds something: the plan's door `.btn.btn-sm` while it runs, a card
 subscriber's portal `.act` and the tier switch (`.switch`: a hairline, the
 `.pc-kicker` "Promijeni paket", the other tiers as `.act` forms with
 `data-confirm`), a cash member's "Prebaci na karticu" `.switch` form once Stripe
-is configured. **Dodaj plan**: `.plan` cards (`--r-xl`, padding 18px 20px 20px,
-italic uppercase `.plan-h`) in `.plan-grid` (1 column, 2 from 700px, 3 from
-1000px): the name, the `cjenik.<plan>` text (`.plan-desc`, `min-height: 3.9em`
-from 700px so the prices of a row sit level), the price (800 1.25rem, `<small>`
-unit, the muted `.price-hint`), the `.foot` pinned bottom. Grupni is
+is configured. **Dodaj plan** (two groups since 21.10.2026, the owner:
+"every tab is one big text cell except the number"): each a
+`section.mc-group` (a `[data-period-group]`, 30px apart) whose
+`.mc-group-head` stacks its heading, an `h3.pc-kicker` (the "Paket"
+caption's look: `clanarina.h.online` "Online treninzi", `clanarina.h.gym`
+"Treninzi u dvorani"), 10px over its own `.period` (base; left-aligned
+here: on a phone the cards are a column, and a switch under them would be
+a long scroll away), 14px above its `.plan-grid` (1 column, 2 from 700px, 3
+from 1000px). The online plan's three QMove tiers first, opening on
+Godišnje (none while online is held), then the gym's plans in
+`PLAN_TYPES` order, opening on Mjesečno; a group with no card left is not
+printed. A `.plan` card (`--r-xl`, padding 18px 20px 20px, gap 8px) is, in
+order: the italic uppercase name (`h4.plan-h`: a tier's landing title slot,
+a plan's `plan.<plan>.name`), its two price lines (`pp.price(amount, unit,
+period, hidden)`: 800 1.25rem, `<small>` unit; the group's other line
+`hidden`), prehrana's muted `.price-hint` under both (the two `addon.*`
+amounts), ONE text (`p.plan-desc`, muted .9rem, its line breaks shown; a
+member gets no paragraph for an emptied one) and, where Stripe sells the
+plan, the `.foot` pinned to the bottom with "Pretplati se karticom"
+(grupni's tier picker in its form; a tier's form names its tier). The
+price sits right under the name, not pinned: a row's prices are level
+while its names take the same lines (the browser walk measures it with
+names of one length). Grupni is
 `.featured` (accent-tinted border, `.featured-tag` top-right): on a phone its
 name keeps 128px clear beside the chip; from 700px, where the name would wrap
 and drop its price below the row's, the card stands 26px taller than its row
 (the landing's "taller, not shifted"), the chip in that room above the name,
-and the grid starts 38px under the heading so the card keeps 12px. The price
-(the macro, `pp.price(key)`) is the owner's text for every plan and every
-member, a card subscriber's too (his tier is the Paket fact): the
-`price.<plan>.*` copy slots (defaults `REFERENCE_PRICES`) in the shop's own
-unit, printed with `c.t()`, so the gym owner retypes them here (an editor
-also gets an empty note's slot to fill; prehrana's hint is the two `addon.*`
-amounts). Stripe's amounts show only inside the forms that charge them, the
+and the grid starts 38px under its group's heading so the card keeps 12px.
+Every price is the owner's text for every plan and every member, a card
+subscriber's too (his tier is the Paket fact): the landing's own slots, so
+one number is one slot on both pages, printed with `c.t()` so the gym
+owner retypes them here — a plan's `price.<plan>.amount` / `.unit` /
+`.year_amount` / `.year_unit` (defaults `REFERENCE_PRICES` /
+`YEARLY_PRICE`, " €" after a number without a sign of its own), a tier's
+START `price.online.*`, `offer.online2/3.price` / `.unit` and
+`offer.online*.year_price` / `.year_unit` (as typed, as the landing prints
+them). A held plan's Cijena is `pp.plan_price(key)`, its monthly line and
+prehrana's hint; no note under a price since 21.10.2026. Stripe's amounts
+show only inside the forms that charge them, the
 checkout tier picker (`_tiers.html`) and the tier switch (18.10.2026). Every card carries
 `id="plan-<key>"` (`scroll-margin-top: 90px`), so `#plan-<key>` links land on
-it in either section. **Računi**: a `.card.ledger` (max 640px) around an
+it in either section; QMove START is `#plan-online` (where the landing's
+three tiers lead), PRO and ELITE `plan-online-pro` / `-elite`. **Računi**: a `.card.ledger` (max 640px) around an
 `.mtable`: date, the plan with the method as a muted second line (`.way`; four
 columns did not fit 360px once amounts show), the amount when any is known;
 `th` in the `dt` look; tighter below 420px; the wrapper scrolls only as a last
@@ -288,8 +314,10 @@ resort. No membership at all: `.card.mc-none` (its two sentences the
 so he sees that card as a preview inside the Tvoji planovi section, under its
 heading and a small muted caption, `.mc-preview` "Ovo vidi član bez
 članarine:" (.82rem). The page's own words are copy slots (18.10.2026): the
-three headings, the plans' names (both kinds of card's `h3`), the no-plan
-card, the line under "Pretplati se karticom" and the empty ledger's line;
+headings (the two groups' since 21.10.2026), the plans' names (a held
+card's `h3`, a "Dodaj plan" card's `h4`), each "Dodaj plan" card's one text
+(`cjenik.<plan>.text`, `cjenik.online.<tier>.text`, 21.10.2026), the
+no-plan card and the empty ledger's line;
 `overflow-wrap: anywhere` is under each, so a long word breaks rather than
 widen the page.
 

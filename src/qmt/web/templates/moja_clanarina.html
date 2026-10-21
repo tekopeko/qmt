@@ -2,13 +2,15 @@
 {% block title %}Moja članarina — QMT{% endblock %}
 {% import "_copy.html" as c with context %}
 {% import "_plan_price.html" as pp with context %}
+{% from "_period.html" import period_switch %}
 {% block head %}
 <style>
   /* ===== Moja članarina (18.10.2026): Shape Club's billing page in QMT's
      look. Phone first: each plan a card that says its state in words (the
      chip), its facts as label-over-value pairs, one plain sentence in a grey
      box, then only what this member can do. "Dodaj plan" is the old cjenik
-     for the plans not held; "Računi" the ledger. ===== */
+     for the plans not held, in two groups since 21.10.2026 (the online
+     tiers, the gym's plans); "Računi" the ledger. ===== */
   .mc-sec + .mc-sec, .mc-none + .mc-sec { margin-top: 34px; }
   .mc-sec > h2 { font-size: 1.05rem; margin-bottom: 12px; }
   /* the headings, the no-plan card and the empty ledger's line are the
@@ -31,8 +33,10 @@
   .pc-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 12px; }
   .pc-name { min-width: 0; }
   .pc-kicker { font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  /* a "Dodaj plan" card's name is an h4 since 21.10.2026 (under its
+     group's h3): text-wrap as base.html gives h1-h3, so it wraps as before */
   .plan-card h3, .plan-h { font: 700 italic 1.2rem var(--font-display); text-transform: uppercase;
-                           letter-spacing: .01em; overflow-wrap: anywhere; }
+                           letter-spacing: .01em; overflow-wrap: anywhere; text-wrap: balance; }
   .plan-card h3 { margin-top: 2px; font-size: 1.3rem; }
   .chip { flex: none; display: inline-flex; align-items: center; padding: 4px 11px; border-radius: 999px;
           font: 700 .78rem var(--font-body); white-space: nowrap; }
@@ -84,7 +88,16 @@
   .mc-preview { font-size: .82rem; margin-bottom: 8px; }
   .plan-cards + .mc-preview { margin-top: 18px; }
 
-  /* Dodaj plan: the plans not held, smaller cards (the old cjenik's) */
+  /* Dodaj plan: the plans not held, smaller cards (the old cjenik's), in two
+     groups (21.10.2026): the online plan's QMove tiers, then the gym's
+     plans. Each group's heading is a caption in the "Paket" kicker's look
+     (.pc-kicker) with its own Mjesečno / Godišnje switch under it
+     (base.html's .period, left-aligned here: on a phone the cards are a
+     column, and a switch under them would be a long scroll away). */
+  .mc-group + .mc-group { margin-top: 30px; }
+  .mc-group-head { display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+                   margin-bottom: 14px; max-width: 1000px; }
+  .mc-group-head h3 { max-width: 100%; overflow-wrap: anywhere; }
   .plan-grid { display: grid; gap: 14px; max-width: 1000px; }
   @media (min-width: 700px) { .plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (min-width: 1000px) { .plan-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -96,9 +109,9 @@
      its price fell 25px below the row's), so there the card stands taller
      than its row instead, the landing's move (taller, not shifted): the chip
      sits in the extra room above the name, which keeps its full width, and
-     the grid makes room for it under the heading (38px: its margin collapses
-     with the heading's 12px, which the raised card keeps). Grupni comes
-     first, so the card is always in the first row. */
+     the grid makes room for it under its group's heading (38px: its margin
+     collapses with the heading's 14px, and the raised card keeps 12px).
+     Grupni comes first in its group, so the card is always in the first row. */
   .plan.featured { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
   .plan.featured .plan-h { padding-right: 128px; }
   @media (min-width: 700px) {
@@ -106,10 +119,14 @@
     .plan.featured { margin-top: -26px; padding-top: 44px; }
     .plan.featured .plan-h { padding-right: 0; }
   }
+  /* a card is its name, its price (a monthly and a yearly line, the
+     group's switch shows one), ONE text (the owner's, its line breaks
+     shown: span.t) and the button. The price comes right under the name,
+     not pinned: the prices of a row sit level while the names take the
+     same lines (tests/test_copy.py measures it with the names of one
+     length); the button is pinned to the bottom (.foot), level across a
+     row. */
   .plan-desc { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
-  /* side by side, the description reserves its block, so the prices of a
-     row sit on one line (tests/test_copy.py measures it) */
-  @media (min-width: 700px) { .plan-desc { min-height: 3.9em; } }
   /* the amount and unit are the owner's text (the price slots): a long
      word breaks rather than widen the card */
   .plan .price { font: 800 1.25rem var(--font-body); overflow-wrap: anywhere; }
@@ -117,7 +134,6 @@
   .plan .foot { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start;
                 gap: 8px; padding-top: 6px; }
   .plan .foot form { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-  .plan .foot .hint { font-size: .82rem; max-width: 100%; overflow-wrap: anywhere; }
 
   /* Računi: the ledger. The .mtable idiom (the calendar's old "Moja
      članarina" table, 5.10.2026): tighter gutters and a smaller face below
@@ -177,7 +193,7 @@
         <span class="chip {{ p.chip[1] }}">{{ p.chip[0] }}</span>
       </div>
       <dl class="facts">
-        <div><dt>Cijena</dt><dd>{{ pp.price(p.key) }}</dd></div>
+        <div><dt>Cijena</dt><dd>{{ pp.plan_price(p.key) }}</dd></div>
         <div><dt>Uplaćeno</dt><dd>{{ paid_on }}</dd></div>
         <div><dt>Sljedeća uplata</dt><dd>{{ next_payment }}</dd></div>
         <div><dt>Vrijedi do</dt><dd>{{ dospijece }}</dd></div>
@@ -237,11 +253,15 @@
             <button type="submit" class="act">Prebaci na karticu</button>
           </form>
           {% else %}
-          {# lapsed: a subscription starts afresh, like a plan never held #}
+          {# lapsed: a subscription starts afresh, like a plan never held.
+             The line under the button was the clanarina.card_hint slot
+             until 21.10.2026, when "Dodaj plan"'s cards took it into their
+             one text each (cjenik.<plan>.text): here it is the slot's last
+             default, fixed text #}
           <form method="post" action="/placanje/{{ p.key }}" class="switch">
             {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
             <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
-            <span class="hint">{{ c.t("clanarina.card_hint") }}</span>
+            <span class="hint">Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.</span>
           </form>
           {% endif %}
         {% endif %}
@@ -260,39 +280,103 @@
 {{ none_card }}
 {% endif %}
 
-{% if add_plans %}
+{# Dodaj plan: the plans not held (21.10.2026, the owner, of this section in
+   edit mode: "every tab is one big text cell except the number i.e. price
+   which is connected to the front page. Here, it should also be split
+   into the QMOVE online trainings with 'godišnje' as default and
+   everything else in the gym separate with 'mjesečni' as default"). Two
+   groups, each its heading (a slot) and its own Mjesečno / Godišnje switch
+   (_period.html: a group is a [data-period-group], and base.html's script
+   flips its cards only): Online, the landing's three QMove tiers
+   (add_tiers: all three, none while he holds online), opening on
+   Godišnje; Dvorana, the other plans not held in PLAN_TYPES order
+   (add_gym), opening on Mjesečno. A group with no card left is not on the
+   page, nor is the section when neither has one. A card is, in order:
+   - its name: a tier's its landing card's title slot (<slot>.title,
+     ONLINE_TIER_SLOTS: a rename shows on both pages), a plan's the
+     plan.<plan>.name slot (this page's own);
+   - its price, a monthly and a yearly line (pp.price), the one its group
+     does not open on hidden: the landing's own slots, so one number is one
+     slot on both pages, printed as the landing prints each. A tier's
+     monthly is START's price.online.amount / .unit (" €" after a number,
+     the plan's amount) or PRO's and ELITE's <slot>.price / .unit, its
+     yearly <slot>.year_price / .year_unit (those three as typed); a
+     plan's price.<plan>.amount / .unit and .year_amount / .year_unit (the
+     landing's gym card the plan prices prints them too). Prehrana's hint,
+     the MojiMakrosi add-on's two amounts, under them (pp.hint);
+   - ONE text, its slot cjenik.<plan>.text / cjenik.online.<tier>.text,
+     the line breaks it was typed with shown (span.t); emptied, a visitor
+     gets no paragraph for it, the editor its empty box;
+   - the button where the plan is sold by card (sellable: Stripe
+     configured), "Pretplati se karticom", and nothing otherwise: the text
+     says how to sign up. A tier's form names its tier (a hidden field)
+     for /placanje/online, which accepts and ignores it until Stripe has a
+     Price per tier (DEPLOY.md): a card subscription records START.
+   The cards carry id="plan-<key>" for the #plan-<key> links (the landing's
+   "Odaberi plan →", the plan gate's alert); QMove START is the online
+   plan's (#plan-online, where all three tiers' links lead), PRO and ELITE
+   plan-online-pro / plan-online-elite. #}
+{% if add_tiers or add_gym %}
 <section class="mc-sec" aria-labelledby="mcAdd">
   <h2 id="mcAdd">{{ c.t("clanarina.h.add") }}</h2>
-  <div class="plan-grid">
-  {% for key in add_plans %}
-    {% set pr = prices.get(key) %}{% set cur = pp.currency(pr) %}
-    <div class="card plan{% if key == 'grupni' %} featured{% endif %}" id="plan-{{ key }}">
-      {% if key == 'grupni' %}<span class="featured-tag">Najpopularnije</span>{% endif %}
-      <h3 class="plan-h">{{ c.t("plan." ~ key ~ ".name") }}</h3>
-      <p class="plan-desc">{{ c.t("cjenik." ~ key) }}</p>
-      {{ pp.price(key) }}
-      <div class="foot">
-      {% if key in sellable %}
-        {# online: START's price and one flat Price; the online plan's tier
-           picker (three Prices, one per QMove tier, as grupni has three) is
-           Stripe's job at go-live: until then a card subscription is START #}
-        <form method="post" action="/placanje/{{ key }}">
-          {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
-          <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
-        </form>
-        <span class="hint">{{ c.t("clanarina.card_hint") }}</span>
-      {% else %}
-        <span class="hint">{{ c.t("cjenik.note") }}</span>
-        {# the line under "Pretplati se karticom", which shows only while
-           Stripe is configured: an editor gets it regardless (as
-           _plan_price.html gives him an empty note), or with card payments
-           off it would be on no page he can open #}
-        {% if can_edit_copy %}<span class="hint">{{ c.t("clanarina.card_hint") }}</span>{% endif %}
-      {% endif %}
-      </div>
+  {% if add_tiers %}
+  <section class="mc-group" aria-labelledby="mcOnline" data-period-group>
+    <div class="mc-group-head">
+      <h3 class="pc-kicker" id="mcOnline">{{ c.t("clanarina.h.online") }}</h3>
+      {{ period_switch("year") }}
     </div>
-  {% endfor %}
-  </div>
+    <div class="plan-grid">
+    {% for tier in add_tiers %}{% set slot = ONLINE_TIER_SLOTS[tier] %}
+      <div class="card plan" id="plan-online{{ '' if tier == 'start' else '-' ~ tier }}">
+        <h4 class="plan-h">{{ c.t(slot ~ ".title") }}</h4>
+        {% if tier == "start" %}{{ pp.price("price.online.amount", "price.online.unit", "month", hidden=true) }}
+        {% else %}{{ pp.price(slot ~ ".price", slot ~ ".unit", "month", hidden=true, euro=false) }}{% endif %}
+        {{ pp.price(slot ~ ".year_price", slot ~ ".year_unit", "year", euro=false) }}
+        {% set text = "cjenik.online." ~ tier ~ ".text" %}
+        {% if can_edit_copy or copy_text(text, copy_texts) %}<p class="plan-desc">{{ c.t(text) }}</p>{% endif %}
+        {% if "online" in sellable %}
+        <div class="foot">
+          <form method="post" action="/placanje/online">
+            <input type="hidden" name="tier" value="{{ tier }}">
+            <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+  {% if add_gym %}
+  <section class="mc-group" aria-labelledby="mcGym" data-period-group>
+    <div class="mc-group-head">
+      <h3 class="pc-kicker" id="mcGym">{{ c.t("clanarina.h.gym") }}</h3>
+      {{ period_switch("month") }}
+    </div>
+    <div class="plan-grid">
+    {% for key in add_gym %}
+      {% set pr = prices.get(key) %}{% set cur = pp.currency(pr) %}
+      <div class="card plan{% if key == 'grupni' %} featured{% endif %}" id="plan-{{ key }}">
+        {% if key == 'grupni' %}<span class="featured-tag">Najpopularnije</span>{% endif %}
+        <h4 class="plan-h">{{ c.t("plan." ~ key ~ ".name") }}</h4>
+        {{ pp.price("price." ~ key ~ ".amount", "price." ~ key ~ ".unit", "month") }}
+        {{ pp.price("price." ~ key ~ ".year_amount", "price." ~ key ~ ".year_unit", "year", hidden=true) }}
+        {{ pp.hint(key) }}
+        {% set text = "cjenik." ~ key ~ ".text" %}
+        {% if can_edit_copy or copy_text(text, copy_texts) %}<p class="plan-desc">{{ c.t(text) }}</p>{% endif %}
+        {% if key in sellable %}
+        <div class="foot">
+          <form method="post" action="/placanje/{{ key }}">
+            {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
+            <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+    </div>
+  </section>
+  {% endif %}
 </section>
 {% endif %}
 

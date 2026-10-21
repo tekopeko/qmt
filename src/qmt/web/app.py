@@ -59,9 +59,12 @@ templates.env.globals["GYM"] = copy.GYM_CARD_SLOTS     # a gym card's fields (la
 # an online tier's QMove card, whose title slot is the tier's name (moja_clanarina.html, Paket)
 templates.env.globals["ONLINE_TIER_SLOTS"] = ONLINE_TIER_SLOTS
 # a price slot's text as the page prints it, and whether it is a number at
-# all: "€" follows "50" and "od 30", not "na upit" (landing.html, _plan_price.html)
+# all: "€" follows "50" and "od 30", not "na upit" (landing.html,
+# _plan_price.html), nor an amount that carries its own (21.10.2026: a gym
+# card's yearly price, typed with its sign where the landing added none,
+# is its plan's price.<plan>.year_amount slot since migration 6e2b9d41c7a3)
 templates.env.globals["copy_text"] = lambda key, texts: texts.get(key, copy.SLOTS[key].default)
-templates.env.tests["priced"] = lambda text: any(ch.isdigit() for ch in str(text))
+templates.env.tests["priced"] = lambda text: any(ch.isdigit() for ch in str(text)) and "€" not in str(text)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 WEEKDAYS = ["Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota", "Nedjelja"]
@@ -91,17 +94,14 @@ PLAN_LINKS = {
 # (db.copy_texts(), the dict _ctx puts in a template as copy_texts); a
 # template prints the same slots with c.t(), so an editor can open them.
 
-def reference_prices(texts: dict[str, str]) -> dict[str, tuple[str, str, str]]:
-    """Plan -> (amount, unit, note), the price as the site says it: the
-    edited price.<plan>.* slots, else their defaults (no note: ""). A plan
-    with no note slot (prehrana: its hint is the add-on's amounts) has ""
-    for one, whatever site_copy may still hold under that key."""
+def reference_prices(texts: dict[str, str]) -> dict[str, tuple[str, str]]:
+    """Plan -> (amount, unit), the monthly price as the site says it: the
+    edited price.<plan>.* slots, else their defaults. No note: the
+    price.<plan>.note slots left the registry on 21.10.2026 (a row one of
+    them left in site_copy is never read)."""
     def text(key: str) -> str:
-        if key not in copy.SLOTS:
-            return ""
         return texts.get(key, copy.SLOTS[key].default)
-    return {plan: (text(f"price.{plan}.amount"), text(f"price.{plan}.unit"), text(f"price.{plan}.note"))
-            for plan in copy.REFERENCE_PRICES}
+    return {plan: (text(f"price.{plan}.amount"), text(f"price.{plan}.unit")) for plan in copy.REFERENCE_PRICES}
 
 
 def addon_amounts(texts: dict[str, str]) -> dict[str, str]:
@@ -813,8 +813,8 @@ def moja_clanarina(request: Request):
         return RedirectResponse(f"/login?next={quote('/moja-clanarina')}", status_code=303)
     # the trainer and the owner see it too, with no plans of their own: it is
     # where they edit its texts in place (copy slots cjenik.* and clanarina.*,
-    # the plans' names here, plan.<plan>.name, the prices, price.<plan>.*,
-    # and the add-on's amounts, addon.*)
+    # the plans' names here, plan.<plan>.name, the prices, price.<plan>.* and
+    # the QMove tiers' offer.online*.*, and the add-on's amounts, addon.*)
     today = config.today()
     # Stripe's Prices, for the forms that charge them only: the tier picker
     # in a checkout form and a subscriber's tier switch. Every price line
@@ -859,7 +859,11 @@ def moja_clanarina(request: Request):
               for p in db.payments_for(user.id)]
     return templates.TemplateResponse(request, "moja_clanarina.html", _ctx(
         request, user, copy_texts=texts, plans=plans,
-        add_plans=[p for p in PLAN_TYPES if p not in held], prices=table,
+        # Dodaj plan, the plans not held, in two groups (21.10.2026): the
+        # online plan's three QMove tiers (all of them, or none while he
+        # holds online) and the gym's plans, the rest in PLAN_TYPES order
+        add_tiers=[] if "online" in held else list(ONLINE_TIERS),
+        add_gym=[p for p in PLAN_TYPES if p != "online" and p not in held], prices=table,
         sellable=payments.sellable_plans(),
         ledger=ledger, show_amounts=any(r["amount"] is not None for r in ledger),
         # the portal manages a subscription — a customer record alone (a
@@ -904,9 +908,13 @@ def placanje_promjena(request: Request, plan: str, sessions: int = Form(...)):
 
 
 @app.post("/placanje/{plan}")
-def placanje(request: Request, plan: str, sessions: int | None = Form(None)):
+def placanje(request: Request, plan: str, sessions: int | None = Form(None), tier: str = Form("")):
     """Start a monthly card subscription for one plan — hands off to Stripe
-    Checkout. Access is NOT granted here; the signed webhook does that."""
+    Checkout. Access is NOT granted here; the signed webhook does that.
+    `tier`: the QMove tier a /moja-clanarina online card names (21.10.2026),
+    accepted and ignored for now: Stripe has one flat online Price until
+    go-live (DEPLOY.md: online needs three, one per tier, and the code that
+    maps them), so a card subscription records START."""
     user = current_user(request)
     if user is None:
         from urllib.parse import quote

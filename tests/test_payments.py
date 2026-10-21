@@ -258,6 +258,12 @@ def test_checkout_creates_one_customer_and_hands_off(stripe_on):
     assert stripe_on["calls"]["customers"] == 1         # second plan reuses the customer
     assert stripe_on["calls"]["checkouts"][1]["customer"] == "cus_1"
     assert stripe_on["calls"]["checkouts"][1]["subscription_data"]["metadata"]["qmt_sessions"] == ""
+    # a QMove card's form names its tier (21.10.2026): accepted and ignored,
+    # one flat online Price until go-live (DEPLOY.md), so the same checkout
+    r = c.post("/placanje/online", data={"tier": "elite"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("https://checkout.stripe.com/")
+    first, tiered = stripe_on["calls"]["checkouts"][1], stripe_on["calls"]["checkouts"][2]
+    assert (tiered["line_items"], tiered["subscription_data"]) == (first["line_items"], first["subscription_data"])
 
     # a plan without a price is not sellable; a stranger is sent to login
     assert "platiti+karticom" in c.post("/placanje/prehrana", follow_redirects=False).headers["location"]
@@ -283,9 +289,10 @@ def test_dodaj_plan_shows_the_owners_prices_stripe_or_not(stripe_on, monkeypatch
     """Dodaj plan's prices are the owner's text, the price slots, Stripe
     configured or not (18.10.2026). Stripe has online at 55 € and grupni's
     tiers at 60 / 70 / 80 €: online still says 50 € (sold by card all the
-    same) and 55 € is nowhere; grupni says its slot and its note, and only
-    the tier picker inside its checkout form, which charges the card, shows
-    Stripe's amounts."""
+    same: each QMove tier's card has its form, naming its tier) and 55 € is
+    nowhere; grupni says its slots and its text (the note under its price
+    until 21.10.2026 is a line of it), and only the tier picker inside its
+    checkout form, which charges the card, shows Stripe's amounts."""
     make_user("ivan@test.local")
     r = client_for("ivan@test.local").get("/moja-clanarina")
     assert r.status_code == 200
@@ -293,11 +300,16 @@ def test_dodaj_plan_shows_the_owners_prices_stripe_or_not(stripe_on, monkeypatch
     online, grupni = _card(page, "online"), _card(page, "grupni")
     assert "50 € / mjesečno" in _text(online) and ">Pretplati se karticom</button>" in online
     assert "55 €" not in page and "55,00 €" not in page             # Stripe's online price: nowhere
-    assert "60–80 € / paket 8, 12 ili 16 treninga" in _text(grupni)  # the slot and its note
+    assert "60–80 € / paket na upit Satni termini" in _text(grupni)  # its slots, monthly and yearly, then its text
+    assert "8, 12 ili 16 treninga" in _text(grupni)                  # (its old note a line of it)
+    for tier, key in (("start", "online"), ("pro", "online-pro"), ("elite", "online-elite")):
+        form = _card(page, key)                                     # every QMove tier: its own form
+        assert '<form method="post" action="/placanje/online">' in form, tier
+        assert f'<input type="hidden" name="tier" value="{tier}">' in form and ">Pretplati se karticom</button>" in form, tier
     assert "8, 12, 16 treninga mjesečno" not in _text(page)          # not the hint built from Stripe's tiers
     assert 'name="sessions" value="12"' in grupni and "12 treninga · 70 €" in _text(grupni)   # the picker, in the form
     assert "35 € / trening" in _text(page)
-    assert "od 3 € / mjesečno 3 € uz dvoranu, 5 € uz online" in _text(page)   # prehrana: the MojiMakrosi add-on, 3 or 5 €
+    assert "od 3 € / mjesečno na upit 3 € uz dvoranu, 5 € uz online" in _text(page)   # prehrana: the MojiMakrosi add-on, 3 or 5 €
 
     monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "")   # unconfigured: the same prices, no card
     payments._price_cache = (0.0, {})

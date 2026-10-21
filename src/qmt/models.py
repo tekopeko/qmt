@@ -301,10 +301,12 @@ class GymCard(Base):
     /moja-clanarina prints), the others are the muted line under that
     price, and the button follows them. A card with none (every card the
     owner adds: nothing edits `plans` in place) is his text alone, `price`
-    and `unit` its monthly price, its button the contact. `year_price` /
-    `year_unit` are every card's yearly price. `position` is creation
-    order, 1-based; `shown` the switch: a hidden card is on an editor's
-    page only."""
+    and `unit` its monthly price, `year_price` / `year_unit` its yearly
+    one, its button the contact. A card with plans prints its first plan's
+    yearly slots too since 21.10.2026 (price.<plan>.year_amount /
+    .year_unit, migration 6e2b9d41c7a3), so its own yearly columns are not
+    read. `position` is creation order, 1-based; `shown` the switch: a
+    hidden card is on an editor's page only."""
 
     __tablename__ = "gym_cards"
 

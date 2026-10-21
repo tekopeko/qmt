@@ -496,6 +496,22 @@
     /* the selected tab carries the accent tint — "lighter than the track" flips
        meaning between the two themes, a tint does not (same call as the karton) */
     .auth-tabs button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent-tint-ink); }
+    /* ===== Mjesečno / Godišnje (_period.html): a switch per group of cards
+       with a monthly and a yearly price, the landing's two sections and
+       /moja-clanarina's two "Dodaj plan" groups (promoted from the landing
+       on 21.10.2026, when the second page needed it). The .auth-tabs idiom,
+       the chosen half in the accent tint with its own ink. The track is
+       --surface with a hairline, not .auth-tabs' --surface-2: in dark the
+       tint over --surface-2 leaves the ink at 4.34:1, under AA (4.81:1 over
+       --surface). Rendered hidden; the script below shows it once it can
+       work it. Its place is each page's. ===== */
+    .period { display: flex; gap: 3px; width: fit-content; padding: 3px;
+              border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+    .period button { min-height: 36px; padding: 8px 18px; border: none; border-radius: 999px; background: none;
+                     box-shadow: none; color: var(--muted); font: 600 .85rem var(--font-body);
+                     transition: background .15s, color .15s; }
+    .period button:hover { transform: none; color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+    .period button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent-tint-ink); }
     .auth input { padding: 13px 14px; }              /* ~48px: on this form the fields ARE the content */
     .pw { position: relative; }
     .pw input { padding-right: 46px; }
@@ -1299,6 +1315,30 @@
     i.type = show ? "text" : "password";
     btn.setAttribute("aria-label", show ? "Sakrij lozinku" : "Prikaži lozinku");
   }
+
+  // Mjesečno / Godišnje (.period, _period.html): each switch works the
+  // prices of its own group, its closest [data-period-group] (the landing's
+  // two sections, /moja-clanarina's two "Dodaj plan" groups), each its own
+  // choice since 20.10.2026 (the owner: "unlink them"). A page opens as the
+  // server renders it, each group on its opening period (the other price
+  // hidden, that tab selected), so nothing runs on load. Pressing one shows
+  // that price (.price[data-period]) on every card of its group and marks
+  // that switch only; per page view, nothing is remembered.
+  (function () {
+    [].forEach.call(document.querySelectorAll(".period"), function (sw) {
+      var group = sw.closest("[data-period-group]");
+      if (!group) return;
+      sw.hidden = false;
+      sw.addEventListener("click", function (e) {
+        var b = e.target.closest("button[data-period]");
+        if (!b) return;
+        [].forEach.call(sw.querySelectorAll("button[data-period]"), function (x) {
+          x.setAttribute("aria-selected", x.dataset.period === b.dataset.period ? "true" : "false");
+        });
+        [].forEach.call(group.querySelectorAll(".price[data-period]"), function (p) { p.hidden = p.dataset.period !== b.dataset.period; });
+      });
+    });
+  })();
 
   // ---- install banner ----
   // Dismissed (the ✕, "U redu", or the native prompt declined), it stays away

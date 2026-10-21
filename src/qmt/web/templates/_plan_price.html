@@ -1,18 +1,24 @@
-{# A plan's price, the way /moja-clanarina prints it in both its sections
-   (moved from the old cjenik.html, 18.10.2026). It is the owner's text and
-   nothing else, Stripe configured or not, a card subscriber's own plan too
-   (his tier is the card's Paket fact): since 18.10.2026 no Stripe Price
-   prints instead (the owner's call: his friend's numbers are the truth).
-   The price.<plan>.amount / .unit copy slots (src/qmt/copy.py, defaults
-   REFERENCE_PRICES), printed with c.t() so the gym owner retypes them in
-   place, the amount as typed with " €" after it when it holds a number.
-   Under the price a muted hint: the price.<plan>.note slot (for an editor an
-   empty note too, so he can fill it). Prehrana has no note of its own: its
-   hint is the MojiMakrosi add-on's two amounts, the addon.* slots the
-   landing's offer cards print, so an edit to either shows here too. The only
-   Stripe amounts on the page are inside the forms that charge them: the
-   tier picker (_tiers.html) and a subscriber's tier switch.
-   Use: {% import "_plan_price.html" as pp with context %} … {{ pp.price(key) }}
+{# A price line, the way /moja-clanarina prints every price (moved from the
+   old cjenik.html, 18.10.2026). It is the owner's text and nothing else,
+   Stripe configured or not, a card subscriber's own plan too (his tier is
+   the card's Paket fact): since 18.10.2026 no Stripe Price prints instead
+   (the owner's call: his friend's numbers are the truth). Two copy slots,
+   printed with c.t() so the gym owner retypes them in place: an amount and
+   the unit beside it (21.10.2026: any two, the "Dodaj plan" cards print
+   the landing's own, so one number is one slot on both pages). " €" follows
+   the amount when it holds a number and `euro` is on, as the landing prints
+   that slot: a plan's amount (price.<plan>.amount / .year_amount, defaults
+   REFERENCE_PRICES / YEARLY_PRICE) gets it, a QMove tier's typed price
+   (offer.online*.price / .year_price) is printed as typed (euro=false).
+   `period` and `hidden`: a "Dodaj plan" card's monthly and yearly lines,
+   .price[data-period="month"] / "year", the one its group does not open
+   on hidden until its switch is pressed (_period.html, base.html's script).
+   No note under a price since 21.10.2026: a "Dodaj plan" card is one text
+   (cjenik.<plan>.text). Prehrana's hint is the MojiMakrosi add-on's two
+   amounts (hint below), the addon.* slots, which print nowhere else. The
+   only Stripe amounts on the page are inside the forms that charge them:
+   the tier picker (_tiers.html) and a subscriber's tier switch.
+   Use: {% import "_plan_price.html" as pp with context %} … {{ pp.plan_price(key) }}
    (with context: the slots need the page's copy_texts and can_edit_copy) #}
 {% import "_copy.html" as c with context %}
 
@@ -22,10 +28,18 @@
   {{- "€" if not pr or pr.currency == "EUR" else pr.currency -}}
 {%- endmacro %}
 
-{% macro price(key) -%}
-  {%- set amount = "price." ~ key ~ ".amount" -%}
-  <div class="price">{{ c.t(amount) }}{% if copy_text(amount, copy_texts) is priced %} €{% endif %} <small>{{ c.t("price." ~ key ~ ".unit") }}</small></div>
-  {%- if key == "prehrana" %}<div class="hint price-hint">{{ c.t("addon.dvorana") }} € uz dvoranu, {{ c.t("addon.online") }} € uz online</div>
-  {%- elif copy_text("price." ~ key ~ ".note", copy_texts) or can_edit_copy %}<div class="hint price-hint">{{ c.t("price." ~ key ~ ".note") }}</div>
-  {%- endif %}
+{% macro price(amount, unit, period=none, hidden=false, euro=true) -%}
+  <div class="price"{% if period %} data-period="{{ period }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ c.t(amount) }}{% if euro and copy_text(amount, copy_texts) is priced %} €{% endif %} <small>{{ c.t(unit) }}</small></div>
+{%- endmacro %}
+
+{# under prehrana's price: the MojiMakrosi add-on beside a plan in the
+   dvorana and beside online ("3 € uz dvoranu, 5 € uz online"), the two
+   addon.* amounts; nothing for another plan #}
+{% macro hint(key) -%}
+  {%- if key == "prehrana" %}<div class="hint price-hint">{{ c.t("addon.dvorana") }} € uz dvoranu, {{ c.t("addon.online") }} € uz online</div>{% endif -%}
+{%- endmacro %}
+
+{# a plan's monthly price and its hint: the Cijena fact of a plan held #}
+{% macro plan_price(key) -%}
+  {{- price("price." ~ key ~ ".amount", "price." ~ key ~ ".unit") }}{{ hint(key) -}}
 {%- endmacro %}

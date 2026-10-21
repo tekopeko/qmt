@@ -15,7 +15,11 @@ and an emptied text, which stays empty since 20.10.2026 but for a number,
 the QMove tiers without a MojiMakrosi line (21.10.2026), and the extra
 lines (20.10.2026: plain lines added with "+ Dodaj tekst" under every
 card's bullets, in the contact block and under the headline, and the
-migration that gave a gym card its own).
+migration that gave a gym card its own), and one number one slot on both
+pages (21.10.2026: /moja-clanarina's "Dodaj plan" cards print the landing's
+prices, a gym plan's yearly price is a slot of its own, and the migration
+that made each card one text and carried the gym cards' typed yearly
+prices).
 
 The browser half is the net under the texts. Their design limits were lifted
 on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
@@ -1090,7 +1094,12 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
                 if isinstance(slot, copy.ImageSlot):    # a photo: its "Dodaj sliku", once (none is set here;
                     # with one, "Ukloni sliku" carries the key as well)
                     assert page.count(f'data-copy="{key}"') == 1 and f'class="ed-img" data-copy="{key}"' in page, key
-    assert set(seen) == set(copy.SLOTS), f"slots on no page: {set(copy.SLOTS) - set(seen)}"
+    # plan.online.name heads a member's own online card alone since
+    # 21.10.2026 ("Dodaj plan"'s online cards are the three QMove tiers,
+    # named by their landing titles), and the editor holds no plans: it is
+    # on no page he opens. Left for the owner to decide, not dropped here.
+    unreachable = {"plan.online.name"}
+    assert set(seen) == set(copy.SLOTS) - unreachable, f"slots on no page: {set(copy.SLOTS) - unreachable - set(seen)}"
     assert seen["addon.online"] == seen["addon.dvorana"] == ["/moja-clanarina"], seen["addon.online"]
     for c in (TestClient(app), client_for("ivan@test.local")):
         for path in PAGES:
@@ -1106,17 +1115,19 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
 # ---------- the reference prices ----------
 
 # The reference table as app.py held it until 18.10.2026, when it became the
-# price slots' defaults (copy.REFERENCE_PRICES, no note as ""): what the site
-# said before anyone edited a price. Less prehrana's note ("3 € uz dvoranu,
-# 5 € uz online"), which left the registry the same day: its hint is the
-# add-on's two amounts (the addon.* slots), so each is typed in one place.
+# price slots' defaults (copy.REFERENCE_PRICES): what the site said before
+# anyone edited a price, an amount and a unit per plan. Less the notes:
+# prehrana's ("3 € uz dvoranu, 5 € uz online") left the registry the same
+# day (its hint is the add-on's two amounts, the addon.* slots, so each is
+# typed in one place), the others on 21.10.2026 (grupni's and
+# rehabilitacija's are lines of their /moja-clanarina texts since).
 SHOP = {
-    "grupni": ("60–80", "/ paket", "8, 12 ili 16 treninga"),
-    "individualni": ("35", "/ trening", ""),
-    "poluindividualni": ("25", "/ trening", ""),
-    "rehabilitacija": ("od 30", "/ tretman", "paketi od 5 i 10 tretmana"),
-    "online": ("50", "/ mjesečno", ""),
-    "prehrana": ("od 3", "/ mjesečno", ""),
+    "grupni": ("60–80", "/ paket"),
+    "individualni": ("35", "/ trening"),
+    "poluindividualni": ("25", "/ trening"),
+    "rehabilitacija": ("od 30", "/ tretman"),
+    "online": ("50", "/ mjesečno"),
+    "prehrana": ("od 3", "/ mjesečno"),
 }
 
 
@@ -1128,29 +1139,33 @@ def shown(html: str) -> str:
 
 def test_the_price_slots_start_as_the_shops_prices():
     """The reference prices are copy slots since 18.10.2026, plain texts the
-    editor opens like any other: per plan an amount, a unit and a note, and
-    the MojiMakrosi add-on's amount beside online and beside the dvorana.
-    Their defaults are the table the site printed before, so nothing says a
-    different price until someone edits one; the edited text wins. Prehrana
-    has no note slot: a row the old one may have left is never read."""
+    editor opens like any other: per plan an amount and a unit, for the
+    gym's five plans a yearly amount and unit too (21.10.2026, "na upit"
+    until typed; online's tiers have their landing cards'), and the
+    MojiMakrosi add-on's amount beside online and beside the dvorana. Their
+    defaults are the table the site printed before, so nothing says a
+    different price until someone edits one; the edited text wins. No plan
+    has a note slot since 21.10.2026 (prehrana's went on 18.10.2026): a row
+    an old one left is never read."""
     assert set(SHOP) == set(PLAN_TYPES)
     for plan, parts in SHOP.items():
-        for part, label, default in zip(("amount", "unit", "note"), ("iznos", "jedinica", "napomena"), parts):
-            if (plan, part) == ("prehrana", "note"):     # its hint is the add-on's amounts
-                assert f"price.{plan}.{part}" not in copy.SLOTS
-                continue
+        yearly = ("na upit", "") if plan != "online" else ()
+        for part, label, default in zip(("amount", "unit", "year_amount", "year_unit"),
+                                        ("iznos", "jedinica", "godišnji iznos", "godišnja jedinica"), parts + yearly):
             slot = copy.SLOTS[f"price.{plan}.{part}"]
             assert type(slot) is copy.Slot and slot.max == copy.CAP, (plan, part)
             assert slot.default == default and slot.label == f"Cijena · {plan}: {label}", (plan, part)
-            assert slot.required is (part == "amount"), (plan, part)          # the number: never left empty
+            assert slot.required is part.endswith("amount"), (plan, part)    # a number: never left empty
+        assert f"price.{plan}.note" not in copy.SLOTS, plan
+    assert not [key for key in copy.SLOTS if key.startswith("price.online.year")]   # the tiers' are their cards'
     assert copy.SLOTS["addon.online"] == copy.Slot("5", copy.CAP, "MojiMakrosi dodatak uz online (€)", required=True)
     assert copy.SLOTS["addon.dvorana"] == copy.Slot("3", copy.CAP, "MojiMakrosi dodatak uz dvoranu (€)", required=True)
     assert reference_prices({}) == SHOP and addon_amounts({}) == {"dvorana": "3", "online": "5"}
     edited = {"price.online.amount": "45", "price.grupni.note": "Paketi", "addon.dvorana": "4",
               "price.prehrana.note": "3 € uz dvoranu"}
-    assert reference_prices(edited)["online"] == ("45", "/ mjesečno", "")
-    assert reference_prices(edited)["grupni"] == ("60–80", "/ paket", "Paketi")
-    assert reference_prices(edited)["prehrana"] == ("od 3", "/ mjesečno", "")
+    assert reference_prices(edited)["online"] == ("45", "/ mjesečno")
+    assert reference_prices(edited)["grupni"] == ("60–80", "/ paket")      # a note's row: never read
+    assert reference_prices(edited)["prehrana"] == ("od 3", "/ mjesečno")
     assert addon_amounts(edited) == {"dvorana": "4", "online": "5"}
 
 
@@ -1193,7 +1208,7 @@ def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     mine = client_for("ivan@test.local").get("/moja-clanarina").text
     assert "Cijena 45 € / mjesečno" in shown(card_on(mine, "online"))
     assert "65 € / paket" in shown(card_on(mine, "grupni")) and "60–80" not in card_on(mine, "grupni")
-    assert "od 3 € / mjesečno 4 € uz dvoranu, 5 € uz online" in shown(card_on(mine, "prehrana"))
+    assert "od 3 € / mjesečno na upit 4 € uz dvoranu, 5 € uz online" in shown(card_on(mine, "prehrana"))
 
     page = t.get("/").text                                                  # the editor gets them as slots
     start = page.split('id="usluge"')[1].split('class="card offer')[1]
@@ -1252,6 +1267,52 @@ def test_the_words_around_a_price_are_free_text_and_the_number_its_own_slot():
     assert line(TestClient(app).get("/").text).startswith("u dvoje ili troje 25 € / trening · rehab")
 
 
+# ---------- one number, one slot, on both pages (21.10.2026) ----------
+
+def price_line(card: str, period: str) -> str:
+    """A card's monthly or yearly price line (data-period), as a reader
+    sees it: on the landing's cards and /moja-clanarina's alike."""
+    return shown(re.search(rf'<div class="price" data-period="{period}"[^>]*>(.*?)</div>', card, re.S).group(1))
+
+
+def test_one_number_is_one_slot_on_the_landing_and_on_moja_clanarina():
+    """21.10.2026 (the owner: "every tab is one big text cell except the
+    number i.e. price which is connected to the front page"): a Dodaj plan
+    card on /moja-clanarina prints the landing's own price slots, so an
+    edit made on either page shows on both. A gym plan's yearly price is a
+    slot of its own, price.<plan>.year_amount / .year_unit ("na upit" until
+    typed): its card there, and on the landing the gym card the plan prices
+    (Dvorana's is grupni's), " €" after a number on both. A QMove tier's
+    prices are its landing card's (PRO's monthly offer.online2.price /
+    .unit), printed as typed on both. A yearly amount is a number: emptied,
+    its default comes back on both pages. A gym card that stands for no
+    plan keeps its row's yearly price (tests/test_booking.py)."""
+    make_user("trener@test.local", is_trainer=True); make_user("sara@test.local")
+    gym_examples()
+    t = client_for("trener@test.local")
+    for key, text in (("price.grupni.year_amount", "600"), ("price.grupni.year_unit", "/ godišnje"),
+                      ("offer.online2.price", "60 €"), ("offer.online2.unit", "/ mjesečno")):
+        assert t.post(f"/copy/{key}", data={"text": text}).json() == {"ok": True, "text": text, "default": False}, key
+
+    def both() -> list[tuple[str, str]]:
+        """(Dvorana's yearly line, PRO's monthly line) on the landing, then on /moja-clanarina."""
+        landing, mc = TestClient(app).get("/").text, client_for("sara@test.local").get("/moja-clanarina").text
+        dvorana = landing.split('id="dvorana"')[1].split('class="card offer')[1]
+        return [(price_line(dvorana, "year"), price_line(tier_cards(landing)[1], "month")),
+                (price_line(card_on(mc, "grupni"), "year"), price_line(card_on(mc, "online-pro"), "month"))]
+
+    assert both() == [("600 € / godišnje", "60 € / mjesečno")] * 2
+    individualno = TestClient(app).get("/").text.split('id="dvorana"')[1].split('class="card offer')[2]
+    assert price_line(individualno, "year") == "na upit"                    # individualni's, untouched
+    for page in (t.get("/").text, t.get("/moja-clanarina").text):           # the editor's: the same slots
+        assert ('<span class="ed t" data-copy="price.grupni.year_amount" data-max="2000" '
+                'data-label="Cijena · grupni: godišnji iznos" data-required>600</span> €') in page
+        assert 'data-copy="offer.online2.price"' in page and 'data-copy="price.grupni.year_unit"' in page
+    r = t.post("/copy/price.grupni.year_amount", data={"text": "  "})     # a number: emptied, its default
+    assert r.json() == {"ok": True, "text": "na upit", "default": True} and "price.grupni.year_amount" not in db.copy_texts()
+    assert both() == [("na upit / godišnje", "60 € / mjesečno")] * 2       # no sign after "na upit"
+
+
 # ---------- an emptied text stays empty, but a number (20.10.2026) ----------
 
 def tier_cards(page: str) -> list[str]:
@@ -1269,14 +1330,16 @@ def test_an_emptied_text_stays_empty_and_only_a_number_gets_its_default_back():
     Individualno's unit and the space before it, its word, START's unit
     span; on /moja-clanarina an emptied unit prints nothing either
     (_plan_price.html). Zadano (reset=1) brings the default back, no row.
-    A required slot, a number (every price.<plan>.amount, addon.online,
-    addon.dvorana), emptied, is its default again, as every text was
-    before; the editor's span says which it is (data-required)."""
+    A required slot, a number (every price.<plan>.amount and, since
+    21.10.2026, every gym plan's .year_amount, addon.online, addon.dvorana),
+    emptied, is its default again, as every text was before; the editor's
+    span says which it is (data-required)."""
     make_user("ivan@test.local", plans=("rehabilitacija",)); make_user("trener@test.local", is_trainer=True)
     gym_examples()
     t = client_for("trener@test.local")
     assert {k for k, s in copy.SLOTS.items() if isinstance(s, copy.Slot) and s.required} == {
-        *(f"price.{plan}.amount" for plan in PLAN_TYPES), "addon.online", "addon.dvorana"}
+        *(f"price.{plan}.amount" for plan in PLAN_TYPES),
+        *(f"price.{plan}.year_amount" for plan in PLAN_TYPES if plan != "online"), "addon.online", "addon.dvorana"}
     assert copy.clean("") == "" and copy.clean(" \n\t \n ") == ""             # what an emptied text stores
 
     def line(page: str) -> str:                     # Individualno's line, its markup
@@ -1401,7 +1464,7 @@ def test_the_qmove_tiers_print_no_mojimakrosi_line():
         db.set_copy(key, "off" if key.endswith("_on") else "MojiMakrosi +5", None)
     assert {who: usluge(c.get("/").text) for who, c in visitors} == before
     mine = client_for("ivan@test.local").get("/moja-clanarina").text   # the amounts: the prehrana plan's hint
-    assert "od 3 € / mjesečno 3 € uz dvoranu, 5 € uz online" in shown(card_on(mine, "prehrana"))
+    assert "od 3 € / mjesečno na upit 3 € uz dvoranu, 5 € uz online" in shown(card_on(mine, "prehrana"))
 
 
 # ---------- the extra lines (20.10.2026) ----------
@@ -1552,6 +1615,87 @@ def test_the_migration_gives_the_gym_cards_their_extra_lines_and_back():
     with db.engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
         mig.downgrade()
     assert "extra" not in {c["name"] for c in sa_inspect(db.engine).get_columns("gym_cards")}
+
+
+def test_the_migration_makes_each_plan_card_one_text_and_carries_the_yearly_prices():
+    """6e2b9d41c7a3, run for real on qmt_test with prod-like rows: the gym
+    owner had retyped grupni's lead and the "Za upis" hint every card
+    carried, emptied rehabilitacija's note, and typed Dvorana's yearly price
+    with its sign (the landing added none to a row's); Individualno's he
+    emptied but for its unit; a stale prehrana note lies there since
+    18.10.2026. Each plan's card becomes ONE text, its pieces a line each as
+    the site showed them (an edit where there is one, else the old
+    default, an empty piece dropped), the online plan's in each of the
+    three tiers', who touched a piece last and when its; the pieces' rows
+    go, prehrana's stale note too, uncarried. A plan-backed gym card's
+    typed yearly price becomes its plan's slots (an empty amount does not:
+    the slot is a number), and both pages read them. Nothing edited:
+    nothing written, either way. And back, best effort: each text's first
+    line where it differs from the old lead, the yearly slots into the
+    cards' columns as the site showed them."""
+    mig = _migration("6e2b9d41c7a3_clanarina_texts.py")
+    assert (mig.revision, mig.down_revision) == ("6e2b9d41c7a3", "c138157ff6bb")
+    for plan in mig.OLD_LEADS:                                              # its own copy of the old defaults
+        for key in mig.text_keys(plan):                                     # agrees with the new slots'
+            assert copy.SLOTS[key].default == mig.default_text(plan), key
+    for plan in mig.GYM_PLANS:
+        assert (copy.SLOTS[f"price.{plan}.year_amount"].default, copy.SLOTS[f"price.{plan}.year_unit"].default) == mig.YEAR_DEFAULT
+    assert (copy.GYM_CARD_BLANK["year_price"], copy.GYM_CARD_BLANK["year_unit"]) == mig.YEAR_DEFAULT
+    assert not set(mig.OLD_KEYS) & set(copy.SLOTS)                          # the pieces: out of the registry
+    uid = make_user("trener@test.local", is_trainer=True); other = make_user("ivan@test.local")
+    dvorana, individualno = gym_examples()
+
+    def run(step) -> None:
+        with db.engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+            step()
+
+    def years() -> list[tuple[str, str]]:
+        return [(g.year_price, g.year_unit) for g in db.gym_cards(all=True)]
+
+    run(mig.upgrade)                                                        # nobody edited a thing:
+    run(mig.downgrade)                                                      # nothing written, either way
+    assert db.copy_texts() == {} and years() == [mig.YEAR_DEFAULT] * 2
+
+    for key, text, by in [("cjenik.grupni", "Grupe do 8 polaznika, termin rezerviraš u aplikaciji.", uid),
+                          ("price.rehabilitacija.note", "", uid), ("price.prehrana.note", "3 € uz dvoranu", uid),
+                          ("hero.kicker", "Ostaje kakav jest.", uid),
+                          ("cjenik.note", "Upiši se kod trenera.", other)]:          # the latest, by another
+        db.set_copy(key, text, by)
+    with db.session_scope() as s:
+        last = s.get(SiteCopy, "cjenik.note").updated_at
+    for card_id, price, unit in ((dvorana, "1.200 €", "/ godišnje"), (individualno, "", "/ god.")):
+        db.set_gym_card_field(card_id, "year_price", price, uid)
+        db.set_gym_card_field(card_id, "year_unit", unit, uid)
+    run(mig.upgrade)
+    texts = db.copy_texts()
+    end = "\nUpiši se kod trenera.\nMjesečno, otkazivo bilo kad. Ili gotovinom u dvorani."
+    assert texts["cjenik.grupni.text"] == "Grupe do 8 polaznika, termin rezerviraš u aplikaciji.\n8, 12 ili 16 treninga" + end
+    assert texts["cjenik.rehabilitacija.text"] == mig.OLD_LEADS["rehabilitacija"] + end   # its emptied note dropped
+    assert texts["cjenik.prehrana.text"] == mig.OLD_LEADS["prehrana"] + end               # the stale note not carried
+    assert texts["cjenik.individualni.text"] == mig.OLD_LEADS["individualni"] + end
+    for tier in ("start", "pro", "elite"):
+        assert texts[f"cjenik.online.{tier}.text"] == mig.OLD_LEADS["online"] + end, tier
+    assert (texts["price.grupni.year_amount"], texts["price.grupni.year_unit"]) == ("1.200 €", "/ godišnje")
+    assert texts["price.individualni.year_unit"] == "/ god." and "price.individualni.year_amount" not in texts
+    assert set(texts) == {*mig.TEXT_KEYS, "price.grupni.year_amount", "price.grupni.year_unit",
+                          "price.individualni.year_unit", "hero.kicker"}   # the pieces gone, the rest kept
+    with db.session_scope() as s:                                           # the latest of grupni's pieces
+        row = s.get(SiteCopy, "cjenik.grupni.text")
+        assert (row.updated_at, row.updated_by) == (last, other)
+    assert years() == [("1.200 €", "/ godišnje"), ("", "/ god.")]           # the rows' columns as they were
+    landing = TestClient(app).get("/").text                                 # and the pages read them
+    one, two = landing.split('id="dvorana"')[1].split('class="card offer')[1:3]
+    assert price_line(one, "year") == "1.200 € / godišnje"                  # its own sign, no second one
+    assert price_line(two, "year") == "na upit / god."                      # an empty amount: the number's default
+    mc = client_for("trener@test.local").get("/moja-clanarina").text
+    assert ">Grupe do 8 polaznika, termin rezerviraš u aplikaciji.\n8, 12 ili 16 treninga" in card_on(mc, "grupni")
+    assert price_line(card_on(mc, "grupni"), "year") == "1.200 € / godišnje"
+
+    db.set_copy("price.individualni.year_amount", "900", uid)               # typed since, on the new slot
+    run(mig.downgrade)                                                      # the way back
+    assert db.copy_texts() == {"hero.kicker": "Ostaje kakav jest.",
+                               "cjenik.grupni": "Grupe do 8 polaznika, termin rezerviraš u aplikaciji."}
+    assert years() == [("1.200 €", "/ godišnje"), ("900", "/ god.")]        # what the site showed
 
 
 # ---------- the layout, measured in a browser ----------
@@ -1899,6 +2043,28 @@ PERIOD = r"""([tiers, gym]) => {
   for (const sw of switches) {
     const sec = sw.closest('section').id, said = [...sw.querySelectorAll('[aria-selected="true"]')].map(b => b.dataset.period);
     if (said.join() !== want[sec]) out.push(`the #${sec} switch says "${said.join('+')}" for ${want[sec]}`);
+  }
+  return out;
+}"""
+
+# /moja-clanarina's "Dodaj plan" (21.10.2026): two groups, each a
+# [data-period-group] with its own Mjesečno / Godišnje switch: the online
+# tiers' opening on Godišnje, the gym plans' on Mjesečno. Each switch is
+# shown (the script ran) and says its group's period, and every card of a
+# group shows exactly that price line.
+GROUPS = r"""([online, gym]) => {
+  const vis = el => { const cs = getComputedStyle(el); return cs.display !== 'none' && el.getBoundingClientRect().width > 0; };
+  const want = {mcOnline: online, mcGym: gym}, out = [], groups = [...document.querySelectorAll('[data-period-group]')];
+  const ids = groups.map(g => g.getAttribute('aria-labelledby'));
+  if (ids.join() !== 'mcOnline,mcGym') out.push(`the groups: ${ids.join(', ')}`);
+  for (const g of groups) {
+    const id = g.getAttribute('aria-labelledby'), sw = g.querySelector('.period'), cards = [...g.querySelectorAll('.plan')];
+    if (!sw || !vis(sw)) out.push(`no switch shown in #${id}`);
+    else { const said = [...sw.querySelectorAll('[aria-selected="true"]')].map(b => b.dataset.period);
+      if (said.join() !== want[id]) out.push(`the #${id} switch says "${said.join('+')}" for ${want[id]}`); }
+    if (!cards.length) out.push(`no cards in #${id}`);
+    for (const c of cards) { const shown = [...c.querySelectorAll('.price')].filter(vis).map(p => p.dataset.period);
+      if (shown.join() !== want[id]) out.push(`${c.id} in #${id} shows "${shown.join('+')}" for ${want[id]}`); }
   }
   return out;
 }"""
@@ -2525,6 +2691,51 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             browser.close()
         return [f"[extra lines] {p}" for p in out + [f"js: {e}" for e in errs]]
 
+    def clanarina(pw):
+        """/moja-clanarina's "Dodaj plan" in a browser (21.10.2026), with
+        the long texts (fill()) and each card's one text 300 characters in
+        four lines: the trainer's every card, out of edit mode and in it,
+        and ivan's (grupni held: the three tiers and the gym's four other
+        plans), at 360, 390, 900 and 1280px. Nothing overflows, widens the
+        page or is cut, and the prices of a row are level (MEASURE, strict);
+        both switches are shown, each on its group's opening period, and
+        each flips its own group only, both ways (GROUPS after every
+        press). No page error, nothing in the console."""
+        out, errs = [], []
+        four = "\n".join([words(74)] * 4)
+        for key in copy.SLOTS:
+            if key.startswith("cjenik.") and key.endswith(".text"):
+                db.set_copy(key, four, None)
+        for email, modes in (("trener@test.local", (False, True)), ("ivan@test.local", (False,))):
+            for w in (360, 390, 900, 1280):
+                phone, browser = w < 600, pw.chromium.launch()
+                pg = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+                pg.on("pageerror", lambda e, w=w: errs.append(f"{w}px: {e}"))
+                pg.on("console", lambda m, w=w: m.type == "error" and errs.append(f"{w}px console: {m.text}"))
+                pg.goto(server + "/login"); pg.fill("main input[name=email]", email)
+                pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
+                pg.wait_for_load_state("networkidle")
+                pg.goto(server + "/moja-clanarina"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+                for editing in modes:
+                    where = f"{email} {w}px{' edit mode' if editing else ''}"
+                    if editing:
+                        pg.click("#copyToggle")
+                    out += [f"{where}: {p}" for p in pg.evaluate(MEASURE, True)["problems"]]
+                    out += [f"{where} on load: {p}" for p in pg.evaluate(GROUPS, ["year", "month"])]
+                    # the gym's Godišnje with the tiers on Godišnje, the tiers'
+                    # Mjesečno with the gym on Godišnje: a press that reached
+                    # the other group would show; the last leaves both as loaded
+                    for heading, period, now in (("mcGym", "year", ["year", "year"]), ("mcOnline", "month", ["month", "year"]),
+                                                 ("mcOnline", "year", ["year", "year"]), ("mcGym", "month", ["year", "month"])):
+                        pg.click(f'[aria-labelledby="{heading}"] .period button[data-period="{period}"]')
+                        did = f"{where} #{heading} {period}:"
+                        out += [f"{did} {p}" for p in pg.evaluate(GROUPS, now)]
+                        out += [f"{did} {p}" for p in pg.evaluate(MEASURE, True)["problems"]]
+                    if editing:
+                        pg.click("#copyToggle")
+                browser.close()
+        return [f"[moja-clanarina] {p}" for p in out + [f"js: {e}" for e in errs]]
+
     def hours_edit(pg):
         """The hours table in edit mode with the walk's texts (fill(): twelve
         rows of 300-character cells): EDIT_HOURS, then Gotovo."""
@@ -2668,6 +2879,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280), photos=(390,),
                          adds=(390, 1280), hours=(390,))
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")
+        problems += clanarina(pw)                     # Dodaj plan's two groups and their switches (one text in four lines)
         problems += banner(pw)                        # the install banner's week between asks
         db.set_announcement_field(one, "body", LINES, None)   # line breaks: the first announcement's text in three lines
         problems += walk(pw, None, (390, 1280), "lines", lines=True)
@@ -2728,3 +2940,10 @@ def test_an_amount_without_a_number_prints_without_the_euro_sign():
         assert "na upit</span> €" not in page and "na upit</span>&nbsp;€" not in page   # bare
     assert "50</span> €</b>" in landing                                     # a number keeps its €
     assert "50</span> € <small>" in mine
+    # an amount typed with its own sign gets no second one (21.10.2026: a
+    # gym card's yearly price, typed so where the landing added none, is its
+    # plan's slot since migration 6e2b9d41c7a3): individualni's, on
+    # Individualno's card and on its card to add
+    db.set_copy("price.individualni.year_amount", "1.200 €", None)
+    for page in (TestClient(app).get("/").text, client_for("ivan@test.local").get("/moja-clanarina").text):
+        assert "1.200 €</span>" in page and "1.200 €</span> €" not in page

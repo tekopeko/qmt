@@ -21,10 +21,10 @@ the text, the text box and the space it occupies gets removed"): POST
 /copy/{key} stores it as "", a visitor gets nothing for it (_copy.html), and
 the editor keeps an empty box to click in edit mode. Zadano (reset=1) is
 how a default comes back. The numbers are the exception, a Slot with
-required=True (every price.<plan>.amount, addon.online, addon.dvorana: "the
-number is the only thing that is not free text"): emptied, its default
-comes back, as every text's did until that day. A list's emptied item goes
-and a row's emptied cell stays empty, as before.
+required=True (every price.<plan>.amount and .year_amount, addon.online,
+addon.dvorana: "the number is the only thing that is not free text"):
+emptied, its default comes back, as every text's did until that day. A
+list's emptied item goes and a row's emptied cell stays empty, as before.
 
 A ListSlot is a list of short texts the editor can add to and remove from, not
 only retype — the bullets on the landing's offer cards. It is stored as ONE
@@ -99,13 +99,17 @@ same day: his friend's numbers are the truth); Stripe's Prices are to be
 aligned to them in one place when card payments return, and until then only
 the tier picker inside the checkout forms (_tiers.html) and a subscriber's
 tier switch show a Stripe amount, the one the card is charged. Per plan an
-amount, a unit and a note (price.<plan>.amount / .unit / .note; prehrana has
-no note, its hint is the add-on's two amounts), and the MojiMakrosi add-on's
-amount beside online and beside the dvorana (addon.online / addon.dvorana:
-that hint is the one place they print since 21.10.2026), so the gym owner
-retypes a price the way he retypes any text. The amount is
-text, printed as typed with " €" after it ("60–80", "od 30"). Their
-defaults are REFERENCE_PRICES and MOJIMAKROSI_ADDON below, the shop's
+amount and a unit (price.<plan>.amount / .unit), and for the gym's five
+plans a yearly amount and unit too (price.<plan>.year_amount / .year_unit,
+21.10.2026: the yearly price of the plan's card on /moja-clanarina and of
+the landing's gym card the plan prices). No note under a price since that
+day: a /moja-clanarina card is one text (cjenik.<plan>.text, below). And
+the MojiMakrosi add-on's amount beside online and beside the dvorana
+(addon.online / addon.dvorana: the prehrana plan's hint is the one place
+they print since 21.10.2026), so the gym owner retypes a price the way he
+retypes any text. The amount is text, printed as typed with " €" after it
+when it holds a number ("60–80", "od 30"; not "na upit"). Their defaults
+are REFERENCE_PRICES, YEARLY_PRICE and MOJIMAKROSI_ADDON below, the shop's
 numbers. Most of them print on two pages, the landing and /moja-clanarina,
 the only slots that do: one number, one slot, so an edit shows wherever
 that number does.
@@ -114,7 +118,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from .models import ONLINE_TIER_SLOTS, PLAN_LABELS
+from .models import ONLINE_TIER_SLOTS, ONLINE_TIERS, PLAN_LABELS
 
 CAP = 2000       # characters per text or list item, counted after clean()
 CAP_ITEMS = 12   # items per list
@@ -169,22 +173,49 @@ ONLINE_POINTS = ("Program po tvojoj razini i cilju", "Video upute za svaku vjež
 
 # Reference prices from the owner's Shopify shop (read 6.9.2026). Units are
 # the shop's own: most of the business is per trening / per paket, only
-# Online is a monthly plan. (amount text, unit, note): a None note is an
-# empty note slot to fill, a row with no third item (prehrana) gets none.
-# Since 18.10.2026 they are the defaults of the price slots (price.<plan>.*,
-# in SLOTS below), which the gym owner edits in place: the pages print the
-# slots and nothing else, a Stripe Price neither (app.py, reference_prices),
-# so this table is what they say until someone edits.
+# Online is a monthly plan. (amount text, unit). Since 18.10.2026 they are
+# the defaults of the price slots (price.<plan>.*, in SLOTS below), which
+# the gym owner edits in place: the pages print the slots and nothing else,
+# a Stripe Price neither (app.py, reference_prices), so this table is what
+# they say until someone edits. The shop's notes under two of them ("8, 12
+# ili 16 treninga", "paketi od 5 i 10 tretmana") were price.<plan>.note
+# slots until 21.10.2026: lines of those plans' texts since (PLAN_TEXTS).
 REFERENCE_PRICES = {
-    "grupni": ("60–80", "/ paket", "8, 12 ili 16 treninga"),
-    "individualni": ("35", "/ trening", None),
-    "poluindividualni": ("25", "/ trening", None),
-    "rehabilitacija": ("od 30", "/ tretman", "paketi od 5 i 10 tretmana"),
-    "online": ("50", "/ mjesečno", None),
-    # no note: the hint under its price is the add-on's two amounts, the
-    # addon.* slots (_plan_price.html), so each number is typed in one place
+    "grupni": ("60–80", "/ paket"),
+    "individualni": ("35", "/ trening"),
+    "poluindividualni": ("25", "/ trening"),
+    "rehabilitacija": ("od 30", "/ tretman"),
+    "online": ("50", "/ mjesečno"),
     "prehrana": ("od 3", "/ mjesečno"),
 }
+
+# A gym plan's yearly price until the gym owner types one (amount text,
+# unit): the defaults of the price.<plan>.year_amount / .year_unit slots of
+# every plan but online (21.10.2026), whose three QMove tiers have their
+# landing cards' yearly prices (offer.online*.year_price / .year_unit).
+YEARLY_PRICE = ("na upit", "")
+
+# /moja-clanarina's "Dodaj plan" cards, one text each (21.10.2026, the
+# owner: "every tab is one big text cell except the number"): the
+# cjenik.<plan>.text slot of a gym plan, cjenik.online.<tier>.text of each
+# QMove tier (in SLOTS below). Until that day a card was a lead (the
+# cjenik.<plan> slot), a note under its price (price.<plan>.note) and two
+# hints, each its own box: "Za upis se javi treneru u dvorani." where the
+# plan is not sold by card (cjenik.note) and the line under its card button
+# (clanarina.card_hint). Their default texts, a line each, are the new
+# slot's: a plan's lines here (the lead, then the note where it had one),
+# then the two hints (PLAN_TEXT_END), so a card says what it said. Each
+# tier starts with the online plan's. Migration 6e2b9d41c7a3 carries what
+# was edited into the new slots.
+PLAN_TEXTS = {
+    "grupni": ("Satni termini u malim grupama do 8 polaznika — rezerviraš u rasporedu.", "8, 12 ili 16 treninga"),
+    "individualni": ("Rad 1:1 s trenerom, termini po dogovoru.",),
+    "poluindividualni": ("Trening u dvoje ili troje — pola puta između grupe i 1:1.",),
+    "rehabilitacija": ("Programi povratka nakon ozljede, 1:1 stručno vođeni.", "paketi od 5 i 10 tretmana"),
+    "online": ("Programi po tvojoj razini i cilju, s video uputama — gdje god jesi.",),
+    "prehrana": ("Vođenje prehrane uz aplikaciju MojiMakrosi i zdrave recepte.",),
+}
+PLAN_TEXT_END = ("Za upis se javi treneru u dvorani.", "Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.")
 
 # MojiMakrosi (the prehrana app) as a monthly add-on, as the owner set it on
 # 5.10.2026: cheaper beside a plan in the dvorana, dearer for online-only
@@ -253,15 +284,22 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "gym.kicker": Slot("Dvorana", CAP, "Mala oznaka iznad dvorane"),
     "gym.h2": Slot("Treninzi u dvorani", CAP, "Naslov: dvorana"),
     # ---- prices: every price the site shows (no Stripe Price overrides them) ----
-    # Per plan its amount, unit and note, the defaults REFERENCE_PRICES above
-    # (prehrana: no note): the landing prints the amount and the unit on a
-    # card (Individualno's muted line two more plans'), /moja-clanarina all
-    # three, with or without a Stripe Price for the plan (app.py, _offer_prices).
-    # The amount is required (a number: emptied, its default comes back);
-    # the unit and the note are free text, which an editor may empty.
-    **{f"price.{plan}.{part}": Slot(text or "", CAP, f"Cijena · {plan}: {label}", required=part == "amount")
+    # Per plan its amount and unit, the defaults REFERENCE_PRICES above: the
+    # landing prints them on a card (Individualno's muted line two more
+    # plans'), /moja-clanarina on the plan's card, with or without a Stripe
+    # Price for the plan (app.py). Beside them, for every plan but online,
+    # its yearly amount and unit (21.10.2026; YEARLY_PRICE: "na upit"): its
+    # "Dodaj plan" card's yearly price on /moja-clanarina, and on the
+    # landing the yearly price of the gym card the plan prices (its first
+    # plan: Dvorana's grupni, Individualno's individualni), one number, one
+    # slot. The amounts are required (a number: emptied, its default comes
+    # back); the units are free text, which an editor may empty. No note
+    # under a price since 21.10.2026 (a card's one text, cjenik.<plan>.text).
+    **{f"price.{plan}.{part}": Slot(text, CAP, f"Cijena · {plan}: {label}", required=part in ("amount", "year_amount"))
        for plan, row in REFERENCE_PRICES.items()
-       for part, label, text in zip(("amount", "unit", "note"), ("iznos", "jedinica", "napomena"), row)},
+       for part, label, text in zip(("amount", "unit", "year_amount", "year_unit"),
+                                    ("iznos", "jedinica", "godišnji iznos", "godišnja jedinica"),
+                                    row + (YEARLY_PRICE if plan != "online" else ()))},
     # the words before a plan's price in a gym card's line of its other
     # plans (Individualno's "u dvoje ili troje 25 € / trening ·
     # rehabilitacija od 30 € / tretman", landing.html, plan_note), free
@@ -293,13 +331,13 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # ---- cjenik (members) ----
     "cjenik.hint": Slot("Svaka usluga je zasebna članarina — plaća se mjesečno, sljedeća uplata dospijeva "
                         "mjesec dana nakon zadnje.", CAP, "Cjenik: uvodna rečenica"),
-    "cjenik.grupni": Slot("Satni termini u malim grupama do 8 polaznika — rezerviraš u rasporedu.", CAP, "Cjenik: grupni"),
-    "cjenik.individualni": Slot("Rad 1:1 s trenerom, termini po dogovoru.", CAP, "Cjenik: individualni"),
-    "cjenik.poluindividualni": Slot("Trening u dvoje ili troje — pola puta između grupe i 1:1.", CAP, "Cjenik: poluindividualni"),
-    "cjenik.rehabilitacija": Slot("Programi povratka nakon ozljede, 1:1 stručno vođeni.", CAP, "Cjenik: rehabilitacija"),
-    "cjenik.online": Slot("Programi po tvojoj razini i cilju, s video uputama — gdje god jesi.", CAP, "Cjenik: online"),
-    "cjenik.prehrana": Slot("Vođenje prehrane uz aplikaciju MojiMakrosi i zdrave recepte.", CAP, "Cjenik: prehrana"),
-    "cjenik.note": Slot("Za upis se javi treneru u dvorani.", CAP, "Cjenik: napomena uz plan koji nemaš"),
+    # "Dodaj plan"'s cards, one text each (21.10.2026; PLAN_TEXTS above): a
+    # gym plan's, and each QMove tier's, which start alike
+    **{f"cjenik.{plan}.text": Slot("\n".join(lines + PLAN_TEXT_END), CAP, f"Članarina: tekst plana · {plan}")
+       for plan, lines in PLAN_TEXTS.items() if plan != "online"},
+    **{f"cjenik.online.{tier}.text": Slot("\n".join(PLAN_TEXTS["online"] + PLAN_TEXT_END), CAP,
+                                          f"Članarina: tekst plana · online {n}")
+       for n, tier in enumerate(ONLINE_TIERS, start=1)},
     # ---- moja članarina (18.10.2026): the rest of the page's own words ----
     # The lead, the plans' texts and the prices are the cjenik.* and price.*
     # slots above. Not slots: the sentences built around a date or a number
@@ -307,6 +345,10 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # ledger's headers.
     "clanarina.h.plans": Slot("Tvoji planovi", CAP, "Članarina: naslov · Tvoji planovi"),
     "clanarina.h.add": Slot("Dodaj plan", CAP, "Članarina: naslov · Dodaj plan"),
+    # "Dodaj plan"'s two groups (21.10.2026), each with its Mjesečno /
+    # Godišnje switch: the online plan's three QMove tiers, the gym's plans
+    "clanarina.h.online": Slot("Online treninzi", CAP, "Članarina: naslov · Online treninzi"),
+    "clanarina.h.gym": Slot("Treninzi u dvorani", CAP, "Članarina: naslov · Treninzi u dvorani"),
     "clanarina.h.bills": Slot("Računi", CAP, "Članarina: naslov · Računi"),
     # the card a member without a plan sees instead of Tvoji planovi; an
     # editor sees it too, under a caption, so its two sentences are in reach
@@ -314,10 +356,6 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
                                  "Članarina: bez plana, prva rečenica"),
     "clanarina.none.text": Slot("Za upis se javi treneru u dvorani — plaćanje gotovinom ili karticom.", CAP,
                                 "Članarina: bez plana, druga rečenica"),
-    # under "Pretplati se karticom", which shows only while Stripe is
-    # configured; an editor gets it regardless (moja_clanarina.html)
-    "clanarina.card_hint": Slot("Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.", CAP,
-                                "Članarina: uz plaćanje karticom"),
     "clanarina.bills.empty": Slot("Još nema zabilježenih uplata.", CAP, "Članarina: nema uplata"),
     # The plans' names on /moja-clanarina and nowhere else: the headings of
     # its cards, a plan held and a plan to add. Their defaults are
@@ -395,7 +433,9 @@ GYM_CARD_BLANK = {"title": "Nova kartica", "lead": "Kratki opis — klikni i upi
 # offer.individualno.* slots' defaults until 20.10.2026) and the plans they
 # stand for, the first pricing each: the cards of the demo seed
 # (scripts/seed_demo.py); the migration that made them rows carries its own
-# copy. Their own price and unit are empty: a plan prices them.
+# copy. Their own price and unit are empty: a plan prices them (and since
+# 21.10.2026 their yearly price too, its price.<plan>.year_* slots: their
+# own year_price / year_unit are never printed).
 GYM_CARD_EXAMPLES = (
     {"title": "Dvorana", "lead": "Grupni treninzi u Dubravi.",
      "points": ("Male grupe do 8 polaznika", "8, 12 ili 16 treninga mjesečno", "Termin rezerviraš u aplikaciji"),
@@ -415,9 +455,10 @@ GYM_CARD_EXAMPLES = (
 # back), and its extra lines under them as one too (20.10.2026: none until
 # the editor adds one, and Zadano empties them); the switch as a FlagSlot,
 # on by default. The label is the field's word in the editor's bar, after
-# the card's number ("Kartica 2: naziv", landing.html). price / unit print
-# only on a card that stands for no plan: a plan's card prints the plan's
-# price slots.
+# the card's number ("Kartica 2: naziv", landing.html). price / unit and
+# year_price / year_unit print only on a card that stands for no plan: a
+# plan's card prints the plan's price slots (its yearly ones since
+# 21.10.2026, price.<plan>.year_amount / .year_unit).
 GYM_CARD_SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
     "title": Slot(GYM_CARD_BLANK["title"], CAP, "naziv"),
     "lead": Slot(GYM_CARD_BLANK["lead"], CAP, "podnaslov"),

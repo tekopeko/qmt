@@ -921,7 +921,7 @@ def test_landing_gym_cards_are_rows_the_editor_adds_hides_and_prices():
         assert 'id="dvorana"' not in page and "Pilates za cure" not in page and '<span class="t">Individualno</span>' not in page
         assert page.count('class="period"') == 1 and page.count('aria-label="Kartice ponude"') == 1   # the tiers' alone
     page = client_for("trener@test.local").get("/").text                # the editor keeps it, marked off
-    assert '<section class="band is-off" id="dvorana" style="padding-top:0;" data-flag-group>' in page
+    assert '<section class="band is-off" id="dvorana" style="padding-top:0;" data-flag-group data-period-group>' in page
     gym = gym_section(page)
     assert gym.count('<div class="card offer is-off') == 3 and 'action="/dvorana/nova"' in gym
 

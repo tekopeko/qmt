@@ -171,13 +171,15 @@ def test_cash_member_sees_a_card_per_plan_the_plans_to_add_and_the_ledger():
     assert 'href="/treninzi">Otvori online treninge →</a>' in card(page, "online")
     assert "Iskorišteno" not in text(card(page, "individualni"))      # unlimited: no usage line
 
-    # Dodaj plan: exactly the three he does not hold, with their descriptions
+    # Dodaj plan: exactly the three he does not hold, with their texts; he
+    # holds online, so no QMove tier and no online group at all (21.10.2026)
     add = section(page, "mcAdd")
     assert re.findall(r'<div class="card plan[^"]*" id="plan-(\w+)"', add) == \
         ["poluindividualni", "rehabilitacija", "prehrana"]
+    assert 'id="mcOnline"' not in add and add.count('class="period"') == 1
     for key in ("poluindividualni", "rehabilitacija", "prehrana"):
-        assert copy.SLOTS[f"cjenik.{key}"].default in add
-    assert add.count(copy.SLOTS["cjenik.note"].default) == 3           # cash only: the note, no button
+        assert copy.SLOTS[f"cjenik.{key}.text"].default in add
+    assert add.count("Za upis se javi treneru u dvorani.") == 3        # in each card's text; cash only: no button
     assert "Pretplati se karticom" not in page and "Najpopularnije</span>" not in add   # grupni is his
 
     # Računi: every uplata, newest first, with plan and method
@@ -226,8 +228,9 @@ def test_member_without_a_plan_sees_why_every_plan_and_an_empty_ledger():
     none = text(_until_next(page, _tag_start(page, 'class="card mc-none"'), 'class="mc-sec"'))
     assert "Nemaš aktivnu članarinu — bez nje rezervacija nije moguća." in none
     assert "Za upis se javi treneru u dvorani — plaćanje gotovinom ili karticom." in none
-    add = section(page, "mcAdd")
-    assert re.findall(r'<div class="card plan[^"]*" id="plan-(\w+)"', add) == list(PLAN_TYPES)
+    add = section(page, "mcAdd")                                      # every plan: the three tiers, then the gym's five
+    assert re.findall(r'<div class="card plan[^"]*" id="plan-([\w-]+)"', add) == \
+        ["online", "online-pro", "online-elite", *(p for p in PLAN_TYPES if p != "online")]
     assert '<span class="featured-tag">Najpopularnije</span>' in card(page, "grupni")
     assert "Još nema zabilježenih uplata." in section(page, "mcBills")
     assert "<table" not in page
@@ -331,16 +334,17 @@ def test_the_headings_and_the_plans_names_are_the_owners_text_on_this_page_only(
     bills = section(page, "mcBills")
     assert "Grupni trening" in bills and "Grupa<" not in bills       # the ledger names the record
     sara = client_for("sara@test.local").get("/moja-clanarina").text
-    assert '<h3 class="plan-h"><span class="t">Grupa</span></h3>' in card(sara, "grupni")   # a plan to add
-    assert '<h3 class="plan-h"><span class="t">Individualni trening</span></h3>' in card(sara, "individualni")
+    assert '<h4 class="plan-h"><span class="t">Grupa</span></h4>' in card(sara, "grupni")   # a plan to add
+    assert '<h4 class="plan-h"><span class="t">Individualni trening</span></h4>' in card(sara, "individualni")
 
     clanarine = t.get("/clanarine").text                              # the app's own names stay
     assert "<strong>Grupni trening</strong>" in clanarine and "Grupa<" not in clanarine
     assert 'data-copy="plan.' not in clanarine                       # and are no slot there
     editor = t.get("/moja-clanarina").text                           # the editor gets every one to open
-    for key in ("clanarina.h.plans", "clanarina.h.add", "clanarina.h.bills",
-                *(f"plan.{p}.name" for p in PLAN_TYPES)):
+    for key in ("clanarina.h.plans", "clanarina.h.add", "clanarina.h.online", "clanarina.h.gym",
+                "clanarina.h.bills", *(f"plan.{p}.name" for p in PLAN_TYPES if p != "online")):
         assert f'data-copy="{key}"' in editor, key
+    assert 'data-copy="plan.online.name"' not in section(editor, "mcAdd")   # the tiers: their cards' titles
 
 
 def test_the_no_plan_card_is_the_owners_text_and_the_editor_sees_it_as_a_preview():
@@ -349,10 +353,9 @@ def test_the_no_plan_card_is_the_owners_text_and_the_editor_sees_it_as_a_preview
     a slot too. The trainer and the owner hold no plans and are told no
     membership talk, so the card would be on no page they open: an editor
     gets it as a preview, in the section under its heading, after a caption
-    that says whose view it is (static, not a slot). The line under
-    "Pretplati se karticom" shows only while Stripe is configured; with card
-    payments off an editor gets it regardless, in every Dodaj plan card, and
-    a member never."""
+    that says whose view it is (static, not a slot). (The line under
+    "Pretplati se karticom" was a slot of its own, clanarina.card_hint,
+    until 21.10.2026: a line of every Dodaj plan card's one text since.)"""
     make_user("sara@test.local")
     make_user("trener@test.local", is_trainer=True)
     db.set_copy("clanarina.none.title", "Bez plana nema rezervacija.", None)
@@ -365,7 +368,6 @@ def test_the_no_plan_card_is_the_owners_text_and_the_editor_sees_it_as_a_preview
     assert '<p class="hint"><span class="t">Javi se u dvorani.</span></p>' in none
     assert "Ovo vidi član bez članarine" not in page and 'aria-labelledby="mcPlans"' not in page
     assert '<p class="hint"><span class="t">Nema uplata.</span></p>' in section(page, "mcBills")
-    assert copy.SLOTS["clanarina.card_hint"].default not in page    # no card payments, no card's line
 
     page = client_for("trener@test.local").get("/moja-clanarina").text
     plans = section(page, "mcPlans")                                 # heading, caption, the card
@@ -376,9 +378,7 @@ def test_the_no_plan_card_is_the_owners_text_and_the_editor_sees_it_as_a_preview
     for key, txt in (("clanarina.none.title", "Bez plana nema rezervacija."), ("clanarina.none.text", "Javi se u dvorani.")):
         assert f'data-copy="{key}"' in preview and f">{txt}</span>" in preview, key
     assert 'data-copy="clanarina.bills.empty"' in section(page, "mcBills")
-    add = section(page, "mcAdd")
-    assert add.count('data-copy="clanarina.card_hint"') == len(PLAN_TYPES)
-    assert "Pretplati se karticom" not in add                       # still no card payments for anyone
+    assert "Pretplati se karticom" not in section(page, "mcAdd")    # no card payments for anyone
 
 
 def test_the_trainers_page_leads_to_the_members_page():
@@ -404,6 +404,154 @@ def test_the_trainers_page_leads_to_the_members_page():
     assert client_for("ivan@test.local").get("/clanarine").status_code == 403
     r = TestClient(app).get("/clanarine", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/login"
+
+
+# ---------- Dodaj plan: two groups, a card one text (21.10.2026) ----------
+#
+# The owner, of "Dodaj plan" in edit mode (six cards, each a heading, a
+# lead, the price, a note and two hints, every piece its own box): "every
+# tab is one big text cell except the number i.e. price which is connected
+# to the front page. Here, it should also be split into the QMOVE online
+# trainings with 'godišnje' as default and everything else in the gym
+# separate with 'mjesečni' as default."
+
+def group(page: str, heading_id: str) -> str:
+    """One of Dodaj plan's groups, by its heading's id, up to the next group
+    or section."""
+    return _until_next(page, _tag_start(page, f'aria-labelledby="{heading_id}"'), 'class="mc-group"', 'class="mc-sec"')
+
+
+def cards_in(markup: str) -> dict[str, str]:
+    """The Dodaj plan cards in some markup, by their ids (plan-<id>), each
+    from its class list to the next card."""
+    return {re.search(r'id="plan-([\w-]+)"', part).group(1): part for part in markup.split('<div class="card plan')[1:]}
+
+
+def shown_lines(markup: str) -> list[str]:
+    """The periods of a card's price lines that are not hidden."""
+    return re.findall(r'<div class="price" data-period="(\w+)">', markup)
+
+
+def test_dodaj_plan_is_two_groups_each_with_its_own_switch():
+    """Dodaj plan is two groups, each its heading (a slot) and its own
+    Mjesečno / Godišnje switch (_period.html), a [data-period-group] whose
+    cards' prices base.html's script flips (in a browser:
+    tests/test_copy.py). Online first: the landing's three QMove tiers,
+    named by their cards' title slots (a rename shows on both pages),
+    opening on Godišnje: every tier's yearly line shown, its monthly hidden.
+    Then the gym's plans in PLAN_TYPES order, opening on Mjesečno, the
+    other way round. A plan held is left out, all three tiers when it is
+    online, and a group left with no card is not on the page (ivan holds
+    online: no online group). Sara holds none: every card."""
+    make_user("trener@test.local", is_trainer=True)
+    make_user("ivan@test.local", plans=("grupni", "individualni", "online"))
+    make_user("sara@test.local")
+    t = client_for("trener@test.local")
+    assert t.post("/copy/offer.online2.title", data={"text": "QMove PRO+"}).json()["text"] == "QMove PRO+"
+
+    page = t.get("/moja-clanarina").text
+    add = section(page, "mcAdd")
+    assert add.count("data-period-group") == 2 and add.count('class="period"') == 2
+    assert add.index('id="mcOnline"') < add.index('id="mcGym"')
+    online, gym = group(page, "mcOnline"), group(page, "mcGym")
+    assert '<h3 class="pc-kicker" id="mcOnline"><span class="ed t" data-copy="clanarina.h.online"' in online
+    assert '<h3 class="pc-kicker" id="mcGym"><span class="ed t" data-copy="clanarina.h.gym"' in gym
+    tab = '<button type="button" role="tab" aria-selected="{}" data-period="{}">{}</button>'
+    for markup, start in ((online, "year"), (gym, "month")):    # each switch says its group's opening
+        assert markup.count('class="period"') == 1 and '<div class="period" role="tablist"' in markup
+        assert tab.format(str(start == "month").lower(), "month", "Mjesečno") in markup, start
+        assert tab.format(str(start == "year").lower(), "year", "Godišnje") in markup, start
+    tiers = cards_in(online)                                     # the tiers by their landing titles, in order
+    assert list(tiers) == ["online", "online-pro", "online-elite"]
+    for markup, slot in zip(tiers.values(), ("offer.online", "offer.online2", "offer.online3")):
+        assert f'<h4 class="plan-h"><span class="ed t" data-copy="{slot}.title"' in markup, slot
+        assert shown_lines(markup) == ["year"] and markup.count('data-period="month" hidden>') == 1, slot
+    assert ">QMove PRO+</span></h4>" in tiers["online-pro"]       # the landing card's title, renamed
+    plans = cards_in(gym)                                        # the gym's plans, each opening monthly
+    assert list(plans) == [p for p in PLAN_TYPES if p != "online"]
+    for key, markup in plans.items():
+        assert f'data-copy="plan.{key}.name"' in markup, key
+        assert shown_lines(markup) == ["month"] and markup.count('data-period="year" hidden>') == 1, key
+
+    page = client_for("ivan@test.local").get("/moja-clanarina").text   # online held: no tier, no group
+    add = section(page, "mcAdd")
+    assert 'id="mcOnline"' not in add and "QMove" not in add and add.count('class="period"') == 1
+    assert list(cards_in(group(page, "mcGym"))) == ["poluindividualni", "rehabilitacija", "prehrana"]
+    page = client_for("sara@test.local").get("/moja-clanarina").text   # nothing held: every card
+    assert list(cards_in(group(page, "mcOnline"))) == ["online", "online-pro", "online-elite"]
+    assert list(cards_in(group(page, "mcGym"))) == [p for p in PLAN_TYPES if p != "online"]
+    assert "data-copy" not in section(page, "mcAdd")                    # a member's: no editor markup
+
+
+def test_a_plan_card_is_its_name_its_prices_and_one_text():
+    """A Dodaj plan card is its name, its two price lines and ONE text, in
+    that order (then the button while Stripe sells the plan:
+    tests/test_payments.py). The text is a slot, cjenik.<plan>.text
+    (cjenik.online.<tier>.text for a tier), whose default is what the card
+    said in its pieces until 21.10.2026, a line each: for grupni its lead,
+    its note, "Za upis…" and the card line. An edit shows, line breaks and
+    all; emptied it stays empty, and a member gets no paragraph for it, the
+    editor an empty box; Zadano brings the four lines back. The pieces left
+    the registry, and POST /copy/{key} knows them no more."""
+    make_user("trener@test.local", is_trainer=True)
+    make_user("sara@test.local")
+    gone = [*(f"cjenik.{p}" for p in PLAN_TYPES), "cjenik.note", "clanarina.card_hint",
+            *(f"price.{p}.note" for p in PLAN_TYPES)]
+    assert not set(gone) & set(copy.SLOTS)
+    end = "Za upis se javi treneru u dvorani.\nMjesečno, otkazivo bilo kad. Ili gotovinom u dvorani."
+    four = "Satni termini u malim grupama do 8 polaznika — rezerviraš u rasporedu.\n8, 12 ili 16 treninga\n" + end
+    assert copy.SLOTS["cjenik.grupni.text"] == copy.Slot(four, copy.CAP, "Članarina: tekst plana · grupni")
+    assert copy.SLOTS["cjenik.individualni.text"].default == "Rad 1:1 s trenerom, termini po dogovoru.\n" + end
+    for n, tier in enumerate(("start", "pro", "elite"), start=1):   # each tier starts with the online plan's lines
+        assert copy.SLOTS[f"cjenik.online.{tier}.text"] == copy.Slot(
+            "Programi po tvojoj razini i cilju, s video uputama — gdje god jesi.\n" + end, copy.CAP,
+            f"Članarina: tekst plana · online {n}")
+    t = client_for("trener@test.local")
+    for key in gone:
+        assert t.post(f"/copy/{key}", data={"text": "x"}).status_code == 404, key
+
+    def grupni(c) -> str:
+        return cards_in(section(c.get("/moja-clanarina").text, "mcAdd"))["grupni"]
+
+    sara = client_for("sara@test.local")
+    g = grupni(sara)
+    assert f'<p class="plan-desc"><span class="t">{four}</span></p>' in g
+    at = [g.index(mark) for mark in ('<h4 class="plan-h">', 'data-period="month"', 'data-period="year"', 'class="plan-desc"')]
+    assert at == sorted(at) and g.count("plan-desc") == 1 and "price-hint" not in g   # one text, no note
+    r = t.post("/copy/cjenik.grupni.text", data={"text": "Male grupe.\n\nJavi se treneru."})
+    assert r.json() == {"ok": True, "text": "Male grupe.\n\nJavi se treneru.", "default": False}
+    assert '<p class="plan-desc"><span class="t">Male grupe.\n\nJavi se treneru.</span></p>' in grupni(sara)
+    r = t.post("/copy/cjenik.grupni.text", data={"text": " \n "})    # emptied: it stays empty
+    assert r.json() == {"ok": True, "text": "", "default": False}
+    assert "plan-desc" not in grupni(sara) and "Male grupe" not in grupni(sara)
+    assert ('<p class="plan-desc"><span class="ed t" data-copy="cjenik.grupni.text" data-max="2000" '
+            'data-label="Članarina: tekst plana · grupni"></span></p>') in grupni(t)
+    r = t.post("/copy/cjenik.grupni.text", data={"text": "x", "reset": "1"})
+    assert r.json() == {"ok": True, "text": four, "default": True} and db.copy_texts() == {}
+
+
+def test_no_price_carries_a_note_and_prehranas_hint_keeps_the_two_amounts():
+    """_plan_price.html prints no note under a price since 21.10.2026 (the
+    price.<plan>.note slots went; grupni's and rehabilitacija's notes are
+    lines of their Dodaj plan texts): not on a Dodaj plan card, not under a
+    held plan's Cijena, not for the editor. Prehrana's hint, the
+    MojiMakrosi add-on's two amounts (addon.dvorana, addon.online), still
+    prints under its price: on its Dodaj plan card under both price lines,
+    and under a member's own card's Cijena."""
+    make_user("trener@test.local", is_trainer=True)
+    make_user("ivan@test.local", plans=("grupni", "rehabilitacija", "prehrana"))
+    ivan = client_for("ivan@test.local").get("/moja-clanarina").text
+    for key in ("grupni", "rehabilitacija"):                       # his own cards: the price alone under Cijena
+        cijena = card(ivan, key).split("<dt>Cijena</dt>")[1].split("</dd>")[0]
+        assert cijena.count('<div class="price">') == 1 and "price-hint" not in cijena, key
+    assert "8, 12 ili 16 treninga" not in card(ivan, "grupni") and "paketi od 5" not in card(ivan, "rehabilitacija")
+    assert "Cijena od 3 € / mjesečno 3 € uz dvoranu, 5 € uz online Uplaćeno" in text(card(ivan, "prehrana"))
+    editor = client_for("trener@test.local").get("/moja-clanarina").text
+    assert not re.search(r'data-copy="price\.\w+\.note"', editor)
+    prehrana = cards_in(section(editor, "mcAdd"))["prehrana"]      # its card to add: the hint after both lines
+    assert '<div class="hint price-hint"><span class="ed t" data-copy="addon.dvorana"' in prehrana
+    assert 'data-copy="addon.online"' in prehrana
+    assert "od 3 € / mjesečno na upit 3 € uz dvoranu, 5 € uz online" in text(prehrana)
 
 
 # ---------- the online plan's tiers (20.10.2026) ----------
