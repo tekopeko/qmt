@@ -48,7 +48,7 @@ round trip is testable. Prod demo clients: `*.demo@example.com` / `demo12345`.
 ### Deployment (Scaleway)
 
 See **DEPLOY.md** and **../webhost/README.md**. One Scaleway instance runs QMT and
-mojimakrosi, the way the trader dashboard runs (`../webhost/`, in this repo, for both:
+mojimakrosi, the way the trader dashboard runs (`../webhost/`, its own repo beside this one, for both:
 Terraform + cloud-init, Docker Compose with Postgres 18, Caddy behind Cloudflare,
 nightly dumps to Object Storage). Dockerfile → `start.sh` runs `alembic upgrade head`
 then uvicorn; `/healthz` is the healthcheck. A deploy is `../webhost/deploy.sh <ip> qmt`
