@@ -1,0 +1,6 @@
+# The real env files hold production secrets and are never committed: only
+# this file and the *.example templates are tracked. infra/deploy.sh copies
+# db.env, qmt.env and mojimakrosi.env to /opt/webhost/ on the box (mode 600).
+*
+!.gitignore
+!*.example

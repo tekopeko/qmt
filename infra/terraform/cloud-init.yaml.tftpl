@@ -1,0 +1,111 @@
+#cloud-config
+# First boot of the webhost box, which runs QMT and mojimakrosi: the trader
+# dashboard's cloud-init (trader/infra/cloud-init.yaml.tftpl) for two sites.
+# main.tf renders it with templatefile() (the two domain names come from
+# variables.tf). cloud-init runs it ONCE: editing it later changes nothing on
+# a running box (change the box by hand too, or rebuild it).
+package_update: true
+package_upgrade: false
+
+packages:
+  - unattended-upgrades
+  - unzip
+
+write_files:
+  # Caddy gets a Let's Encrypt certificate for each of the three names with
+  # the HTTP-01 challenge, through Cloudflare's proxy (orange cloud; the
+  # zone's SSL mode must be Full (strict)). www redirects to the apex.
+  - path: /etc/caddy/Caddyfile
+    owner: root:root
+    permissions: '0644'
+    content: |
+      ${qmt_domain} {
+          reverse_proxy 127.0.0.1:8001
+      }
+
+      ${mm_domain} {
+          reverse_proxy 127.0.0.1:8002
+      }
+
+      # One canonical host for mojimakrosi (one cookie jar, one PWA scope).
+      www.${mm_domain} {
+          redir https://${mm_domain}{uri} 308
+      }
+
+  # Security updates every day (Ubuntu's -security pocket only: Docker's and
+  # Caddy's repos are not in it). It never reboots by itself;
+  # /var/run/reboot-required says when a kernel update wants one.
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root:root
+    permissions: '0644'
+    defer: true
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+  # Nightly dumps of both databases at 03:17 UTC. The script itself arrives
+  # with the first infra/deploy.sh (one source of truth, no inline copy to
+  # drift); until then this job only logs "No such file".
+  - path: /etc/cron.d/webhost-backup
+    owner: root:root
+    permissions: '0644'
+    content: |
+      PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      17 3 * * * root /opt/backups/backup.sh >> /opt/backups/backup.log 2>&1
+
+  # Autoheal, as the trader's deploy.sh installs it: a healthcheck only
+  # LABELS a container unhealthy, and `restart: unless-stopped` reacts to
+  # exits, not to health. This restarts whatever the healthchecks flag.
+  - path: /etc/cron.d/webhost-autoheal
+    owner: root:root
+    permissions: '0644'
+    content: |
+      * * * * * root docker ps -q --filter health=unhealthy | xargs -r docker restart >> /var/log/webhost-autoheal.log 2>&1
+
+runcmd:
+  # --- Docker: official repo, not Ubuntu's docker.io ---
+  - apt-get install -y ca-certificates curl gnupg
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - >
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc]
+    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable"
+    > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - systemctl enable --now docker
+
+  # --- Caddy: official repo (not in Ubuntu's) ---
+  - apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' -o /etc/apt/sources.list.d/caddy-stable.list
+  - chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  - chmod o+r /etc/apt/sources.list.d/caddy-stable.list
+  - apt-get update
+  # --force-confold keeps the Caddyfile written above over the package's own.
+  - apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold caddy
+  # On the trader's box (2026-08-19) the package's postinst did not create the
+  # caddy user under cloud-init (status=217/USER). Idempotent guard:
+  - id caddy >/dev/null 2>&1 || (groupadd --system caddy && useradd --system --gid caddy --home-dir /var/lib/caddy --create-home --shell /usr/sbin/nologin --comment "Caddy web server" caddy)
+  - systemctl enable --now caddy
+  - systemctl restart caddy
+
+  # --- Firewall: the security group is the perimeter (22/80/443), this the host ---
+  - ufw allow OpenSSH
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+
+  # --- Security updates (the package comes from `packages:` above) ---
+  - systemctl enable --now unattended-upgrades
+
+  # --- awscli v2 for the off-site upload (noble has no awscli package) ---
+  - curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+  - unzip -q /tmp/awscliv2.zip -d /tmp/awscliv2
+  - /tmp/awscliv2/aws/install
+  - rm -rf /tmp/awscliv2 /tmp/awscliv2.zip
+
+  # --- Where infra/deploy.sh puts the apps, and where the dumps go ---
+  - mkdir -p /opt/webhost
+  - install -d -m 0700 /opt/backups

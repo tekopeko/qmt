@@ -1,6 +1,28 @@
-# Where the last session left off — 21.10.2026.
+# Where the last session left off — 23.10.2026.
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
+
+## 23.10.2026 — leaving Railway for Scaleway: infra draft, awaiting review
+
+Railway had a multi-day outage and a breach in which customers' environment
+variables were read. The owner: "Lets move to scaleway … since I already host a
+page trader there already." Both web apps, QMT and mojimakrosi, move to ONE new
+Scaleway instance, provisioned and run the way the trader dashboard is (Terraform
++ cloud-init, Docker Compose, Caddy, nightly backups to Object Storage), never on
+the trader's box. The infra lives in this repo under `infra/` and serves both;
+mojimakrosi's code is rsynced from `../macro_tracker`.
+
+**Not deployed.** Drafted by Opus, awaiting Fable's review: `infra/terraform/`
+(`terraform validate` and `plan` pass: 5 to add, 0 to change, 0 to destroy; local
+state), `infra/compose/` (Postgres 18 + the two apps on 127.0.0.1:8001 / 8002),
+`infra/deploy.sh` (with `--dry-run`), `infra/backup.sh`, `infra/restore.sh`,
+`infra/env/*.env.example`, `infra/README.md` (provisioning, Cloudflare, the cutover
+order), DEPLOY.md rewritten around Scaleway. Nothing provisioned, no DNS or Railway
+change. Before `terraform apply`: the owner writes `infra/env/{db,qmt,mojimakrosi}.env`
+with NEW secrets (Railway's were read) and sets the zone's SSL mode to Full
+(strict). The laptop backup jobs (LaunchAgents `com.qmt.backup`,
+`com.mojimakrosi.backup`) have failed since 22.10 (their last good dumps in R2 are
+from 21.10); they retire at the cutover.
 
 ## 15.10.2026 — Opus implements, Fable reviews
 
