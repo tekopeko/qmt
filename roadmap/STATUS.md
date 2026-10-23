@@ -9,16 +9,16 @@ variables were read. The owner: "Lets move to scaleway … since I already host 
 page trader there already." Both web apps, QMT and mojimakrosi, move to ONE new
 Scaleway instance, provisioned and run the way the trader dashboard is (Terraform
 + cloud-init, Docker Compose, Caddy, nightly backups to Object Storage), never on
-the trader's box. The infra lives in this repo under `infra/` and serves both;
+the trader's box. The infra lives in its own repo, `GIT/webhost` (neither app owns the box), and serves both;
 mojimakrosi's code is rsynced from `../macro_tracker`.
 
-**Not deployed.** Drafted by Opus, awaiting Fable's review: `infra/terraform/`
+**Not deployed.** Drafted by Opus, awaiting Fable's review: `../webhost/terraform/`
 (`terraform validate` and `plan` pass: 5 to add, 0 to change, 0 to destroy; local
-state), `infra/compose/` (Postgres 18 + the two apps on 127.0.0.1:8001 / 8002),
-`infra/deploy.sh` (with `--dry-run`), `infra/backup.sh`, `infra/restore.sh`,
-`infra/env/*.env.example`, `infra/README.md` (provisioning, Cloudflare, the cutover
+state), `../webhost/compose/` (Postgres 18 + the two apps on 127.0.0.1:8001 / 8002),
+`../webhost/deploy.sh` (with `--dry-run`), `../webhost/backup.sh`, `../webhost/restore.sh`,
+`../webhost/env/*.env.example`, `../webhost/README.md` (provisioning, Cloudflare, the cutover
 order), DEPLOY.md rewritten around Scaleway. Nothing provisioned, no DNS or Railway
-change. Before `terraform apply`: the owner writes `infra/env/{db,qmt,mojimakrosi}.env`
+change. Before `terraform apply`: the owner writes `../webhost/env/{db,qmt,mojimakrosi}.env`
 with NEW secrets (Railway's were read) and sets the zone's SSL mode to Full
 (strict). The laptop backup jobs (LaunchAgents `com.qmt.backup`,
 `com.mojimakrosi.backup`) have failed since 22.10 (their last good dumps in R2 are

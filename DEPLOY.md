@@ -1,14 +1,14 @@
 # Deploy: Scaleway + qmt.mojimakrosi.com
 
 **Status, 23.10.2026: drafted, not live.** Production still runs on Railway
-until the cutover in [`infra/README.md`](infra/README.md) ("Cutover from
+until the cutover in [`../webhost/README.md`](../webhost/README.md) ("Cutover from
 Railway"); the last section here is what Railway was.
 
 ## 1. Where it runs
 
 One Scaleway instance (`webhost`: DEV1-S, Ubuntu 24.04, fr-par-1) runs QMT
 **and** mojimakrosi, provisioned the way the trader dashboard is: Terraform +
-cloud-init (`infra/terraform/`), Docker Compose (`infra/compose/`), Caddy in
+cloud-init (`../webhost/terraform/`), Docker Compose (`../webhost/compose/`), Caddy in
 front, nightly database dumps to Object Storage. Never on the trader's box.
 
     Cloudflare (proxied, SSL Full (strict))
@@ -19,13 +19,13 @@ front, nightly database dumps to Object Storage. Never on the trader's box.
 The image is this repo's `Dockerfile`; `start.sh` runs `alembic upgrade head`,
 then uvicorn on `$PORT`; `/healthz` is the healthcheck. Provisioning, DNS,
 the env files, the first deploy, the restore of the Railway dumps and the
-cutover: `infra/README.md`.
+cutover: `../webhost/README.md`.
 
 ## 2. Deploying a change
 
 Nothing deploys on a push. From the laptop, with the change committed:
 
-    infra/deploy.sh <ip> qmt              # --dry-run prints every step instead
+    ../webhost/deploy.sh <ip> qmt              # --dry-run prints every step instead
 
 It refuses a dirty tree (`DEPLOY_ALLOW_DIRTY=1` overrides) and an incomplete
 env file, rsyncs the repo to `/opt/webhost/qmt/`, copies the env files (mode
@@ -35,9 +35,9 @@ gets there. A migration ships with its code (`start.sh`); a rollback cannot
 undo one. The script does not re-run QMT's suite (the review gate runs
 `pytest -q` before each commit; `DEPLOY_QMT_TESTS=1` runs it there too).
 
-## 3. Variables: `infra/env/qmt.env` → `/opt/webhost/qmt.env`
+## 3. Variables: `../webhost/env/qmt.env` → `/opt/webhost/qmt.env`
 
-The template is `infra/env/qmt.env.example`. Every secret is a new one:
+The template is `../webhost/env/qmt.env.example`. Every secret is a new one:
 Railway's variables were read in the October 2026 breach. Compose also sets
 `FORWARDED_ALLOW_IPS=*` on the container (uvicorn then trusts Caddy's
 `X-Forwarded-Proto`; the port is reachable from the box only).
@@ -47,7 +47,7 @@ Railway's variables were read in the October 2026 breach. Compose also sets
 | `ENV` | `production` (fixed in the template; `deploy.sh` refuses anything else) |
 | `PORT` | `8000` (fixed: compose maps 127.0.0.1:8001 to it, the healthcheck probes it) |
 | `SECRET_KEY` | `python3 -c "import secrets;print(secrets.token_hex(32))"` |
-| `DATABASE_URL` | `postgresql+psycopg://qmt:<QMT_DB_PASSWORD>@db:5432/qmt`: the compose `db` service, the password `infra/env/db.env`'s (note the driver, `+psycopg`) |
+| `DATABASE_URL` | `postgresql+psycopg://qmt:<QMT_DB_PASSWORD>@db:5432/qmt`: the compose `db` service, the password `../webhost/env/db.env`'s (note the driver, `+psycopg`) |
 | `OWNER_EMAIL` | the app owner's address (Tvrtko): controls roles and /korisnici |
 | `ALLOWED_EMAILS` | first clients, comma-separated (owner's address too, for testing) |
 | `SIGNUP_MODE` | `closed` (the default, also when unset or mistyped): no new accounts, and no page offers one. `invite`: the owner + `ALLOWED_EMAILS`. `open`: anyone. **Leave unset for now**: registration has stayed closed since 28.9.2026 |
@@ -69,7 +69,7 @@ Railway's variables were read in the October 2026 breach. Compose also sets
 `qmt` is an **A** record to the box's IP, **Proxied**; the zone's SSL/TLS mode
 is **Full (strict)**. Caddy gets the certificate itself, with Let's Encrypt's
 HTTP-01 challenge through the proxy (details and the fallback:
-`infra/README.md`, "Cloudflare").
+`../webhost/README.md`, "Cloudflare").
 
 ## 5. First boot on an empty database
 
@@ -92,7 +92,7 @@ Only for a fresh install; the cutover restores the existing database instead.
 
 ## 6. Backups
 
-On the box, nightly at 03:17 UTC: `infra/backup.sh` (installed by every
+On the box, nightly at 03:17 UTC: `../webhost/backup.sh` (installed by every
 deploy as `/opt/backups/backup.sh`) dumps both databases with `pg_dump
 --no-owner --no-privileges` to `/opt/backups/<db>-<stamp>.sql.gz` (14 days),
 refuses a dump under 2 KB, and copies each to the `teko-webhost-backups`
@@ -101,7 +101,7 @@ failure is emailed to `OWNER_EMAIL` through QMT's Resend sender.
 
     ssh root@<ip> 'tail -n 20 /opt/backups/backup.log; ls -lh /opt/backups'
     scp root@<ip>:/opt/backups/qmt-<stamp>.sql.gz .
-    infra/restore.sh <ip> qmt qmt-<stamp>.sql.gz --force    # into an empty database; --force empties it first
+    ../webhost/restore.sh <ip> qmt qmt-<stamp>.sql.gz --force    # into an empty database; --force empties it first
 
 ## 7. Post-deploy smoke test
 
@@ -112,7 +112,7 @@ the media is in R2: the containers keep nothing).
 ## 8. Later: handover to the client's account
 
 A Scaleway project (or account) of his → `terraform apply` there with its keys
-→ the env files → `infra/deploy.sh` → `infra/restore.sh` the newest dump →
+→ the env files → `../webhost/deploy.sh` → `../webhost/restore.sh` the newest dump →
 repoint the DNS (or move to his domain) → copy the R2 bucket if the media moves
 too. Half a day, no code changes.
 

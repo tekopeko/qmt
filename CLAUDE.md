@@ -47,11 +47,11 @@ round trip is testable. Prod demo clients: `*.demo@example.com` / `demo12345`.
 
 ### Deployment (Scaleway)
 
-See **DEPLOY.md** and **infra/README.md**. One Scaleway instance runs QMT and
-mojimakrosi, the way the trader dashboard runs (`infra/`, in this repo, for both:
+See **DEPLOY.md** and **../webhost/README.md**. One Scaleway instance runs QMT and
+mojimakrosi, the way the trader dashboard runs (`../webhost/`, in this repo, for both:
 Terraform + cloud-init, Docker Compose with Postgres 18, Caddy behind Cloudflare,
 nightly dumps to Object Storage). Dockerfile → `start.sh` runs `alembic upgrade head`
-then uvicorn; `/healthz` is the healthcheck. A deploy is `infra/deploy.sh <ip> qmt`
+then uvicorn; `/healthz` is the healthcheck. A deploy is `../webhost/deploy.sh <ip> qmt`
 from the laptop (refuses a dirty tree, waits for healthy, rolls back to the previous
 image); a push deploys nothing. **Not live yet** (23.10.2026: the infra is a draft
 awaiting review): until the cutover, prod is still Railway, where pushing to `master`
