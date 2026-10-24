@@ -2,7 +2,7 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
-## 23.10.2026 — leaving Railway for Scaleway: infra draft, awaiting review
+## 23.–24.10.2026 — leaving Railway for Scaleway: LIVE on the webhost box since 24.10. 20:30
 
 Railway had a multi-day outage and a breach in which customers' environment
 variables were read. The owner: "Lets move to scaleway … since I already host a
@@ -23,6 +23,8 @@ with NEW secrets (Railway's were read) and sets the zone's SSL mode to Full
 (strict). The laptop backup jobs (LaunchAgents `com.qmt.backup`,
 `com.mojimakrosi.backup`) have failed since 22.10 (their last good dumps in R2 are
 from 21.10); they retire at the cutover.
+
+24.10.2026, 20:30: the cutover, as `../webhost/README.md` records it: `railway down` on both app services, final dumps through the tunnel (QMT 12 KB, mojimakrosi 274 KB gz), `restore.sh --force` on the box, the three A records at Cloudflare, Caddy restarted and three Let's Encrypt certificates obtained within a minute; both sites smoke-tested on the public names (landing, login, /moja-clanarina, /raspored, /healthz). The laptop's two backup LaunchAgents are unloaded (moved to `~/Library/LaunchAgents/retired-railway/`); the box's nightly backup is the backup now. Railway's projects stay a few days as a rollback, then go; a push to `master` must wait until QMT's GitHub source is disconnected in Railway (it would redeploy the stale copy there).
 
 ## 15.10.2026 — Opus implements, Fable reviews
 

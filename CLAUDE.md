@@ -53,10 +53,7 @@ Terraform + cloud-init, Docker Compose with Postgres 18, Caddy behind Cloudflare
 nightly dumps to Object Storage). Dockerfile → `start.sh` runs `alembic upgrade head`
 then uvicorn; `/healthz` is the healthcheck. A deploy is `../webhost/deploy.sh <ip> qmt`
 from the laptop (refuses a dirty tree, waits for healthy, rolls back to the previous
-image); a push deploys nothing. **Not live yet** (23.10.2026: the infra is a draft
-awaiting review): until the cutover, prod is still Railway, where pushing to `master`
-auto-deploys and the Railway CLI on the owner's machine reads config (`railway
-variables --kv`).
+image); a push deploys nothing. **Live since 24.10.2026** (the cutover: Railway's app services taken down, final dumps restored on the box, the three Cloudflare A records switched; Railway's projects are deleted once the first nightly backups are in).
 
 ## Pages
 
