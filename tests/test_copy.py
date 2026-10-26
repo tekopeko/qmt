@@ -2247,7 +2247,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             out.append("after Ukloni sliku its name or its file is still there")
         problems, name = send(None)                                    # Dodaj sliku, on the plain card
         out += [f"onto a plain card: {p}" for p in problems]
-        pg.click("#copyToggle")                                        # Gotovo: edit mode persists in the tab otherwise
+        pg.click("#copyToggle")                                        # Gotovo (the reload ends edit mode too)
         photo_on(); pg.reload(); pg.wait_for_load_state("networkidle")
         return out
 
@@ -2312,7 +2312,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         three stack, nothing overflowing, and the new card's "Obriši najavu"
         asks first ("Obriši?" at one tap, the card still there); its second
         tap deletes it, and the page comes back with the two cards of the
-        walks."""
+        walks. Both forms bring the page back in edit mode (the one-shot
+        flag they leave, base.html: edit mode outlives no other load)."""
         out = []
         pg.click("#copyToggle")
         with pg.expect_navigation():
@@ -2326,7 +2327,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                                      document.querySelector('#aktualno .event:last-child h2').textContent, location.hash]""")
         if seen != [3, 3, copy.ANNOUNCEMENT_BLANK["title"], "#aktualno"]:
             out.append(f"after + Dodaj najavu (cards, dots, the last one's title, the address' #): {seen}")
-        if not pg.evaluate("document.body.classList.contains('editing')"):   # it comes back in edit mode by itself
+        if not pg.evaluate("document.body.classList.contains('editing')"):   # back in edit mode: the one-shot flag
             out.append("after + Dodaj najavu the page is not in edit mode any more")
         out += pg.evaluate(EDIT_ROW)
         x = pg.locator("#aktualno .event").nth(2).locator(".ed-ann-x > button")
@@ -2339,6 +2340,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         left, shown = [a.id for a in db.announcements(all=True)], pg.locator("#aktualno .event").count()
         if left != [one, two] or shown != 2:
             out.append(f"the second tap on Obriši najavu left the cards {left}, {shown} on the page")
+        if not pg.evaluate("document.body.classList.contains('editing')"):   # drop() leaves the flag too
+            out.append("after Obriši najavu the page is not in edit mode any more")
         pg.click("#copyToggle")                                        # Gotovo
         return out
 
@@ -2355,8 +2358,9 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         switch. Reloaded out of edit mode it is gone, and at 1280px the row
         is two columns again, for the editor and for a guest. Its "Obriši
         karticu" asks first ("Obriši?", the card still there); the second
-        tap deletes it: the two cards the walks after this one expect. No
-        page errors on the way."""
+        tap deletes it: the two cards the walks after this one expect, the
+        page back in edit mode (the one-shot flag, as after + Dodaj
+        karticu). No page errors on the way."""
         out, errs = [], []
 
         def opened(w, email):
@@ -2427,6 +2431,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         left, shown = [g.id for g in db.gym_cards(all=True)], wide.locator("#dvorana .gym-grid > .offer").count()
         if len(left) != 2 or third in left or shown != 2:
             out.append(f"the second tap on Obriši karticu left the cards {left}, {shown} on the page")
+        if not wide.evaluate("document.body.classList.contains('editing')"):
+            out.append("after Obriši karticu the page is not in edit mode any more")
         wide.click("#copyToggle")                                      # Gotovo
         for pg in (wide, phone, guest):
             pg.context.browser.close()

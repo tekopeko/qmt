@@ -2,6 +2,10 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
+## 26.10.2026 — edit mode belongs to the page, `?uredi=1` gone (Opus draft, reviewed, live)
+
+The owner: "when I go to a tab as an admin, please dont make it editable but default, but lets have the button 'uredi tekst' line on other tabs as well. There is also a bug when I go to admin's 'upitnik' I go to the edit mode immediately and I dont exit the edit mode when switching tabs." No page opens in edit mode by itself (Admin ▾ → Upitnik is plain `/upitnik`; the ✎ pill was already on every page for staff, `/upitnik` included); leaving a page ends it (a tab, the menu, a link, a reload by hand, Back / Forward); only the landing's add / delete forms bring it back after their reload, through a one-shot `sessionStorage['qmt-editing-once']` (`base.html`). Tests: `tests/test_nav.py` (staff on `/upitnik` and `/upitnik?uredi=1` in normal mode with the pill; the trainer leaving pages in edit mode at 390 / 1280), `tests/test_copy.py` (both deletes come back in edit mode). 217 tests.
+
 ## 26.10.2026 — the tabs grouped: the member's row and "Admin ▾" (Opus draft, reviewed, live)
 
 The owner: "on the admin layout that I and my friend can see, lets somehow group the tabs which are related for me and in another group the tabs which are there and different because I am an admin"; then "Lets not call it 'Uprava' but 'Admin'", "The extra tab that should be in the Admin group should be called 'Trenutne članarine'", "lets put prehrana last and lets call it Moja članarina everywhere (singular)", "The drawer on the phone should show these two sections only for admins, the members should see only one." Built, not reviewed, not deployed:

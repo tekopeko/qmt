@@ -6,19 +6,23 @@ A client's row: Početna · Raspored · Karton · Online treninzi (while an
 online plan runs) · Moja članarina · Prehrana. Staff's, the trainer's and the
 owner's: that row without Karton, then "Admin ▾", a menu in the account
 menu's component: Termini (/admin), Trenutne članarine (/clanarine), Upitnik
-(/upitnik?uredi=1, straight into edit mode) and, the owner's only, Korisnici
-and Statistika. The tab is .on while one of its pages is open, that item
-aria-current="page". The account menu is Profil, the theme and Odjava for
-everyone. In the ☰ drawer (≤900px) a client has the one plain list, staff two
-sections under captions, "Kao član" and "Admin" (the menu's items as rows).
+(/upitnik) and, the owner's only, Korisnici and Statistika. The tab is .on
+while one of its pages is open, that item aria-current="page". The account
+menu is Profil, the theme and Odjava for everyone. In the ☰ drawer (≤900px) a
+client has the one plain list, staff two sections under captions, "Kao član"
+and "Admin" (the menu's items as rows).
 
 The route half reads the HTML. The browser half starts the app in a thread,
 as tests/test_copy.py does, and walks the owner and a client at 390 and
 1280px: the pill is one row and nothing widens the page, the wordmark rule
 holds, the Admin menu opens and closes (a click, Escape, a click outside,
-the keyboard) and its items lead to their pages, the drawer shows its
-sections, and ?uredi=1 opens the upitnik in edit mode for an editor (the
-parameter then gone from the address) and does nothing for a client.
+the keyboard) and its items lead to their pages, and the drawer shows its
+sections. Then edit mode (26.10.2026, the owner: "when I go to a tab as an
+admin, please dont make it editable but default"): no page opens in it by
+itself, so staff land on /upitnik, ?uredi=1 (the old way in) or not, in
+normal mode with the ✎ pill there to press; leaving a page ends it (a tab,
+the menu, a reload by hand), and only the editor's own forms, which reload
+the landing, bring it back in edit mode.
 """
 
 from __future__ import annotations
@@ -115,7 +119,7 @@ def account_menu(page: str) -> list[str]:
 
 MEMBER_ROW = [("/", "Početna"), ("/raspored", "Raspored"), ("/treninzi", "Online treninzi"),
               ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")]
-TRAINER_ITEMS = [("/admin", "Termini"), ("/clanarine", "Trenutne članarine"), ("/upitnik?uredi=1", "Upitnik")]
+TRAINER_ITEMS = [("/admin", "Termini"), ("/clanarine", "Trenutne članarine"), ("/upitnik", "Upitnik")]
 OWNER_ITEMS = TRAINER_ITEMS + [("/korisnici", "Korisnici"), ("/statistika", "Statistika")]
 ACCOUNT = ["Profil", "Tamna tema", "Odjava"]
 
@@ -339,18 +343,20 @@ def test_the_bar_menu_and_drawer_in_a_browser(server):
                     check(pg.url == server + "/admin" and pg.text_content("main h1") == "Termini", f"Termini led to {pg.url}")
                     check(pg.evaluate("document.getElementById('adminBtn').classList.contains('on')"), "Admin is not .on on /admin")
                     check(pg.get_attribute('#adminMenu a[href="/admin"]', "aria-current") == "page", "Termini is not aria-current on /admin")
-                    # Upitnik: straight into edit mode, ?uredi=1 gone from the address
+                    # Upitnik: /upitnik in normal mode, the ✎ pill there to press
                     pg.click("#adminBtn")
                     with pg.expect_navigation():
                         pg.click("#adminMenu >> text=Upitnik")
                     pg.wait_for_load_state("networkidle")
                     state = pg.evaluate("[location.pathname, location.search, document.body.classList.contains('editing')]")
-                    check(state == ["/upitnik", "", True], f"Upitnik: {state} (path, search, edit mode)")
+                    check(state == ["/upitnik", "", False], f"Upitnik: {state} (path, search, edit mode)")
+                    check(pg.locator("#copyToggle").is_visible() and pg.text_content("#copyToggle") == "✎ Uredi tekstove",
+                          "staff's upitnik has no ✎ Uredi tekstove pill")
                     check(pg.locator("#mainNav").count() == 1 and pg.evaluate("document.getElementById('adminBtn').classList.contains('on')"),
                           "staff's upitnik lost the bar, or Admin is not .on there")
                     problems += [f"{where} /upitnik {p}" for p in pg.evaluate(PILL)["problems"]]
-                    pg.click("#copyToggle"); pg.reload(); pg.wait_for_load_state("networkidle")   # Gotovo, then a reload
-                    check(not pg.evaluate("document.body.classList.contains('editing')"), "edit mode came back on a reload after Gotovo")
+                    pg.click("#copyToggle"); pg.reload(); pg.wait_for_load_state("networkidle")   # edit mode on, then a reload by hand
+                    check(not pg.evaluate("document.body.classList.contains('editing')"), "edit mode outlived a reload by hand")
 
                 if w == 390:
                     pg.tap(".nav-burger")
@@ -369,7 +375,7 @@ def test_the_bar_menu_and_drawer_in_a_browser(server):
                         on = pg.evaluate(DRAWER)["current"]
                         check(on == [["Trenutne članarine", "rgba(255, 255, 255, 0.13)"]], f"the drawer's current row: {on}")
 
-                if not staff:                                              # ?uredi=1 is nothing to a client
+                if not staff:                                              # a client has no editor, whatever the address says
                     go(pg, server + "/upitnik?uredi=1")
                     state = pg.evaluate("[document.body.classList.contains('editing'), !!document.getElementById('copyToggle')]")
                     check(state == [False, False], f"a client's /upitnik?uredi=1: edit mode, editor = {state}")
@@ -380,19 +386,121 @@ def test_the_bar_menu_and_drawer_in_a_browser(server):
     assert not problems, f"{len(problems)} problems, listed above"
 
 
-def test_a_trainer_who_is_not_the_owner_opens_the_upitnik_in_edit_mode(server):
-    """?uredi=1 is for any editor: the studio's trainer, whose Admin ▾ has
-    three items, lands in edit mode too, the parameter gone; his own
-    navigation through the bar is the owner's (above)."""
+# the copy editor's state: the address, edit mode, the pill's words and
+# aria-pressed, and the one-shot flag the editor's own forms leave
+EDITOR = """() => { const t = document.getElementById('copyToggle');
+  return [location.pathname, document.body.classList.contains('editing'), t.textContent, t.getAttribute('aria-pressed'),
+          sessionStorage.getItem('qmt-editing-once')]; }"""
+
+
+def normal(path: str) -> list:
+    return [path, False, "✎ Uredi tekstove", "false", None]
+
+
+def editing(path: str) -> list:
+    return [path, True, "✓ Gotovo", "true", None]
+
+
+def test_staff_open_the_upitnik_in_normal_mode_with_the_pill(server):
+    """No page opens in edit mode by itself (26.10.2026, the owner: "when
+    I go to admin's 'upitnik' I go to the edit mode immediately"): the owner
+    and a trainer who is not the owner land on /upitnik, and on
+    /upitnik?uredi=1 (Admin ▾'s link until then, which meant edit mode), in
+    normal mode with the ✎ pill shown to press, at 1280px and on a phone;
+    the trainer's Admin ▾ has his three items. No page errors."""
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
-    make_user("coach@test.local", is_trainer=True)
+    make_user("trener@test.local", is_trainer=True)                   # the owner, a trainer too
+    make_user("coach@test.local", is_trainer=True)                    # a trainer who is not the owner
+    problems: list[str] = []
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        ctx, pg, errors = open_page(browser, server, "coach@test.local", 1280, "/upitnik?uredi=1")
-        state = pg.evaluate("[location.search, document.body.classList.contains('editing'), sessionStorage.getItem('qmt-editing')]")
-        labels = [t.strip() for t in pg.locator("#adminMenu [role=menuitem]").all_text_contents()]
-        ctx.close(); browser.close()
-    assert state == ["", True, "1"], state
-    assert labels == [label for _, label in TRAINER_ITEMS], labels
-    assert not errors, errors
+        for email, w in (("trener@test.local", 390), ("trener@test.local", 1280), ("coach@test.local", 1280)):
+            for path in ("/upitnik", "/upitnik?uredi=1"):
+                ctx, pg, errors = open_page(browser, server, email, w, path)
+                where = f"[{email.split('@')[0]} {w}px {path}]"
+                state, shown = pg.evaluate(EDITOR), pg.locator("#copyToggle").is_visible()
+                if state != normal("/upitnik") or not shown:
+                    problems.append(f"{where} lands as {state}, the pill shown: {shown}")
+                if email == "coach@test.local":
+                    labels = [t.strip() for t in pg.locator("#adminMenu [role=menuitem]").all_text_contents()]
+                    if labels != [label for _, label in TRAINER_ITEMS]:
+                        problems.append(f"{where} Admin ▾'s items: {labels}")
+                problems += [f"{where} {e}" for e in errors]
+                ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+def test_edit_mode_ends_when_the_editor_leaves_the_page(server):
+    """Edit mode belongs to the page (26.10.2026, the owner: "I dont exit
+    the edit mode when switching tabs"). The trainer turns it on on the
+    landing and follows a tab: Raspored is in normal mode; on there, then
+    Admin ▾ → Upitnik: normal mode too, and the pill on every page. The
+    editor's own forms reload the page and are the one way it outlives a
+    load: "+ Dodaj najavu" (a plain submit) and the second tap of "Obriši
+    najavu" (form.submit()) bring the landing back in edit mode, the
+    one-shot flag spent; a reload by hand then lands in normal mode. On a
+    phone (the drawer's rows) and at 1280px (the tabs, the menu); no page
+    errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("trener@test.local", is_trainer=True)
+    problems: list[str] = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        for w in (390, 1280):
+            phone = w < 600
+            ctx, pg, errors = open_page(browser, server, "trener@test.local", w, "/")
+            where = f"[trener {w}px]"
+
+            def check(want: list, what: str) -> None:
+                seen = pg.evaluate(EDITOR)
+                if seen != want or not pg.locator("#copyToggle").is_visible():
+                    problems.append(f"{where} {what}: {seen}, the pill shown: {pg.locator('#copyToggle').is_visible()}")
+
+            def follow(link: str) -> None:
+                """A tab or an Admin item, the way this width reaches it: the
+                ☰ drawer on a phone, the Admin menu opened on a desktop."""
+                if phone:
+                    pg.tap(".nav-burger")
+                elif link.startswith("#adminMenu"):
+                    pg.click("#adminBtn")
+                with pg.expect_navigation():
+                    pg.tap(link) if phone else pg.click(link)
+                pg.wait_for_load_state("networkidle")
+
+            check(normal("/"), "the landing opens")
+            pg.click("#copyToggle")
+            check(editing("/"), "the pill pressed")
+            follow('#mainNav > a[href="/raspored"]')
+            check(normal("/raspored"), "a tab followed in edit mode")
+            pg.click("#copyToggle")
+            check(editing("/raspored"), "the pill pressed on Raspored")
+            follow('#adminMenu a[href="/upitnik"]')
+            check(normal("/upitnik"), "Admin ▾ → Upitnik followed in edit mode")
+            follow('#mainNav > a[href="/"]')
+            check(normal("/"), "Početna followed")
+            pg.click("#copyToggle")
+            with pg.expect_navigation():
+                pg.click(".ed-add-ann button")                             # + Dodaj najavu
+            pg.wait_for_load_state("networkidle")
+            check(editing("/"), "+ Dodaj najavu came back")
+            if len(db.announcements(all=True)) != 1 or pg.evaluate("location.hash") != "#aktualno":
+                problems.append(f"{where} + Dodaj najavu: {len(db.announcements(all=True))} cards, at {pg.evaluate('location.hash')!r}")
+            x = pg.locator("#aktualno .ed-ann-x > button").first
+            x.click()                                                      # Obriši najavu: two taps
+            with pg.expect_navigation():
+                x.click()
+            pg.wait_for_load_state("networkidle")
+            check(editing("/"), "Obriši najavu came back")
+            if db.announcements(all=True):
+                problems.append(f"{where} Obriši najavu left {len(db.announcements(all=True))} cards")
+            pg.reload(); pg.wait_for_load_state("networkidle")
+            check(normal("/"), "a reload by hand")
+            problems += [f"{where} {e}" for e in errors]
+            ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"

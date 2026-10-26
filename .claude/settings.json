@@ -1,4 +1,11 @@
 {
+  "permissions": {
+    "allow": [
+      "ClaudeInChromeDomain(shapeclub.app)",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "ClaudeInChromeDomain(claude.ai)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
@@ -22,11 +29,6 @@
           }
         ]
       }
-    ]
-  },
-  "permissions": {
-    "allow": [
-      "ClaudeInChromeDomain(shapeclub.app)"
     ]
   }
 }

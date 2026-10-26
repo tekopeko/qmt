@@ -680,11 +680,11 @@
       <a href="/prehrana" class="{% if path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
       {% if staff %}
       {# Admin ▾, the account menu's component (.menu): Termini, Trenutne
-         članarine, Upitnik (straight into edit mode: the editor reads
-         ?uredi=1), and the owner's Korisnici and Statistika. The tab is .on
-         while one of its pages is open, that item aria-current. In the ☰
-         drawer its items are rows under the "Admin" caption, and the tab is
-         no row. #}
+         članarine, Upitnik (in normal mode, as every page opens: the ✎ pill
+         puts it in edit mode), and the owner's Korisnici and Statistika. The
+         tab is .on while one of its pages is open, that item aria-current.
+         In the ☰ drawer its items are rows under the "Admin" caption, and
+         the tab is no row. #}
       {% set at_termini = path.startswith('/admin') %}
       {% set at_clanarine = path.startswith('/clanarine') %}
       {% set at_upitnik = path.startswith('/upitnik') %}
@@ -705,7 +705,7 @@
               <rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 14.5h4"/>
             </svg><span>Trenutne članarine</span>
           </a>
-          <a href="/upitnik?uredi=1" role="menuitem"{% if at_upitnik %} aria-current="page"{% endif %}>
+          <a href="/upitnik" role="menuitem"{% if at_upitnik %} aria-current="page"{% endif %}>
             <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
               <rect x="5" y="4.5" width="14" height="17" rx="2.5"/><path d="M9.5 3h5v3h-5zM8.5 11h7M8.5 14.5h7M8.5 18h4"/>
             </svg><span>Upitnik</span>
@@ -1170,7 +1170,7 @@
     // deleting a whole announcement (or a gym card) asks first, as an
     // item's ✕: the first tap arms the pill into "Obriši?", the second
     // within four seconds sends its form (a plain POST; the page comes back
-    // without the card)
+    // without the card, in edit mode: once() below)
     function drop(b) {
       if (cur) end(false);
       if (armed !== b) {
@@ -1178,34 +1178,40 @@
         b.textContent = "Obriši?"; b.classList.add("armed"); b.setAttribute("aria-label", "Potvrdi brisanje");
         armTimer = setTimeout(disarm, 4000); return;
       }
-      disarm(); b.form.submit();
+      disarm(); once(); b.form.submit();
     }
-    // Edit mode survives a reload in this tab (sessionStorage): "+ Dodaj
-    // najavu" and "Obriši najavu" (the gym's "+ Dodaj karticu" and "Obriši
-    // karticu" too) are forms that reload the page, and the editor should
-    // land back in edit mode, not have to press the pill again.
+    // Edit mode belongs to the page (26.10.2026, the owner: "when I go to a
+    // tab as an admin, please dont make it editable but default"): every
+    // page opens in normal mode, and leaving it ends edit mode (a tab, the
+    // menu, a link, a reload by hand). The editor's own forms are the one
+    // way it outlives a load: "+ Dodaj najavu" and "Obriši najavu" (the
+    // gym's "+ Dodaj karticu" and "Obriši karticu" too) reload the page, so
+    // right before one goes it leaves a one-shot flag in this tab's
+    // sessionStorage (once()), and the page that comes back reads it, drops
+    // it and turns edit mode on: the editor lands where he was. (Until then
+    // the tab kept edit mode on at every load, and ?uredi=1 opened a page
+    // in it.)
     function setMode(on) {
       end(false);
       mode = !!on; document.body.classList.toggle("editing", mode);
       tog.setAttribute("aria-pressed", mode ? "true" : "false"); tog.textContent = mode ? "✓ Gotovo" : "✎ Uredi tekstove";
-      try { if (mode) sessionStorage.setItem("qmt-editing", "1"); else sessionStorage.removeItem("qmt-editing"); } catch (e) {}
     }
+    function once() { try { sessionStorage.setItem("qmt-editing-once", "1"); } catch (e) {} }
     tog.addEventListener("click", function () { setMode(!mode); });
-    try { if (sessionStorage.getItem("qmt-editing") === "1") setMode(true); } catch (e) {}
-    // ?uredi=1 opens the page in edit mode (26.10.2026: Admin ▾'s Upitnik),
-    // then leaves the address: a shared link, or a reload after "✓ Gotovo",
-    // does not turn edit mode on by itself (until Gotovo, this tab's
-    // sessionStorage keeps it on through a reload, as after a press of the
-    // pill). Only an editor gets this script: anyone else's ?uredi=1 is
-    // ignored.
     try {
-      var q = new URLSearchParams(location.search);
-      if (q.get("uredi") === "1") {
-        q.delete("uredi"); q = q.toString();
-        history.replaceState(history.state, "", location.pathname + (q ? "?" + q : "") + location.hash);
-        setMode(true);
-      }
+      var again = sessionStorage.getItem("qmt-editing-once") === "1";
+      sessionStorage.removeItem("qmt-editing-once");
+      if (again) setMode(true);
     } catch (e) {}
+    // the add forms go as plain submits; drop() sends the delete forms with
+    // form.submit(), which fires no submit event, so it calls once() itself
+    document.addEventListener("submit", function (e) {
+      if (mode && e.target.matches("form.ed-add-ann, form.ed-add-gym")) once();
+    });
+    // Back or Forward can bring a page out of the browser's cache as it was
+    // left, edit mode and all (Chrome does, measured): it was left, so it
+    // comes back in normal mode
+    window.addEventListener("pageshow", function (e) { if (e.persisted && mode) setMode(false); });
     document.addEventListener("click", function (e) {
       if (!mode) return;
       var f = e.target.closest(".ed-flag"), im = e.target.closest(".ed-img"), ix = e.target.closest(".ed-img-x");
