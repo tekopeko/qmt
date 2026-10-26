@@ -50,12 +50,20 @@ def client_for(email: str) -> TestClient:
     return c
 
 
+def seed_questions() -> None:
+    """The upitnik's questions: the gym owner's fifteen, as the migration
+    makes them (copy.UPITNIK_DEFAULT_QUESTIONS)."""
+    for question in copy.UPITNIK_DEFAULT_QUESTIONS:
+        db.add_upitnik_question(None, question)
+
+
 def filled_upitnik() -> dict[str, str]:
-    """A whole upitnik (version 2) as the form posts it: each choice's first
-    option as the slots' defaults word it, every scale at 2 (the score 2.0:
-    početna; no pain to ask about), no injuries, the consent ticked."""
-    form = {q: options[0] for q, (_, options) in copy.UPITNIK_CHOICES.items()}
-    form.update({q: "2" for q in copy.UPITNIK_SCALES})
+    """A whole upitnik (version 2) as the form posts it, to the fifteen
+    (seed_questions): each choice's first option, every scale at 2 (the
+    score 2.0: početna; no pain to ask about), no injuries, the consent
+    ticked."""
+    form = {f"q{q['id']}": q["options"][0] for q in copy.UPITNIK_DEFAULT_QUESTIONS if q["kind"] == "choice"}
+    form.update({f"q{q['id']}": "2" for q in copy.UPITNIK_DEFAULT_QUESTIONS if q["kind"] == "scale"})
     form.update({"q15": "ne", "consent": "da"})
     return form
 
@@ -86,6 +94,7 @@ def test_karton_self_other_and_trainer():
 def test_programs_hidden_until_upitnik_filled():
     make_user("trener@test.local", is_trainer=True)
     make_user("ivan@test.local")                # has the online plan, no upitnik
+    seed_questions()
     pid = db.create_program("Online blok A", None, "pocetna", "cijelo")
 
     ci = client_for("ivan@test.local")

@@ -732,6 +732,16 @@ def gym_examples() -> list[int]:
     return [db.add_gym_card(None, example).id for example in copy.GYM_CARD_EXAMPLES]
 
 
+def upitnik_examples() -> None:
+    """The upitnik's fifteen questions, as the migration leaves a database
+    where nobody edited them (copy.UPITNIK_DEFAULT_QUESTIONS): /upitnik's
+    slots around the questions (a part's heading, yes / no, the pain
+    sentence) print on their steps. The questions' own words are rows,
+    tests/test_upitnik.py."""
+    for question in copy.UPITNIK_DEFAULT_QUESTIONS:
+        db.add_upitnik_question(None, question)
+
+
 def gym_texts(card_id: int) -> dict:
     """A gym card's row, spelled as copy.GYM_CARD_EXAMPLES spells one."""
     g = db.gym_card(card_id)
@@ -1070,12 +1080,14 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
     The add-on's amounts (addon.*) are on /moja-clanarina alone, the
     prehrana plan's hint, since the QMove tiers' line went (21.10.2026).
     The upitnik's words (upitnik.*, 26.10.2026) are on /upitnik, which the
-    editor opens with no online plan of his own (tests/test_upitnik.py).
+    editor opens with no online plan of his own (tests/test_upitnik.py),
+    around its questions (rows since 26.10.2026, seeded here as the
+    migration leaves them: a part's heading prints on its questions' steps).
     A list, a switch and a photo keep their shape on each page they are
     on; a visitor and a client get no editor markup, the announcements'
     and the gym's cards' (rows, not slots) included."""
     make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
-    examples(); gym_examples()
+    examples(); gym_examples(); upitnik_examples()
     t = client_for("trener@test.local"); seen: dict[str, list[str]] = {}
     for path in PAGES:
         page = t.get(path).text
@@ -1110,7 +1122,9 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
                 for mark in ("data-copy", "data-required", "copyToggle", "data-list", "data-rows", "data-part", 'class="ed-xc"',
                              'class="ed-x"', 'ed-add"', 'class="ed-flag"', "data-flag",
                              'class="ed-img"', "data-image", 'class="ed-ann-x"', 'class="ed-add-ann"', 'action="/aktualno/',
-                             'class="ed-pills"', 'class="ed-gym-x"', 'class="ed-add-gym"', 'action="/dvorana/', "; --cols-edit:"):
+                             'class="ed-pills"', 'class="ed-gym-x"', 'class="ed-add-gym"', 'action="/dvorana/', "; --cols-edit:",
+                             'class="q-ed', 'class="ed-q-x"', 'action="/upitnik/pitanje', 'form="q-', "data-url",
+                             'class="q-sum"', 'class="q-add"'):
                     assert mark not in page, (path, mark)
 
 
@@ -2152,6 +2166,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     one, two = examples()                             # the landing's two announcements, as the migration leaves them
     CARD = f'[data-image="aktualno.{one}.image"]'     # the first one, in the editor's markup
     _, individualno = gym_examples()                  # and the gym's two cards
+    upitnik_examples()                                # and /upitnik's questions
 
     def fill(make):
         for key, slot in copy.SLOTS.items():

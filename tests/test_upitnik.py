@@ -1,16 +1,28 @@
-"""The online-trening upitnik, version 2 (26.10.2026): the gym owner's final
-questionnaire. src/qmt/upitnik.py holds its structure (fifteen questions in
-four parts, two follow-ups) and his rules: the score (0.6 × the mean of
-q5–q7 + 0.4 × the mean of q8–q11, to one decimal; up to 4.0 početna, up to
-7.0 srednja, above napredna) and the two safety rules (q14 at 7 or more:
-početna, and see the trainer first; q15 yes: the trainer reviews the
-profile). src/qmt/copy.py holds his words, every one a slot (upitnik.*).
-Here: the scoring, POST /upitnik (what a submission must hold, what is
-stored), the migration that made the rows already there version 1, the
-karton's block for a new response and an old one, and the copy rules that
-are the questionnaire's own (every slot on /upitnik for the editor, at
-least two options per choice). One question per screen, in a browser, is
-tests/test_upitnik_ui.py.
+"""The online-trening upitnik, version 2 (26.10.2026): the gym owner's
+questionnaire. Its questions are rows since 26.10.2026
+(models.UpitnikQuestion), which he adds, removes, hides, reorders and
+classifies in edit mode on /upitnik; the fifteen he started with
+(copy.UPITNIK_DEFAULT_QUESTIONS, ids 1–15) are seeded here before every
+test, as the migration and the demo seed make them. src/qmt/upitnik.py holds
+what stays code, working on whatever the rows say: the steps, read, the
+score (0.6 × the mean of the baza scales + 0.4 × the mean of the navike
+scales, to one decimal; a group with no question gives its weight to the
+other; none at all: početna), the thresholds (up to 4.0 početna, up to 7.0
+srednja, above napredna) and the two safety rules (the pain question at 7
+or more: početna, and see the trainer first; the injuries question's yes:
+the trainer reviews the profile).
+
+Here: the structure the rows make, the score and read over the live
+structure (a question deleted, hidden, added, a role moved, a multi of
+several options), POST /upitnik (what a submission must hold, what is
+stored), the editor's routes (add, delete, move, settings and their rules,
+a client's 403), a question's words as virtual keys on POST /copy/{key},
+the editor's page (the lines that say what the settings do, the summary),
+the karton's block for a new response, an old one, and one whose questions
+changed since, the migrations (the one that made the rows already there
+version 1, the one that made the slots rows), and two editors at once. One
+question per screen, the editor's controls and the walk through them, in a
+browser, are tests/test_upitnik_ui.py.
 """
 
 from __future__ import annotations
@@ -19,6 +31,8 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
+import threading
 from datetime import date, datetime
 from html import unescape
 from urllib.parse import unquote
@@ -37,11 +51,27 @@ from qmt import auth, config, copy, db, upitnik
 from qmt.models import Base, User
 from qmt.web.app import app
 
+# the gym owner's fifteen, by their answers' keys
+DEFAULTS = {f"q{q['id']}": q for q in copy.UPITNIK_DEFAULT_QUESTIONS}
+CHOICES = {key: q["options"] for key, q in DEFAULTS.items() if q["kind"] == "choice"}          # q1–q4
+BASE = tuple(key for key, q in DEFAULTS.items() if q["scoring"] == "baza")                    # q5–q7
+HABITS = tuple(key for key, q in DEFAULTS.items() if q["scoring"] == "navike")                # q8–q11
+# each question's text and each follow-up's (q14b, q15b), as they start
+TEXT = {**{key: q["text"] for key, q in DEFAULTS.items()},
+        **{f"{key}b": q["followup_text"] for key, q in DEFAULTS.items() if q["role"]}}
+
+
+def seed_questions() -> None:
+    """The fifteen, with their ids, as the migration and the demo seed make them."""
+    for question in copy.UPITNIK_DEFAULT_QUESTIONS:
+        db.add_upitnik_question(None, question)
+
 
 @pytest.fixture(autouse=True)
 def clean_db():
     Base.metadata.drop_all(db.engine)
     Base.metadata.create_all(db.engine)
+    seed_questions()
     yield
 
 
@@ -64,13 +94,24 @@ def client_for(email: str) -> TestClient:
     return c
 
 
+def client_for_trainer() -> TestClient:
+    """The studio's account, a trainer with no plan of its own, logged in."""
+    make_user("studio@test.local", is_trainer=True, plans=())
+    return client_for("studio@test.local")
+
+
+def asked() -> tuple[upitnik.Question, ...]:
+    """The steps a client is asked now: the shown rows' (upitnik.steps)."""
+    return upitnik.steps(db.upitnik_questions(shown=True))
+
+
 def answers(base=(5, 5, 5), habits=(5, 5, 5, 5), **changes) -> dict:
-    """A whole set of answers as stored: part 1 each choice's first option
-    (the slots' defaults), the scored scales as given (q5–q7, q8–q11), q12
-    and q13 at 5, no pain (q14 at 1), no injuries; `changes` on top."""
-    out = {q: options[0] for q, (_, options) in copy.UPITNIK_CHOICES.items()}
-    out.update(zip(upitnik.BASE, base))
-    out.update(zip(upitnik.HABITS, habits))
+    """A whole set of answers to the fifteen as stored: part 1 each choice's
+    first option, the scored scales as given (q5–q7, q8–q11), q12 and q13
+    at 5, no pain (q14 at 1), no injuries; `changes` on top."""
+    out = {key: options[0] for key, options in CHOICES.items()}
+    out.update(zip(BASE, base))
+    out.update(zip(HABITS, habits))
     out.update({"q12": 5, "q13": 5, "q14": 1, "q15": False})
     out.update(changes)
     return out
@@ -86,35 +127,36 @@ def form(**changes) -> dict[str, str]:
     return {k: v for k, v in out.items() if v is not None}
 
 
-# ---------- the structure: fifteen questions, every word a slot ----------
+def question(qid: int):
+    return db.upitnik_question(qid)
 
-def test_fifteen_questions_in_four_parts_two_follow_ups_and_every_word_a_slot():
-    """q1–q4 choices (part 1), q5–q11 the scored scales (part 2), q12 and
-    q13 scales for the trainer (part 3), q14 a scale and q15 yes / no (part
-    4), each followed by its free text. Every word is a slot of the kind
-    the question needs, and no upitnik.* slot is anything else."""
-    assert [q.id for q in upitnik.QUESTIONS] == [f"q{n}" for n in range(1, 16)]
-    assert [q.id for q in upitnik.STEPS] == [f"q{n}" for n in range(1, 15)] + ["q14b", "q15", "q15b"]
-    kinds = {q.id: (q.part, q.kind, q.scored) for q in upitnik.STEPS}
-    assert kinds == {**{f"q{n}": (1, "choice", False) for n in range(1, 5)},
-                     **{f"q{n}": (2, "scale", True) for n in range(5, 12)},
-                     "q12": (3, "scale", False), "q13": (3, "scale", False), "q14": (4, "scale", False),
-                     "q14b": (4, "text", False), "q15": (4, "yesno", False), "q15b": (4, "text", False)}
-    assert {q.id for q in upitnik.QUESTIONS if q.scored} == set(upitnik.BASE + upitnik.HABITS)
-    want = {"upitnik.title", "upitnik.intro", "upitnik.yes", "upitnik.no", "upitnik.consent", "upitnik.submit",
-            "upitnik.back", "upitnik.next", "upitnik.pain_note", *(f"upitnik.part{n}.h" for n in range(1, 5))}
-    for q in upitnik.STEPS:
-        want.add(f"upitnik.{q.id}.text")
-        if q.kind == "choice":
-            want.add(f"upitnik.{q.id}.options")
-            assert isinstance(copy.SLOTS[f"upitnik.{q.id}.options"], copy.ListSlot)
-            assert len(copy.SLOTS[f"upitnik.{q.id}.options"].default) >= upitnik.MIN_OPTIONS
-        if q.kind == "scale":
-            want |= {f"upitnik.{q.id}.low", f"upitnik.{q.id}.high"}
-    assert {k for k in copy.SLOTS if k.startswith("upitnik.")} == want
-    assert copy.UPITNIK_OPTION_KEYS == {k for k in want if k.endswith(".options")}
-    assert copy.SLOTS["upitnik.q13.text"].default.startswith("Koliko ti je važna")   # no emoji since 26.10.2026 (the owner)
-    assert copy.SLOTS["upitnik.q1.options"].default[3] == "Rehabilitacija / rješavanje bolova"   # one option
+
+# ---------- the structure: the fifteen as rows ----------
+
+def test_the_fifteen_are_rows_in_four_parts_with_two_follow_ups():
+    """q1–q4 choices (part 1), q5–q11 the scored scales (part 2: baza
+    q5–q7, navike q8–q11), q12 and q13 scales for the trainer (part 3), q14
+    the pain question (a scale) and q15 the injuries question (yes / no) in
+    part 4, each followed by its free text. Their words are the rows', not
+    slots: the upitnik.* slots left are the words around the questions."""
+    steps = asked()
+    assert [q.id for q in steps] == [f"q{n}" for n in range(1, 15)] + ["q14b", "q15", "q15b"]
+    shape = {q.id: (q.part, q.kind, q.scoring, q.role) for q in steps}
+    assert shape == {**{f"q{n}": (1, "choice", "", "") for n in range(1, 5)},
+                     **{q: (2, "scale", "baza", "") for q in ("q5", "q6", "q7")},
+                     **{q: (2, "scale", "navike", "") for q in ("q8", "q9", "q10", "q11")},
+                     "q12": (3, "scale", "", ""), "q13": (3, "scale", "", ""), "q14": (4, "scale", "", "pain"),
+                     "q14b": (4, "text", "", ""), "q15": (4, "yesno", "", "injuries"), "q15b": (4, "text", "", "")}
+    follow = {q.id: (q.follows, q.ask_from, q.ask_if) for q in steps if q.follows}
+    assert follow == {"q14b": ("q14", upitnik.PAIN_ASK, None), "q15b": ("q15", None, True)}
+    assert [q.id for q in db.upitnik_questions()] == list(range(1, 16))
+    assert all(len(q.options) >= upitnik.MIN_OPTIONS for q in steps if q.kind == "choice")
+    assert {k for k in copy.SLOTS if k.startswith("upitnik.")} == {
+        "upitnik.title", "upitnik.intro", "upitnik.yes", "upitnik.no", "upitnik.consent", "upitnik.submit",
+        "upitnik.back", "upitnik.next", "upitnik.pain_note", *(f"upitnik.part{n}.h" for n in range(1, 5))}
+    assert question(13).text.startswith("Koliko ti je važna")            # no emoji since 26.10.2026 (the owner)
+    assert question(1).option_items[3] == "Rehabilitacija / rješavanje bolova"
+    assert (question(14).followup_text, question(15).followup_text) == ("Gdje te boli?", "Opiši ukratko.")
 
 
 # ---------- the score: the owner's formula and his two safety rules ----------
@@ -123,60 +165,153 @@ def test_the_owners_formula_on_three_hand_computed_examples():
     """One per level, at the edges, by hand: a mean of three and a mean of
     four, weighted 0.6 and 0.4, to one decimal."""
     # početna at its edge: baza (4+4+4)/3 = 4, navike (4+4+4+4)/4 = 4; 0.6·4 + 0.4·4 = 4.0
-    r = upitnik.evaluate(answers((4, 4, 4), (4, 4, 4, 4)))
+    r = upitnik.evaluate(answers((4, 4, 4), (4, 4, 4, 4)), asked())
     assert (r.score, r.level) == (4.0, "pocetna")
     # a tenth more is srednja: navike (4+4+4+5)/4 = 4.25; 2.4 + 1.7 = 4.1
-    r = upitnik.evaluate(answers((4, 4, 4), (4, 4, 4, 5)))
+    r = upitnik.evaluate(answers((4, 4, 4), (4, 4, 4, 5)), asked())
     assert (r.score, r.level) == (4.1, "srednja")
-    # srednja at its edge, and the rounding: baza (10+9+9)/3 = 9.333…, navike
-    # (4+4+3+3)/4 = 3.5; 0.6·9.333… + 0.4·3.5 = 5.6 + 1.4 = 7.0. The floats
-    # add up to 7.000000000000001, which unrounded would be napredna.
+    # srednja at its edge: baza (10+9+9)/3 = 9.333…, navike (4+4+3+3)/4 =
+    # 3.5; 0.6·9.333… + 0.4·3.5 = 5.6 + 1.4 = 7.0. The floats add up to
+    # 7.000000000000001, which unrounded would be napredna; the score is
+    # worked in exact fractions.
     assert 0.6 * (28 / 3) + 0.4 * (14 / 4) > 7.0
-    r = upitnik.evaluate(answers((10, 9, 9), (4, 4, 3, 3)))
+    r = upitnik.evaluate(answers((10, 9, 9), (4, 4, 3, 3)), asked())
     assert (r.score, r.level) == (7.0, "srednja")
     # napredna just past it: baza (8+7+7)/3 = 7.333…, navike (7+7+6+7)/4 = 6.75; 4.4 + 2.7 = 7.1
-    r = upitnik.evaluate(answers((8, 7, 7), (7, 7, 6, 7)))
+    r = upitnik.evaluate(answers((8, 7, 7), (7, 7, 6, 7)), asked())
     assert (r.score, r.level) == (7.1, "napredna")
     # the two ends of the range
-    assert upitnik.evaluate(answers((1, 1, 1), (1, 1, 1, 1))).score == 1.0
-    assert upitnik.evaluate(answers((10, 10, 10), (10, 10, 10, 10))).score == 10.0
-    # every score is a whole tenth: (2 × the three + the four) / 10, never more digits
+    assert upitnik.evaluate(answers((1, 1, 1), (1, 1, 1, 1)), asked()).score == 1.0
+    assert upitnik.evaluate(answers((10, 10, 10), (10, 10, 10, 10)), asked()).score == 10.0
+    # every score of the fifteen is a whole tenth: (2 × the three + the four) / 10
+    steps = asked()
     for s3 in range(3, 31):
         for s4 in range(4, 41):
-            assert upitnik.score(answers((s3, 0, 0), (s4, 0, 0, 0))) == (2 * s3 + s4) / 10
+            assert upitnik.score(answers((s3, 0, 0), (s4, 0, 0, 0)), steps) == (2 * s3 + s4) / 10
     assert upitnik.score_text(6.4) == "6,4 / 10" and upitnik.score_text(10.0) == "10,0 / 10"
 
 
 def test_pain_at_seven_or_more_is_pocetna_whatever_the_score():
-    """q14 at 7 or more: početna, and pain_high (the client is told to see
-    the trainer first); the score stays what the formula says. At 6 the
-    score decides."""
+    """The pain question at 7 or more: početna, and pain_high (the client is
+    told to see the trainer first); the score stays what the formula says.
+    At 6 the score decides."""
     top = answers((10, 10, 10), (10, 10, 10, 10))
-    r = upitnik.evaluate({**top, "q14": 6, "q14b": "leđa"})
+    r = upitnik.evaluate({**top, "q14": 6, "q14b": "leđa"}, asked())
     assert (r.score, r.level, r.pain_level, r.pain_high) == (10.0, "napredna", 6, False)
     for pain in (7, 10):
-        r = upitnik.evaluate({**top, "q14": pain, "q14b": "leđa"})
+        r = upitnik.evaluate({**top, "q14": pain, "q14b": "leđa"}, asked())
         assert (r.score, r.level, r.pain_level, r.pain_high) == (10.0, "pocetna", pain, True)
 
 
 def test_injuries_flag_the_profile_for_the_trainer_and_change_no_level():
-    assert not upitnik.evaluate(answers()).needs_review
-    r = upitnik.evaluate(answers(q15=True, q15b="Operacija koljena 2023."))
+    assert not upitnik.evaluate(answers(), asked()).needs_review
+    r = upitnik.evaluate(answers(q15=True, q15b="Operacija koljena 2023."), asked())
     assert r.needs_review and (r.score, r.level, r.pain_high) == (5.0, "srednja", False)
 
 
 def test_parts_one_and_three_and_the_safety_questions_do_not_move_the_score():
     """q1–q4 (they will choose the content), q12 and q13 (the trainer's
-    information) and q14 / q15 never change the score."""
-    scored = ((6, 7, 5), (6, 8, 7, 5))
-    expected = upitnik.score(answers(*scored))
-    for q, (_, options) in copy.UPITNIK_CHOICES.items():
+    information) and the safety questions never change the score."""
+    scored, steps = ((6, 7, 5), (6, 8, 7, 5)), asked()
+    expected = upitnik.score(answers(*scored), steps)
+    for q, options in CHOICES.items():
         for option in options:
-            assert upitnik.score(answers(*scored, **{q: option})) == expected
+            assert upitnik.score(answers(*scored, **{q: option}), steps) == expected
     for other in ("q12", "q13", "q14"):
         for value in upitnik.SCALE:
-            assert upitnik.score(answers(*scored, **{other: value})) == expected
-    assert upitnik.score(answers(*scored, q15=True)) == expected
+            assert upitnik.score(answers(*scored, **{other: value}), steps) == expected
+    assert upitnik.score(answers(*scored, q15=True), steps) == expected
+
+
+def test_the_score_follows_the_questions_there_are():
+    """A baza question deleted: baza is the mean of the rest. One hidden:
+    it is asked of nobody and scores nothing. A new scale that scores
+    navike joins its group. A group with no question gives its weight to
+    the other. No scored question at all: početna, whatever the answers,
+    and a score of 0.0 (no answer gives one under 1.0)."""
+    six_four = answers((6, 6, 6), (4, 4, 4, 4))                     # 0.6·6 + 0.4·4 = 5.2
+    assert upitnik.score(six_four, asked()) == 5.2
+    given = answers((9, 3, 3), (4, 4, 4, 4))                        # baza 5: 3.0 + 1.6 = 4.6
+    assert upitnik.score(given, asked()) == 4.6
+    db.delete_upitnik_question(5)                                   # baza (3+3)/2 = 3: 1.8 + 1.6
+    assert upitnik.score(given, asked()) == 3.4
+    db.set_upitnik_question(6, {"shown": "off"}, None)              # baza is q7 alone: 0.6·5 + 1.6
+    assert upitnik.score({**given, "q6": 10, "q7": 5}, asked()) == 4.6
+    new = db.add_upitnik_question(None).id
+    db.set_upitnik_question(new, {"scoring": "navike"}, None)       # navike (4·4 + 9)/5 = 5: 3.0 + 2.0
+    both = {**given, "q6": 10, "q7": 5, f"q{new}": 9}
+    assert upitnik.score(both, asked()) == 5.0
+    for q in (8, 9, 10, 11, new):                                   # navike has no question: baza alone
+        db.set_upitnik_question(q, {"scoring": ""}, None)
+    r = upitnik.evaluate(both, asked())
+    assert (r.score, r.level) == (5.0, "srednja")
+    db.set_upitnik_question(7, {"scoring": ""}, None)               # nothing scores
+    r = upitnik.evaluate({**both, "q7": 10}, asked())
+    assert upitnik.score(both, asked()) is None
+    assert (r.score, r.level, r.pain_high, r.needs_review) == (0.0, "pocetna", False, False)
+
+
+def test_a_score_is_rounded_half_up_on_exact_fractions():
+    """With a fourth baza scale a score can fall on a half: baza
+    (4+4+4+3)/4 = 3.75, navike (5+5+4+4)/4 = 4.5, 0.6·3.75 + 0.4·4.5 = 2.25
+    + 1.8 = 4.05, which is 4.1, srednja. Floats would have said 4.0,
+    početna: the client's level hung on the float's noise."""
+    new = db.add_upitnik_question(None).id
+    db.set_upitnik_question(new, {"scoring": "baza"}, None)
+    assert round(0.6 * (15 / 4) + 0.4 * (18 / 4), 1) == 4.0
+    r = upitnik.evaluate(answers((4, 4, 4), (5, 5, 4, 4), **{f"q{new}": 3}), asked())
+    assert (r.score, r.level) == (4.1, "srednja")
+
+
+# ---------- read: the questions asked are the shown rows ----------
+
+def test_read_asks_the_questions_there_are():
+    """A hidden question is not asked: nothing is required of it and
+    nothing stored, whatever is sent. A new question is: required, stored
+    under its id. The pain role moved to q13: q13 at 4 or more asks its
+    follow-up (q13b), q14 asks none, and the pain rule reads q13."""
+    sent = form()
+    db.set_upitnik_question(12, {"shown": "off"}, None)
+    assert "q12" not in upitnik.read({k: v for k, v in sent.items() if k != "q12"}, asked())
+    assert "q12" not in upitnik.read({**sent, "q12": "7"}, asked())
+    new = db.add_upitnik_question(None).id
+    with pytest.raises(ValueError) as missing:
+        upitnik.read(sent, asked())
+    assert str(missing.value) == f"q{new}"
+    assert upitnik.read({**sent, f"q{new}": "8"}, asked())[f"q{new}"] == 8
+    db.set_upitnik_question(13, {"role": "pain"}, None)
+    assert question(14).role == "" and question(13).role == "pain"
+    sent = {**sent, f"q{new}": "8", "q13": "6", "q14": "9", "q14b": "leđa"}
+    with pytest.raises(ValueError) as missing:
+        upitnik.read(sent, asked())
+    assert str(missing.value) == "q13b"
+    got = upitnik.read({**sent, "q13b": "koljeno"}, asked())
+    assert (got["q13"], got["q13b"], got["q14"]) == (6, "koljeno", 9) and "q14b" not in got
+    r = upitnik.evaluate(got, asked())
+    assert (r.pain_level, r.pain_high) == (6, False)
+
+
+def test_a_multi_takes_one_option_or_more_and_never_scores():
+    """A multi (Više odgovora): one option or more, each the text of one of
+    its options as the row holds them now, stored as a list in the
+    options' order, each once. None, or a text it does not have, is
+    refused. It never scores, and never takes a role."""
+    new = db.add_upitnik_question(None).id
+    db.set_upitnik_question(new, {"kind": "multi"}, None)
+    db.set_upitnik_question_options(new, ["bez opreme", "bučice", "girja", "TRX"], None)
+    key, sent = f"q{new}", form()
+    assert upitnik.read({**sent, key: ["girja", "bučice"]}, asked())[key] == ["bučice", "girja"]
+    assert upitnik.read({**sent, key: ["TRX", "TRX"]}, asked())[key] == ["TRX"]
+    assert upitnik.read({**sent, key: "girja"}, asked())[key] == ["girja"]            # one tick
+    for bad in ([], ["girja", "kettlebell"], ["2"], ""):
+        with pytest.raises(ValueError):
+            upitnik.read({**sent, key: bad}, asked())
+    with pytest.raises(ValueError):
+        upitnik.read(sent, asked())
+    assert upitnik.score({**answers(), key: ["girja"]}, asked()) == upitnik.score(answers(), asked())
+    t = client_for_trainer()
+    assert t.post(f"/upitnik/pitanje/{new}", data={"scoring": "baza"}).json()["error"] == "Boduje se samo skala (1–10)."
+    assert t.post(f"/upitnik/pitanje/{new}", data={"role": "pain"}).json()["error"] == "Uloga Bolovi ide samo uz skalu (1–10)."
 
 
 # ---------- POST /upitnik ----------
@@ -229,7 +364,7 @@ def test_a_refill_replaces_the_row_an_old_one_included_and_pain_starts_at_pocetn
     db.save_onboarding(uid, json.dumps({"staz": 2}), 9, "srednja", "gornji", version=1, pain_level=None,
                        pain_high=False, needs_review=False, consented_at=None)
     c = client_for("ivan@test.local")
-    top = {q: "10" for q in upitnik.BASE + upitnik.HABITS}
+    top = {q: "10" for q in BASE + HABITS}
     r = c.post("/upitnik", data=form(**top, q14="8", q14b="vrat"), follow_redirects=False)
     assert unquote(r.headers["location"]) == (
         "/treninzi?ok=Upitnik je spremljen — Početna razina. Zbog čestih bolova krećeš od početne razine — "
@@ -258,7 +393,7 @@ ERROR = "/upitnik?error=Odgovori+na+sva+pitanja."
     ("a scale of zero", {"q12": "0"}, ERROR),
     ("a scale in between", {"q6": "7.5"}, ERROR),
     ("a choice missing", {"q3": None}, ERROR),
-    ("an option the slot does not have", {"q4": "Na plaži"}, ERROR),
+    ("an option the question does not have", {"q4": "Na plaži"}, ERROR),
     ("an option's index, not its text", {"q1": "0"}, ERROR),
     ("yes / no neither", {"q15": "možda"}, ERROR),
     ("q14b missing when q14 is 4", {"q14": "4"}, ERROR),
@@ -275,7 +410,7 @@ def test_an_incomplete_or_invalid_submission_stores_nothing(what, sent, where):
     assert db.get_onboarding(uid) is None, what
 
 
-def test_an_answer_is_an_option_as_its_slot_holds_it_now():
+def test_an_answer_is_an_option_as_its_question_holds_it_now():
     """The gym owner re-words an option: a form still holding the old text
     is refused (nothing stored), the new text is what is stored. An option
     he writes in two lines comes back from a browser with a CRLF, and is
@@ -283,24 +418,52 @@ def test_an_answer_is_an_option_as_its_slot_holds_it_now():
     uid = make_user("ivan@test.local")
     make_user("trener@test.local", is_trainer=True)
     t, c = client_for("trener@test.local"), client_for("ivan@test.local")
-    assert t.post("/copy/upitnik.q4.options", data={"text": "U dvorani QMT", "index": "2"}).json()["ok"]
+    assert t.post("/copy/upitnik.4.options", data={"text": "U dvorani QMT", "index": "2"}).json()["ok"]
     r = c.post("/upitnik", data=form(q4="U teretani"), follow_redirects=False)
     assert r.headers["location"] == ERROR and db.get_onboarding(uid) is None
     c.post("/upitnik", data=form(q4="U dvorani QMT"), follow_redirects=False)
     assert json.loads(db.get_onboarding(uid).answers)["q4"] == "U dvorani QMT"
-    t.post("/copy/upitnik.q1.options", data={"text": "Gubitak težine\ni oblikovanje", "index": "0"})
+    t.post("/copy/upitnik.1.options", data={"text": "Gubitak težine\ni oblikovanje", "index": "0"})
     r = c.post("/upitnik", data=form(q1="Gubitak težine\r\ni oblikovanje"), follow_redirects=False)
     assert "ok=" in r.headers["location"]
     assert json.loads(db.get_onboarding(uid).answers)["q1"] == "Gubitak težine\ni oblikovanje"
 
 
+def test_a_multi_is_sent_as_several_ticks_stored_as_a_list_and_joined_on_the_karton():
+    """A multi on the client's page is a checkbox per option in the
+    lettered rows, its step going on with Dalje; the ticks arrive as
+    several values of one field and are stored as a list. None ticked is
+    refused. On the karton the answer is its texts joined with " · ", in
+    the trainer's list and, in part 1, as a chip."""
+    uid = make_user("ivan@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    new = db.add_upitnik_question(None).id
+    db.set_upitnik_question(new, {"kind": "multi", "part": "1"}, None)
+    db.set_upitnik_question_options(new, ["bez opreme", "bučice", "girja"], None)
+    db.set_upitnik_question_field(new, "text", "Koju opremu imaš?", None)
+    c = client_for("ivan@test.local")
+    step = c.get("/upitnik").text.split(f'id="step-q{new}"')[1].split("</section>")[0]
+    assert 'data-kind="multi"' in step and '<div class="opts" role="group"' in step
+    assert step.count(f'<input type="checkbox" name="q{new}" value="') == 3
+    assert '<label class="opt"><input type="checkbox" name="q{0}" value="bučice"><span class="t">bučice</span></label>'.format(new) in step
+    assert 'class="btn q-next"' in step and "required" not in step
+    r = c.post("/upitnik", data=form(), follow_redirects=False)
+    assert r.headers["location"] == ERROR and db.get_onboarding(uid) is None
+    r = c.post("/upitnik", data={**form(), f"q{new}": ["girja", "bez opreme"]}, follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    assert json.loads(db.get_onboarding(uid).answers)[f"q{new}"] == ["bez opreme", "girja"]
+    block = unescape(upitnik_block(client_for("trener@test.local").get(f"/karton/{uid}").text))
+    assert ">Koju opremu imaš? — <strong>bez opreme · girja</strong></li>" in block
+    assert '<span class="u-fact">bez opreme · girja</span>' in block
+
+
 def test_who_gets_the_page_and_who_may_send_it():
     """A client with an online plan fills it; one without is sent to his
     karton, both ways, as before. The trainer and the owner get the page
-    with no plan of their own (it is where its words are edited) and never
-    send it: their submission is refused and stores nothing, the owner's
-    too when he holds an online plan (his page is the editor's, a choice
-    his options list)."""
+    with no plan of their own (it is where it is edited) and never send
+    it: their submission is refused and stores nothing, the owner's too
+    when he holds an online plan (his page is the editor's, a choice his
+    options list)."""
     owner = make_user("trener@test.local")                      # the owner (OWNER_EMAIL), not a trainer, an online plan
     studio = make_user("studio@test.local", is_trainer=True, plans=())
     make_user("sara@test.local", plans=("grupni",))
@@ -321,9 +484,10 @@ def test_who_gets_the_page_and_who_may_send_it():
         assert db.get_onboarding(uid) is None, email
 
     page = client_for("ivan@test.local").get("/upitnik").text      # a client: the form, no editor
-    for mark in ("data-copy", "data-list", "copyToggle", 'class="ed-x"'):
+    for mark in ("data-copy", "data-list", "copyToggle", 'class="ed-x"', 'class="q-ed', 'class="ed-q-x"',
+                 'action="/upitnik/pitanje', 'form="q-', "data-url", 'class="q-sum"', 'class="q-add"', "data-flag"):
         assert mark not in page, mark
-    for q, (_, options) in copy.UPITNIK_CHOICES.items():
+    for q, options in CHOICES.items():
         for option in options:
             assert f'<input type="radio" name="{q}" value="{option}" required>' in page
     assert page.count('type="radio" name="q5"') == 10 and 'name="q14b"' in page and 'name="consent"' in page
@@ -344,7 +508,304 @@ def test_the_error_shows_under_the_title_and_the_form_starts_empty():
     assert "checked" not in page.split('id="quiz"')[1].split("</form>")[0]
 
 
-# ---------- the migration ----------
+# ---------- the editor's routes: add, delete, move, settings ----------
+
+def order() -> list[int]:
+    return [q.id for q in db.upitnik_questions()]
+
+
+def test_the_editor_adds_questions_up_to_forty_and_deletes_them():
+    """"+ Dodaj pitanje": a scale in part 2 that scores nothing, shown, its
+    placeholders to retype, after the last; back on /upitnik at it. At 40
+    it is refused with why. "Obriši pitanje": the question goes, back at
+    the one before it (the next one, for the first); an id is never given
+    again, so an answer kept under a deleted question's id stays that
+    question's. The owner, who does not train, may as well."""
+    make_user("trener@test.local", plans=())                    # the owner, not a trainer
+    t = client_for("trener@test.local")
+    r = t.post("/upitnik/pitanje/nova", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/upitnik#step-q16"
+    q = question(16)
+    assert (q.position, q.part, q.kind, q.scoring, q.role, q.shown) == (16, 2, "scale", "", "", True)
+    assert (q.text, q.option_items, q.low, q.high, q.followup_text) == (
+        "Novo pitanje", ["Prvi odgovor", "Drugi odgovor"], "…", "…", "Opiši ukratko.")
+    page = t.get("/upitnik").text
+    assert 'id="step-q16"' in page and '<form id="q-add" class="ed-add-q" method="post" action="/upitnik/pitanje/nova" hidden></form>' in page
+    for _ in range(db.MAX_UPITNIK_QUESTIONS - 16):
+        t.post("/upitnik/pitanje/nova")
+    assert len(order()) == db.MAX_UPITNIK_QUESTIONS
+    r = t.post("/upitnik/pitanje/nova", follow_redirects=False)
+    assert unquote(r.headers["location"]) == "/upitnik?error=Najviše+40+pitanja." and len(order()) == 40
+    page = t.get("/upitnik").text
+    assert '<div class="q-add">' not in page and 'id="q-add"' not in page and 'form="q-add"' not in page
+    r = t.post("/upitnik/pitanje/16/obrisi", follow_redirects=False)
+    assert r.headers["location"] == "/upitnik#step-q15" and question(16) is None
+    r = t.post("/upitnik/pitanje/1/obrisi", follow_redirects=False)
+    assert r.headers["location"] == "/upitnik#step-q2" and order()[0] == 2
+    assert t.post("/upitnik/pitanje/1/obrisi", follow_redirects=False).headers["location"] == "/upitnik"   # gone already
+    r = t.post("/upitnik/pitanje/nova", follow_redirects=False)
+    assert r.headers["location"] == "/upitnik#step-q41"                 # 16 and 1 are never given again
+
+
+def test_a_question_moves_one_place_up_or_down():
+    """↑ / ↓ trade a question's place with the one before or after it, in
+    the order of every question (a hidden one too); back on /upitnik at it.
+    At either end, or with a direction that is neither, nothing moves."""
+    make_user("trener@test.local", is_trainer=True)
+    t = client_for("trener@test.local")
+    r = t.post("/upitnik/pitanje/14/pomak", data={"smjer": "gore"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/upitnik#step-q14"
+    assert order()[11:] == [12, 14, 13, 15]
+    t.post("/upitnik/pitanje/14/pomak", data={"smjer": "dolje"})
+    assert order() == list(range(1, 16))
+    db.set_upitnik_question(14, {"shown": "off"}, None)             # a hidden one is still in the order
+    t.post("/upitnik/pitanje/15/pomak", data={"smjer": "gore"})
+    assert order()[12:] == [13, 15, 14]
+    for qid, way in ((1, "gore"), (14, "dolje"), (5, "lijevo"), (99, "gore")):
+        t.post(f"/upitnik/pitanje/{qid}/pomak", data={"smjer": way})
+    assert order()[12:] == [13, 15, 14] and order()[:2] == [1, 2]
+    # the steps follow: q15 and its follow-up before q14 and its follow-up (hidden: no step for a client)
+    assert [q.id for q in upitnik.steps(db.upitnik_questions())][-4:] == ["q15", "q15b", "q14", "q14b"]
+    assert [q.id for q in asked()][-2:] == ["q15", "q15b"]
+
+
+def test_a_questions_settings_keep_their_rules():
+    """POST /upitnik/pitanje/{id}, a field at a time: part 1–4, kind,
+    scoring (a scale's), role (pain a scale, injuries a yes / no, one of
+    each: taking one moves it), shown. Refused with the sentence the
+    editor's bar shows: a scoring on what is no scale, a role on the wrong
+    kind, a change of kind while the question scores or holds a role its
+    new kind cannot hold, anything unknown. The answer is the row as
+    stored."""
+    t = client_for_trainer()
+
+    def post(qid, **fields):
+        return t.post(f"/upitnik/pitanje/{qid}", data=fields)
+
+    r = post(12, part="1")
+    assert r.json() == {"ok": True, "id": 12, "part": 1, "kind": "scale", "scoring": "", "role": "", "shown": True, "on": True}
+    for fields, error in (({"part": "5"}, "Nepoznat dio."), ({"part": "x"}, "Nepoznat dio."),
+                          ({"kind": "slider"}, "Nepoznata vrsta pitanja."), ({"scoring": "snaga"}, "Nepoznato bodovanje."),
+                          ({"role": "boss"}, "Nepoznata uloga."), ({"shown": "maybe"}, "Nepoznata vrijednost."),
+                          ({"colour": "red"}, "Nepoznata postavka."), ({}, "Nepoznata postavka.")):
+        r = post(12, **fields)
+        assert (r.status_code, r.json()) == (400, {"ok": False, "error": error}), fields
+    assert post(12, scoring="navike").json()["scoring"] == "navike"
+    r = post(1, scoring="baza")
+    assert (r.status_code, r.json()["error"]) == (400, "Boduje se samo skala (1–10).")
+    r = post(12, kind="choice")
+    assert r.json()["error"] == "Ovo se pitanje boduje, a boduje se samo skala — prvo odaberi „Ne boduje se”."
+    post(12, scoring="")
+    assert post(12, kind="choice").json()["kind"] == "choice"
+    assert question(12).option_items == ["Prvi odgovor", "Drugi odgovor"]   # a choice has two to choose from
+    assert (question(12).low, question(12).high) == ("nikad", "redovito")    # its texts are kept
+    # the roles: on the kind each needs, one of each
+    assert post(1, role="pain").json()["error"] == "Uloga Bolovi ide samo uz skalu (1–10)."
+    assert post(13, role="injuries").json()["error"] == "Uloga Ozljede ide samo uz pitanje Da / Ne."
+    assert post(13, role="pain").json()["role"] == "pain"
+    assert (question(13).role, question(14).role) == ("pain", "")           # it moved
+    r = post(13, kind="yesno")
+    assert r.json()["error"] == "Ovo je pitanje o bolovima, a ta uloga ide samo uz skalu — prvo makni ulogu."
+    r = post(15, kind="scale")
+    assert r.json()["error"] == "Ovo je pitanje o ozljedama, a ta uloga ide samo uz Da / Ne — prvo makni ulogu."
+    new = db.add_upitnik_question(None).id
+    post(new, kind="yesno")
+    assert post(new, role="injuries").json()["role"] == "injuries"
+    assert (question(new).role, question(15).role) == ("injuries", "")
+    assert sorted(q.role for q in db.upitnik_questions() if q.role) == ["injuries", "pain"]
+    # the switch, its answer as a flag's
+    assert post(12, shown="off").json()["on"] is False and question(12).shown is False
+    assert post(12, shown="on").json()["on"] is True
+    # several at once, checked together; a question that is not there
+    assert post(12, kind="scale", scoring="baza").json()["scoring"] == "baza"
+    assert post(99, part="2").status_code == 404
+
+
+def test_a_kind_switch_keeps_the_row_its_options_and_its_answers():
+    """A choice becomes a multi (Više odgovora, the editor's select says)
+    and back with its options as they were; a scale, which has none,
+    becomes a multi with the two placeholders to retype. A response given
+    before keeps its answers, printed as they were given."""
+    uid = make_user("ivan@test.local")
+    t = client_for_trainer()
+    client_for("ivan@test.local").post("/upitnik", data=form(), follow_redirects=False)
+    assert '<option value="multi">Više odgovora</option>' in t.get("/upitnik").text
+    assert t.post("/upitnik/pitanje/4", data={"kind": "multi"}).json()["kind"] == "multi"
+    assert question(4).option_items == list(CHOICES["q4"])
+    assert t.post("/upitnik/pitanje/4", data={"kind": "choice"}).json()["kind"] == "choice"
+    assert question(4).option_items == list(CHOICES["q4"])
+    assert t.post("/upitnik/pitanje/12", data={"kind": "multi"}).json()["kind"] == "multi"
+    assert question(12).option_items == ["Prvi odgovor", "Drugi odgovor"]
+    t.post("/upitnik/pitanje/4", data={"kind": "multi"})
+    block = unescape(upitnik_block(t.get(f"/karton/{uid}").text))
+    assert f'>{TEXT["q4"]} — <strong>{CHOICES["q4"][0]}</strong></li>' in block      # a string, as given
+    assert f'>{TEXT["q12"]} — <strong>5 / 10</strong></li>' in block                # a scale's, as given
+    assert json.loads(db.get_onboarding(uid).answers)["q12"] == 5
+
+
+def test_only_the_trainer_and_the_owner_touch_the_questions():
+    """A client gets 403 from every route of the editor's, POST /copy/{key}
+    on a question's words included; a guest is sent to log in. Nothing
+    changes."""
+    make_user("ivan@test.local")
+    c, anon = client_for("ivan@test.local"), TestClient(app)
+    calls = (("/upitnik/pitanje/nova", {}), ("/upitnik/pitanje/5", {"part": "3"}),
+             ("/upitnik/pitanje/5/pomak", {"smjer": "gore"}), ("/upitnik/pitanje/5/obrisi", {}))
+    for path, data in calls:
+        assert c.post(path, data=data, follow_redirects=False).status_code == 403, path
+        r = anon.post(path, data=data, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/login", path
+    assert c.post("/copy/upitnik.5.text", data={"text": "x"}).status_code == 403
+    assert anon.post("/copy/upitnik.5.text", data={"text": "x"}).status_code == 401
+    assert order() == list(range(1, 16)) and (question(5).part, question(5).text) == (2, TEXT["q5"])
+
+
+# ---------- a question's words: virtual keys on POST /copy/{key} ----------
+
+def test_a_questions_words_are_edited_through_virtual_keys():
+    """upitnik.<id>.text / .low / .high / .followup_text as slots are: saved
+    cleaned, an emptied one stays empty, Zadano puts a new question's
+    placeholder back; .options as a list slot is, an item at a time, two
+    at least, Zadano the two placeholders. A key of no question, or of no
+    such field, is unknown; so are the slots of before (upitnik.q6.text)."""
+    t = client_for_trainer()
+    r = t.post("/copy/upitnik.6.text", data={"text": "  Kakva ti je\r\n kondicija? "})
+    assert r.json() == {"ok": True, "text": "Kakva ti je\nkondicija?", "default": False}
+    assert question(6).text == "Kakva ti je\nkondicija?" and question(6).updated_by is not None
+    assert t.post("/copy/upitnik.6.text", data={"text": "  "}).json() == {"ok": True, "text": "", "default": False}
+    assert question(6).text == ""
+    assert t.post("/copy/upitnik.6.text", data={"reset": "1"}).json() == {"ok": True, "text": "Novo pitanje", "default": True}
+    for field, placeholder in (("low", "…"), ("high", "…"), ("followup_text", "Opiši ukratko.")):
+        key = f"upitnik.14.{field}"
+        assert t.post(f"/copy/{key}", data={"text": "drugo"}).json()["text"] == "drugo"
+        assert getattr(question(14), field) == "drugo"
+        assert t.post(f"/copy/{key}", data={"reset": "1"}).json()["text"] == placeholder
+    r = t.post("/copy/upitnik.6.text", data={"text": "x" * (copy.CAP + 1)})
+    assert r.status_code == 400 and question(6).text == "Novo pitanje"
+    assert t.post("/copy/upitnik.3.options", data={"text": "90+", "index": "4"}).json()["items"] == [
+        "do 30", "30-45", "45-60", "60+", "90+"]
+    assert question(3).option_items[-1] == "90+"
+    for key in ("upitnik.99.text", "upitnik.6.colour", "upitnik.q6.text", "upitnik.q1.options", "upitnik.q14b.text"):
+        r = t.post(f"/copy/{key}", data={"text": "x"})
+        assert (r.status_code, r.json()) == (404, {"ok": False, "error": "Nepoznat tekst."}), key
+
+
+def test_a_question_keeps_at_least_two_options():
+    """An option goes with its ✕ (an emptied item), down to two; the last
+    two stay ("Pitanje treba bar dva odgovora."), though either may be
+    re-worded, and adding one or Zadano still works."""
+    t = client_for_trainer()
+    key = "upitnik.2.options"                                       # 2 / 3 / 4 / 5+
+    assert t.post(f"/copy/{key}", data={"text": "", "index": "3"}).json()["items"] == ["2", "3", "4"]
+    assert t.post(f"/copy/{key}", data={"text": "", "index": "0"}).json()["items"] == ["3", "4"]
+    for i in ("0", "1"):
+        r = t.post(f"/copy/{key}", data={"text": "  ", "index": i})
+        assert r.status_code == 400 and r.json() == {"ok": False, "error": "Pitanje treba bar dva odgovora."}
+    assert question(2).option_items == ["3", "4"]
+    assert t.post(f"/copy/{key}", data={"text": "3 ili 4", "index": "0"}).json()["items"] == ["3 ili 4", "4"]
+    assert t.post(f"/copy/{key}", data={"text": "", "index": "2"}).json()["items"] == ["3 ili 4", "4"]   # nothing at n
+    assert t.post(f"/copy/{key}", data={"text": "5", "index": "2"}).json()["items"] == ["3 ili 4", "4", "5"]
+    assert t.post(f"/copy/{key}", data={"text": "", "index": "0"}).json()["items"] == ["4", "5"]
+    assert t.post(f"/copy/{key}", data={"reset": "1"}).json() == {
+        "ok": True, "items": ["Prvi odgovor", "Drugi odgovor"], "default": True}
+
+
+# ---------- the editor's page ----------
+
+def test_every_word_is_on_the_page_for_the_editor_and_an_edit_shows_to_the_client():
+    make_user("ivan@test.local")
+    t = client_for_trainer()
+    page = t.get("/upitnik").text
+    for key in (k for k in copy.SLOTS if k.startswith("upitnik.")):
+        assert f'data-copy="{key}"' in page, key
+    for q in asked():
+        key = f"upitnik.{q.row}"
+        if q.follows:
+            assert page.count(f'data-copy="{key}.followup_text"') == 1, q.id
+            continue
+        assert page.count(f'data-copy="{key}.text"') == 1, q.id
+        if q.kind == "choice":                                  # one list, an editable span per option
+            assert page.count(f'data-list="{key}.options"') == 1 and page.count(f'data-copy="{key}.options"') == len(q.options)
+        if q.kind == "scale":
+            assert page.count(f'data-copy="{key}.low"') == page.count(f'data-copy="{key}.high"') == 1, q.id
+    assert page.count('class="act ed-add">+ Dodaj odgovor</button>') == len(CHOICES)
+    assert 'data-label="Pitanje 6: tekst"' in page and 'data-label="Pitanje 14: dodatno pitanje"' in page
+    assert t.post("/copy/upitnik.6.text", data={"text": "Kakva ti je kondicija?"}).json()["ok"]
+    assert t.post("/copy/upitnik.2.options", data={"text": "6 ili više", "index": "4"}).json()["ok"]
+    page = client_for("ivan@test.local").get("/upitnik").text
+    assert '<h1 class="q-h" id="h-q6" tabindex="-1"><span class="t">Kakva ti je kondicija?</span></h1>' in page
+    assert '<input type="radio" name="q2" value="6 ili više" required><span class="t">6 ili više</span>' in page
+
+
+def lines(page: str) -> dict[str, str]:
+    """Each step's grey line (the editor's), by its step's id."""
+    out = {}
+    for part in page.split('<section class="q-step')[1:]:
+        step = part.split('id="step-')[1].split('"')[0]
+        if '<p class="q-ed-line">' in part.split("</section>")[0]:
+            out[step] = unescape(part.split('<p class="q-ed-line">')[1].split("</p>")[0])
+    return out
+
+
+def summary(page: str) -> str:
+    """The scoring's summary (the editor's), as read: its words, tags dropped."""
+    box = page.split('<div class="q-sum">')[1].split("</div>")[0]
+    return " ".join(unescape(re.sub(r"<[^>]+>", " ", box)).split())
+
+
+def test_the_editors_page_says_what_each_question_does():
+    """In edit mode each question has its controls (its switch, ↑ / ↓,
+    Obriši pitanje, Dio, Vrsta, Bodovanje on a scale, Uloga on a scale or a
+    yes / no, offering the role its kind can hold) and a grey line saying
+    what its settings do; above the first, how the score is made, and
+    when nothing scores the alert that everyone starts at početna. A
+    hidden question is on his page, marked off, and on no client's."""
+    make_user("ivan@test.local")
+    t = client_for_trainer()
+    page = t.get("/upitnik").text
+    got = lines(page)
+    assert got["q1"] == "Dio 1 · jedan odgovor"
+    assert got["q5"] == "Dio 2 · skala · boduje se: trening baza"
+    assert got["q8"] == "Dio 2 · skala · boduje se: navike"
+    assert got["q12"] == "Dio 3 · skala · ne boduje se"
+    assert got["q14"] == "Dio 4 · skala · uloga: bolovi (4+ pita gdje, 7+ početna)"
+    assert got["q14b"] == "Dodatno pitanje uz pitanje 14 · pita se kad je odgovor 4 ili više"
+    assert got["q15"] == "Dio 4 · da / ne · uloga: ozljede (Da pita opis i traži pregled trenera)"
+    assert got["q15b"] == "Dodatno pitanje uz pitanje 15 · pita se kad je odgovor Da"
+    assert summary(page) == ("Bodovanje: trening baza = 3 pitanja, navike = 4 pitanja. "
+                             "Rezultat = 0,6 × baza + 0,4 × navike.")
+    step = page.split('id="step-q14"')[1].split("</section>")[0]
+    for control in ('class="ed-flag" data-url="/upitnik/pitanje/14" data-field="shown" data-reload',
+                    'form="q-mv-14" name="smjer" value="gore"', 'form="q-mv-14" name="smjer" value="dolje"',
+                    'class="ed-q-x" form="q-x-14"', 'data-field="part"', 'data-field="kind"', 'data-field="scoring"',
+                    '<option value="pain" selected>Bolovi</option>'):
+        assert control in step, control
+    assert "Ozljede" not in step                                      # a scale's role is pain alone
+    assert 'data-field="scoring"' not in page.split('id="step-q15"')[1].split("</section>")[0]
+    assert 'data-field="role"' not in page.split('id="step-q1"')[1].split("</section>")[0]
+    first = page.split('id="step-q1"')[1].split("</section>")[0]
+    assert 'value="gore" aria-label="Pitanje 1: jedno mjesto gore" disabled' in first
+    for q in (8, 9, 10, 11):
+        t.post(f"/upitnik/pitanje/{q}", data={"shown": "off"})
+    page = t.get("/upitnik").text
+    assert summary(page) == "Bodovanje: trening baza = 3 pitanja, navike = 0 pitanja. Rezultat = trening baza (navike nemaju pitanja)."
+    assert lines(page)["q8"] == "Dio 2 · skala · skriveno: nitko ga ne dobiva i ne boduje se"
+    assert '<section class="q-step is-off" id="step-q8"' in page
+    client = client_for("ivan@test.local").get("/upitnik").text
+    assert 'id="step-q8"' not in client and 'id="step-q7"' in client
+    for q in (5, 6, 7):
+        t.post(f"/upitnik/pitanje/{q}", data={"scoring": ""})
+    page = t.get("/upitnik").text
+    assert summary(page) == ("Bodovanje: trening baza = 0 pitanja, navike = 0 pitanja. "
+                             "Nijedno pitanje se ne boduje — svi dobivaju početnu razinu.")
+    assert '<p class="alert">Nijedno pitanje se ne boduje — svi dobivaju početnu razinu.</p>' in page
+    t.post("/upitnik/pitanje/14", data={"shown": "off"})
+    got = lines(t.get("/upitnik").text)
+    assert got["q14"] == "Dio 4 · skala · skriveno: nitko ga ne dobiva, pravilo o bolovima ne vrijedi"
+    assert got["q14b"] == "Dodatno pitanje uz pitanje 14 · skriveno s njim"
+
+
+# ---------- the migrations ----------
 
 def _migration(file: str):
     """An Alembic revision's module, loaded from its file."""
@@ -395,6 +856,66 @@ def test_the_migration_makes_the_rows_there_version_1_and_keeps_their_scores():
     assert scores == {ivan: 9, ana: 6}
 
 
+def test_the_migration_turns_the_question_slots_into_rows_and_back():
+    """3f8a6c2d9b71, run on qmt_test as a database from before it is (no
+    upitnik_questions; the gym owner's edits in upitnik.q* slots): the
+    fifteen rows with ids and positions 1–15, each text his edited one (an
+    emptied one empty) or the default, a choice's options his list, the
+    structure the code had (parts, kinds, the scoring, the two roles with
+    their follow-ups' texts), all shown; the folded slots' rows gone, the
+    other upitnik.* slots left; the id sequence past 15. Then he edits the
+    rows; downgrade puts the first fifteen back as slots, only what differs
+    from the defaults (a question deleted is its defaults again; a row's
+    new kind takes no slot the old code lacks), and drops the table; a
+    second upgrade folds them in again. The answers never move."""
+    mig = _migration("3f8a6c2d9b71_upitnik_questions.py")
+    uid = make_user("trener@test.local", is_trainer=True)
+    ivan = make_user("ivan@test.local")
+    given = json.dumps(answers(q14=5, q14b="leđa"), ensure_ascii=False)        # a response given before it
+    db.save_onboarding(ivan, given, 5.0, "srednja", "cijelo", pain_level=5, pain_high=False, needs_review=False,
+                       consented_at=None)
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("DROP TABLE upitnik_questions"))                 # the database before it
+    edited = {"upitnik.q1.text": "Što želiš postići?", "upitnik.q3.text": "",
+              "upitnik.q2.options": json.dumps(["2", "3", "4 ili više"], ensure_ascii=False),
+              "upitnik.q6.high": "odlična", "upitnik.q14b.text": "Gdje točno?", "upitnik.q15.text": "Ozljede?",
+              "upitnik.title": "Moj upitnik", "upitnik.part2.h": "Dio 2"}
+    for key, text in edited.items():
+        db.set_copy(key, text, uid)
+    _run(mig.upgrade)
+    rows = db.upitnik_questions()
+    assert [(r.id, r.position, r.shown) for r in rows] == [(n, n, True) for n in range(1, 16)]
+    shape = [(r.part, r.kind, r.scoring, r.role) for r in rows]
+    assert shape == [(q["part"], q["kind"], q["scoring"], q["role"]) for q in copy.UPITNIK_DEFAULT_QUESTIONS]
+    by = {r.id: r for r in rows}
+    assert (by[1].text, by[1].updated_by) == ("Što želiš postići?", uid) and by[3].text == ""
+    assert by[2].option_items == ["2", "3", "4 ili više"] and by[1].option_items == list(CHOICES["q1"])
+    assert (by[6].low, by[6].high) == ("vrlo loša", "odlična")
+    assert (by[14].followup_text, by[15].text, by[15].followup_text) == ("Gdje točno?", "Ozljede?", "Opiši ukratko.")
+    untouched = [r for r in rows if r.id in (4, 5, 7, 8, 9, 10, 11, 12, 13)]
+    assert all((r.text, r.low, r.high, r.updated_by) == (TEXT[f"q{r.id}"], DEFAULTS[f"q{r.id}"]["low"],
+                                                          DEFAULTS[f"q{r.id}"]["high"], None) for r in untouched)
+    assert db.copy_texts() == {"upitnik.title": "Moj upitnik", "upitnik.part2.h": "Dio 2"}
+    assert db.add_upitnik_question(None).id == 16                             # the sequence past 15
+    # the gym owner at work, then the way back
+    db.set_upitnik_question_field(5, "text", "Treniraš li redovito?", uid)
+    db.set_upitnik_question(12, {"kind": "choice"}, uid)                      # the old q12 has no options slot
+    db.set_upitnik_question_field(12, "low", "nikada", uid)
+    db.delete_upitnik_question(6)                                             # its defaults again
+    db.set_upitnik_question_options(2, ["2", "3", "4", "5+"], uid)            # the default list again
+    _run(mig.downgrade)
+    assert "upitnik_questions" not in sa_inspect(db.engine).get_table_names()
+    assert db.copy_texts() == {"upitnik.q1.text": "Što želiš postići?", "upitnik.q3.text": "",
+                               "upitnik.q5.text": "Treniraš li redovito?", "upitnik.q12.low": "nikada",
+                               "upitnik.q14b.text": "Gdje točno?", "upitnik.q15.text": "Ozljede?",
+                               "upitnik.title": "Moj upitnik", "upitnik.part2.h": "Dio 2"}
+    _run(mig.upgrade)
+    rows = {r.id: r for r in db.upitnik_questions()}
+    assert len(rows) == 15 and (rows[5].text, rows[12].kind, rows[12].low) == ("Treniraš li redovito?", "scale", "nikada")
+    assert rows[6].high == "izvrsna" and rows[2].option_items == ["2", "3", "4", "5+"]
+    assert db.get_onboarding(ivan).answers == given                           # the answers never moved
+
+
 # ---------- the karton ----------
 
 def upitnik_block(page: str) -> str:
@@ -427,33 +948,68 @@ def test_the_clients_karton_shows_the_score_the_four_chips_and_the_pain_note():
 
 
 def test_the_trainers_karton_flags_review_and_pain_and_lists_every_answer():
-    """The trainer's view of a client: a red "Zahtijeva pregled" when q15
-    was yes, an amber "Bolovi N/10 · where" when q14 was 4 or more, and
-    under Odgovori all fifteen questions as the gym owner words them now,
-    each with its answer, the free texts under theirs. Neither chip
-    without its reason."""
+    """The trainer's view of a client: a red "Zahtijeva pregled" when the
+    injuries question was yes, an amber "Bolovi N/10 · where" when the pain
+    question was 4 or more, and under Odgovori all fifteen questions as the
+    gym owner words them now, each with its answer, the free texts under
+    theirs. Neither chip without its reason."""
     uid = make_user("ivan@test.local")
     make_user("trener@test.local", is_trainer=True)
     client_for("ivan@test.local").post("/upitnik", data=form(
         q5="7", q14="5", q14b="donji dio leđa", q15="da", q15b="Operacija koljena 2023."), follow_redirects=False)
     t = client_for("trener@test.local")
-    t.post("/copy/upitnik.q6.text", data={"text": "Kakva ti je kondicija?"})
+    t.post("/copy/upitnik.6.text", data={"text": "Kakva ti je kondicija?"})
     block = unescape(upitnik_block(t.get(f"/karton/{uid}").text))
     assert '<span class="u-flag review">Zahtijeva pregled</span>' in block
     assert '<span class="u-flag pain">Bolovi 5/10 · donji dio leđa</span>' in block
     rows = block.split("<details>")[1].split("</details>")[0].split("<li")[1:]
     assert len(rows) == 17                                              # 15 questions, 2 follow-ups
-    texts = {q: copy.SLOTS[f"upitnik.{q}.text"].default for q in ("q1", "q5", "q14b", "q15", "q15b")}
-    assert f'>{texts["q1"]} — <strong>Gubitak težine</strong></li>' in rows[0]
-    assert f'>{texts["q5"]} — <strong>7 / 10</strong></li>' in rows[4]
+    assert f'>{TEXT["q1"]} — <strong>Gubitak težine</strong></li>' in rows[0]
+    assert f'>{TEXT["q5"]} — <strong>7 / 10</strong></li>' in rows[4]
     assert ">Kakva ti je kondicija? — <strong>5 / 10</strong></li>" in rows[5]     # the question as he words it now
-    assert f' class="follow">{texts["q14b"]} — <strong>donji dio leđa</strong></li>' in rows[14]
-    assert f'>{texts["q15"]} — <strong>Da</strong></li>' in rows[15]
-    assert f' class="follow">{texts["q15b"]} — <strong>Operacija koljena 2023.</strong></li>' in rows[16]
+    assert f' class="follow">{TEXT["q14b"]} — <strong>donji dio leđa</strong></li>' in rows[14]
+    assert f'>{TEXT["q15"]} — <strong>Da</strong></li>' in rows[15]
+    assert f' class="follow">{TEXT["q15b"]} — <strong>Operacija koljena 2023.</strong></li>' in rows[16]
     assert "Ispuni ponovno" not in block
     client_for("ivan@test.local").post("/upitnik", data=form(q14="3"), follow_redirects=False)
     block = upitnik_block(t.get(f"/karton/{uid}").text)
     assert "u-flags" not in block and "Zahtijeva pregled" not in block and "Bolovi" not in block
+
+
+def test_the_karton_keeps_every_answer_under_its_question_as_it_is_now():
+    """The questions change after a client answered: one re-worded, one
+    hidden, one of another kind, the pain role moved, two deleted. Under
+    Odgovori every answer is still there: under its question's current
+    text (a hidden one's too), as it was given (a choice's text under a
+    question that is a multi now), and the deleted ones' last, by their
+    number, under "(pitanje uklonjeno)", a follow-up's marked as one. The
+    pain flag keeps where it hurt: the response's own follow-up, whichever
+    question holds the role now."""
+    uid = make_user("ivan@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    client_for("ivan@test.local").post("/upitnik", data=form(
+        q5="8", q12="7", q14="6", q14b="donji dio leđa", q15="da", q15b="Operacija."), follow_redirects=False)
+    t = client_for("trener@test.local")
+    t.post("/copy/upitnik.6.text", data={"text": "Kakva ti je kondicija?"})
+    t.post("/upitnik/pitanje/12", data={"shown": "off"})
+    t.post("/upitnik/pitanje/4", data={"kind": "multi"})
+    t.post("/upitnik/pitanje/13", data={"role": "pain"})
+    for qid in (15, 5):
+        t.post(f"/upitnik/pitanje/{qid}/obrisi")
+    block = unescape(upitnik_block(t.get(f"/karton/{uid}").text))
+    rows = block.split("<details>")[1].split("</details>")[0].split("<li")[1:]
+    assert len(rows) == 17                                              # nothing dropped
+    assert f'>{TEXT["q4"]} — <strong>{CHOICES["q4"][0]}</strong></li>' in rows[3]
+    assert ">Kakva ti je kondicija? — <strong>5 / 10</strong></li>" in rows[4]
+    assert f'>{TEXT["q12"]} — <strong>7 / 10</strong></li>' in rows[10]
+    assert f'>{TEXT["q14"]} — <strong>6 / 10</strong></li>' in rows[12]
+    assert f' class="follow">{TEXT["q14b"]} — <strong>donji dio leđa</strong></li>' in rows[13]
+    assert ">(pitanje uklonjeno) — <strong>8 / 10</strong></li>" in rows[14]
+    assert ">(pitanje uklonjeno) — <strong>Da</strong></li>" in rows[15]
+    assert ' class="follow">(pitanje uklonjeno) — <strong>Operacija.</strong></li>' in rows[16]
+    assert '<span class="u-flag pain">Bolovi 6/10 · donji dio leđa</span>' in block
+    assert '<span class="u-flag review">Zahtijeva pregled</span>' in block
+    assert json.loads(db.get_onboarding(uid).answers)["q15b"] == "Operacija."     # kept as given
 
 
 def test_an_old_rows_block_reads_its_old_answers_and_asks_for_the_new_one():
@@ -480,43 +1036,45 @@ def test_an_old_rows_block_reads_its_old_answers_and_asks_for_the_new_one():
     assert "<li>Imaš li ozljede ili bolove koji ograničavaju trening? — <strong>Ne</strong></li>" in block
 
 
-# ---------- the copy: every word on /upitnik, two options at least ----------
+# ---------- two editors at once ----------
 
-def test_every_word_is_on_the_page_for_the_editor_and_an_edit_shows_to_the_client():
-    make_user("trener@test.local", is_trainer=True)
-    make_user("ivan@test.local")
-    t = client_for("trener@test.local")
-    page = t.get("/upitnik").text
-    for key, slot in copy.SLOTS.items():
-        if not key.startswith("upitnik."):
-            continue
-        if isinstance(slot, copy.ListSlot):                 # one list, an editable span per option
-            assert page.count(f'data-list="{key}"') == 1 and page.count(f'data-copy="{key}"') == len(slot.default), key
-        else:
-            assert f'data-copy="{key}"' in page, key
-    assert page.count('class="act ed-add">+ Dodaj odgovor</button>') == len(copy.UPITNIK_CHOICES)
-    assert t.post("/copy/upitnik.q6.text", data={"text": "Kakva ti je kondicija?"}).json()["ok"]
-    assert t.post("/copy/upitnik.q2.options", data={"text": "6 ili više", "index": "4"}).json()["ok"]
-    page = client_for("ivan@test.local").get("/upitnik").text
-    assert '<h1 class="q-h" id="h-q6" tabindex="-1"><span class="t">Kakva ti je kondicija?</span></h1>' in page
-    assert '<input type="radio" name="q2" value="6 ili više" required><span class="t">6 ili više</span>' in page
+def test_two_quick_adds_never_pass_the_cap():
+    """"+ Dodaj pitanje" tapped twice, or by two editors at once, near the
+    cap: the table lock makes the count and the next position one step,
+    so never more than 40, and no position twice."""
+    for _ in range(db.MAX_UPITNIK_QUESTIONS - 15 - 2):
+        db.add_upitnik_question(None)
+    landed: list[bool] = []
+    threads = [threading.Thread(target=lambda: landed.append(db.add_upitnik_question(None) is not None)) for _ in range(6)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert landed.count(True) == 2 and len(order()) == db.MAX_UPITNIK_QUESTIONS
+    assert [q.position for q in db.upitnik_questions()] == list(range(1, db.MAX_UPITNIK_QUESTIONS + 1))
 
 
-def test_a_question_keeps_at_least_two_options():
-    """An option goes with its ✕ (an emptied item), down to two; the last
-    two stay ("Pitanje treba bar dva odgovora."), though either may be
-    re-worded, and adding one or Zadano still works."""
-    make_user("trener@test.local", is_trainer=True)
-    t = client_for("trener@test.local")
-    key = "upitnik.q2.options"                                      # 2 / 3 / 4 / 5+
-    assert t.post(f"/copy/{key}", data={"text": "", "index": "3"}).json()["items"] == ["2", "3", "4"]
-    assert t.post(f"/copy/{key}", data={"text": "", "index": "0"}).json()["items"] == ["3", "4"]
-    for i in ("0", "1"):
-        r = t.post(f"/copy/{key}", data={"text": "  ", "index": i})
-        assert r.status_code == 400 and r.json() == {"ok": False, "error": "Pitanje treba bar dva odgovora."}
-    assert json.loads(db.copy_texts()[key]) == ["3", "4"]
-    assert t.post(f"/copy/{key}", data={"text": "3 ili 4", "index": "0"}).json()["items"] == ["3 ili 4", "4"]
-    assert t.post(f"/copy/{key}", data={"text": "", "index": "2"}).json()["items"] == ["3 ili 4", "4"]   # nothing at n
-    assert t.post(f"/copy/{key}", data={"text": "5", "index": "2"}).json()["items"] == ["3 ili 4", "4", "5"]
-    assert t.post(f"/copy/{key}", data={"text": "", "index": "0"}).json()["items"] == ["4", "5"]
-    assert t.post(f"/copy/{key}", data={"reset": "1"}).json() == {"ok": True, "items": ["2", "3", "4", "5+"], "default": True}
+def test_two_editors_never_leave_two_pain_questions():
+    """Two editors give the pain role to two questions at the same moment:
+    one of them holds it after, never both (the lock and the role's unique
+    index), and the question that held it before has lost it."""
+    for _ in range(5):
+        db.set_upitnik_question(13, {"role": ""}, None)
+        db.set_upitnik_question(12, {"role": ""}, None)
+        db.set_upitnik_question(14, {"role": "pain"}, None)
+        start, failed = threading.Barrier(2), []
+
+        def take(qid: int) -> None:
+            start.wait()
+            try:
+                db.set_upitnik_question(qid, {"role": "pain"}, None)
+            except Exception as e:                                   # pragma: no cover - the failure we guard against
+                failed.append(e)
+
+        threads = [threading.Thread(target=take, args=(qid,)) for qid in (12, 13)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+        pain = [q.id for q in db.upitnik_questions() if q.role == "pain"]
+        assert not failed and len(pain) == 1 and pain[0] in (12, 13)

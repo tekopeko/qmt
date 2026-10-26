@@ -12,8 +12,8 @@ import json
 from datetime import date as SADate, datetime, timedelta
 
 from sqlalchemy import (
-    Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text,
-    UniqueConstraint, func, text,
+    Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text,
+    UniqueConstraint, func, text, text as sql_text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -355,6 +355,77 @@ class GymCard(Base):
         return [x for x in data if isinstance(x, str) and x] if isinstance(data, list) else []
 
 
+class UpitnikQuestion(Base):
+    """One question of the online-trening upitnik (/upitnik). Since
+    26.10.2026 a row the trainer or owner adds, removes, hides, reorders and
+    classifies in edit mode, at most db.MAX_UPITNIK_QUESTIONS of them (the
+    owner: "so that Amir can also add or remove questions from the
+    questionnaire"); until then the gym owner's fifteen were fixed in code
+    (qmt.upitnik) and only their words were copy slots (upitnik.q<n>.*,
+    which migration 3f8a6c2d9b71 turned into rows 1–15, their ids kept).
+
+    The id is the answers' key: a client's answer is stored as "q<id>", a
+    follow-up's as "q<id>b" (OnboardingResponse.answers), so ids come from
+    a sequence and are never reused, and a question deleted or hidden since
+    still names its old answers on the karton (qmt.upitnik.answer_rows).
+    Its texts are edited in place like copy, through virtual keys
+    upitnik.<id>.<field> (app.py, copy_save; copy.UPITNIK_QUESTION_SLOTS),
+    cleaned as copy is (copy.clean); an emptied one stays empty, and Zadano
+    puts a new question's placeholder back (copy.UPITNIK_BLANK). Its
+    settings go through POST /upitnik/pitanje/{id} (qmt.upitnik.settings
+    holds their rules).
+
+    `position` is the order on the page, 1-based (a deleted row leaves a
+    gap; ↑ / ↓ swap two rows, which is why the constraint is deferred: a
+    swap is checked when it commits, whole). `part` is 1–4, the heading
+    above it (the upitnik.part<n>.h slots). `kind` is what it asks: choice
+    (one option), multi (several), scale (1–10), yesno or text. `options`
+    are a choice's (and a multi's), a JSON array as a list slot's row holds
+    them; `low` / `high` a scale's two ends. `scoring` is the group a
+    scale's answer joins in the score, "" (none), "baza" or "navike"; only
+    a scale scores. `role` makes it one of the two safety questions, ""
+    (none), "pain" (a scale) or "injuries" (a yes / no), at most one row of
+    each (the partial unique index), and `followup_text` is the free text
+    such a question asks when its answer calls for it ("Gdje te boli?",
+    "Opiši ukratko."). `shown` is the switch: a hidden question is asked
+    of nobody and scores nothing, and stays on the editor's page."""
+
+    __tablename__ = "upitnik_questions"
+    # `text` is a column of this class: SQLAlchemy's text() is sql_text in its body
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    position: Mapped[int] = mapped_column(Integer)
+    part: Mapped[int] = mapped_column(Integer, server_default=sql_text("2"), default=2)
+    kind: Mapped[str] = mapped_column(String(8), server_default=sql_text("'scale'"), default="scale")
+    text: Mapped[str] = mapped_column(Text, server_default=sql_text("''"), default="")
+    options: Mapped[str] = mapped_column(Text, server_default=sql_text("'[]'"), default="[]")
+    low: Mapped[str] = mapped_column(Text, server_default=sql_text("''"), default="")
+    high: Mapped[str] = mapped_column(Text, server_default=sql_text("''"), default="")
+    scoring: Mapped[str] = mapped_column(String(8), server_default=sql_text("''"), default="")
+    role: Mapped[str] = mapped_column(String(10), server_default=sql_text("''"), default="")
+    followup_text: Mapped[str] = mapped_column(Text, server_default=sql_text("''"), default="")
+    shown: Mapped[bool] = mapped_column(Boolean, server_default=sql_text("true"), default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                 onupdate=func.now())
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("position", name="uq_upitnik_questions_position", deferrable=True, initially="DEFERRED"),
+        Index("uq_upitnik_questions_role", "role", unique=True, postgresql_where=sql_text("role <> ''")),
+    )
+
+    @property
+    def option_items(self) -> list[str]:
+        """The options: the options column read, a JSON array of strings
+        (copy.dump_items writes it); [] when it holds none, or none that can
+        be read."""
+        try:
+            data = json.loads(self.options or "[]")
+        except ValueError:
+            return []
+        return [x for x in data if isinstance(x, str) and x] if isinstance(data, list) else []
+
+
 class ReminderLog(Base):
     """One row per reminder actually sent — the idempotency ledger.
 
@@ -409,12 +480,15 @@ class OnboardingResponse(Base):
     One row per user — refilling overwrites (the routing should reflect the
     CURRENT state, and the karton is not an archive of old self-assessments).
     `version` says which questionnaire the row answers (qmt.upitnik):
-    2 since 26.10.2026, the gym owner's fifteen questions, answers as JSON
-    {question id: the option's text, a scale's int, yes / no's bool, a free
-    text}, a score of 10 to one decimal, the goal always "cijelo" (the level
-    alone routes) and the safety flags; 1 for a row from before, {key: the
-    option's index} read against qmt.upitnik.QUESTIONS_V1, an integer score
-    of 14, its goal its own.
+    2 since 26.10.2026, the gym owner's questions (UpitnikQuestion rows
+    since the same day), answers as JSON {"q<the question's id>": the
+    option's text, a multi's list of texts, a scale's int, yes / no's bool,
+    a free text; a follow-up's "q<id>b"}, kept as given whatever becomes of
+    the questions, a score of 10 to one decimal (0.0 when no question
+    scored), the goal always "cijelo" (the level alone routes) and the
+    safety flags; 1 for a row from before, {key: the option's index} read
+    against qmt.upitnik.QUESTIONS_V1, an integer score of 14, its goal its
+    own.
     """
 
     __tablename__ = "onboarding_responses"
@@ -428,10 +502,10 @@ class OnboardingResponse(Base):
     level: Mapped[str] = mapped_column(String(12))         # pocetna | srednja | napredna
     goal: Mapped[str] = mapped_column(String(12))          # cijelo | gornji | donji
     version: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
-    pain_level: Mapped[int | None] = mapped_column(Integer, nullable=True)        # q14, 1–10
-    # q14 at 7 or more: početna whatever the score, and the client sees the trainer first
+    pain_level: Mapped[int | None] = mapped_column(Integer, nullable=True)        # the pain question's 1–10, if asked
+    # the pain question at 7 or more: početna whatever the score, and the client sees the trainer first
     pain_high: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    # q15 yes (injuries, operations, conditions): the trainer looks at the profile
+    # the injuries question's yes (injuries, operations, conditions): the trainer looks at the profile
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # the consent to process health data, ticked under the questionnaire
     consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

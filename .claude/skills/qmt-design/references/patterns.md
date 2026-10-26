@@ -128,15 +128,17 @@ centred column, a thin progress bar, the question as a big h1, answers as
 full-width rows with an A / B / C letter badge, the chosen one inverted to
 white with a ✓, a muted "Nazad" under them, choosing advances. Screenshots
 and the measured notes: `data/design-reference/shape-club/README.md`.
-**Ours (26.10.2026):** `/upitnik`, the gym owner's final questionnaire (15
-questions, every word a copy slot), in QMT's clothes: the brand alone in the
+**Ours (26.10.2026):** `/upitnik`, the gym owner's final questionnaire (his 15
+questions to start, rows he adds, removes, hides, reorders and rewords in
+edit mode since the same day), in QMT's clothes: the brand alone in the
 small pill (base.html's `solo_page`), a 640px column on `--bg` (no purple),
 the bar filled with `--accent` on a `--line` track, the part as a muted
 eyebrow, the question as the h1 in PT Sans uppercase (QMT's display voice,
 not their sentence case), rows on `--surface` with a hairline and a lettered
 badge, 64px tall, `--r-md`, the chosen one `--text` with `--bg` ink and a ✓;
 for the 1–10 scales (Shape has none) ten round buttons in the same inverted
-choice. A choice goes on ~250 ms after a tap; a free text has "Dalje"; the
+choice. A choice goes on ~250 ms after a tap; a free text has "Dalje", and so
+has a multi (several rows ticked, the same rows), which waits for a tick; the
 last screen is the consent and "Spremi upitnik". The classes: components.md,
 "The upitnik".
 

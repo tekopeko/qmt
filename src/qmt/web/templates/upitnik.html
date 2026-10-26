@@ -6,10 +6,18 @@
    h1, the answers as rows. ONE form holds every question: the script below
    shows one step at a time and the inputs keep the answers; without it the
    page is the whole questionnaire top to bottom with one submit at the end.
-   Every word is a copy slot (upitnik.*, src/qmt/copy.py); the structure is
-   qmt.upitnik's. The trainer and the owner, who open it to edit those words
+   The questions are rows since 26.10.2026 (models.UpitnikQuestion), the
+   steps qmt.upitnik.steps makes of them: a client's the shown ones, the
+   editor's every one (a hidden one .is-off: a step in edit mode only). A
+   question's words are virtual keys (upitnik.<id>.text / .options / .low /
+   .high / .followup_text, printed with c.field), the words around them
+   slots (upitnik.*). The trainer and the owner, who open it to edit it
    (Admin ▾ → Upitnik), keep their whole bar, Admin ▾ marked (26.10.2026):
-   the page is one task for the member filling it, not for them. #}
+   the page is one task for the member filling it, not for them. In edit
+   mode each question carries his controls (its switch, ↑ / ↓, its
+   settings, "Obriši pitanje"), a grey line saying what its settings do,
+   the scoring's summary above the first question and "+ Dodaj pitanje"
+   under the last. #}
 {% set solo_page = not can_edit_copy %}
 {% block title %}Upitnik — QMT{% endblock %}
 {% block head %}
@@ -35,10 +43,11 @@
                color: inherit; cursor: inherit; }
 
   /* ===== a choice and yes / no: Shape's rows, a letter badge at the left =====
-     A client's row is a label around a radio; the editor's choices are his
+     A client's row is a label around a radio (a multi's, 26.10.2026, around
+     a checkbox: several rows may be chosen); the editor's choices are his
      options list (c.field_points: li rows, which base.html's editor redraws),
      so the letter is a counter, the same for both shapes. Chosen, a row
-     inverts with a ✓ at its right end (a radio's :checked; the editor's
+     inverts with a ✓ at its right end (an input's :checked; the editor's
      preview marks .on). */
   .opts { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none;
           counter-reset: opt; }
@@ -127,15 +136,102 @@
   body.editing .quiz.js .q-step { display: block; animation: none; }
   body.editing .quiz.js .q-intro { display: block; }
   body.editing .quiz .q-bar { display: none; }
-  .quiz:not(.js) .q-step + .q-step, body.editing .quiz .q-step + .q-step {
+  /* ~, not +: "+ Dodaj pitanje" (.q-add) sits between the last question and the last screen */
+  .quiz:not(.js) .q-step ~ .q-step, body.editing .quiz .q-step ~ .q-step {
     margin-top: 28px; padding-top: 26px; border-top: 1px solid var(--line);
   }
   .quiz:not(.js) .q-step:first-of-type, body.editing .quiz .q-step:first-of-type { margin-top: 26px; }
+  /* a multi's "Dalje" waits for a tick: dimmed while none is (aria-disabled,
+     the script's; a click then does nothing), not in edit mode, where its
+     words are the editor's to click */
+  .quiz .q-next[aria-disabled="true"] { opacity: .45; box-shadow: none; cursor: default; }
+  .quiz .q-next[aria-disabled="true"]:hover { background: var(--accent-fill); transform: none; }
+  body.editing .quiz .q-next[aria-disabled="true"] { opacity: 1; }
+
+  /* ===== the editor's questions (26.10.2026): rows the gym owner adds,
+     removes, hides, reorders and classifies, in edit mode only. A
+     question's first line is his controls (.q-ed): its switch (.ed-flag),
+     ↑ / ↓ (.ed-mv), "Obriši pitanje" (.ed-q-x), then a select in a pill
+     for each setting (label.ed-set: Dio, Vrsta, Bodovanje on a scale,
+     Uloga), the gym cards' 32px pills (base.html); under them a grey
+     line saying what the settings do (.q-ed-line, a follow-up's too). A
+     hidden question is no step outside edit mode; in it, its content is
+     dimmed, its controls and its line are not (the gym cards' rule). The
+     scoring's summary sits above the first question (.q-sum, the alert
+     when nothing scores), "+ Dodaj pitanje" under the last (.q-add, the
+     gym's "+ Dodaj karticu"). A step clears the sticky bar when a reload
+     lands on it (#step-q<id>). ===== */
+  .q-step { scroll-margin-top: 96px; }
+  .quiz .q-step.is-off { display: none; }
+  body.editing .q-step.is-off > :not(.q-ed):not(.q-ed-line) { opacity: .55; }
+  .q-ed, .q-ed-line, .q-sum, .q-add { display: none; }
+  body.editing .q-ed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+  body.editing .q-ed .ed-flag, body.editing .q-ed .ed-q-x { margin: 0; }
+  .q-ed .ed-mv { min-width: 32px; min-height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line);
+                 box-shadow: none; background: var(--surface-2); color: var(--muted); font: 700 .9rem var(--font-body); }
+  .q-ed .ed-mv:hover { transform: none; color: var(--text); background: color-mix(in srgb, var(--text) 10%, var(--surface-2)); }
+  .q-ed .ed-mv:disabled, .q-ed .ed-mv:disabled:hover { opacity: .45; cursor: default; color: var(--muted); background: var(--surface-2); }
+  /* a setting's pill is as tall as its select, 32px, the other pills' height
+     (the select is the tap target, so it fills the pill: its hairline is an
+     inset shadow, not a border, and a coarse pointer's 36px selects,
+     base.html, stay 32 here, one footprint for the row) */
+  .q-ed label.ed-set { display: inline-flex; align-items: center; gap: 2px; margin: 0; padding: 0 2px 0 12px;
+                       border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); background: var(--surface-2);
+                       color: var(--muted); font: 700 .8rem var(--font-body); letter-spacing: 0; text-transform: none;
+                       cursor: pointer; }
+  .q-ed label.ed-set:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }     /* the select's focus, on its pill */
+  .q-ed .ed-set select { width: auto; max-width: 100%; height: 32px; min-height: 32px; padding: 0 4px; border: none;
+                         border-radius: 999px; background: transparent; color: var(--text); font: 600 .8rem var(--font-body);
+                         cursor: pointer; }
+  .q-ed .ed-set select:focus { outline: none; }
+  body.editing .q-ed-line { display: block; margin: 0 0 16px; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+  body.editing .q-sum { display: block; margin-top: 18px; }
+  .q-sum p { font-size: .88rem; overflow-wrap: anywhere; }
+  .q-sum > p:first-child { color: var(--muted); }
+  .q-sum .alert { margin: 10px 0 0; }
+  body.editing .q-add { display: flex; justify-content: center; margin-top: 26px; }
+  body.editing .q-add .act { min-height: 32px; }
 </style>
 {% endblock %}
 {# the error shows under the questionnaire's title (below), not over it #}
 {% block error_alert %}{% endblock %}
 {% block content %}
+{# A question's controls, the editor's, in edit mode (base.html works them):
+   first what he does to it, its switch (.ed-flag, to its own route), ↑ / ↓
+   (plain forms, below the questionnaire's: a form holds no form, so each
+   button names its own with form="…") and "Obriši pitanje" (two taps);
+   then what it is, a select per setting, saved at a change (.ed-set), its
+   word on the pill (Dio, Vrsta, Bodovanje, Uloga). A scale alone scores,
+   so only a scale has Bodovanje, and Uloga offers the role its kind can
+   hold: Bolovi on a scale, Ozljede on a yes / no, none on any other kind
+   (the route refuses the rest). #}
+{% macro controls(q) -%}
+  {%- set url = "/upitnik/pitanje/" ~ q.row -%}
+  {%- set name = "Pitanje " ~ q.n -%}
+  <div class="q-ed">
+    <button type="button" class="ed-flag" data-url="{{ url }}" data-field="shown" data-reload data-label="{{ name }}: prikazano"
+            aria-pressed="{{ 'true' if q.shown else 'false' }}">{{ "Prikazano" if q.shown else "Skriveno" }}</button>
+    <button type="submit" class="ed-mv" form="q-mv-{{ q.row }}" name="smjer" value="gore" aria-label="{{ name }}: jedno mjesto gore"{% if q.n == 1 %} disabled{% endif %}>↑</button>
+    <button type="submit" class="ed-mv" form="q-mv-{{ q.row }}" name="smjer" value="dolje" aria-label="{{ name }}: jedno mjesto dolje"{% if q.n == last_row %} disabled{% endif %}>↓</button>
+    <button type="submit" class="ed-q-x" form="q-x-{{ q.row }}" aria-label="Obriši pitanje {{ q.n }}">Obriši pitanje</button>
+    <label class="ed-set">Dio <select data-url="{{ url }}" data-field="part" data-value="{{ q.part }}" data-label="{{ name }}: dio">
+      {%- for p in parts %}<option value="{{ p }}"{% if p == q.part %} selected{% endif %}>{{ p }}</option>{% endfor -%}
+    </select></label>
+    <label class="ed-set">Vrsta <select data-url="{{ url }}" data-field="kind" data-value="{{ q.kind }}" data-label="{{ name }}: vrsta">
+      {%- for k, label in kinds.items() %}<option value="{{ k }}"{% if k == q.kind %} selected{% endif %}>{{ label }}</option>{% endfor -%}
+    </select></label>
+    {%- if q.kind == "scale" %}
+    <label class="ed-set">Bodovanje <select data-url="{{ url }}" data-field="scoring" data-value="{{ q.scoring }}" data-label="{{ name }}: bodovanje">
+      {%- for k, label in scorings.items() %}<option value="{{ k }}"{% if k == q.scoring %} selected{% endif %}>{{ label }}</option>{% endfor -%}
+    </select></label>
+    {%- endif %}
+    {%- if q.kind in role_kinds.values() %}
+    <label class="ed-set">Uloga <select data-url="{{ url }}" data-field="role" data-value="{{ q.role }}" data-label="{{ name }}: uloga">
+      {%- for k, label in roles.items() if not k or role_kinds[k] == q.kind %}<option value="{{ k }}"{% if k == q.role %} selected{% endif %}>{{ label }}</option>{% endfor -%}
+    </select></label>
+    {%- endif %}
+  </div>
+{%- endmacro %}
 <form method="post" action="/upitnik" class="quiz" id="quiz" autocomplete="off">
   <div class="q-head">
     <p class="q-title">{{ c.t("upitnik.title") }}</p>
@@ -145,29 +241,47 @@
     <p class="q-intro">{{ c.t("upitnik.intro") }}</p>
   </div>
   <div class="q-bar" hidden aria-hidden="true"><span></span></div>
+  {% if summary %}
+  {# the editor's: what scores, and how (edit mode only) #}
+  <div class="q-sum">
+    <p>{{ summary[0] }}</p>
+    {% if summary[1] %}<p class="alert">Nijedno pitanje se ne boduje — svi dobivaju početnu razinu.</p>{% endif %}
+  </div>
+  {% endif %}
 
   {% for q in steps %}
-  {% set key = "upitnik." ~ q.id %}
-  <section class="q-step" id="step-{{ q.id }}" data-q="{{ q.id }}" data-kind="{{ q.kind }}"
-           {%- if q.follows %} data-follows="{{ q.follows }}"{% if q.ask_from %} data-from="{{ q.ask_from }}"{% else %} data-is="{{ yes if q.ask_if else no }}"{% endif %}{% endif %}>
+  {% set key = "upitnik." ~ q.row %}
+  {% set name = "Pitanje " ~ q.n %}
+  <section class="q-step{% if not q.shown %} is-off{% endif %}" id="step-{{ q.id }}" data-q="{{ q.id }}" data-kind="{{ q.kind }}"
+           {%- if q.follows %} data-follows="{{ q.follows }}"{% if q.ask_from %} data-from="{{ q.ask_from }}"{% else %} data-is="{{ yes if q.ask_if else no }}"{% endif %}{% endif %}
+           {%- if can_edit_copy and not q.follows %} data-flag{% endif %}>
+    {% if can_edit_copy %}{% if not q.follows %}{{ controls(q) }}{% endif %}
+    <p class="q-ed-line">{{ lines[q.id] }}</p>{% endif %}
     <p class="q-part">{{ c.t("upitnik.part" ~ q.part ~ ".h") }}</p>
     {% if q.kind == "text" %}
-    <h1 class="q-h" id="h-{{ q.id }}" tabindex="-1"><label for="a-{{ q.id }}">{{ c.t(key ~ ".text") }}</label></h1>
+    {% set field = "followup_text" if q.follows else "text" %}
+    <h1 class="q-h" id="h-{{ q.id }}" tabindex="-1"><label for="a-{{ q.id }}">{{ c.field(key ~ "." ~ field, q.text, name ~ ": " ~ QUESTION[field].label) }}</label></h1>
     <textarea id="a-{{ q.id }}" name="{{ q.id }}" rows="4" maxlength="{{ text_max }}"></textarea>
     {% else %}
-    <h1 class="q-h" id="h-{{ q.id }}" tabindex="-1">{{ c.t(key ~ ".text") }}</h1>
+    <h1 class="q-h" id="h-{{ q.id }}" tabindex="-1">{{ c.field(key ~ ".text", q.text, name ~ ": " ~ QUESTION["text"].label) }}</h1>
     {% endif %}
 
-    {% if q.kind == "choice" %}
-      {% set slot = COPY[key ~ ".options"] %}
+    {% if q.kind in ("choice", "multi") %}
       {% if can_edit_copy %}
       {# the editor's options: the list he edits (✕, "+ Dodaj odgovor"), rows in this page's look #}
-      {{ c.field_points(key ~ ".options", copy_items(key ~ ".options", copy_texts), slot.label, slot,
+      {{ c.field_points(key ~ ".options", q.options, name ~ ": " ~ QUESTION["options"].label, QUESTION["options"],
                         cls="opts", add_label="+ Dodaj odgovor") }}
-      {% else %}
+      {% elif q.kind == "choice" %}
       <div class="opts" role="radiogroup" aria-labelledby="h-{{ q.id }}">
-        {% for text in copy_items(key ~ ".options", copy_texts) %}
+        {% for text in q.options %}
         <label class="opt"><input type="radio" name="{{ q.id }}" value="{{ text }}" required><span class="t">{{ text }}</span></label>
+        {% endfor %}
+      </div>
+      {% else %}
+      {# several may be ticked, so "Dalje" goes on (one at least: the script, the server) #}
+      <div class="opts" role="group" aria-labelledby="h-{{ q.id }}">
+        {% for text in q.options %}
+        <label class="opt"><input type="checkbox" name="{{ q.id }}" value="{{ text }}"><span class="t">{{ text }}</span></label>
         {% endfor %}
       </div>
       {% endif %}
@@ -185,12 +299,11 @@
         </div>
       </div>
       {# the two ends' words; one the gym owner emptied takes its "1 =" along #}
-      {% set low, high = copy_text(key ~ ".low", copy_texts), copy_text(key ~ ".high", copy_texts) %}
       <p class="scale-ends">
-        {%- if can_edit_copy or low %}<span>1 = {{ c.t(key ~ ".low") }}</span>{% else %}<span></span>{% endif -%}
-        {%- if can_edit_copy or high %}<span>10 = {{ c.t(key ~ ".high") }}</span>{% endif -%}
+        {%- if can_edit_copy or q.low %}<span>1 = {{ c.field(key ~ ".low", q.low, name ~ ": " ~ QUESTION["low"].label) }}</span>{% else %}<span></span>{% endif -%}
+        {%- if can_edit_copy or q.high %}<span>10 = {{ c.field(key ~ ".high", q.high, name ~ ": " ~ QUESTION["high"].label) }}</span>{% endif -%}
       </p>
-      {% if can_edit_copy and q.id == "q14" %}
+      {% if can_edit_copy and q.role == "pain" %}
       {# the sentence for a client in pain (upitnik.pain_note): the flash
          after saving and the karton say it, so the editor reaches it here,
          under the pain question, in edit mode (as /moja-clanarina previews
@@ -202,14 +315,18 @@
       {% endif %}
     {% endif %}
 
-    {% if not loop.first or q.kind == "text" %}
+    {% set goes_on = q.kind in ("text", "multi") %}
+    {% if q.id != first_step or goes_on %}
     <div class="q-nav">
-      {% if not loop.first %}<button type="button" class="act act-quiet q-back">{{ c.t("upitnik.back") }}</button>{% endif %}
-      {% if q.kind == "text" %}<button type="button" class="btn q-next">{{ c.t("upitnik.next") }}</button>{% endif %}
+      {% if q.id != first_step %}<button type="button" class="act act-quiet q-back">{{ c.t("upitnik.back") }}</button>{% endif %}
+      {% if goes_on %}<button type="button" class="btn q-next">{{ c.t("upitnik.next") }}</button>{% endif %}
     </div>
     {% endif %}
   </section>
   {% endfor %}
+  {% if can_add_question %}
+  <div class="q-add"><button type="submit" form="q-add" class="act">+ Dodaj pitanje</button></div>
+  {% endif %}
 
   {# the last screen: the consent (required) and the one submit #}
   <section class="q-step q-final" id="step-end">
@@ -220,26 +337,40 @@
     </div>
   </section>
 </form>
+{% if can_edit_copy %}
+{# the editor's forms: a question moved (↑ / ↓ send smjer) or deleted, one
+   added. Here, outside the questionnaire's form; their buttons are in it
+   and name them (form="…"). Each brings the page back in edit mode. #}
+{% for q in steps if not q.follows %}
+<form id="q-mv-{{ q.row }}" class="ed-move" method="post" action="/upitnik/pitanje/{{ q.row }}/pomak" hidden></form>
+<form id="q-x-{{ q.row }}" method="post" action="/upitnik/pitanje/{{ q.row }}/obrisi" hidden></form>
+{% endfor %}
+{% if can_add_question %}<form id="q-add" class="ed-add-q" method="post" action="/upitnik/pitanje/nova" hidden></form>{% endif %}
+{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>
   // One step at a time (patterns.md §7). The step shown is .on; the bar
   // counts the steps asked (a follow-up only while its question's answer
-  // calls for it: q14 at 4 or more, q15 yes), and a follow-up not asked has
-  // its textarea disabled, so it is not sent. A choice or a scale goes on
-  // ~250 ms after a tap or a click; one made with the keyboard (the arrows,
-  // Space: the click has no detail) is only marked, and Enter goes on. A
-  // free text goes on with Dalje, once it is written. Nazad goes back, the
-  // answer kept: the inputs hold it. Submitting checks every step asked and
-  // the consent (the server checks again). In edit mode (body.editing, the
-  // trainer) every step shows, stacked, and nothing here moves; outside it
-  // his own choices are rows with no radio, which a click marks .on.
+  // calls for it: the pain question at 4 or more, the injuries question
+  // yes; a hidden question, .is-off on the editor's page, never), and a
+  // follow-up not asked has its textarea disabled, so it is not sent. A
+  // choice or a scale goes on ~250 ms after a tap or a click; one made with
+  // the keyboard (the arrows, Space: the click has no detail) is only
+  // marked, and Enter goes on. A multi (several options) is ticked row by
+  // row and goes on with Dalje, which waits for one tick at least
+  // (aria-disabled until then); a free text goes on with Dalje, once it is
+  // written. Nazad goes back, the answer kept: the inputs hold it.
+  // Submitting checks every step asked and the consent (the server checks
+  // again). In edit mode (body.editing, the trainer) every step shows,
+  // stacked, and nothing here moves; outside it his own choices are rows
+  // with no radio, which a click marks .on (a multi's, each in turn).
   (function () {
     var form = document.getElementById("quiz");
     if (!form) return;
     var steps = [].slice.call(form.querySelectorAll(".q-step"));
     var bar = form.querySelector(".q-bar"), fill = bar ? bar.firstElementChild : null;
-    var at = steps[0], timer = null;
+    var at = null, timer = null;
     form.classList.add("js");
     form.noValidate = true;                 // asked step by step here; the server asks again
     if (bar) bar.hidden = false;
@@ -249,6 +380,7 @@
       return r ? r.value : null;
     }
     function asked(step) {
+      if (step.classList.contains("is-off")) return false;       // a hidden question: on the editor's page only
       var of = step.getAttribute("data-follows");
       if (!of) return true;
       var v = picked(of);
@@ -259,10 +391,18 @@
       var kind = step.getAttribute("data-kind");
       if (!kind) return true;                                    // the last screen: the consent is the submit's
       if (kind === "text") return !!step.querySelector("textarea").value.trim();
+      if (kind === "multi") return !!step.querySelector('input[type="checkbox"]:checked, .opts > li.on');
       if (step.querySelector('input[type="radio"]')) return picked(step.getAttribute("data-q")) !== null;
       return !!step.querySelector(".opts > li.on");              // the editor's preview of a choice
     }
     function shown() { return steps.filter(asked); }
+    // a multi's Dalje says whether it goes on yet: one tick at least
+    function fit() {
+      steps.forEach(function (s) {
+        var b = s.getAttribute("data-kind") === "multi" ? s.querySelector(".q-next") : null;
+        if (b) b.setAttribute("aria-disabled", answered(s) ? "false" : "true");
+      });
+    }
     function sync() {
       steps.forEach(function (s) {
         var t = s.querySelector("textarea");
@@ -274,6 +414,7 @@
       steps.forEach(function (s) { s.classList.toggle("on", s === at); });
       form.classList.toggle("at-start", i === 0);
       if (fill) fill.style.width = ((i + 1) / list.length * 100) + "%";
+      fit();
     }
     function go(step) {
       clearTimeout(timer);
@@ -299,15 +440,18 @@
       if (t.closest(".q-next")) {
         var ta = at.querySelector("textarea");
         if (ta && !ta.value.trim()) { ta.value = ""; ta.reportValidity(); return; }
+        if (!answered(at)) return;            // a multi with nothing ticked
         forward(); return;
       }
       var li = t.closest(".opts > li");
       if (li) {
+        if (li.closest(".q-step").getAttribute("data-kind") === "multi") { li.classList.toggle("on"); fit(); return; }
         [].forEach.call(li.parentElement.children, function (x) { x.classList.toggle("on", x === li); });
         later(); return;
       }
+      if (t.matches('input[type="checkbox"]')) { fit(); return; }   // a multi's tick: Dalje goes on
       if (t.matches('input[type="radio"]')) {
-        sync(); draw();                       // q14 and q15 decide whether their follow-up is asked
+        sync(); draw();                       // the safety questions decide whether their follow-up is asked
         if (e.detail > 0) later();            // a tap or a click goes on; the keyboard only marks
       }
     });
@@ -327,7 +471,16 @@
       var consent = form.querySelector('input[name="consent"]');
       if (consent && !consent.checked) { e.preventDefault(); consent.reportValidity(); }
     });
+    at = shown()[0] || steps[0];              // the first question asked (an editor's first may be hidden)
     sync(); draw();
+    // A form that comes back in edit mode at a question (#step-q<id>: "+
+    // Dodaj pitanje", ↑ / ↓, "Obriši pitanje") lands on it here, the page
+    // laid out as the editor sees it: the browser's own jump came first,
+    // before edit mode and this script grew every step above it.
+    if (editing() && location.hash.indexOf("#step-") === 0) {
+      var target = document.getElementById(location.hash.slice(1));
+      if (target) target.scrollIntoView({block: "start", behavior: "instant"});
+    }
   })();
 </script>
 {% endblock %}

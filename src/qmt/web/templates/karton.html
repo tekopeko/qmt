@@ -42,7 +42,7 @@
   .upitnik details ul { padding:9px 0 0 18px; font-size:.88rem; }
   .upitnik details li { margin-bottom:4px; overflow-wrap:anywhere; }
   .upitnik details li strong { white-space:pre-line; }    /* a free text keeps its line breaks */
-  /* a follow-up's free text sits under its question (q14b under q14) */
+  /* a follow-up's free text sits under its question (where it hurts under the pain question) */
   .upitnik details li.follow { list-style:none; margin-left:14px; color:var(--muted); }
   .upitnik details li.follow strong { color:var(--text); }
 
@@ -167,7 +167,7 @@
   <h2 class="u-level" id="u-level">{{ levels[onboarding.level] }}</h2>
   {% set v2 = onboarding.version >= 2 %}
   {% if v2 %}
-  {# the upitnik v2: part 1's four answers (they route nothing yet: the level
+  {# the upitnik v2: part 1's answers (they route nothing yet: the level
      alone does) and the score of 10 #}
   <div class="u-meta">
     {% for fact in u_chips %}<span class="u-fact">{{ fact }}</span>{% endfor %}
@@ -176,7 +176,7 @@
   {% if not own and (onboarding.needs_review or (onboarding.pain_level or 0) >= pain_ask) %}
   <div class="u-flags">
     {% if onboarding.needs_review %}<span class="u-flag review">Zahtijeva pregled</span>{% endif %}
-    {% if (onboarding.pain_level or 0) >= pain_ask %}<span class="u-flag pain">Bolovi {{ onboarding.pain_level }}/10{% if answers.q14b %} · {{ answers.q14b | truncate(60) }}{% endif %}</span>{% endif %}
+    {% if (onboarding.pain_level or 0) >= pain_ask %}<span class="u-flag pain">Bolovi {{ onboarding.pain_level }}/10{% if pain_where %} · {{ pain_where | truncate(60) }}{% endif %}</span>{% endif %}
   </div>
   {% endif %}
   {% else %}

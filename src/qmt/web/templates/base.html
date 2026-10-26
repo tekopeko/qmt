@@ -476,15 +476,19 @@
        form: the landing's announcement goes with its photo) is the same
        pill, its button the form's only box (display: contents) so it lines
        up with the others; armed, "Obriši?". The gym's "Obriši karticu"
-       (.ed-gym-x, the landing's #dvorana, 20.10.2026) is that pill too. */
-    .ed-img, .ed-img-x, .ed-ann-x, .ed-gym-x { display: none; }
+       (.ed-gym-x, the landing's #dvorana, 20.10.2026) is that pill too, and
+       so is /upitnik's "Obriši pitanje" (button.ed-q-x, 26.10.2026: the
+       button itself, which names its form with form="…", since a question
+       sits inside the questionnaire's form and a form holds no form). */
+    .ed-img, .ed-img-x, .ed-ann-x, .ed-gym-x, .ed-q-x { display: none; }
     body.editing .ed-ann-x, body.editing .ed-gym-x { display: contents; }
-    body.editing .ed-img, body.editing .ed-img-x, body.editing .ed-ann-x > button, body.editing .ed-gym-x > button {
+    body.editing .ed-img, body.editing .ed-img-x, body.editing .ed-ann-x > button, body.editing .ed-gym-x > button,
+    body.editing .ed-q-x {
       display: inline-flex; align-self: flex-start; align-items: center; min-height: 32px; margin-bottom: 14px;
       padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); box-shadow: none;
       font: 700 .8rem var(--font-body); background: var(--surface-2); color: var(--muted); }
     body.editing .ed-img:hover, body.editing .ed-img-x:hover, body.editing .ed-ann-x > button:hover,
-    body.editing .ed-gym-x > button:hover {
+    body.editing .ed-gym-x > button:hover, body.editing .ed-q-x:hover {
       transform: none; color: var(--text); background: color-mix(in srgb, var(--text) 10%, var(--surface-2)); }
     body.editing [data-photo] .ed-img, body.editing [data-photo] .ed-img-x,
     body.editing [data-photo] .ed-ann-x > button { background: var(--surface); color: var(--text); }
@@ -492,7 +496,8 @@
     body.editing [data-photo] .ed-ann-x > button:hover { background: color-mix(in srgb, var(--text) 10%, var(--surface)); }
     body.editing .ed-img-x.armed, body.editing .ed-img-x.armed:hover,
     body.editing .ed-ann-x > button.armed, body.editing .ed-ann-x > button.armed:hover,
-    body.editing .ed-gym-x > button.armed, body.editing .ed-gym-x > button.armed:hover {
+    body.editing .ed-gym-x > button.armed, body.editing .ed-gym-x > button.armed:hover,
+    body.editing .ed-q-x.armed, body.editing .ed-q-x.armed:hover {
       color: var(--accent-tint-ink); border-color: transparent;
       background: linear-gradient(var(--accent-dim), var(--accent-dim)) var(--surface); }
     /* width: max-content: centred by left: 50%, the bar would otherwise
@@ -888,7 +893,13 @@
   // reset=1 removes photo and row (pick and unpick below). A landing
   // announcement's "Obriši najavu" (.ed-ann-x, a form) asks first too, and
   // its second tap sends the form: the page comes back without the card
-  // (drop below); a gym card's "Obriši karticu" (.ed-gym-x) the same.
+  // (drop below); a gym card's "Obriši karticu" (.ed-gym-x) the same, and
+  // an upitnik question's "Obriši pitanje" (.ed-q-x, 26.10.2026). A
+  // question's switch is an .ed-flag that posts to its own route (data-url,
+  // the field data-field), and its settings are selects (.ed-set select:
+  // its part, kind, scoring, role) that save at a change; either answer
+  // brings the page back in edit mode, drawn again (redraw below), since
+  // the page's lines say what the settings do.
   (function () {
     var mode = false, cur = null, orig = "";
     var tog = document.getElementById("copyToggle"), bar = document.getElementById("copyBar");
@@ -1063,7 +1074,7 @@
       var table = x.closest("table"), i = +x.closest("tr").querySelector("[data-part]").dataset.index;
       sendRows(table, "index=" + i + "&remove=1", table.dataset.label + ", red " + (i + 1));
     }
-    document.addEventListener("click", function (e) { if (armed && !e.target.closest(".ed-x, .ed-img-x, .ed-ann-x, .ed-gym-x")) disarm(); }, true);
+    document.addEventListener("click", function (e) { if (armed && !e.target.closest(".ed-x, .ed-img-x, .ed-ann-x, .ed-gym-x, .ed-q-x")) disarm(); }, true);
     function add(btn) {
       var ul = btn.previousElementSibling;
       if (cur) end(false);
@@ -1079,7 +1090,10 @@
     // .is-off or not, and its [data-flag-group] follows the boxes: .is-off
     // when none is on, and .single on their row (the boxes' parent) when one
     // is. A failure is said in the bar, under the toggle's label; Odustani
-    // closes it.
+    // closes it. A slot's or a card's switch goes to /copy/<key> as its
+    // text; an upitnik question's to its own route (data-url) as the field
+    // data-field names, and its answer brings the page back (data-reload:
+    // the scoring's summary counts the questions shown).
     function flag(btn) {
       end(false);
       var on = btn.getAttribute("aria-pressed") !== "true";
@@ -1087,11 +1101,12 @@
         if (!cur) { label.textContent = btn.dataset.label; count.textContent = ""; bar.hidden = false; }
         msg.textContent = text;
       }
-      fetch("/copy/" + encodeURIComponent(btn.dataset.copy), {
+      fetch(btn.dataset.url || "/copy/" + encodeURIComponent(btn.dataset.copy), {
         method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"},
-        body: "text=" + (on ? "on" : "off"), credentials: "same-origin"
+        body: (btn.dataset.field || "text") + "=" + (on ? "on" : "off"), credentials: "same-origin"
       }).then(function (r) { return r.json(); }).then(function (d) {
         if (!d.ok) { fail(d.error || "Nije spremljeno."); return; }
+        if (btn.hasAttribute("data-reload")) { redraw(); return; }
         btn.setAttribute("aria-pressed", d.on ? "true" : "false"); btn.textContent = d.on ? "Prikazano" : "Skriveno";
         btn.closest("[data-flag]").classList.toggle("is-off", !d.on);
         var group = btn.closest("[data-flag-group]");
@@ -1167,10 +1182,42 @@
         if (!cur) bar.hidden = true;
       }).catch(function () { says(name, "Nije spremljeno — provjeri vezu."); });
     }
-    // deleting a whole announcement (or a gym card) asks first, as an
-    // item's ✕: the first tap arms the pill into "Obriši?", the second
-    // within four seconds sends its form (a plain POST; the page comes back
-    // without the card, in edit mode: once() below)
+    // A setting (an upitnik question's part, kind, scoring, role: a select
+    // in .ed-set) saves at a change, as its data-field, to its data-url; the
+    // page comes back in edit mode, drawn again (a kind brings other
+    // inputs, a role a follow-up, and the lines say what changed). A
+    // refusal is said in the bar under the select's label, and the select
+    // goes back to what is saved (data-value).
+    function setting(sel) {
+      end(false);
+      function fail(text) { sel.value = sel.dataset.value; says(sel.dataset.label, text); }
+      fetch(sel.dataset.url, {
+        method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: encodeURIComponent(sel.dataset.field) + "=" + encodeURIComponent(sel.value), credentials: "same-origin"
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) { fail(d.error || "Nije spremljeno."); return; }
+        redraw();
+      }).catch(function () { fail("Nije spremljeno — provjeri vezu."); });
+    }
+    document.addEventListener("change", function (e) {
+      if (mode && e.target.matches && e.target.matches(".ed-set select")) setting(e.target);
+    });
+    // the page drawn again after a change it shows elsewhere too (a
+    // question's setting or switch): back in edit mode at the same place
+    // (once(), a reload keeps the scroll), an old ?error= left behind, and
+    // an old #step-… too (the page lands on one: the scroll is the place).
+    // (Not again(): the boot below has a var of that name in this scope.)
+    function redraw() {
+      once();
+      try { if (location.search || location.hash) history.replaceState(null, "", location.pathname); } catch (e) {}
+      location.reload();
+    }
+    // deleting a whole announcement (or a gym card, or an upitnik
+    // question) asks first, as an item's ✕: the first tap arms the pill
+    // into "Obriši?", the second within four seconds sends its form (a
+    // plain POST; the page comes back without it, in edit mode: once()
+    // below). A question's pill is the button itself, its form named by
+    // form="…" (b.form is that form)
     function drop(b) {
       if (cur) end(false);
       if (armed !== b) {
@@ -1185,7 +1232,9 @@
     // page opens in normal mode, and leaving it ends edit mode (a tab, the
     // menu, a link, a reload by hand). The editor's own forms are the one
     // way it outlives a load: "+ Dodaj najavu" and "Obriši najavu" (the
-    // gym's "+ Dodaj karticu" and "Obriši karticu" too) reload the page, so
+    // gym's "+ Dodaj karticu" and "Obriši karticu" too, and /upitnik's
+    // "+ Dodaj pitanje", ↑ / ↓ and "Obriši pitanje", and a question's
+    // setting or switch, redraw() above) reload the page, so
     // right before one goes it leaves a one-shot flag in this tab's
     // sessionStorage (once()), and the page that comes back reads it, drops
     // it and turns edit mode on: the editor lands where he was. (Until then
@@ -1206,7 +1255,7 @@
     // the add forms go as plain submits; drop() sends the delete forms with
     // form.submit(), which fires no submit event, so it calls once() itself
     document.addEventListener("submit", function (e) {
-      if (mode && e.target.matches("form.ed-add-ann, form.ed-add-gym")) once();
+      if (mode && e.target.matches("form.ed-add-ann, form.ed-add-gym, form.ed-add-q, form.ed-move")) once();
     });
     // Back or Forward can bring a page out of the browser's cache as it was
     // left, edit mode and all (Chrome does, measured): it was left, so it
@@ -1216,7 +1265,7 @@
       if (!mode) return;
       var f = e.target.closest(".ed-flag"), im = e.target.closest(".ed-img"), ix = e.target.closest(".ed-img-x");
       var x = e.target.closest(".ed-x"), a = e.target.closest(".ed-add"), el = e.target.closest(".ed");
-      var ax = e.target.closest(".ed-ann-x > button, .ed-gym-x > button");
+      var ax = e.target.closest(".ed-ann-x > button, .ed-gym-x > button, button.ed-q-x");
       if (f) { e.preventDefault(); e.stopPropagation(); flag(f); }
       else if (im) { e.preventDefault(); e.stopPropagation(); pick(im); }
       else if (ix) { e.preventDefault(); e.stopPropagation(); unpick(ix); }

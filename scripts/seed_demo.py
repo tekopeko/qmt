@@ -6,6 +6,8 @@ Idempotent — safe to re-run. Passwords are for LOCAL DEV ONLY.
     # trener@qmt.local / trener123   (admin)
     # ivan@qmt.local  / lozinka123
     # ana@qmt.local   / lozinka123
+
+Also the upitnik's fifteen questions (ids 1–15) and ivan's answers to them.
 """
 
 from __future__ import annotations
@@ -193,6 +195,23 @@ def seed_gym_cards() -> None:
     print(f"  {len(GYM_CARD_EXAMPLES)} kartice (Dvorana, Individualno)")
 
 
+def seed_upitnik() -> None:
+    """The upitnik's fifteen questions (copy.UPITNIK_DEFAULT_QUESTIONS,
+    with their ids 1–15, the keys ivan's answers below are stored under),
+    in place of whatever questions there were: a dev RESET, as the rest
+    (main() has dropped every response already)."""
+    from sqlalchemy import delete
+
+    from qmt.copy import UPITNIK_DEFAULT_QUESTIONS
+    from qmt.models import UpitnikQuestion
+
+    with db.session_scope() as s:
+        s.execute(delete(UpitnikQuestion))
+    for question in UPITNIK_DEFAULT_QUESTIONS:
+        db.add_upitnik_question(None, question)
+    print(f"  {len(UPITNIK_DEFAULT_QUESTIONS)} pitanja (vlasnikova)")
+
+
 def seed_karton() -> None:
     """Ivan: filled upitnik + two diary entries — the karton demo."""
     import json
@@ -202,11 +221,12 @@ def seed_karton() -> None:
 
     ivan = db.get_user_by_email("ivan@qmt.local")
     # the upitnik v2 (26.10.2026): part 1 as the defaults word it, scales that
-    # land him in srednja (6,4 / 10), no pain to speak of, no injuries
+    # land him in srednja (6,4 / 10), no pain to speak of, no injuries; scored
+    # over the questions seed_upitnik made
     answers = {"q1": "Povećanje snage i mišićne mase", "q2": "3", "q3": "45-60", "q4": "U teretani",
                "q5": 7, "q6": 6, "q7": 5, "q8": 6, "q9": 8, "q10": 8, "q11": 6,
                "q12": 4, "q13": 8, "q14": 3, "q15": False}
-    result = upitnik.evaluate(answers)
+    result = upitnik.evaluate(answers, upitnik.steps(db.upitnik_questions(shown=True)))
     level = result.level
     db.save_onboarding(ivan.id, json.dumps(answers, ensure_ascii=False), result.score, level, upitnik.GOAL,
                        version=upitnik.VERSION, pain_level=result.pain_level, pain_high=result.pain_high,
@@ -233,6 +253,8 @@ if __name__ == "__main__":
     fill_bookings()
     print("treninzi:")
     seed_program()
+    print("upitnik:")
+    seed_upitnik()
     print("karton:")
     seed_karton()
     print("aktualno:")

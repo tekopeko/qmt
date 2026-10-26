@@ -17,10 +17,10 @@ from sqlalchemy import create_engine, delete as sa_delete, func, select, text as
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import config, copy
+from . import config, copy, upitnik
 from .models import (ONLINE_TIERS, PLAN_LABELS, SESSION_KINDS, Announcement, Base, Booking, GymCard,
                      Membership, OnboardingResponse, Payment, Program, ProgramItem, ReminderLog,
-                     SessionTemplate, SiteCopy, TrainingLog, TrainingSession, User)
+                     SessionTemplate, SiteCopy, TrainingLog, TrainingSession, UpitnikQuestion, User)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -357,6 +357,168 @@ def set_gym_card_shown(card_id: int, shown: bool, user_id: int | None = None) ->
     with session_scope() as s:
         g = _gym_card_row(s, card_id)
         g.shown, g.updated_by = shown, user_id
+
+
+# ---------- the upitnik's questions (/upitnik; models.UpitnikQuestion) ----------
+
+MAX_UPITNIK_QUESTIONS = 40     # 26.10.2026: room for many more than the fifteen, and a guard against a runaway list
+
+# Every write to the questions' structure (an add, a move, a setting) runs
+# under this lock: self-exclusive, so two quick taps or two editors never
+# pass the cap together, take one position twice, or hand one role to two
+# questions; plain reads (a client's page, the karton) never wait on it.
+_QUESTIONS_LOCK = "LOCK TABLE upitnik_questions IN SHARE ROW EXCLUSIVE MODE"
+
+
+def upitnik_questions(shown: bool = False) -> list[UpitnikQuestion]:
+    """In position order: every question (the editor's page, the karton,
+    which prints a hidden question's old answers too), or with shown=True
+    the ones a client is asked."""
+    with session_scope() as s:
+        q = select(UpitnikQuestion).order_by(UpitnikQuestion.position)
+        return list(s.scalars(q.where(UpitnikQuestion.shown) if shown else q))
+
+
+def upitnik_question(question_id: int) -> UpitnikQuestion | None:
+    with session_scope() as s:
+        return s.get(UpitnikQuestion, question_id)
+
+
+def add_upitnik_question(user_id: int | None, values: dict | None = None) -> UpitnikQuestion | None:
+    """A new question after the last one: the placeholders
+    (copy.UPITNIK_BLANK: a scale in part 2 that scores nothing), shown.
+    `values` is a whole question instead, in the blank's shape plus its id
+    (one of copy.UPITNIK_DEFAULT_QUESTIONS: the demo seed's, a test's); no
+    route passes it. None at the cap (MAX_UPITNIK_QUESTIONS). A question
+    that came with its own id moves the id sequence past every id there,
+    never back: an id is an answer's key (q<id>), so a new question never
+    takes one an old answer may hold."""
+    q = dict(copy.UPITNIK_BLANK if values is None else values)
+    q["options"] = copy.dump_items(list(q.get("options", ())))
+    with session_scope() as s:
+        s.execute(sa_text(_QUESTIONS_LOCK))
+        n, last = s.execute(select(func.count(), func.coalesce(func.max(UpitnikQuestion.position), 0))
+                            .select_from(UpitnikQuestion)).one()
+        if n >= MAX_UPITNIK_QUESTIONS:
+            return None
+        row = UpitnikQuestion(position=last + 1, updated_by=user_id, **q)
+        s.add(row)
+        s.flush()
+        if "id" in q:
+            seq = "pg_get_serial_sequence('upitnik_questions', 'id')"
+            s.execute(sa_text(f"SELECT setval({seq}, GREATEST((SELECT max(id) FROM upitnik_questions), "
+                              f"COALESCE(pg_sequence_last_value({seq}::regclass), 1)))"))
+        return row
+
+
+def _question_row(s: Session, question_id: int) -> UpitnikQuestion:
+    """The question, locked for this transaction; LookupError when it is gone."""
+    q = s.get(UpitnikQuestion, question_id, with_for_update=True)
+    if q is None:
+        raise LookupError(f"no upitnik question {question_id}")
+    return q
+
+
+def delete_upitnik_question(question_id: int) -> bool:
+    """Delete a question. The answers clients gave it stay as they are
+    (the karton prints them under "(pitanje uklonjeno)"), and its id is
+    never given again. False when it was gone already."""
+    with session_scope() as s:
+        try:
+            q = _question_row(s, question_id)
+        except LookupError:
+            return False
+        s.delete(q)
+        return True
+
+
+def move_upitnik_question(question_id: int, direction: str, user_id: int | None = None) -> bool:
+    """Swap a question with its neighbour in the editor's order (every
+    question, the hidden too): "gore" the one before it, "dolje" the one
+    after. False: no such question, a direction that is neither, or none
+    beyond it that way. The two positions trade in one flush: the unique
+    constraint is deferred to the commit, which sees the swap whole."""
+    if direction not in ("gore", "dolje"):
+        return False
+    with session_scope() as s:
+        s.execute(sa_text(_QUESTIONS_LOCK))
+        rows = list(s.scalars(select(UpitnikQuestion).order_by(UpitnikQuestion.position)))
+        i = next((k for k, r in enumerate(rows) if r.id == question_id), None)
+        if i is None:
+            return False
+        j = i - 1 if direction == "gore" else i + 1
+        if not 0 <= j < len(rows):
+            return False
+        rows[i].position, rows[j].position = rows[j].position, rows[i].position
+        rows[i].updated_by = user_id
+        return True
+
+
+def set_upitnik_question(question_id: int, changes: dict[str, str], user_id: int | None) -> UpitnikQuestion:
+    """Change a question's settings: part, kind, scoring, role, shown, as
+    an editor posts them (texts; qmt.upitnik.settings checks them and
+    raises ValueError with the sentence he reads). Taking a role another
+    question holds takes it from that one (one pain question, one injuries
+    question: the role's unique index). Becoming a choice or a multi with
+    fewer than upitnik.MIN_OPTIONS options fills them up with the
+    placeholders (copy.UPITNIK_BLANK), so a client always has two to choose
+    from; a change of kind keeps every text, its options included, and every
+    answer. Returns the row as stored; LookupError: no such question."""
+    with session_scope() as s:
+        s.execute(sa_text(_QUESTIONS_LOCK))
+        q = _question_row(s, question_id)
+        new = upitnik.settings({"part": q.part, "kind": q.kind, "scoring": q.scoring, "role": q.role,
+                                "shown": q.shown}, changes)
+        if new["role"] and new["role"] != q.role:
+            for other in s.scalars(select(UpitnikQuestion).where(UpitnikQuestion.role == new["role"],
+                                                                 UpitnikQuestion.id != question_id)):
+                other.role, other.updated_by = "", user_id
+            s.flush()                               # the role leaves the other row before it lands on this one
+        if new["kind"] in upitnik.OPTION_KINDS and len(q.option_items) < upitnik.MIN_OPTIONS:
+            items = q.option_items
+            for placeholder in copy.UPITNIK_BLANK["options"]:
+                if len(items) < upitnik.MIN_OPTIONS and placeholder not in items:
+                    items.append(placeholder)
+            q.options = copy.dump_items(items)
+        q.part, q.kind, q.scoring, q.role, q.shown = (new["part"], new["kind"], new["scoring"], new["role"],
+                                                      new["shown"])
+        q.updated_by = user_id
+        return q
+
+
+def set_upitnik_question_field(question_id: int, column: str, text: str, user_id: int | None) -> str:
+    """Set one text of a question. `column` is where the row keeps it
+    (copy.UPITNIK_QUESTION_COLUMNS: text, low, high, followup_text). The
+    text is cleaned as copy is (copy.clean) and stored as it is, an empty
+    one too (an emptied text stays empty, as a gym card's: the placeholder,
+    copy.UPITNIK_BLANK, comes back only when the caller passes it, Zadano).
+    Returns what is stored. ValueError: not such a column, or a text past
+    copy.CAP; LookupError: no such question."""
+    if column not in copy.UPITNIK_QUESTION_COLUMNS.values():
+        raise ValueError(f"not a text of a question: {column!r}")
+    cleaned = copy.clean(text)
+    if len(cleaned) > copy.CAP:
+        raise ValueError(f"{len(cleaned)} characters, at most {copy.CAP}")
+    with session_scope() as s:
+        q = _question_row(s, question_id)
+        setattr(q, column, cleaned)
+        q.updated_by = user_id
+    return cleaned
+
+
+def set_upitnik_question_options(question_id: int, items: list[str], user_id: int | None) -> list[str]:
+    """Set a question's options, the whole list: each cleaned as copy is,
+    the empty ones dropped, stored as a list slot's row is
+    (copy.dump_items). Returns what is stored. ValueError: more than
+    copy.CAP_ITEMS options, or one past copy.CAP (the route keeps two at
+    least: app.py); LookupError: no such question."""
+    kept = [t for t in (copy.clean(x) for x in items) if t]
+    if len(kept) > copy.CAP_ITEMS or any(len(t) > copy.CAP for t in kept):
+        raise ValueError(f"{len(kept)} items, at most {copy.CAP_ITEMS} of {copy.CAP} characters")
+    with session_scope() as s:
+        q = _question_row(s, question_id)
+        q.options, q.updated_by = copy.dump_items(kept), user_id
+    return kept
 
 
 def set_trainer_id(user_id: int, is_trainer: bool) -> bool:

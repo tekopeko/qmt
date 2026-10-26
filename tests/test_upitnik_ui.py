@@ -1,6 +1,8 @@
 """/upitnik in a browser: Shape's questionnaire, one question per screen
 (patterns.md §7, 26.10.2026; the rules and the route are
-tests/test_upitnik.py).
+tests/test_upitnik.py). Its questions are rows since 26.10.2026: the gym
+owner's fifteen (copy.UPITNIK_DEFAULT_QUESTIONS) are seeded before every
+test, as the migration makes them.
 
 A client goes through it on a phone (390px, touch) and on a desktop
 (1280px): a choice goes on by itself, so does a scale, Nazad goes back with
@@ -13,8 +15,13 @@ step, stacked, his preview outside it one step at a time. With the gym
 owner's texts at their longest (300 characters, every choice 12 options of
 60), and once as one unbreakable word, no step widens the page, leaves the
 column or is cut, at 360, 390, 900 and 1280px, and the scale's ten buttons
-keep 40px each (5 × 2 until ten fit in a row). No page errors, no console
-errors, anywhere.
+keep 40px each (5 × 2 until ten fit in a row). The editor builds a
+question in edit mode, at 360, 390 and 1280px: adds it (the page comes back
+in edit mode, at it), retypes it, makes it a multi and a scale again that
+scores navike (the summary counts it), moves it up, hides it (a client is
+not asked it), deletes it (a client gets the fifteen), and nothing ever
+overflows. A client ticks several options of a multi and goes on with
+Dalje, which waits for a tick. No page errors, no console errors, anywhere.
 """
 
 from __future__ import annotations
@@ -39,10 +46,17 @@ from qmt.web.app import app
 PORT = 8112                     # tests/test_copy.py's server is 8111
 
 
+# the gym owner's fifteen, by their answers' keys
+DEFAULTS = {f"q{q['id']}": q for q in copy.UPITNIK_DEFAULT_QUESTIONS}
+CHOICES = {key: q["options"] for key, q in DEFAULTS.items() if q["kind"] == "choice"}
+
+
 @pytest.fixture(autouse=True)
 def clean_db(tmp_path, monkeypatch):
     Base.metadata.drop_all(db.engine)
     Base.metadata.create_all(db.engine)
+    for question in copy.UPITNIK_DEFAULT_QUESTIONS:      # the fifteen, as the migration makes them
+        db.add_upitnik_question(None, question)
     # nothing here stores media, but the server thread shares this process's
     # config: never a developer's real R2 bucket (as tests/test_copy.py)
     monkeypatch.setattr(config, "MEDIA_DIR", tmp_path / "uploads")
@@ -122,7 +136,7 @@ def test_a_client_goes_through_the_questionnaire_one_screen_at_a_time(server):
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
     uid = make_user("ivan@test.local")
-    q1, q2, q3, q4 = (copy.UPITNIK_CHOICES[q][1] for q in ("q1", "q2", "q3", "q4"))
+    q1, q2, q3, q4 = (CHOICES[q] for q in ("q1", "q2", "q3", "q4"))
     problems: list[str] = []
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -257,12 +271,13 @@ def test_the_trainers_edit_mode_shows_every_step_stacked(server):
               [...document.querySelectorAll('.opts .ed-x')].filter(x => x.offsetParent).length,
               [...document.querySelectorAll('.ed-add')].filter(x => x.offsetParent).length,
               document.documentElement.scrollWidth - document.documentElement.clientWidth]""")
-            options = sum(len(o) for _, o in copy.UPITNIK_CHOICES.values())
-            if seen != [len(upitnik.STEPS) + 1, options, len(copy.UPITNIK_CHOICES), 0]:
+            options = sum(len(o) for o in CHOICES.values())
+            steps = len(upitnik.steps(db.upitnik_questions()))
+            if seen != [steps + 1, options, len(CHOICES), 0]:
                 problems.append(f"{where} edit mode (steps, ✕s, + Dodaj odgovor, overflow): {seen}")
             # a text opens in the bar; a click on a row's edge moves nothing
             pg.click("#step-q2 .q-h .ed")
-            if pg.locator("#copyBar").is_hidden() or pg.text_content("#copyBar .cb-label") != "Upitnik, pitanje 2":
+            if pg.locator("#copyBar").is_hidden() or pg.text_content("#copyBar .cb-label") != "Pitanje 2: tekst":
                 problems.append(f"{where} clicking q2's question did not open it in the bar")
             pg.click("#cbCancel")
             pg.click("#copyToggle")
@@ -328,14 +343,16 @@ def words(n: int) -> str:
 
 def fill(make) -> None:
     """Every word of the questionnaire at its longest: a text 300
-    characters, a choice 12 options of 60."""
+    characters (the slots around the questions, and each question's text,
+    a scale's ends, a follow-up's text), a choice 12 options of 60."""
     for key, slot in copy.SLOTS.items():
-        if not key.startswith("upitnik."):
-            continue
-        if isinstance(slot, copy.ListSlot):
-            db.set_copy(key, copy.dump_items([make(ITEM)] * ITEMS), None)
-        else:
+        if key.startswith("upitnik."):
             db.set_copy(key, make(LONG), None)
+    for q in db.upitnik_questions():
+        for column in copy.UPITNIK_QUESTION_COLUMNS.values():
+            db.set_upitnik_question_field(q.id, column, make(LONG), None)
+        if q.kind == "choice":
+            db.set_upitnik_question_options(q.id, [make(ITEM)] * ITEMS, None)
 
 
 def walk_all(pg, phone: bool) -> list[str]:
@@ -381,3 +398,195 @@ def test_long_texts_hold_on_every_step_at_every_width(server):
         browser.close()
     print("\n".join(problems))
     assert not problems, f"{len(problems)} layout problems, listed above"
+
+
+# ---------- the editor builds a question; a client meets it, then does not ----------
+
+EDITING = "() => document.body.classList.contains('editing')"
+SUMMARY = "() => document.querySelector('.q-sum > p').textContent.replace(/\\s+/g, ' ').trim()"
+STEP_IDS = "() => [...document.querySelectorAll('.q-step')].map(s => s.id)"
+# the step a reload landed on is in view, under the sticky bar (its
+# scroll-margin), not off the screen
+IN_VIEW = """id => { const r = document.getElementById(id).getBoundingClientRect();
+  return r.top >= 0 && r.top < innerHeight / 2; }"""
+
+
+def reloads(pg, act) -> None:
+    """Do what reloads the page (a form, a setting, the switch), and wait
+    for the page that comes back: its load, not any navigation (a setting
+    first tidies the URL in place, history.replaceState, which Playwright
+    counts as one)."""
+    with pg.expect_event("load"):
+        act()
+    pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+    pg.wait_for_timeout(150)                       # the fragment's scroll lands
+
+
+def overflow(pg) -> int:
+    return pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+
+
+def test_the_trainer_builds_a_question_and_a_client_never_meets_it_once_deleted(server):
+    """In edit mode, at 360, 390 (touch) and 1280px: "+ Dodaj pitanje" brings
+    the page back in edit mode at the new question (the sixteenth: a scale
+    in part 2 that scores nothing); he retypes its text; makes it "Više
+    odgovora" (two placeholder options to retype) and a scale again, then
+    "Navike" (the summary counts five navike questions); moves it up (before
+    q15, still in edit mode, at it); hides it (Skriveno, dimmed, the summary
+    back to four): a client is not asked it; deletes it with two taps (the
+    first only arms it): it is gone, and a client gets the fifteen. Nothing
+    overflows, the editor's page in edit mode or the client's."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("trener@test.local", is_trainer=True, plans=()); make_user("ivan@test.local")
+    problems: list[str] = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        for w in (360, 390, 1280):
+            phone = w < 600
+            ctx, pg, errors = open_page(browser, server, "trener@test.local", w)
+            where = f"[builder {w}px]"
+
+            def check(ok: bool, what: str) -> None:
+                if not ok:
+                    problems.append(f"{where} {what}")
+
+            pg.click("#copyToggle")
+            reloads(pg, lambda: press(pg, phone, ".q-add .act"))
+            new = max(q.id for q in db.upitnik_questions())
+            step = f"step-q{new}"
+            check(pg.evaluate(EDITING), "the page came back from + Dodaj pitanje out of edit mode")
+            check(pg.url.endswith(f"/upitnik#{step}") and pg.evaluate(IN_VIEW, step),
+                  f"+ Dodaj pitanje did not land at the new question: {pg.url}")
+            check(pg.text_content(f"#{step} .q-ed-line") == "Dio 2 · skala · ne boduje se",
+                  f"the new question's line: {pg.text_content(f'#{step} .q-ed-line')!r}")
+            # he retypes it: click, the text, ⌘/Ctrl+Enter
+            press(pg, phone, f"#{step} .q-h .ed")
+            pg.keyboard.press("ControlOrMeta+A"); pg.keyboard.type("Koju opremu imaš?")
+            pg.keyboard.press("ControlOrMeta+Enter")
+            pg.wait_for_function("() => document.getElementById('copyBar').hidden", timeout=3000)
+            check(db.upitnik_question(new).text == "Koju opremu imaš?", f"retyped: {db.upitnik_question(new).text!r}")
+            # Više odgovora: two options to retype; a scale again; Navike
+            reloads(pg, lambda: pg.select_option(f"#{step} select[data-field=kind]", "multi"))
+            check(pg.evaluate(EDITING), "a setting brought the page back out of edit mode")
+            got = pg.evaluate(f"() => [document.getElementById('{step}').dataset.kind, [...document.querySelectorAll('#{step} .opts > li .ed')].map(x => x.textContent)]")
+            check(got == ["multi", ["Prvi odgovor", "Drugi odgovor"]], f"as a multi: {got}")
+            reloads(pg, lambda: pg.select_option(f"#{step} select[data-field=kind]", "scale"))
+            reloads(pg, lambda: pg.select_option(f"#{step} select[data-field=scoring]", "navike"))
+            check("navike = 5 pitanja" in pg.evaluate(SUMMARY), f"the summary after Navike: {pg.evaluate(SUMMARY)!r}")
+            check(pg.text_content(f"#{step} .q-ed-line") == "Dio 2 · skala · boduje se: navike", "its line after Navike")
+            # ↑: before q15, in edit mode, at it
+            reloads(pg, lambda: press(pg, phone, f"#{step} .ed-mv[value=gore]"))
+            ids = pg.evaluate(STEP_IDS)
+            check(ids.index(step) == ids.index("step-q15") - 1 and pg.evaluate(EDITING) and pg.evaluate(IN_VIEW, step),
+                  f"after ↑: {ids[-6:]}, editing {pg.evaluate(EDITING)}")
+            # the switch: hidden, dimmed, out of the score
+            reloads(pg, lambda: press(pg, phone, f"#{step} .ed-flag"))
+            state = pg.evaluate(f"""() => {{ const s = document.getElementById('{step}');
+              return [s.classList.contains('is-off'), s.querySelector('.ed-flag').textContent,
+                      getComputedStyle(s.querySelector('.q-h')).opacity, getComputedStyle(s).display]; }}""")
+            check(state == [True, "Skriveno", "0.55", "block"], f"hidden in edit mode: {state}")
+            check("navike = 4 pitanja" in pg.evaluate(SUMMARY), f"the summary after hiding: {pg.evaluate(SUMMARY)!r}")
+            check(overflow(pg) == 0, f"edit mode overflows by {overflow(pg)}px")
+            problems += [f"{where} edit mode: {p}" for p in pg.evaluate(STACKED)]
+            # a client is not asked it
+            cctx, cpg, cerrors = open_page(browser, server, "ivan@test.local", w)
+            cids = cpg.evaluate(STEP_IDS)
+            check(step not in cids and len(cids) == 18, f"the client's steps with it hidden: {len(cids)}, {step in cids}")
+            check(overflow(cpg) == 0, f"the client's page overflows by {overflow(cpg)}px")
+            problems += [f"{where} client: {e}" for e in cerrors]
+            cctx.close()
+            # Obriši pitanje: the first tap arms it, the second deletes
+            press(pg, phone, f"#{step} .ed-q-x")
+            check(pg.text_content(f"#{step} .ed-q-x") == "Obriši?" and db.upitnik_question(new) is not None,
+                  "one tap on Obriši pitanje did more than arm it")
+            reloads(pg, lambda: press(pg, phone, f"#{step} .ed-q-x"))
+            check(db.upitnik_question(new) is None and pg.locator(f"#{step}").count() == 0, "Obriši pitanje left it")
+            check(pg.evaluate(EDITING), "the page came back from Obriši pitanje out of edit mode")
+            check(overflow(pg) == 0, f"edit mode after the delete overflows by {overflow(pg)}px")
+            cctx, cpg, cerrors = open_page(browser, server, "ivan@test.local", w)
+            check(cpg.evaluate(STEP_IDS) == [f"step-q{n}" for n in range(1, 15)] + ["step-q14b", "step-q15", "step-q15b", "step-end"],
+                  f"the client's steps after the delete: {cpg.evaluate(STEP_IDS)}")
+            check(overflow(cpg) == 0, f"the client's page overflows by {overflow(cpg)}px")
+            problems += [f"{where} client: {e}" for e in cerrors]
+            cctx.close()
+            problems += [f"{where} {e}" for e in errors]
+            ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+# ---------- a multi: several ticks, then Dalje ----------
+
+def test_a_client_ticks_several_options_and_goes_on_with_dalje(server):
+    """The gym owner's equipment question as a multi (Više odgovora), first
+    in the questionnaire: its rows are a choice's, letters and all, and
+    several are chosen (each inverted with its ✓); a tap moves nothing on;
+    Dalje waits for a tick (aria-disabled: a press does nothing), then goes
+    on; Nazad keeps the ticks. The saved upitnik stores the options ticked,
+    a list. On a phone (390, touch) and a desktop (1280)."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    uid = make_user("ivan@test.local")
+    gear = ["bez opreme", "bučice", "girja", "TRX", "minibandsi", "teretana"]
+    new = db.add_upitnik_question(None).id
+    db.set_upitnik_question(new, {"kind": "multi", "part": "1"}, None)
+    db.set_upitnik_question_options(new, gear, None)
+    db.set_upitnik_question_field(new, "text", "Koju opremu imaš?", None)
+    for _ in range(15):                                                  # to the top
+        db.move_upitnik_question(new, "gore")
+    step = f"step-q{new}"
+    problems: list[str] = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        for w in (390, 1280):
+            phone = w < 600
+            ctx, pg, errors = open_page(browser, server, "ivan@test.local", w)
+            where = f"[multi {w}px]"
+
+            def check(ok: bool, what: str) -> None:
+                if not ok:
+                    problems.append(f"{where} {what}")
+
+            def waits() -> str:
+                return pg.get_attribute(f"#{step} .q-next", "aria-disabled")
+
+            check(shown(pg) == [step] and abs(bar(pg) - 1 / 17) < 0.01, f"on load: {shown(pg)}, the bar {bar(pg):.3f}")
+            check(pg.locator(f"#{step} .opt").count() == 6 and waits() == "true", f"6 rows and a waiting Dalje: {waits()}")
+            # a press on it then (Playwright itself will not press an
+            # aria-disabled button: the click is dispatched)
+            pg.locator(f"#{step} .q-next").dispatch_event("click"); pg.wait_for_timeout(400)
+            check(shown(pg) == [step], "Dalje went on with nothing ticked")
+            press(pg, phone, f"#{step} .opt", 1); press(pg, phone, f"#{step} .opt", 3); pg.wait_for_timeout(600)
+            check(shown(pg) == [step], "a tick went on by itself")
+            rows = pg.evaluate(f"""() => [...document.querySelectorAll('#{step} .opt')].map(r => [r.querySelector('input').checked,
+              getComputedStyle(r).backgroundColor === getComputedStyle(document.body).color, getComputedStyle(r, '::after').content.includes('✓'),
+              getComputedStyle(r, '::before').content.includes('"')])""")
+            check([r[:3] for r in rows] == [[i in (1, 3)] * 3 for i in range(6)], f"the rows' state: {rows}")
+            check(waits() == "false", "Dalje still waits after two ticks")
+            press(pg, phone, f"#{step} .q-next"); wait_for(pg, "step-q1")
+            press(pg, phone, "#step-q1 .q-back"); wait_for(pg, step)
+            ticked = pg.evaluate(f"() => [...document.querySelectorAll('#{step} input:checked')].map(i => i.value)")
+            check(ticked == ["bučice", "TRX"], f"back on it, the ticks are {ticked}")
+            press(pg, phone, f"#{step} .q-next"); wait_for(pg, "step-q1")
+            for q, n in (("q1", 0), ("q2", 0), ("q3", 0), ("q4", 0)):
+                nxt = f"step-q{int(q[1:]) + 1}"
+                press(pg, phone, f"#step-{q} .opt", n); wait_for(pg, nxt)
+            for q in range(5, 14):
+                press(pg, phone, f"#step-q{q} .sc", 4); wait_for(pg, f"step-q{q + 1}")
+            press(pg, phone, "#step-q14 .sc", 0); wait_for(pg, "step-q15")
+            press(pg, phone, "#step-q15 .opt", 1); wait_for(pg, "step-end")
+            press(pg, phone, "#step-end .q-consent")
+            with pg.expect_navigation():
+                press(pg, phone, "#step-end .q-submit")
+            pg.wait_for_load_state("networkidle")
+            check(pg.url.split("?")[0].endswith("/treninzi"), f"after Spremi: {pg.url}")
+            stored = json.loads(db.get_onboarding(uid).answers)
+            check(stored.get(f"q{new}") == ["bučice", "TRX"], f"stored {stored.get(f'q{new}')}")
+            check(overflow(pg) == 0, "overflow")
+            problems += [f"{where} {e}" for e in errors]
+            ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"

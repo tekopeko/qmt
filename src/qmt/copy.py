@@ -92,6 +92,18 @@ each is edited (a text a Slot, the bullets and the extra lines a ListSlot
 each, the switch a FlagSlot; no photo) and GYM_CARD_COLUMNS where a row
 keeps a text.
 
+The upitnik's questions (/upitnik) went the same way on 26.10.2026: the
+gym owner's fifteen were fixed in code, only their words slots
+(upitnik.q<n>.*), and he adds, removes, hides, reorders and classifies
+them now (models.UpitnikQuestion, db.py; the owner: "so that Amir can
+also add or remove questions from the questionnaire"). The editor names
+their texts with virtual keys, upitnik.<id>.<field>, on POST /copy/{key}:
+UPITNIK_QUESTION_SLOTS below (a text a Slot, the options a ListSlot) and
+UPITNIK_QUESTION_COLUMNS. What a question is and does (its part, kind,
+scoring, role, switch) is no text: POST /upitnik/pitanje/{id}. The words
+around the questions stay slots (upitnik.*: the title, the parts'
+headings, yes / no, the consent, the buttons, the pain sentence).
+
 The price slots (18.10.2026) are plain Slots with one job: every price the
 site shows, whether or not Stripe is configured (app.py, reference_prices
 and _offer_prices). No Stripe Price overrides them (the owner's call, the
@@ -226,54 +238,12 @@ PLAN_TEXT_END = ("Za upis se javi treneru u dvorani.", "Mjesečno, otkazivo bilo
 MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
 
 # The online-trening upitnik (/upitnik, 26.10.2026): the gym owner's final
-# version, his words the defaults of the upitnik.* slots (in SLOTS below),
-# which he retypes in place (the owner: "so that my friend … can manually
-# change the questions later on"). Its structure is qmt.upitnik's: the
-# questions' order, parts and kinds, the scoring and the safety rules;
-# adding or removing a question is a code change there, re-wording one is
-# his. By question id: a choice's text and options (a ListSlot each, at
-# least two of which stay: app.py, _copy_save_list; a client's answer is
-# stored as the option's text at the time, so re-wording never garbles an
-# old answer), a scale's text and the words beside its 1 and its 10, the
-# yes / no question's and the two free texts' text. No emoji in them (the
-# owner, 26.10.2026: "remove all emojis and emoticons from questions").
-UPITNIK_CHOICES = {
-    "q1": ("Koji je tvoj glavni cilj?",
-           ("Gubitak težine", "Povećanje snage i mišićne mase", "Bolja kondicija i izdržljivost",
-            "Rehabilitacija / rješavanje bolova", "Opće zdravlje i kretanje")),
-    "q2": ("Koliko dana tjedno možeš trenirati?", ("2", "3", "4", "5+")),
-    "q3": ("Koliko minuta imaš za jedan trening?", ("do 30", "30-45", "45-60", "60+")),
-    "q4": ("Gdje ćeš trenirati?", ("Kod kuće bez opreme", "Kod kuće s osnovnom opremom", "U teretani")),
-}
-UPITNIK_SCALES = {
-    "q5": ("Koliko redovito si trenirao/la u zadnjih 6 mjeseci (2x tjedno ili više)?",
-           "uopće nisam", "stalno i dosljedno"),
-    "q6": ("Kako bi ocijenio/la svoju fizičku kondiciju?", "vrlo loša", "izvrsna"),
-    "q7": ("Kako ocjenjuješ svoje poznavanje treninga?", "ne znam ništa", "znam sve i izvodim ispravno"),
-    "q8": ("Paziš li redovito na prehranu?", "uopće ne", "uvijek"),
-    "q9": ("Vodiš li aktivan životni stil izvan treninga (šetnje, kretanje)?",
-           "sjedim cijeli dan", "stalno sam u pokretu"),
-    "q10": ("Koliko si motiviran/a za promjenu i dosljednost?", "uopće nisam", "jako sam motiviran/a"),
-    "q11": ("Koliko prosječno spavaš po noći?", "manje od 4h", "više od 8h"),
-    "q12": ("Koristiš li dodatke prehrani (vitamini, minerali, kreatin...)?", "nikad", "redovito"),
-    "q13": ("Koliko ti je važna osobna briga o zdravlju i tijelu?", "nije mi prioritet", "izuzetno važno"),
-    "q14": ("Imaš li često bolove (leđa, vrat, kuk...)?", "nikad", "vrlo često"),
-}
-UPITNIK_TEXTS = {
-    "q14b": "Gdje te boli?",                 # asked when q14 is 4 or more
-    "q15": "Imaš li ozljede, operacije ili zdravstvena ograničenja koja trebamo znati?",
-    "q15b": "Opiši ukratko.",                # asked when q15 is yes
-}
+# version. Its four parts' headings are slots (upitnik.part<n>.h, in SLOTS
+# below), as are its title, intro, yes / no, the consent, the buttons and
+# the pain sentence. Its questions are rows since 26.10.2026
+# (models.UpitnikQuestion; UPITNIK_DEFAULT_QUESTIONS and the rest below).
 UPITNIK_PARTS = ("Dio 1: Tvoj cilj i raspored", "Dio 2: Tvoje iskustvo i navike (ocijeni od 1 do 10)",
                  "Dio 3: Dodatno o tebi", "Dio 4: Zdravlje i sigurnost")
-# the choices' option lists, which keep at least two options (app.py)
-UPITNIK_OPTION_KEYS = frozenset(f"upitnik.{q}.options" for q in UPITNIK_CHOICES)
-
-
-def _question_label(q: str) -> str:
-    """How the editor's bar names a question: "Upitnik, pitanje 5", a
-    follow-up "Upitnik, pitanje 14 (dodatno)"."""
-    return f"Upitnik, pitanje {q[1:].rstrip('b')}" + (" (dodatno)" if q.endswith("b") else "")
 
 
 SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
@@ -418,20 +388,13 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # ---- prehrana ----
     "prehrana.h1": Slot("Prehrana ide uz trening", CAP, "Prehrana: naslov"),
     "prehrana.note": Slot("Pristup je na poziv — javi se treneru ako se ne možeš registrirati.", CAP, "Prehrana: napomena"),
-    # ---- upitnik (26.10.2026): every word of the questionnaire (UPITNIK_* above) ----
+    # ---- upitnik (26.10.2026): its words around the questions (the
+    # questions are rows since 26.10.2026: UPITNIK_* below) ----
     "upitnik.title": Slot("Q Move upitnik", CAP, "Upitnik: naslov"),
     "upitnik.intro": Slot("Odgovori su potrebni da bismo ti odredili razinu treninga. Traje oko 2 minute.", CAP,
                           "Upitnik: uvod"),
     **{f"upitnik.part{n}.h": Slot(text, CAP, f"Upitnik: naslov dijela {n}")
        for n, text in enumerate(UPITNIK_PARTS, start=1)},
-    **{f"upitnik.{q}.text": Slot(text, CAP, _question_label(q)) for q, (text, _) in UPITNIK_CHOICES.items()},
-    **{f"upitnik.{q}.options": ListSlot(options, CAP_ITEMS, CAP, f"{_question_label(q)}: odgovor")
-       for q, (_, options) in UPITNIK_CHOICES.items()},
-    **{f"upitnik.{q}.text": Slot(text, CAP, _question_label(q)) for q, (text, _, _) in UPITNIK_SCALES.items()},
-    **{f"upitnik.{q}.low": Slot(low, CAP, f"{_question_label(q)}: uz 1") for q, (_, low, _) in UPITNIK_SCALES.items()},
-    **{f"upitnik.{q}.high": Slot(high, CAP, f"{_question_label(q)}: uz 10")
-       for q, (_, _, high) in UPITNIK_SCALES.items()},
-    **{f"upitnik.{q}.text": Slot(text, CAP, _question_label(q)) for q, text in UPITNIK_TEXTS.items()},
     "upitnik.yes": Slot("Da", CAP, "Upitnik: odgovor Da"),
     "upitnik.no": Slot("Ne", CAP, "Upitnik: odgovor Ne"),
     "upitnik.consent": Slot("Pristajem na obradu podataka o zdravlju radi izrade programa treninga.", CAP,
@@ -439,7 +402,8 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "upitnik.submit": Slot("Spremi upitnik", CAP, "Upitnik: gumb za spremanje"),
     "upitnik.back": Slot("Nazad", CAP, "Upitnik: gumb Nazad"),
     "upitnik.next": Slot("Dalje", CAP, "Upitnik: gumb Dalje"),
-    # in the flash after saving and on the karton, when q14 is 7 or more
+    # in the flash after saving and on the karton, when the pain question
+    # (the row whose role is "pain") is 7 or more
     "upitnik.pain_note": Slot("Zbog čestih bolova krećeš od početne razine — javi se treneru prije prvog treninga.",
                               CAP, "Upitnik: poruka uz česte bolove"),
 }
@@ -550,6 +514,94 @@ GYM_CARD_SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
 # in the column its field names, and db.set_gym_card_shown)
 GYM_CARD_COLUMNS = {"title": "title", "lead": "lead", "price": "price", "unit": "unit",
                     "year_price": "year_price", "year_unit": "year_unit"}
+
+# ---- the upitnik's questions (/upitnik) ----
+# Rows of the upitnik_questions table (models.UpitnikQuestion), not slots,
+# since 26.10.2026 (the owner: "so that Amir can also add or remove
+# questions from the questionnaire"): the gym owner adds, removes, hides,
+# reorders and classifies them in edit mode, up to
+# db.MAX_UPITNIK_QUESTIONS; until then the fifteen were fixed in code and
+# only their words were slots (upitnik.q<n>.text / .options / .low / .high,
+# upitnik.q14b.text, upitnik.q15b.text). No emoji in them (the owner,
+# 26.10.2026: "remove all emojis and emoticons from questions").
+
+
+def _question(n: int, part: int, kind: str, text: str, options: tuple[str, ...] = (), low: str = "",
+              high: str = "", scoring: str = "", role: str = "", followup_text: str = "") -> dict:
+    """One of the default questions, a row's values (its id too: the
+    answers' key, q<n>)."""
+    return {"id": n, "part": part, "kind": kind, "text": text, "options": options, "low": low, "high": high,
+            "scoring": scoring, "role": role, "followup_text": followup_text}
+
+
+# The gym owner's fifteen, as the rows start: the demo seed's
+# (scripts/seed_demo.py, db.add_upitnik_question) and a test's. The
+# migration that made them rows (3f8a6c2d9b71) carries its own copy, and
+# with the ids 1–15 the answers stored before it keep their meaning. Part
+# 1, q1–q4 (choices): the goal, the days a week, the minutes, the place,
+# for the programme's content later, scored never. Part 2, q5–q11 (scales):
+# the score, q5–q7 trening baza and q8–q11 navike. Part 3, q12–q13
+# (scales): for the trainer only. Part 4: q14 the pain question (a scale,
+# its follow-up asked at 4 or more) and q15 the injuries question (yes /
+# no, its follow-up asked at yes).
+UPITNIK_DEFAULT_QUESTIONS = (
+    _question(1, 1, "choice", "Koji je tvoj glavni cilj?",
+              ("Gubitak težine", "Povećanje snage i mišićne mase", "Bolja kondicija i izdržljivost",
+               "Rehabilitacija / rješavanje bolova", "Opće zdravlje i kretanje")),
+    _question(2, 1, "choice", "Koliko dana tjedno možeš trenirati?", ("2", "3", "4", "5+")),
+    _question(3, 1, "choice", "Koliko minuta imaš za jedan trening?", ("do 30", "30-45", "45-60", "60+")),
+    _question(4, 1, "choice", "Gdje ćeš trenirati?",
+              ("Kod kuće bez opreme", "Kod kuće s osnovnom opremom", "U teretani")),
+    _question(5, 2, "scale", "Koliko redovito si trenirao/la u zadnjih 6 mjeseci (2x tjedno ili više)?",
+              low="uopće nisam", high="stalno i dosljedno", scoring="baza"),
+    _question(6, 2, "scale", "Kako bi ocijenio/la svoju fizičku kondiciju?",
+              low="vrlo loša", high="izvrsna", scoring="baza"),
+    _question(7, 2, "scale", "Kako ocjenjuješ svoje poznavanje treninga?",
+              low="ne znam ništa", high="znam sve i izvodim ispravno", scoring="baza"),
+    _question(8, 2, "scale", "Paziš li redovito na prehranu?", low="uopće ne", high="uvijek", scoring="navike"),
+    _question(9, 2, "scale", "Vodiš li aktivan životni stil izvan treninga (šetnje, kretanje)?",
+              low="sjedim cijeli dan", high="stalno sam u pokretu", scoring="navike"),
+    _question(10, 2, "scale", "Koliko si motiviran/a za promjenu i dosljednost?",
+              low="uopće nisam", high="jako sam motiviran/a", scoring="navike"),
+    _question(11, 2, "scale", "Koliko prosječno spavaš po noći?", low="manje od 4h", high="više od 8h",
+              scoring="navike"),
+    _question(12, 3, "scale", "Koristiš li dodatke prehrani (vitamini, minerali, kreatin...)?",
+              low="nikad", high="redovito"),
+    _question(13, 3, "scale", "Koliko ti je važna osobna briga o zdravlju i tijelu?",
+              low="nije mi prioritet", high="izuzetno važno"),
+    _question(14, 4, "scale", "Imaš li često bolove (leđa, vrat, kuk...)?", low="nikad", high="vrlo često",
+              role="pain", followup_text="Gdje te boli?"),
+    _question(15, 4, "yesno", "Imaš li ozljede, operacije ili zdravstvena ograničenja koja trebamo znati?",
+              role="injuries", followup_text="Opiši ukratko."),
+)
+
+# a new question ("+ Dodaj pitanje"): a scale in part 2 that scores
+# nothing, shown, after the last, with these placeholders to retype; its
+# options are ready for the day it becomes a choice (a choice keeps two at
+# least), its follow-up's text for the day it takes a role. A scale's ends
+# print as "1 = …" and "10 = …".
+UPITNIK_BLANK = {"part": 2, "kind": "scale", "text": "Novo pitanje", "options": ("Prvi odgovor", "Drugi odgovor"),
+                 "low": "…", "high": "…", "scoring": "", "role": "", "followup_text": "Opiši ukratko."}
+
+# A question's texts as the editor's virtual keys name them,
+# upitnik.<id>.<field>, and how each is edited: a text as a Slot, its
+# default the placeholder Zadano puts back (an emptied one stays empty: none
+# is required), the options as a ListSlot (a choice's, and a multi's; app.py
+# keeps two at least, upitnik.MIN_OPTIONS, and Zadano puts the placeholders
+# back). The label is the field's word in the editor's bar, after the
+# question's number ("Pitanje 7: tekst", "Pitanje 7: odgovor 2"). Its
+# settings (part, kind, scoring, role, shown) are no texts: POST
+# /upitnik/pitanje/{id} (qmt.upitnik.settings).
+UPITNIK_QUESTION_SLOTS: dict[str, Slot | ListSlot] = {
+    "text": Slot(UPITNIK_BLANK["text"], CAP, "tekst"),
+    "options": ListSlot(UPITNIK_BLANK["options"], CAP_ITEMS, CAP, "odgovor"),
+    "low": Slot(UPITNIK_BLANK["low"], CAP, "uz 1"),
+    "high": Slot(UPITNIK_BLANK["high"], CAP, "uz 10"),
+    "followup_text": Slot(UPITNIK_BLANK["followup_text"], CAP, "dodatno pitanje"),
+}
+# where a row keeps each text (its options have a setter of their own:
+# db.set_upitnik_question_options)
+UPITNIK_QUESTION_COLUMNS = {"text": "text", "low": "low", "high": "high", "followup_text": "followup_text"}
 
 
 def clean(text: str) -> str:
