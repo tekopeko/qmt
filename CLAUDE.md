@@ -140,7 +140,7 @@ parts, kinds, the scoring, the safety rules); **every word is a copy slot** the 
 owner retypes in place on /upitnik (`upitnik.*` in `copy.py`: the title, the intro, the
 parts, each question, a choice's options (a list: at least two stay, "Pitanje treba bar
 dva odgovora."), a scale's two ends, Da / Ne, the consent, the buttons, the pain
-sentence; the emoji are his). Adding or removing a QUESTION is a code change (the scoring
+sentence; no emoji in them, the owner's call of 26.10.2026). Adding or removing a QUESTION is a code change (the scoring
 depends on the structure). `OnboardingResponse` carries `version` (2; migration
 `e6564d9234b8` made the rows already there 1), a decimal `score`, `pain_level`,
 `pain_high`, `needs_review`, `consented_at`; its `answers` JSON stores a choice as the

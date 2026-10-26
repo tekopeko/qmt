@@ -235,8 +235,8 @@ MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
 # least two of which stay: app.py, _copy_save_list; a client's answer is
 # stored as the option's text at the time, so re-wording never garbles an
 # old answer), a scale's text and the words beside its 1 and its 10, the
-# yes / no question's and the two free texts' text. The emoji are his, part
-# of a question's text.
+# yes / no question's and the two free texts' text. No emoji in them (the
+# owner, 26.10.2026: "remove all emojis and emoticons from questions").
 UPITNIK_CHOICES = {
     "q1": ("Koji je tvoj glavni cilj?",
            ("Gubitak težine", "Povećanje snage i mišićne mase", "Bolja kondicija i izdržljivost",
@@ -246,18 +246,18 @@ UPITNIK_CHOICES = {
     "q4": ("Gdje ćeš trenirati?", ("Kod kuće bez opreme", "Kod kuće s osnovnom opremom", "U teretani")),
 }
 UPITNIK_SCALES = {
-    "q5": ("🏃 Koliko redovito si trenirao/la u zadnjih 6 mjeseci (2x tjedno ili više)?",
+    "q5": ("Koliko redovito si trenirao/la u zadnjih 6 mjeseci (2x tjedno ili više)?",
            "uopće nisam", "stalno i dosljedno"),
-    "q6": ("💪 Kako bi ocijenio/la svoju fizičku kondiciju?", "vrlo loša", "izvrsna"),
-    "q7": ("🧠 Kako ocjenjuješ svoje poznavanje treninga?", "ne znam ništa", "znam sve i izvodim ispravno"),
-    "q8": ("🥗 Paziš li redovito na prehranu?", "uopće ne", "uvijek"),
-    "q9": ("🚶 Vodiš li aktivan životni stil izvan treninga (šetnje, kretanje)?",
+    "q6": ("Kako bi ocijenio/la svoju fizičku kondiciju?", "vrlo loša", "izvrsna"),
+    "q7": ("Kako ocjenjuješ svoje poznavanje treninga?", "ne znam ništa", "znam sve i izvodim ispravno"),
+    "q8": ("Paziš li redovito na prehranu?", "uopće ne", "uvijek"),
+    "q9": ("Vodiš li aktivan životni stil izvan treninga (šetnje, kretanje)?",
            "sjedim cijeli dan", "stalno sam u pokretu"),
-    "q10": ("🔥 Koliko si motiviran/a za promjenu i dosljednost?", "uopće nisam", "jako sam motiviran/a"),
-    "q11": ("🛌 Koliko prosječno spavaš po noći?", "manje od 4h", "više od 8h"),
-    "q12": ("💊 Koristiš li dodatke prehrani (vitamini, minerali, kreatin...)?", "nikad", "redovito"),
-    "q13": ("❤️‍🔥 Koliko ti je važna osobna briga o zdravlju i tijelu?", "nije mi prioritet", "izuzetno važno"),
-    "q14": ("🤕 Imaš li često bolove (leđa, vrat, kuk...)?", "nikad", "vrlo često"),
+    "q10": ("Koliko si motiviran/a za promjenu i dosljednost?", "uopće nisam", "jako sam motiviran/a"),
+    "q11": ("Koliko prosječno spavaš po noći?", "manje od 4h", "više od 8h"),
+    "q12": ("Koristiš li dodatke prehrani (vitamini, minerali, kreatin...)?", "nikad", "redovito"),
+    "q13": ("Koliko ti je važna osobna briga o zdravlju i tijelu?", "nije mi prioritet", "izuzetno važno"),
+    "q14": ("Imaš li često bolove (leđa, vrat, kuk...)?", "nikad", "vrlo često"),
 }
 UPITNIK_TEXTS = {
     "q14b": "Gdje te boli?",                 # asked when q14 is 4 or more

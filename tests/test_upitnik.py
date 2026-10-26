@@ -113,7 +113,7 @@ def test_fifteen_questions_in_four_parts_two_follow_ups_and_every_word_a_slot():
             want |= {f"upitnik.{q.id}.low", f"upitnik.{q.id}.high"}
     assert {k for k in copy.SLOTS if k.startswith("upitnik.")} == want
     assert copy.UPITNIK_OPTION_KEYS == {k for k in want if k.endswith(".options")}
-    assert copy.SLOTS["upitnik.q13.text"].default.startswith("❤️‍🔥 Koliko ti je važna")   # his emoji, a ZWJ sequence
+    assert copy.SLOTS["upitnik.q13.text"].default.startswith("Koliko ti je važna")   # no emoji since 26.10.2026 (the owner)
     assert copy.SLOTS["upitnik.q1.options"].default[3] == "Rehabilitacija / rješavanje bolova"   # one option
 
 
@@ -495,10 +495,10 @@ def test_every_word_is_on_the_page_for_the_editor_and_an_edit_shows_to_the_clien
         else:
             assert f'data-copy="{key}"' in page, key
     assert page.count('class="act ed-add">+ Dodaj odgovor</button>') == len(copy.UPITNIK_CHOICES)
-    assert t.post("/copy/upitnik.q6.text", data={"text": "💪 Kakva ti je kondicija?"}).json()["ok"]
+    assert t.post("/copy/upitnik.q6.text", data={"text": "Kakva ti je kondicija?"}).json()["ok"]
     assert t.post("/copy/upitnik.q2.options", data={"text": "6 ili više", "index": "4"}).json()["ok"]
     page = client_for("ivan@test.local").get("/upitnik").text
-    assert '<h1 class="q-h" id="h-q6" tabindex="-1"><span class="t">💪 Kakva ti je kondicija?</span></h1>' in page
+    assert '<h1 class="q-h" id="h-q6" tabindex="-1"><span class="t">Kakva ti je kondicija?</span></h1>' in page
     assert '<input type="radio" name="q2" value="6 ili više" required><span class="t">6 ili više</span>' in page
 
 
