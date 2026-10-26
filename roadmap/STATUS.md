@@ -2,7 +2,7 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
-## 26.10.2026 — the upitnik v2, Shape's questionnaire: awaiting review (Opus draft)
+## 26.10.2026 — the upitnik v2, Shape's questionnaire: reviewed, LIVE on the box the same evening (Opus draft)
 
 The owner: "I would like to create that kind of questionnaire, with that design, but so that my friend running the gym can manually change the questions later on … This is his final version of the questionnaire", and "The questionnaire will only determine the difficulty level of the trainings … later on, we will allow the user to change the level and type of training". Built, not reviewed, not deployed:
 
