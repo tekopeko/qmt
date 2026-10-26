@@ -548,7 +548,7 @@ def test_landing_hero_follows_the_membership():
 
 
 def test_the_plans_page_is_reachable_without_hunting_for_it():
-    """The plans are on /moja-clanarina, the Članarina tab. The timetable
+    """The plans are on /moja-clanarina, the Moja članarina tab. The timetable
     lists them no more (18.10.2026: its "Moja članarina" block went, that
     page holds it all), so a client with a plan running finds no plan lines
     and no link of their own there. One with no plan running keeps the
@@ -557,7 +557,7 @@ def test_the_plans_page_is_reachable_without_hunting_for_it():
     make_user("ana@test.local", plans=())
     ca = client_for("ana@test.local")
     page = ca.get("/raspored").text
-    assert '<a href="/moja-clanarina" class="">Članarina</a>' in page   # the nav tab
+    assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page   # the nav tab
     assert ('<p class="hint gate-line">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća. '
             '<a class="btn btn-sm" href="/moja-clanarina">Pogledaj cjenik →</a></p>') in page
     assert "Za upis se javi treneru" not in page and "<h2>Moja članarina" not in page
@@ -565,16 +565,17 @@ def test_the_plans_page_is_reachable_without_hunting_for_it():
 
     make_user("ivan@test.local")                                  # grupni, running
     page = client_for("ivan@test.local").get("/raspored").text
-    assert '<a href="/moja-clanarina" class="">Članarina</a>' in page
+    assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page
     for gone in ("<h2>Moja članarina", "Grupni trening · aktivna", 'class="mlines"', "Moja članarina →",
                  'class="hint gate-line"', "Pogledaj cjenik →</a>"):
         assert gone not in page, gone
 
-    # the trainer's nav is already full and they do not buy plans: no tab;
-    # the account menu keeps the item (they edit the plans' texts there)
+    # the trainer does not buy plans, but edits the plans' texts there: the
+    # tab is in staff's member row too since 26.10.2026, and the account
+    # menu has no item for it
     make_user("trener@test.local", is_trainer=True, plans=())
     page = client_for("trener@test.local").get("/raspored").text
-    assert ">Članarina</a>" not in page and "<span>Moja članarina</span>" in page
+    assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page and "<span>Moja članarina</span>" not in page
     assert 'class="hint gate-line"' not in page                  # no booking gate for him
 
 

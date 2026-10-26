@@ -2,6 +2,19 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
+## 26.10.2026 — the tabs grouped: the member's row and "Admin ▾" (Opus draft, reviewed, live)
+
+The owner: "on the admin layout that I and my friend can see, lets somehow group the tabs which are related for me and in another group the tabs which are there and different because I am an admin"; then "Lets not call it 'Uprava' but 'Admin'", "The extra tab that should be in the Admin group should be called 'Trenutne članarine'", "lets put prehrana last and lets call it Moja članarina everywhere (singular)", "The drawer on the phone should show these two sections only for admins, the members should see only one." Built, not reviewed, not deployed:
+
+- `base.html`: a client's tabs are Početna · Raspored · Karton · Online treninzi (with an online plan) · Moja članarina · Prehrana (the tab said "Članarina"). Staff (the trainer, the owner): the same row without Karton, then **"Admin ▾"**: Termini (`/admin`), Trenutne članarine (`/clanarine`), Upitnik (`/upitnik?uredi=1`) and the owner's Korisnici and Statistika; the tab `.on` while one of them is open, the item `aria-current="page"` (an accent bar, bold). It is the account menu's component, now shared (`.menu-wrap` / `.menu` and one script: a click, a click outside, Escape with the focus given back, one menu open at a time); an open panel is moved in to stay 12px inside the window (at 1280px it fits left-aligned under its tab; at 1200px and below it is nudged left).
+- The account menu: Profil, the theme, Odjava for everyone (staff's "Moja članarina" item went: the tab covers it).
+- The ☰ drawer (≤900px): a client's one plain list; staff's two captioned sections, "Kao član" and "Admin", a hairline between them. A drawer taller than the window now scrolls inside itself (staff's is ~570px; the bar is sticky, so its last rows were out of reach on a short phone).
+- `?uredi=1`: the copy editor turns edit mode on and drops the parameter (`history.replaceState`); ignored for anyone else.
+- `/upitnik`'s brand-only pill is a member's only (`solo_page = not can_edit_copy`, Fable's call during the work): staff keep their bar there, Admin ▾ marked.
+- Names: `/admin`'s h1 and title "Termini", `/clanarine`'s "Trenutne članarine".
+- Tests: `tests/test_nav.py` (the tabs per role, Admin's items, `.on` / `aria-current`, the account menu, an owner who does not train; in a browser at 390 / 1280: the one-row pill and the wordmark, the menu opened and shut by a click, Escape, a click outside and the keyboard, its items followed, the drawer's sections, `?uredi=1` for the owner, a trainer and a client); the tab tests in `test_clanarina.py` and `test_booking.py` adapted. 216 tests.
+- Open: the breadcrumbs still name the old pages (`karton.html`'s "Članarine" → `/clanarine`, `template_edit.html`'s "Admin" → `/admin`), left alone as page content.
+
 ## 26.10.2026 — the upitnik v2, Shape's questionnaire: reviewed, LIVE on the box the same evening (Opus draft)
 
 The owner: "I would like to create that kind of questionnaire, with that design, but so that my friend running the gym can manually change the questions later on … This is his final version of the questionnaire", and "The questionnaire will only determine the difficulty level of the trainings … later on, we will allow the user to change the level and type of training". Built, not reviewed, not deployed:

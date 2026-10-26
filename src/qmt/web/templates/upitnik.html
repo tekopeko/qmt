@@ -1,13 +1,16 @@
 {% extends "base.html" %}
 {% import "_copy.html" as c with context %}
-{# Shape's questionnaire in QMT's clothes (patterns.md §7, 26.10.2026): the
-   brand alone at the top (base.html, solo_page), one narrow column, a thin
-   progress bar, the part as an eyebrow, the question as the h1, the answers
-   as rows. ONE form holds every question: the script below shows one step at
-   a time and the inputs keep the answers; without it the page is the whole
-   questionnaire top to bottom with one submit at the end. Every word is a
-   copy slot (upitnik.*, src/qmt/copy.py); the structure is qmt.upitnik's. #}
-{% set solo_page = true %}
+{# Shape's questionnaire in QMT's clothes (patterns.md §7, 26.10.2026): for
+   a member the brand alone at the top (base.html, solo_page), one narrow
+   column, a thin progress bar, the part as an eyebrow, the question as the
+   h1, the answers as rows. ONE form holds every question: the script below
+   shows one step at a time and the inputs keep the answers; without it the
+   page is the whole questionnaire top to bottom with one submit at the end.
+   Every word is a copy slot (upitnik.*, src/qmt/copy.py); the structure is
+   qmt.upitnik's. The trainer and the owner, who open it to edit those words
+   (Admin ▾ → Upitnik), keep their whole bar, Admin ▾ marked (26.10.2026):
+   the page is one task for the member filling it, not for them. #}
+{% set solo_page = not can_edit_copy %}
 {% block title %}Upitnik — QMT{% endblock %}
 {% block head %}
 <style>

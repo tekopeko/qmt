@@ -1,17 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Članarine — QMT{% endblock %}
+{% block title %}Trenutne članarine — QMT{% endblock %}
 {% block content %}
-<h1>Članarine</h1>
+<h1>Trenutne članarine</h1>
 <p class="hint">
   Ručna evidencija uplata (gotovina ili kartica u dvorani) — plaćanje kroz aplikaciju stiže
   kasnije. Nakon evidentirane uplate sljedeća je za <strong>mjesec dana</strong>, dospijeće
   <strong>tjedan</strong> nakon toga. Bez aktivne članarine polaznik ne može rezervirati
   termine tog tipa.
 </p>
-{# the members' page, where its texts and prices are edited in place: the
-   trainer's and the owner's nav has no Članarina tab (the account menu's
-   item is easy to miss), so the way there is said here. Under the lead,
-   not between it and the h1: main > h1 + .hint (base.html) sizes the lead. #}
+{# the members' page, where its texts and prices are edited in place: said
+   here, beside the members' payments, since 18.10.2026, when the trainer's
+   and the owner's way there was an easy-to-miss account-menu item (their
+   nav has the Moja članarina tab since 26.10.2026). Under the lead, not
+   between it and the h1: main > h1 + .hint (base.html) sizes the lead. #}
 <p class="hint" style="display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin-bottom:18px;">
   Stranica koju vide članovi — cjenik, tekstovi i cijene uređuju se tamo:
   <a class="act" href="/moja-clanarina">Moja članarina →</a>

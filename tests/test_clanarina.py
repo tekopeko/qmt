@@ -245,10 +245,11 @@ def test_every_way_to_plans_and_money_leads_to_the_new_page():
     ivan, ana = client_for("ivan@test.local"), client_for("ana@test.local")
 
     page = ivan.get("/raspored").text
-    # the nav tab, and no account-menu item beside it: one way there, never
-    # two (20.10.2026; the item is the trainer's, who has no tab, below)
-    assert '<a href="/moja-clanarina" class="">Članarina</a>' in page
-    assert '<a href="/moja-clanarina" class="on">Članarina</a>' in ivan.get("/moja-clanarina").text
+    # the nav tab, "Moja članarina" since 26.10.2026, and no account-menu
+    # item beside it: one way there, never two (20.10.2026; staff have the
+    # tab too since 26.10.2026, below)
+    assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page
+    assert '<a href="/moja-clanarina" class="on">Moja članarina</a>' in ivan.get("/moja-clanarina").text
     menu = page[page.index('id="userMenu"'):page.index('onclick="qmtToggleTheme()"')]
     assert 'href="/moja-clanarina"' not in menu and "<span>Moja članarina</span>" not in page
     # the timetable lists no plans since 18.10.2026 (the tab's page holds
@@ -278,17 +279,17 @@ def test_every_way_to_plans_and_money_leads_to_the_new_page():
     # the landing: a member's card for a plan he does not hold
     assert 'href="/moja-clanarina#plan-online">Odaberi plan →</a>' in ivan.get("/").text
 
-    # the trainer manages members elsewhere: no tab and no membership links
-    # for him, but the account menu has the item (between Profil and the
-    # theme): it is where he edits the plans' texts (the page shows him no
-    # plans of his own)
+    # the trainer manages members elsewhere (Admin ▾'s Trenutne članarine):
+    # no membership links for him, but the member's row has the tab since
+    # 26.10.2026: it is where he edits the plans' texts (the page shows him
+    # no plans of his own). The account menu has no item for it any more.
     for path in ("/raspored", "/profil"):
         page = client_for("trener@test.local").get(path).text
-        assert ">Članarina</a>" not in page, path                          # the client's nav tab
+        assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page, path   # the nav tab
         assert "Moja članarina →" not in page, path                        # the member links
         menu = page[page.index('id="userMenu"'):page.index('onclick="qmtToggleTheme()"')]
-        assert "<span>Moja članarina</span>" in menu, path                 # the menu item
-        assert menu.index('href="/profil"') < menu.index('href="/moja-clanarina"'), path
+        assert 'href="/moja-clanarina"' not in menu, path                  # no menu item
+        assert "<span>Moja članarina</span>" not in page, path
 
 
 def test_the_profile_and_the_account_menu_show_the_whole_email():
@@ -382,25 +383,28 @@ def test_the_no_plan_card_is_the_owners_text_and_the_editor_sees_it_as_a_preview
 
 
 def test_the_trainers_page_leads_to_the_members_page():
-    """The trainer's nav has no Članarina tab, and the account menu's item
+    """The trainer's way to the members' page was an account-menu item that
     was easy to miss (the owner, 18.10.2026: "How will my friend be able to
     even change the 'moja članarina' tab then?"). So /clanarine, the
-    trainer's and the owner's page for the members' payments, says under its
-    lead where the members' page is and that its texts and prices are edited
-    there. The bar's way there is one, never two (20.10.2026): the trainer
-    has the menu item, an owner who does not train the Članarina tab, as a
-    client does. A client never reaches /clanarine."""
+    trainer's and the owner's page for the members' payments ("Trenutne
+    članarine" since 26.10.2026, Admin ▾'s item), says under its lead where
+    the members' page is and that its texts and prices are edited there.
+    The bar's way there is one, never two: since 26.10.2026 the Moja
+    članarina tab in staff's member row, for the trainer and for an owner
+    who does not train alike, and no menu item. A client never reaches
+    /clanarine."""
     make_user("ivan@test.local", plans=("grupni",))
     make_user("trener@test.local")                                   # the owner (OWNER_EMAIL), not a trainer
     make_user("coach@test.local", is_trainer=True)                   # a trainer
     link = '<a class="act" href="/moja-clanarina">Moja članarina →</a>'
-    for email, tab in (("coach@test.local", False), ("trener@test.local", True)):
+    for email in ("coach@test.local", "trener@test.local"):
         page = client_for(email).get("/clanarine").text
         assert "Stranica koju vide članovi — cjenik, tekstovi i cijene uređuju se tamo:" in text(page), email
-        assert page.index("<h1>Članarine</h1>") < page.index(link), email
+        assert "<title>Trenutne članarine — QMT</title>" in page, email
+        assert page.index("<h1>Trenutne članarine</h1>") < page.index(link), email
         assert page.index(link) < page.index('href="/karton/'), email   # above the roster
-        assert (">Članarina</a>" in page) == tab, email                # the nav tab: the owner who does not train
-        assert ("<span>Moja članarina</span>" in page) != tab, email   # the account menu's item: the trainer
+        assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page, email   # the nav tab
+        assert "<span>Moja članarina</span>" not in page, email        # no account-menu item
     assert client_for("ivan@test.local").get("/clanarine").status_code == 403
     r = TestClient(app).get("/clanarine", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/login"
