@@ -45,14 +45,16 @@ def make_user(email: str, is_trainer: bool = False, goal: str = "cijelo") -> int
     else:
         # online treninzi are gated on the `online` plan + a filled upitnik;
         # these tests exercise programme mechanics, so clients get both
-        # (the gates have their own tests). All-zero answers -> pocetna.
+        # (the gates have their own tests). An old upitnik (version 1),
+        # all-zero answers -> pocetna: its goal is its own, which is what
+        # these tests vary (a version-2 response's goal is always cijelo).
         import json
 
         from qmt import upitnik
         db.record_payment(u.id, "online")
-        picked = {q["key"]: 0 for q in upitnik.QUESTIONS}
-        score, level = upitnik.score_answers(picked)
-        db.save_onboarding(u.id, json.dumps(picked), score, level, goal)
+        picked = {q["key"]: 0 for q in upitnik.QUESTIONS_V1}
+        db.save_onboarding(u.id, json.dumps(picked), 0, "pocetna", goal, version=1, pain_level=None,
+                           pain_high=False, needs_review=False, consented_at=None)
     return u.id
 
 

@@ -1069,17 +1069,22 @@ def memberships_overview() -> list[dict]:
 
 # ---------- karton (onboarding upitnik + training diary) ----------
 
-def save_onboarding(user_id: int, answers_json: str, score: int,
-                    level: str, goal: str) -> None:
-    """Upsert — refilling the upitnik replaces the previous routing."""
+def save_onboarding(user_id: int, answers_json: str, score: float, level: str, goal: str, *,
+                    version: int = 2, pain_level: int | None, pain_high: bool, needs_review: bool,
+                    consented_at: datetime | None) -> None:
+    """Upsert — refilling the upitnik replaces the previous routing: every
+    field is the new response's, an old version-1 row's included."""
+    fields = {"answers": answers_json, "score": score, "level": level, "goal": goal, "version": version,
+              "pain_level": pain_level, "pain_high": pain_high, "needs_review": needs_review,
+              "consented_at": consented_at}
     with session_scope() as s:
         r = s.scalar(select(OnboardingResponse)
                      .where(OnboardingResponse.user_id == user_id).with_for_update())
         if r is None:
-            s.add(OnboardingResponse(user_id=user_id, answers=answers_json,
-                                     score=score, level=level, goal=goal))
+            s.add(OnboardingResponse(user_id=user_id, **fields))
         else:
-            r.answers, r.score, r.level, r.goal = answers_json, score, level, goal
+            for name, value in fields.items():
+                setattr(r, name, value)
 
 
 def get_onboarding(user_id: int) -> OnboardingResponse | None:

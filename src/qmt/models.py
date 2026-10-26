@@ -408,8 +408,13 @@ class OnboardingResponse(Base):
 
     One row per user — refilling overwrites (the routing should reflect the
     CURRENT state, and the karton is not an archive of old self-assessments).
-    Answers are stored as JSON {question key: chosen option index} so the
-    karton can re-render them against qmt.upitnik.QUESTIONS.
+    `version` says which questionnaire the row answers (qmt.upitnik):
+    2 since 26.10.2026, the gym owner's fifteen questions, answers as JSON
+    {question id: the option's text, a scale's int, yes / no's bool, a free
+    text}, a score of 10 to one decimal, the goal always "cijelo" (the level
+    alone routes) and the safety flags; 1 for a row from before, {key: the
+    option's index} read against qmt.upitnik.QUESTIONS_V1, an integer score
+    of 14, its goal its own.
     """
 
     __tablename__ = "onboarding_responses"
@@ -417,10 +422,19 @@ class OnboardingResponse(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
-    answers: Mapped[str] = mapped_column(Text)             # JSON: {key: option index}
-    score: Mapped[int] = mapped_column(Integer)
+    answers: Mapped[str] = mapped_column(Text)             # JSON, by version (above)
+    # "6,4 / 10" since version 2; a version-1 row's whole points stay as they were
+    score: Mapped[float] = mapped_column(Numeric(4, 1, asdecimal=False))
     level: Mapped[str] = mapped_column(String(12))         # pocetna | srednja | napredna
     goal: Mapped[str] = mapped_column(String(12))          # cijelo | gornji | donji
+    version: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
+    pain_level: Mapped[int | None] = mapped_column(Integer, nullable=True)        # q14, 1–10
+    # q14 at 7 or more: početna whatever the score, and the client sees the trainer first
+    pain_high: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # q15 yes (injuries, operations, conditions): the trainer looks at the profile
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # the consent to process health data, ticked under the questionnaire
+    consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

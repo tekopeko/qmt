@@ -1,4 +1,6 @@
-"""Karton + onboarding upitnik: scoring, access control, diary ownership."""
+"""Karton: access control, the upitnik's gate on online treninzi, diary
+ownership. The upitnik itself (its scoring, its route, its block on the
+karton) is tests/test_upitnik.py."""
 
 from __future__ import annotations
 
@@ -12,7 +14,7 @@ os.environ["OWNER_EMAIL"] = "trener@test.local"
 import pytest
 from fastapi.testclient import TestClient
 
-from qmt import auth, config, db, upitnik
+from qmt import auth, config, copy, db
 from qmt.models import Base, Booking, User
 from qmt.web.app import app
 
@@ -48,55 +50,14 @@ def client_for(email: str) -> TestClient:
     return c
 
 
-# ---------- scoring ----------
-
-def test_score_levels():
-    lowest = {q["key"]: 0 for q in upitnik.QUESTIONS}
-    assert upitnik.score_answers(lowest) == (0, "pocetna")
-
-    highest = {q["key"]: len(q["options"]) - 1 for q in upitnik.QUESTIONS}
-    score, level = upitnik.score_answers(highest)
-    assert score == upitnik.MAX_SCORE and level == "napredna"
-
-    # boundary: 6 points is the first srednja score
-    assert upitnik.score_answers({"staz": 3, "tjedno": 3, "sklekovi": 0,
-                                  "cucanj": 0, "ozljede": 0})[1] == "srednja"
-    assert upitnik.score_answers({"staz": 3, "tjedno": 2, "sklekovi": 0,
-                                  "cucanj": 0, "ozljede": 0})[1] == "pocetna"
-
-
-# ---------- upitnik flow ----------
-
-def test_upitnik_submit_and_refill():
-    uid = make_user("ivan@test.local")
-    c = client_for("ivan@test.local")
-
-    answers = {q["key"]: len(q["options"]) - 1 for q in upitnik.QUESTIONS}
-    r = c.post("/upitnik", data={**{k: str(v) for k, v in answers.items()},
-                                 "goal": "gornji"}, follow_redirects=False)
-    assert r.status_code == 303 and "ok=" in r.headers["location"]
-
-    resp = db.get_onboarding(uid)
-    assert resp.level == "napredna" and resp.goal == "gornji"
-    assert resp.score == upitnik.MAX_SCORE
-
-    # refill replaces, never duplicates
-    r = c.post("/upitnik", data={**{q["key"]: "0" for q in upitnik.QUESTIONS},
-                                 "goal": "cijelo"}, follow_redirects=False)
-    resp = db.get_onboarding(uid)
-    assert resp.level == "pocetna" and resp.goal == "cijelo"
-
-
-def test_upitnik_rejects_incomplete_or_invalid():
-    make_user("ivan@test.local")
-    c = client_for("ivan@test.local")
-    r = c.post("/upitnik", data={"staz": "1", "goal": "gornji"}, follow_redirects=False)
-    assert "error" in r.headers["location"]
-    assert db.get_onboarding(db.get_user_by_email("ivan@test.local").id) is None
-
-    r = c.post("/upitnik", data={**{q["key"]: "99" for q in upitnik.QUESTIONS},
-                                 "goal": "gornji"}, follow_redirects=False)
-    assert "error" in r.headers["location"]
+def filled_upitnik() -> dict[str, str]:
+    """A whole upitnik (version 2) as the form posts it: each choice's first
+    option as the slots' defaults word it, every scale at 2 (the score 2.0:
+    početna; no pain to ask about), no injuries, the consent ticked."""
+    form = {q: options[0] for q, (_, options) in copy.UPITNIK_CHOICES.items()}
+    form.update({q: "2" for q in copy.UPITNIK_SCALES})
+    form.update({"q15": "ne", "consent": "da"})
+    return form
 
 
 # ---------- karton access ----------
@@ -133,9 +94,8 @@ def test_programs_hidden_until_upitnik_filled():
     assert "Ispuni upitnik" in page
     assert ci.get(f"/treninzi/{pid}").status_code == 403   # direct URL too
 
-    # zeros -> pocetna; goal cijelo -> the combo above matches automatically
-    ci.post("/upitnik", data={**{q["key"]: "0" for q in upitnik.QUESTIONS},
-                              "goal": "cijelo"}, follow_redirects=False)
+    # a low score -> pocetna; the goal is always cijelo -> the combo above matches automatically
+    ci.post("/upitnik", data=filled_upitnik(), follow_redirects=False)
     page = ci.get("/treninzi").text
     assert "Online blok A" in page
     assert ci.get(f"/treninzi/{pid}").status_code == 200

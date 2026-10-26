@@ -201,9 +201,16 @@ def seed_karton() -> None:
     from qmt import upitnik
 
     ivan = db.get_user_by_email("ivan@qmt.local")
-    picked = {"staz": 2, "tjedno": 2, "sklekovi": 1, "cucanj": 2, "ozljede": 2}
-    score, level = upitnik.score_answers(picked)
-    db.save_onboarding(ivan.id, json.dumps(picked), score, level, "gornji")
+    # the upitnik v2 (26.10.2026): part 1 as the defaults word it, scales that
+    # land him in srednja (6,4 / 10), no pain to speak of, no injuries
+    answers = {"q1": "Povećanje snage i mišićne mase", "q2": "3", "q3": "45-60", "q4": "U teretani",
+               "q5": 7, "q6": 6, "q7": 5, "q8": 6, "q9": 8, "q10": 8, "q11": 6,
+               "q12": 4, "q13": 8, "q14": 3, "q15": False}
+    result = upitnik.evaluate(answers)
+    level = result.level
+    db.save_onboarding(ivan.id, json.dumps(answers, ensure_ascii=False), result.score, level, upitnik.GOAL,
+                       version=upitnik.VERSION, pain_level=result.pain_level, pain_high=result.pain_high,
+                       needs_review=result.needs_review, consented_at=db.datetime.now(db.config.TZ))
     today = db.config.today()
     db.add_training_log(ivan.id, today - timedelta(days=2), 7,
                         "Čučanj 3×8 · 60 kg\nPotisak s klupe 3×10 · 40 kg\nVeslanje 3×12 · 35 kg",
@@ -217,7 +224,7 @@ def seed_karton() -> None:
                                 60, 8, None, "grupni")
     with db.session_scope() as s:
         s.add(Booking(user_id=ivan.id, session_id=sid))
-    print(f"  Ivan: upitnik ({level}, gornji dio), 2 zapisa, 1 osvrt na čekanju")
+    print(f"  Ivan: upitnik ({level}, {upitnik.score_text(result.score)}), 2 zapisa, 1 osvrt na čekanju")
 
 
 if __name__ == "__main__":

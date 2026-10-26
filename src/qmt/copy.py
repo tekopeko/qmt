@@ -225,6 +225,57 @@ PLAN_TEXT_END = ("Za upis se javi treneru u dvorani.", "Mjesečno, otkazivo bilo
 # line (the gym's since 20.10.2026, the QMove tiers' since 21.10.2026).
 MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
 
+# The online-trening upitnik (/upitnik, 26.10.2026): the gym owner's final
+# version, his words the defaults of the upitnik.* slots (in SLOTS below),
+# which he retypes in place (the owner: "so that my friend … can manually
+# change the questions later on"). Its structure is qmt.upitnik's: the
+# questions' order, parts and kinds, the scoring and the safety rules;
+# adding or removing a question is a code change there, re-wording one is
+# his. By question id: a choice's text and options (a ListSlot each, at
+# least two of which stay: app.py, _copy_save_list; a client's answer is
+# stored as the option's text at the time, so re-wording never garbles an
+# old answer), a scale's text and the words beside its 1 and its 10, the
+# yes / no question's and the two free texts' text. The emoji are his, part
+# of a question's text.
+UPITNIK_CHOICES = {
+    "q1": ("Koji je tvoj glavni cilj?",
+           ("Gubitak težine", "Povećanje snage i mišićne mase", "Bolja kondicija i izdržljivost",
+            "Rehabilitacija / rješavanje bolova", "Opće zdravlje i kretanje")),
+    "q2": ("Koliko dana tjedno možeš trenirati?", ("2", "3", "4", "5+")),
+    "q3": ("Koliko minuta imaš za jedan trening?", ("do 30", "30-45", "45-60", "60+")),
+    "q4": ("Gdje ćeš trenirati?", ("Kod kuće bez opreme", "Kod kuće s osnovnom opremom", "U teretani")),
+}
+UPITNIK_SCALES = {
+    "q5": ("🏃 Koliko redovito si trenirao/la u zadnjih 6 mjeseci (2x tjedno ili više)?",
+           "uopće nisam", "stalno i dosljedno"),
+    "q6": ("💪 Kako bi ocijenio/la svoju fizičku kondiciju?", "vrlo loša", "izvrsna"),
+    "q7": ("🧠 Kako ocjenjuješ svoje poznavanje treninga?", "ne znam ništa", "znam sve i izvodim ispravno"),
+    "q8": ("🥗 Paziš li redovito na prehranu?", "uopće ne", "uvijek"),
+    "q9": ("🚶 Vodiš li aktivan životni stil izvan treninga (šetnje, kretanje)?",
+           "sjedim cijeli dan", "stalno sam u pokretu"),
+    "q10": ("🔥 Koliko si motiviran/a za promjenu i dosljednost?", "uopće nisam", "jako sam motiviran/a"),
+    "q11": ("🛌 Koliko prosječno spavaš po noći?", "manje od 4h", "više od 8h"),
+    "q12": ("💊 Koristiš li dodatke prehrani (vitamini, minerali, kreatin...)?", "nikad", "redovito"),
+    "q13": ("❤️‍🔥 Koliko ti je važna osobna briga o zdravlju i tijelu?", "nije mi prioritet", "izuzetno važno"),
+    "q14": ("🤕 Imaš li često bolove (leđa, vrat, kuk...)?", "nikad", "vrlo često"),
+}
+UPITNIK_TEXTS = {
+    "q14b": "Gdje te boli?",                 # asked when q14 is 4 or more
+    "q15": "Imaš li ozljede, operacije ili zdravstvena ograničenja koja trebamo znati?",
+    "q15b": "Opiši ukratko.",                # asked when q15 is yes
+}
+UPITNIK_PARTS = ("Dio 1: Tvoj cilj i raspored", "Dio 2: Tvoje iskustvo i navike (ocijeni od 1 do 10)",
+                 "Dio 3: Dodatno o tebi", "Dio 4: Zdravlje i sigurnost")
+# the choices' option lists, which keep at least two options (app.py)
+UPITNIK_OPTION_KEYS = frozenset(f"upitnik.{q}.options" for q in UPITNIK_CHOICES)
+
+
+def _question_label(q: str) -> str:
+    """How the editor's bar names a question: "Upitnik, pitanje 5", a
+    follow-up "Upitnik, pitanje 14 (dodatno)"."""
+    return f"Upitnik, pitanje {q[1:].rstrip('b')}" + (" (dodatno)" if q.endswith("b") else "")
+
+
 SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # ---- landing: hero ----
     "hero.kicker": Slot("Zagreb · Dubrava", CAP, "Mala oznaka iznad naslova"),
@@ -367,6 +418,30 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # ---- prehrana ----
     "prehrana.h1": Slot("Prehrana ide uz trening", CAP, "Prehrana: naslov"),
     "prehrana.note": Slot("Pristup je na poziv — javi se treneru ako se ne možeš registrirati.", CAP, "Prehrana: napomena"),
+    # ---- upitnik (26.10.2026): every word of the questionnaire (UPITNIK_* above) ----
+    "upitnik.title": Slot("Q Move upitnik", CAP, "Upitnik: naslov"),
+    "upitnik.intro": Slot("Odgovori su potrebni da bismo ti odredili razinu treninga. Traje oko 2 minute.", CAP,
+                          "Upitnik: uvod"),
+    **{f"upitnik.part{n}.h": Slot(text, CAP, f"Upitnik: naslov dijela {n}")
+       for n, text in enumerate(UPITNIK_PARTS, start=1)},
+    **{f"upitnik.{q}.text": Slot(text, CAP, _question_label(q)) for q, (text, _) in UPITNIK_CHOICES.items()},
+    **{f"upitnik.{q}.options": ListSlot(options, CAP_ITEMS, CAP, f"{_question_label(q)}: odgovor")
+       for q, (_, options) in UPITNIK_CHOICES.items()},
+    **{f"upitnik.{q}.text": Slot(text, CAP, _question_label(q)) for q, (text, _, _) in UPITNIK_SCALES.items()},
+    **{f"upitnik.{q}.low": Slot(low, CAP, f"{_question_label(q)}: uz 1") for q, (_, low, _) in UPITNIK_SCALES.items()},
+    **{f"upitnik.{q}.high": Slot(high, CAP, f"{_question_label(q)}: uz 10")
+       for q, (_, _, high) in UPITNIK_SCALES.items()},
+    **{f"upitnik.{q}.text": Slot(text, CAP, _question_label(q)) for q, text in UPITNIK_TEXTS.items()},
+    "upitnik.yes": Slot("Da", CAP, "Upitnik: odgovor Da"),
+    "upitnik.no": Slot("Ne", CAP, "Upitnik: odgovor Ne"),
+    "upitnik.consent": Slot("Pristajem na obradu podataka o zdravlju radi izrade programa treninga.", CAP,
+                            "Upitnik: privola"),
+    "upitnik.submit": Slot("Spremi upitnik", CAP, "Upitnik: gumb za spremanje"),
+    "upitnik.back": Slot("Nazad", CAP, "Upitnik: gumb Nazad"),
+    "upitnik.next": Slot("Dalje", CAP, "Upitnik: gumb Dalje"),
+    # in the flash after saving and on the karton, when q14 is 7 or more
+    "upitnik.pain_note": Slot("Zbog čestih bolova krećeš od početne razine — javi se treneru prije prvog treninga.",
+                              CAP, "Upitnik: poruka uz česte bolove"),
 }
 
 # ---- the landing's announcements (#aktualno, in the hero) ----

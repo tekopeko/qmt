@@ -40,7 +40,29 @@
   .upitnik summary { cursor:pointer; font-size:.85rem; color:var(--muted); width:max-content; }
   .upitnik summary:hover { color:var(--text); }
   .upitnik details ul { padding:9px 0 0 18px; font-size:.88rem; }
-  .upitnik details li { margin-bottom:4px; }
+  .upitnik details li { margin-bottom:4px; overflow-wrap:anywhere; }
+  .upitnik details li strong { white-space:pre-line; }    /* a free text keeps its line breaks */
+  /* a follow-up's free text sits under its question (q14b under q14) */
+  .upitnik details li.follow { list-style:none; margin-left:14px; color:var(--muted); }
+  .upitnik details li.follow strong { color:var(--text); }
+
+  /* ===== the upitnik v2 (26.10.2026): part 1's answers as facts, not state
+     (neutral pills), and for the trainer the two safety flags: red "needs a
+     look" (q15 yes), amber pain (q14 at 4 or more, with where). --warn is
+     the karton's amber, the .act-absent values (AA on their tints). */
+  .upitnik { --warn:#a34a08; --warn-soft:rgba(163,74,8,.13); }
+  [data-theme="dark"] .upitnik { --warn:#fbbf24; --warn-soft:rgba(251,191,36,.15); }
+  .upitnik .u-fact { font:600 .78rem var(--font-body); color:var(--text); background:var(--surface-2);
+                     border-radius:999px; padding:3px 11px; overflow-wrap:anywhere; }
+  .upitnik .u-flags { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .upitnik .u-flag { font:700 .78rem var(--font-body); border-radius:999px; padding:3px 11px;
+                     overflow-wrap:anywhere; }
+  .upitnik .u-flag.review { background:var(--accent-dim); color:var(--accent-tint-ink); }
+  .upitnik .u-flag.pain { background:var(--warn-soft); color:var(--warn); }
+  /* q14 at 7 or more: početna, and see the trainer first — said to the client too */
+  .upitnik .u-note { margin-top:12px; padding:10px 14px; border-radius:var(--r-md); font-size:.9rem;
+                     background:var(--warn-soft); color:var(--text); overflow-wrap:anywhere; white-space:pre-line; }
+  .upitnik .u-old { margin-top:6px; font-size:.85rem; color:var(--muted); }
 
   /* "Ispuni ponovno": a quiet pill that only surfaces on hover — and ONLY where
      hovering exists. On a phone there is no hover, so it stays visible there. */
@@ -143,23 +165,41 @@
     {% endif %}
   </div>
   <h2 class="u-level" id="u-level">{{ levels[onboarding.level] }}</h2>
+  {% set v2 = onboarding.version >= 2 %}
+  {% if v2 %}
+  {# the upitnik v2: part 1's four answers (they route nothing yet: the level
+     alone does) and the score of 10 #}
+  <div class="u-meta">
+    {% for fact in u_chips %}<span class="u-fact">{{ fact }}</span>{% endfor %}
+    <span class="u-score">{{ u_score }}</span>
+  </div>
+  {% if not own and (onboarding.needs_review or (onboarding.pain_level or 0) >= pain_ask) %}
+  <div class="u-flags">
+    {% if onboarding.needs_review %}<span class="u-flag review">Zahtijeva pregled</span>{% endif %}
+    {% if (onboarding.pain_level or 0) >= pain_ask %}<span class="u-flag pain">Bolovi {{ onboarding.pain_level }}/10{% if answers.q14b %} · {{ answers.q14b | truncate(60) }}{% endif %}</span>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
   <div class="u-meta">
     <span class="u-pill">{{ goals[onboarding.goal] }}</span>
-    <span class="u-score">{{ onboarding.score }}/{{ max_score }} bodova</span>
+    <span class="u-score">{{ onboarding.score | int }}/{{ max_score_v1 }} bodova</span>
   </div>
+  {% endif %}
   {% set rung = order.index(onboarding.level) + 1 %}
   <div class="ramp" aria-hidden="true">
     {% for i in range(3) %}<span class="{% if i < rung %}on{% endif %}"></span>{% endfor %}
   </div>
-  <p class="ramp-note">Razina {{ rung }} od 3 — programi na /treninzi prate ovu razinu i cilj.</p>
+  <p class="ramp-note">Razina {{ rung }} od 3 — programi na /treninzi prate ovu razinu{% if not v2 %} i cilj{% endif %}.</p>
+  {% if v2 and onboarding.pain_high and pain_note %}<p class="u-note">{{ pain_note }}</p>{% endif %}
+  {% if not v2 %}<p class="u-old">Stari upitnik{% if own %} — <a class="tlink" href="/upitnik">ispuni novi</a>{% endif %}.</p>{% endif %}
   {% if not own %}
   {# the trainer has no "Ispuni ponovno" — for them the answers (ozljede!) are
      the only place this information exists #}
   <details>
     <summary>Odgovori</summary>
     <ul>
-      {% for q in questions %}
-      <li>{{ q.text }} — <strong>{{ q.options[answers[q.key]][0] }}</strong></li>
+      {% for question, answer, follow in u_rows %}
+      <li{% if follow %} class="follow"{% endif %}>{{ question }} — <strong>{{ answer }}</strong></li>
       {% endfor %}
     </ul>
   </details>

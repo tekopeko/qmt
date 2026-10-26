@@ -85,6 +85,9 @@ targets; do not introduce new uses.
 | `.chip` (moja_clanarina) | a plan's state in words, at the right of its name (999px, 700 .78rem, nowrap; it goes under the name when both do not fit): `.ok` "aktivna" (`--good-fill` / `--good-ink`), `.due` "dospijeva za N dana" / "sutra" / "danas", N ≤ 7 to dospijeće (`--accent-dim` / `--accent-tint-ink`), `.lapsed` "istekla" (`--accent-tint-ink` on `--surface-2`: plain `--danger` there is 4.3:1, under AA), `.off` "otkazana · vrijedi do kraja" (`--muted` on `--surface-2`) |
 | `.rpe` (karton) | grey numeric badge "napor 7/10"; `.rpe.feel` green for osjećaj, `.rpe.feel.low` grey for "slabo" (green "slabo" read as a contradiction) |
 | `.ramp` (karton) | three rungs, filled to the razina, captioned "Razina N od 3" — colour never alone |
+| `.u-fact` (karton, upitnik v2) | a fact from the upitnik's part 1 (the goal, "3 dana tjedno", "45-60 min", the place): a neutral pill, `--surface-2` with `--text`, 600 .78rem — facts, not state, so no razina colour |
+| `.u-flag` (karton, the trainer's view) | the upitnik's safety flags, 999px pills, 700 .78rem: `.review` "Zahtijeva pregled" (q15 Da) in `--accent-dim` / `--accent-tint-ink`; `.pain` "Bolovi N/10 · where" (q14 ≥ 4) in the karton's amber (`--warn` on `--warn-soft`, the `.act-absent` values, AA on both themes) |
+| `.u-note` (karton) | the pain sentence for a client at q14 ≥ 7 (`upitnik.pain_note`), shown to him and the trainer: `--text` on the amber tint, `--r-md`, 10px 14px |
 
 ## Page conventions
 
@@ -331,7 +334,38 @@ planovi, uplate i računi →", allowed to wrap: it nearly fills a 360px card).
 `.le-actions` right-aligned pills, `.le-edit` inline form toggled by
 `qmtToggleForm`. Rail `.termini` holds only Nadolazeći. `.upitnik` and `.termini`
 are `--r-xl`; `.log-entry` rows are `--r-md` and keep the accent inset bar for
-`.fresh` — at 12px the bar still reads as a bar.
+`.fresh` — at 12px the bar still reads as a bar. A v2 response's block (26.10.2026)
+puts `.u-fact` pills and the muted score ("6,4 / 10") on its `.u-meta` line, the
+trainer's `.u-flag`s under it, and the `.u-note` under the ramp; under "Odgovori"
+a follow-up's free text is `li.follow` (no bullet, indented, muted question).
+
+**Upitnik (`upitnik.html`, 26.10.2026; patterns.md §7).** One `form.quiz` (640px,
+centred) holds every step; the page sets `solo_page`, so the bar is the small pill
+with the brand alone. `.q-title` (PT Sans 700 .95rem uppercase) and `.q-intro`
+(muted; the first screen only) head it, the `?error=` alert under the title.
+`.q-bar`: 4px, `--line` track, `--accent` fill, its width the step among the steps
+asked (no numbers; `aria-hidden`; hidden without JS and in edit mode). Each
+`section.q-step` is `.q-part` (the eyebrow: PT Sans 700 .72rem, muted) and `h1.q-h`
+(the question, `clamp(1.45rem, 5vw, 2rem)`, PT Sans uppercase; `tabindex=-1`, the
+script focuses it on a new step), then by kind: **`.opts`** rows (a choice, yes /
+no): `label.opt` around a hidden radio for a client, the editor's own options list
+(`c.field_points`, `li` rows) for him; flex rows, 64px min, `--surface`, hairline,
+`--r-md`, 600 1rem; the letter badge is a CSS counter on `::before` (26px, 7px
+radius, hairline, muted 700 .72rem; alt text "" so a reader hears the option, not
+the letter), so the editor's redrawn rows get it too; chosen
+(`:has(input:checked)`, the editor's preview `.on`) the row inverts (`--text`
+ground, `--bg` ink) with a ✓ `::after` at its right end; focus is a 2px accent ring
+on the row. **`.scale`** (q5–q14): ten `label.sc`, each a circle `span` (≤56px,
+`aspect-ratio: 1`, hairline on `--surface`, 700 1rem tabular), chosen inverted like
+a row; a 5 × 2 grid until its box (`.scale-box`, a query container) is 454px, ten in
+a row from there (40px each at least); `.scale-ends` under it, muted .85rem, "1 = …"
+left and "10 = …" right. **A free text** (q14b, q15b): a 128px textarea labelled by
+the h1 (a `label` inside it). `.q-nav` closes a step: "Nazad" (`.act.act-quiet`, not
+on the first) on the left, "Dalje" / "Spremi upitnik" (`.btn`) on the right; long
+words wrap inside the pills. The last screen is `label.q-consent` (a row-like box,
+22px checkbox, `accent-color`) and that nav. Without JS every step shows, stacked
+with a hairline between them; in edit mode the same, the bar hidden and the pain
+sentence previewed under q14 (`.q-preview`, `.q-note`).
 
 **Calendar (`calendar.html`).** Seven `.day-col` on desktop → on phones one day
 at a time (17.10.2026): the `.day-strip` picks it, the grid gets `.one-day` and

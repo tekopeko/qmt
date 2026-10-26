@@ -446,12 +446,22 @@ def _copy_save_list(key: str, slot: copy.ListSlot, text: str, index: str, reset:
                     user_id: int) -> JSONResponse:
     """One change to a list slot. reset=1 puts the default list back; any
     other change is _edit_list's, made to the stored list (no row: the
-    default list) and stored as the slot's one row."""
+    default list) and stored as the slot's one row. A question's options on
+    /upitnik (copy.UPITNIK_OPTION_KEYS) keep at least upitnik.MIN_OPTIONS:
+    removing one past that is refused, or there is nothing to choose."""
     if reset == "1":
         db.reset_copy(key)
         return JSONResponse({"ok": True, "items": list(slot.default), "default": True})
     stored = db.copy_texts().get(key)
-    return _edit_list(copy.load_items(stored, slot), stored is None, slot, text, index,
+    items = copy.load_items(stored, slot)
+    if key in copy.UPITNIK_OPTION_KEYS and len(items) <= upitnik.MIN_OPTIONS and not copy.clean(text):
+        try:
+            removes = 0 <= int(index) < len(items)       # an emptied item at an index removes it (_edit_list)
+        except ValueError:
+            removes = False
+        if removes:
+            return JSONResponse({"ok": False, "error": "Pitanje treba bar dva odgovora."}, status_code=400)
+    return _edit_list(items, stored is None, slot, text, index,
                       lambda items: db.set_copy(key, copy.dump_items(items), user_id))
 
 
@@ -1574,17 +1584,29 @@ def _render_karton(request: Request, viewer, subject, own: bool):
 
     onboarding = db.get_onboarding(subject.id)
     answers = json.loads(onboarding.answers) if onboarding else {}
+    texts = db.copy_texts()
+    # The upitnik block. A version-2 response: its score ("6,4 / 10"), part
+    # 1's four chips, and for the trainer every answer under its question
+    # as the gym owner words it now (an emptied question still names its
+    # answer: its default stands in). A version-1 row: its answers as
+    # QUESTIONS_V1 reads them.
+    if onboarding is not None and onboarding.version >= 2:
+        u_rows = upitnik.answer_rows(answers, lambda key: texts.get(key) or copy.SLOTS[key].default)
+        u_chips, u_score = upitnik.chips(answers), upitnik.score_text(onboarding.score)
+    else:
+        u_rows, u_chips, u_score = upitnik.answer_rows_v1(answers), [], None
     today = config.today()
     born = subject.birth_date
     age = (today.year - born.year - ((today.month, today.day) < (born.month, born.day))
            if born else None)
     pending = db.pending_feedback(subject.id) if own else []
     return templates.TemplateResponse(request, "karton.html", _ctx(
-        request, viewer, subject=subject, own=own, age=age,
+        request, viewer, copy_texts=texts, subject=subject, own=own, age=age,
         can_upitnik=own and _has_online(subject),
         onboarding=onboarding, answers=answers,
-        questions=upitnik.QUESTIONS, levels=upitnik.LEVELS, goals=upitnik.GOALS,
-        max_score=upitnik.MAX_SCORE,
+        levels=upitnik.LEVELS, goals=upitnik.GOALS, max_score_v1=upitnik.MAX_SCORE_V1,
+        u_rows=u_rows, u_chips=u_chips, u_score=u_score, pain_ask=upitnik.PAIN_ASK,
+        pain_note=texts.get("upitnik.pain_note", copy.SLOTS["upitnik.pain_note"].default),
         diary=_diary_rows(subject.id),
         # just-finished termini open their osvrt form straight away; older ones
         # keep it folded so the diary stays a list, not a wall of forms
@@ -1621,54 +1643,73 @@ def karton_client(request: Request, user_id: int):
 
 @app.get("/upitnik", response_class=HTMLResponse)
 def upitnik_page(request: Request):
+    """The online-trening upitnik (qmt.upitnik, version 2 since 26.10.2026),
+    one question per screen. A client with an online plan fills it, from
+    the first question every time: a refill starts fresh, nothing is
+    preselected. The trainer and the owner get it too, a plan or not: every
+    word of it is a copy slot, and this is where they edit them (they never
+    submit it: POST /upitnik refuses them)."""
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/upitnik')}", status_code=303)
-    if not _has_online(user):
+    if not _can_edit_copy(user) and not _has_online(user):
         return RedirectResponse(
             "/karton?error=Upitnik+je+dio+online+članarine+—+javi+se+treneru.", status_code=303)
-    if user.is_trainer:
-        return RedirectResponse("/treninzi", status_code=303)
-    import json
-
-    existing = db.get_onboarding(user.id)
     return templates.TemplateResponse(request, "upitnik.html", _ctx(
-        request, user, questions=upitnik.QUESTIONS, goals=upitnik.GOALS,
-        picked=json.loads(existing.answers) if existing else {},
-        picked_goal=existing.goal if existing else None,
-    ))
+        request, user, steps=upitnik.STEPS, scale=upitnik.SCALE, yes=upitnik.YES, no=upitnik.NO,
+        text_max=upitnik.TEXT_MAX, pain_high_at=upitnik.PAIN_HIGH))
 
 
 @app.post("/upitnik")
 async def upitnik_submit(request: Request):
+    """A filled upitnik: every question asked must be answered
+    (upitnik.read: a choice with one of its options as its slot holds them
+    now, a scale 1–10, yes / no, a follow-up's free text when its question
+    calls for it) and the consent ticked, or back to the form saying why,
+    nothing stored. Then scored and leveled (upitnik.evaluate, the safety
+    rules included), saved with the goal upitnik.GOAL, and straight to the
+    programmes: the flash names the level, and for a client in pain adds
+    the sentence that sends him to the trainer first (upitnik.pain_note).
+    The trainer and the owner edit the questionnaire and never fill it (the
+    page they get is the editor's: a choice is his options list, no radio):
+    refused."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
+    if _can_edit_copy(user):
+        return RedirectResponse(
+            "/upitnik?error=Upitnik+ispunjavaju+članovi+—+ovdje+se+uređuju+samo+tekstovi.", status_code=303)
     if not _has_online(user):
         return RedirectResponse(
             "/karton?error=Upitnik+je+dio+online+članarine+—+javi+se+treneru.", status_code=303)
     form = await request.form()
     import json
+    from urllib.parse import quote
 
-    picked: dict[str, int] = {}
+    texts = db.copy_texts()
+    options = {q.id: copy.items_for(f"upitnik.{q.id}.options", texts)
+               for q in upitnik.QUESTIONS if q.kind == "choice"}
+    # cleaned as a copy text is, so an option's text compares as its slot
+    # stored it (a browser sends a line break inside one as CRLF)
+    posted = {key: copy.clean(value) for key, value in form.items() if isinstance(value, str)}
     try:
-        for q in upitnik.QUESTIONS:
-            idx = int(form[q["key"]])
-            if not 0 <= idx < len(q["options"]):
-                raise ValueError
-            picked[q["key"]] = idx
-        goal = str(form["goal"])
-        if goal not in upitnik.GOALS:
-            raise ValueError
-    except (KeyError, ValueError):
+        answers = upitnik.read(posted, options)
+    except ValueError:
         return RedirectResponse("/upitnik?error=Odgovori+na+sva+pitanja.", status_code=303)
-    score, level = upitnik.score_answers(picked)
-    db.save_onboarding(user.id, json.dumps(picked), score, level, goal)
+    if not posted.get("consent"):
+        return RedirectResponse("/upitnik?error=" + quote("Potvrdi pristanak na obradu podataka o zdravlju."),
+                                status_code=303)
+    result = upitnik.evaluate(answers)
+    db.save_onboarding(user.id, json.dumps(answers, ensure_ascii=False), result.score, result.level, upitnik.GOAL,
+                       version=upitnik.VERSION, pain_level=result.pain_level, pain_high=result.pain_high,
+                       needs_review=result.needs_review, consented_at=datetime.now(config.TZ))
     # straight to the programmes — the routing is the whole point of the upitnik
-    return RedirectResponse(
-        f"/treninzi?ok=Upitnik+je+spremljen+—+{upitnik.LEVELS[level].replace(' ', '+')}.",
-        status_code=303)
+    flash = f"Upitnik je spremljen — {upitnik.LEVELS[result.level]}."
+    note = texts.get("upitnik.pain_note", copy.SLOTS["upitnik.pain_note"].default)
+    if result.pain_high and note:
+        flash += f" {note}"
+    return RedirectResponse("/treninzi?ok=" + quote(flash), status_code=303)
 
 
 @app.post("/karton/feedback/{session_id}")

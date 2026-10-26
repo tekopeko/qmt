@@ -1,6 +1,17 @@
-# Where the last session left off — 23.10.2026.
+# Where the last session left off — 26.10.2026.
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
+
+## 26.10.2026 — the upitnik v2, Shape's questionnaire: awaiting review (Opus draft)
+
+The owner: "I would like to create that kind of questionnaire, with that design, but so that my friend running the gym can manually change the questions later on … This is his final version of the questionnaire", and "The questionnaire will only determine the difficulty level of the trainings … later on, we will allow the user to change the level and type of training". Built, not reviewed, not deployed:
+
+- `src/qmt/upitnik.py` v2: the 15 questions (q1–q4 choices, q5–q14 scales 1–10, q15 Da / Ne) in four parts, the follow-ups q14b (q14 ≥ 4) and q15b (q15 Da), the owner's score (0,6 × the mean of q5–q7 + 0,4 × the mean of q8–q11, one decimal: ≤ 4 početna, ≤ 7 srednja, else napredna) and his two safety rules (q14 ≥ 7: početna and a word to see the trainer, `pain_high`; q15 Da: `needs_review`). Every v2 response's goal is `cijelo` (the level alone routes for now); q1–q4 are stored for the later routing by equipment / type. `QUESTIONS_V1` stays frozen to read old rows.
+- Every word is a copy slot (`upitnik.*`, 54 of them; `copy.UPITNIK_*` hold his text as the defaults), edited in place on `/upitnik`, which the trainer and the owner now open with no plan; a choice keeps at least two options. Adding a question is a code change.
+- `/upitnik` is Shape's design in QMT's clothes (patterns.md §7, components.md "Upitnik"): one question per screen in one form (no-JS: the whole questionnaire), the brand-only pill (`solo_page` in base.html), the consent required. The trainer's and the owner's POST is refused (they edit it, never fill it).
+- `OnboardingResponse`: `version`, decimal `score`, `pain_level`, `pain_high`, `needs_review`, `consented_at`; migration `e6564d9234b8` (old rows version 1, their scores kept). The karton shows the v2 block (chips, "6,4 / 10", the pain sentence; the trainer's flags and all 15 answers) and a v1 row as before with "Stari upitnik — ispuni novi.".
+- `seed_demo.py`: ivan has a v2 response (srednja, 6,4). Tests: `tests/test_upitnik.py`, `tests/test_upitnik_ui.py` (one screen at a time at 390 / 1280, long texts at four widths, the trainer's edit mode); `/upitnik` joined `tests/test_copy.py`'s pages. 210 tests.
+- Open: the last screen (consent + Spremi) has no heading (no slot was briefed for one); `/treninzi`'s and the karton's "upitnik not filled" texts still say the upitnik picks a cilj too (left as they were, by the brief).
 
 ## 23.–24.10.2026 — leaving Railway for Scaleway: LIVE on the webhost box since 24.10. 20:30
 

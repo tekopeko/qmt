@@ -121,15 +121,24 @@ them, as Shape's do.
 plain dark background, no cards. **Map to QMT:** the landing's gallery band is the
 slot; the owner supplies photos with consent. Keep captions optional.
 
-## 7. Onboarding questionnaire — reference saved 17.10.2026
+## 7. Onboarding questionnaire — reference saved 17.10.2026, implemented 26.10.2026 as `/upitnik`
 
 **Theirs:** `/onboarding/preferences`, one question per screen: a narrow
 centred column, a thin progress bar, the question as a big h1, answers as
 full-width rows with an A / B / C letter badge, the chosen one inverted to
 white with a ✓, a muted "Nazad" under them, choosing advances. Screenshots
 and the measured notes: `data/design-reference/shape-club/README.md`.
-**Map to QMT:** the upitnik (`/upitnik`, five scored questions + a goal) is
-the same shape; a redesign to this pattern is the owner's wish (17.10.2026).
+**Ours (26.10.2026):** `/upitnik`, the gym owner's final questionnaire (15
+questions, every word a copy slot), in QMT's clothes: the brand alone in the
+small pill (base.html's `solo_page`), a 640px column on `--bg` (no purple),
+the bar filled with `--accent` on a `--line` track, the part as a muted
+eyebrow, the question as the h1 in PT Sans uppercase (QMT's display voice,
+not their sentence case), rows on `--surface` with a hairline and a lettered
+badge, 64px tall, `--r-md`, the chosen one `--text` with `--bg` ink and a ✓;
+for the 1–10 scales (Shape has none) ten round buttons in the same inverted
+choice. A choice goes on ~250 ms after a tap; a free text has "Dalje"; the
+last screen is the consent and "Spremi upitnik". The classes: components.md,
+"The upitnik".
 
 ## 8. Buying a subscription — reference saved 17.10.2026
 

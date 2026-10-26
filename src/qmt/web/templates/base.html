@@ -600,15 +600,21 @@
    typing a password (the Stripe/Notion pattern); the logo is the way out #}
 {% set auth_page = request.url.path in ('/login', '/signup', '/forgot', '/reset', '/verify-sent')
                    or request.url.path.startswith('/auth/') %}
+{# A page that is one task, set by the page itself ({% set solo_page = true %}
+   at its top: the upitnik, Shape's questionnaire, 26.10.2026), keeps the
+   brand alone, centred in a guest's small pill: no tabs, no account menu,
+   nothing beside the question; the logo is the way out, as on the auth pages. #}
+{% set solo = solo_page is defined and solo_page %}
+{% set brand_only = auth_page or solo %}
 {# a guest's bar is Shape's small pill (.compact): it shrinks to its content #}
-<header class="topbar{% if not user %} compact{% endif %}">
+<header class="topbar{% if not user or solo %} compact{% endif %}">
   <div class="brand-slot"><a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
      <span class="full">Quality Movement Training</span><span class="short">QMT</span></a></div>
-  {% if not auth_page %}
+  {% if not brand_only %}
   <button type="button" class="navbtn nav-burger" onclick="qmtToggleNav()"
           aria-label="Izbornik" aria-expanded="false" aria-controls="mainNav">☰</button>
   {% endif %}
-  {% if not auth_page %}
+  {% if not brand_only %}
   <nav class="nav" id="mainNav">
     {% if user %}
       <a href="/" class="{% if request.url.path == '/' %}on{% endif %}">Početna</a>
@@ -635,7 +641,7 @@
     {% endif %}
   </nav>
   {% endif %}
-  {% if user and not auth_page %}
+  {% if user and not brand_only %}
   {# initials avatar opening the account menu, the way Google apps do it #}
   {% set initials = ((user.name or user.email)[:1] ~ (user.last_name[:1] if user.last_name else "")) | upper %}
   <div class="avatar-wrap" id="avatarWrap">
@@ -693,6 +699,8 @@
   {% endif %}
 </header>
 <main class="{% block main_class %}{% endblock %}">
+  {# a page may put the error alert elsewhere instead (the upitnik: under its title) #}
+  {% block error_alert %}
   {% if request.query_params.get("error") %}
     <div class="alert" role="alert">
       <span>{{ request.query_params.get("error") }}</span>
@@ -703,6 +711,7 @@
       {% endif %}
     </div>
   {% endif %}
+  {% endblock %}
   {# a page may put its own ok alert here instead (the calendar's offer to
      repeat a booking) — one alert either way #}
   {% block ok_alert %}

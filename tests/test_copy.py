@@ -68,7 +68,7 @@ from qmt import auth, config, copy, db, storage
 from qmt.models import PLAN_TYPES, Base, SiteCopy, User
 from qmt.web.app import addon_amounts, app, reference_prices
 
-PAGES = ("/", "/moja-clanarina", "/prehrana")  # every page that has editable text
+PAGES = ("/", "/moja-clanarina", "/prehrana", "/upitnik")  # every page that has editable text
 
 
 @pytest.fixture(autouse=True)
@@ -1069,6 +1069,8 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
     places, and a save updates every copy of it on the page it is made on.
     The add-on's amounts (addon.*) are on /moja-clanarina alone, the
     prehrana plan's hint, since the QMove tiers' line went (21.10.2026).
+    The upitnik's words (upitnik.*, 26.10.2026) are on /upitnik, which the
+    editor opens with no online plan of his own (tests/test_upitnik.py).
     A list, a switch and a photo keep their shape on each page they are
     on; a visitor and a client get no editor markup, the announcements'
     and the gym's cards' (rows, not slots) included."""
