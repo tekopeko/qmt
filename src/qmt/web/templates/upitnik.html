@@ -10,14 +10,24 @@
    steps qmt.upitnik.steps makes of them: a client's the shown ones, the
    editor's every one (a hidden one .is-off: a step in edit mode only). A
    question's words are virtual keys (upitnik.<id>.text / .options / .low /
-   .high / .followup_text, printed with c.field), the words around them
-   slots (upitnik.*). The trainer and the owner, who open it to edit it
-   (Admin ▾ → Upitnik), keep their whole bar, Admin ▾ marked (26.10.2026):
-   the page is one task for the member filling it, not for them. In edit
-   mode each question carries his controls (its switch, ↑ / ↓, its
-   settings, "Obriši pitanje"), a grey line saying what its settings do,
-   the scoring's summary above the first question and "+ Dodaj pitanje"
-   under the last. #}
+   .high, printed with c.field), the words around them slots (upitnik.*).
+   A question asked only after an answer to an earlier one (27.10.2026)
+   says which on its step: data-parent, that question's step, and the
+   answer, data-is (a yes / no's value), data-from (a scale's N or more)
+   or data-has (an option), which the script below checks live, down a
+   chain; without it every step shows, and the server drops what was not
+   asked. A hidden question hides those asked after it, down the chain: a
+   client gets no step of them (upitnik.client_steps), the editor gets
+   them dimmed (.is-muted) with the reason in amber. The trainer and the
+   owner, who open it to edit it (Admin ▾ →
+   Upitnik), keep their whole bar, Admin ▾ marked (26.10.2026): the page
+   is one task for the member filling it, not for them. In edit mode each
+   question carries his controls (its switch, ↑ / ↓, its settings, "Pita
+   se" among them, "Obriši pitanje"), a grey line saying what its settings
+   do and, for a conditional one, when it is asked (in amber when that
+   cannot work), the scoring's summary above the first question and "+
+   Dodaj pitanje" under the last; a conditional question sits indented
+   under the one it is asked after (data-depth). #}
 {% set solo_page = not can_edit_copy %}
 {% block title %}Upitnik — QMT{% endblock %}
 {% block head %}
@@ -153,8 +163,8 @@
      question's first line is his controls (.q-ed): its switch (.ed-flag),
      ↑ / ↓ (.ed-mv), "Obriši pitanje" (.ed-q-x), then a select in a pill
      for each setting (label.ed-set: Dio, Vrsta, Bodovanje on a scale,
-     Uloga), the gym cards' 32px pills (base.html); under them a grey
-     line saying what the settings do (.q-ed-line, a follow-up's too). A
+     Uloga, Pita se), the gym cards' 32px pills (base.html); under them a
+     grey line saying what the settings do (.q-ed-line). A
      hidden question is no step outside edit mode; in it, its content is
      dimmed, its controls and its line are not (the gym cards' rule). The
      scoring's summary sits above the first question (.q-sum, the alert
@@ -162,8 +172,12 @@
      gym's "+ Dodaj karticu"). A step clears the sticky bar when a reload
      lands on it (#step-q<id>). ===== */
   .q-step { scroll-margin-top: 96px; }
-  .quiz .q-step.is-off { display: none; }
-  body.editing .q-step.is-off > :not(.q-ed):not(.q-ed-line) { opacity: .55; }
+  /* a question a hidden one mutes (.is-muted, 27.10.2026: asked after a
+     hidden question, or under one) is treated as a hidden one: no step
+     outside edit mode, dimmed in it */
+  .quiz .q-step.is-off, .quiz .q-step.is-muted { display: none; }
+  body.editing .q-step.is-off > :not(.q-ed):not(.q-ed-line),
+  body.editing .q-step.is-muted > :not(.q-ed):not(.q-ed-line) { opacity: .55; }
   .q-ed, .q-ed-line, .q-sum, .q-add { display: none; }
   body.editing .q-ed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
   body.editing .q-ed .ed-flag, body.editing .q-ed .ed-q-x { margin: 0; }
@@ -184,7 +198,36 @@
                          border-radius: 999px; background: transparent; color: var(--text); font: 600 .8rem var(--font-body);
                          cursor: pointer; }
   .q-ed .ed-set select:focus { outline: none; }
+  /* "Pita se" (27.10.2026): when a question is asked, its pills in the row:
+     Uvijek / Samo ako … (.if-ask), and once that says Samo ako … (.open)
+     the question it is asked after (.if-q, the questions before it: "16 ·
+     Jeste li imali porod?") and its answer (.if-a: Da / Ne, a scale's
+     number with "ili više" after it, an option). The box is no box
+     (display: contents), its pills are the row's. No pill grows past the
+     row: its select shrinks (a native select then cuts its words), so a
+     question's 40 characters fit a 360px phone. */
+  .q-ed .ed-if { display: contents; }
+  .q-ed .ed-if:not(.open) .if-more { display: none; }
+  .q-ed label.ed-set { max-width: 100%; }
+  .q-ed .ed-set select { min-width: 0; }
+  .q-ed .if-tail { display: none; padding-right: 12px; white-space: nowrap; }
+  .q-ed .ed-if[data-kind="scale"] .if-tail { display: inline; }
   body.editing .q-ed-line { display: block; margin: 0 0 16px; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+  /* the line's second half, a conditional question's: when it is asked, in
+     amber when nobody gets it (.muted: a hidden question above it) or when
+     its condition cannot work (.void: asked always, and why). --warn is
+     the karton's amber (karton.html), AA on --bg in both themes. */
+  .quiz { --warn: #a34a08; }
+  [data-theme="dark"] .quiz { --warn: #fbbf24; }
+  .q-ed-line .q-ed-if { display: block; }
+  .q-ed-line .q-ed-if.void, .q-ed-line .q-ed-if.muted { color: var(--warn); font-weight: 600; }
+  /* in edit mode a conditional question sits under the one it is asked
+     after: 16px in a level, behind a hairline at its left, so a chain
+     reads as a chain (data-depth, drawn to the fourth level) */
+  body.editing .quiz .q-step[data-depth] { padding-left: 15px; border-left: 1px solid var(--line); }
+  body.editing .quiz .q-step[data-depth="2"] { margin-left: 16px; }
+  body.editing .quiz .q-step[data-depth="3"] { margin-left: 32px; }
+  body.editing .quiz .q-step[data-depth="4"] { margin-left: 48px; }
   body.editing .q-sum { display: block; margin-top: 18px; }
   .q-sum p { font-size: .88rem; overflow-wrap: anywhere; }
   .q-sum > p:first-child { color: var(--muted); }
@@ -204,16 +247,28 @@
    word on the pill (Dio, Vrsta, Bodovanje, Uloga). A scale alone scores,
    so only a scale has Bodovanje, and Uloga offers the role its kind can
    hold: Bolovi on a scale, Ozljede on a yes / no, none on any other kind
-   (the route refuses the rest). #}
+   (the route refuses the rest). "Pita se" (27.10.2026) is three selects
+   in one .ed-if, saved together (parent_id, condition; base.html's
+   editor saves them, the script below lists a question's answers):
+   Uvijek / Samo ako …, the question it is asked after (the questions
+   before it whose answer a condition can name: no free text; "16 ·" and
+   its first 40 characters) and the answer. An ↑ or ↓ that would put a
+   question before the one it is asked after says so at the press
+   (data-refuse) and goes nowhere; the route refuses it too. "Obriši
+   pitanje" on a question others are asked after says what becomes of
+   them at its first tap, in the bar (data-warn): they stay, asked of
+   everyone. #}
 {% macro controls(q) -%}
   {%- set url = "/upitnik/pitanje/" ~ q.row -%}
   {%- set name = "Pitanje " ~ q.n -%}
+  {%- set refuse = "Potpitanje ne može ići ispred svog pitanja." -%}
   <div class="q-ed">
     <button type="button" class="ed-flag" data-url="{{ url }}" data-field="shown" data-reload data-label="{{ name }}: prikazano"
             aria-pressed="{{ 'true' if q.shown else 'false' }}">{{ "Prikazano" if q.shown else "Skriveno" }}</button>
-    <button type="submit" class="ed-mv" form="q-mv-{{ q.row }}" name="smjer" value="gore" aria-label="{{ name }}: jedno mjesto gore"{% if q.n == 1 %} disabled{% endif %}>↑</button>
-    <button type="submit" class="ed-mv" form="q-mv-{{ q.row }}" name="smjer" value="dolje" aria-label="{{ name }}: jedno mjesto dolje"{% if q.n == last_row %} disabled{% endif %}>↓</button>
-    <button type="submit" class="ed-q-x" form="q-x-{{ q.row }}" aria-label="Obriši pitanje {{ q.n }}">Obriši pitanje</button>
+    <button type="submit" class="ed-mv" form="q-mv-{{ q.row }}" name="smjer" value="gore" aria-label="{{ name }}: jedno mjesto gore"{% if q.n == 1 %} disabled{% endif %}{% if blocked[q.id][0] %} data-refuse="{{ refuse }}"{% endif %}>↑</button>
+    <button type="submit" class="ed-mv" form="q-mv-{{ q.row }}" name="smjer" value="dolje" aria-label="{{ name }}: jedno mjesto dolje"{% if q.n == last_row %} disabled{% endif %}{% if blocked[q.id][1] %} data-refuse="{{ refuse }}"{% endif %}>↓</button>
+    <button type="submit" class="ed-q-x" form="q-x-{{ q.row }}" aria-label="Obriši pitanje {{ q.n }}"
+            {%- if q.row in parents %} data-warn="Pitanja koja ovise o njemu ostaju i pitat će se svakoga."{% endif %}>Obriši pitanje</button>
     <label class="ed-set">Dio <select data-url="{{ url }}" data-field="part" data-value="{{ q.part }}" data-label="{{ name }}: dio">
       {%- for p in parts %}<option value="{{ p }}"{% if p == q.part %} selected{% endif %}>{{ p }}</option>{% endfor -%}
     </select></label>
@@ -230,6 +285,22 @@
       {%- for k, label in roles.items() if not k or role_kinds[k] == q.kind %}<option value="{{ k }}"{% if k == q.role %} selected{% endif %}>{{ label }}</option>{% endfor -%}
     </select></label>
     {%- endif %}
+    {%- set cands = steps | selectattr("n", "lt", q.n) | selectattr("kind", "in", cond_kinds) | list %}
+    {%- set pq = cands | selectattr("row", "equalto", q.parent) | first %}
+    <span class="ed-if{% if q.condition %} open{% endif %}" data-url="{{ url }}"{% if pq %} data-kind="{{ pq.kind }}"{% endif %}>
+      <label class="ed-set">Pita se <select class="if-ask" data-value="{{ 'if' if q.condition else '' }}" data-label="{{ name }}: pita se">
+        <option value=""{% if not q.condition %} selected{% endif %}>Uvijek</option>
+        <option value="if"{% if q.condition %} selected{% elif not cands %} disabled{% endif %}>Samo ako …</option>
+      </select></label>
+      <label class="ed-set if-more">Pitanje <select class="if-q" data-label="{{ name }}: pitanje">
+        <option value="">—</option>
+        {%- for p in cands %}<option value="{{ p.row }}"{% if pq and p.row == pq.row %} selected{% endif %}>{{ p.n }}{% if p.text %} · {{ short(p.text) }}{% endif %}</option>{% endfor -%}
+      </select></label>
+      <label class="ed-set if-more">Odgovor <select class="if-a" data-label="{{ name }}: odgovor">
+        <option value="">—</option>
+        {%- if pq %}{% for value, words in answer_choices(pq.kind, pq.options) %}<option value="{{ value }}"{% if value == q.condition %} selected{% endif %}>{{ words }}</option>{% endfor %}{% endif -%}
+      </select><span class="if-tail">ili više</span></label>
+    </span>
   </div>
 {%- endmacro %}
 <form method="post" action="/upitnik" class="quiz" id="quiz" autocomplete="off">
@@ -252,15 +323,21 @@
   {% for q in steps %}
   {% set key = "upitnik." ~ q.row %}
   {% set name = "Pitanje " ~ q.n %}
-  <section class="q-step{% if not q.shown %} is-off{% endif %}" id="step-{{ q.id }}" data-q="{{ q.id }}" data-kind="{{ q.kind }}"
-           {%- if q.follows %} data-follows="{{ q.follows }}"{% if q.ask_from %} data-from="{{ q.ask_from }}"{% else %} data-is="{{ yes if q.ask_if else no }}"{% endif %}{% endif %}
-           {%- if can_edit_copy and not q.follows %} data-flag{% endif %}>
-    {% if can_edit_copy %}{% if not q.follows %}{{ controls(q) }}{% endif %}
-    <p class="q-ed-line">{{ lines[q.id] }}</p>{% endif %}
+  {# a conditional question (its condition working: q.follows) is asked
+     only after that answer, so it is required of nobody here: the script
+     asks it when it is asked, the server checks what was #}
+  {% set req = "" if q.follows else " required" %}
+  <section class="q-step{% if not q.shown %} is-off{% endif %}{% if q.muted %} is-muted{% endif %}" id="step-{{ q.id }}" data-q="{{ q.id }}" data-kind="{{ q.kind }}"
+           {%- if q.follows %} data-parent="{{ q.follows }}"
+             {%- if q.parent_kind == "yesno" %} data-is="{{ yes if q.condition == 'yes' else no }}"
+             {%- elif q.parent_kind == "scale" %} data-from="{{ q.condition[2:] }}"
+             {%- else %} data-has="{{ q.condition }}"{% endif %}{% endif %}
+           {%- if can_edit_copy %} data-flag{% if q.depth %} data-depth="{{ [q.depth, 4] | min }}"{% endif %}{% endif %}>
+    {% if can_edit_copy %}{{ controls(q) }}
+    <p class="q-ed-line">{{ lines[q.id] }}{% if ifs[q.id] %}<span class="q-ed-if{% if q.muted %} muted{% elif q.void %} void{% endif %}">{{ ifs[q.id] }}</span>{% endif %}</p>{% endif %}
     <p class="q-part">{{ c.t("upitnik.part" ~ q.part ~ ".h") }}</p>
     {% if q.kind == "text" %}
-    {% set field = "followup_text" if q.follows else "text" %}
-    <h1 class="q-h" id="h-{{ q.id }}" tabindex="-1"><label for="a-{{ q.id }}">{{ c.field(key ~ "." ~ field, q.text, name ~ ": " ~ QUESTION[field].label) }}</label></h1>
+    <h1 class="q-h" id="h-{{ q.id }}" tabindex="-1"><label for="a-{{ q.id }}">{{ c.field(key ~ ".text", q.text, name ~ ": " ~ QUESTION["text"].label) }}</label></h1>
     <textarea id="a-{{ q.id }}" name="{{ q.id }}" rows="4" maxlength="{{ text_max }}"></textarea>
     {% else %}
     <h1 class="q-h" id="h-{{ q.id }}" tabindex="-1">{{ c.field(key ~ ".text", q.text, name ~ ": " ~ QUESTION["text"].label) }}</h1>
@@ -274,7 +351,7 @@
       {% elif q.kind == "choice" %}
       <div class="opts" role="radiogroup" aria-labelledby="h-{{ q.id }}">
         {% for text in q.options %}
-        <label class="opt"><input type="radio" name="{{ q.id }}" value="{{ text }}" required><span class="t">{{ text }}</span></label>
+        <label class="opt"><input type="radio" name="{{ q.id }}" value="{{ text }}"{{ req }}><span class="t">{{ text }}</span></label>
         {% endfor %}
       </div>
       {% else %}
@@ -287,14 +364,14 @@
       {% endif %}
     {% elif q.kind == "yesno" %}
       <div class="opts" role="radiogroup" aria-labelledby="h-{{ q.id }}">
-        <label class="opt"><input type="radio" name="{{ q.id }}" value="{{ yes }}" required>{{ c.t("upitnik.yes") }}</label>
-        <label class="opt"><input type="radio" name="{{ q.id }}" value="{{ no }}" required>{{ c.t("upitnik.no") }}</label>
+        <label class="opt"><input type="radio" name="{{ q.id }}" value="{{ yes }}"{{ req }}>{{ c.t("upitnik.yes") }}</label>
+        <label class="opt"><input type="radio" name="{{ q.id }}" value="{{ no }}"{{ req }}>{{ c.t("upitnik.no") }}</label>
       </div>
     {% elif q.kind == "scale" %}
       <div class="scale-box">
         <div class="scale" role="radiogroup" aria-labelledby="h-{{ q.id }}">
           {% for n in scale %}
-          <label class="sc"><input type="radio" name="{{ q.id }}" value="{{ n }}" required><span>{{ n }}</span></label>
+          <label class="sc"><input type="radio" name="{{ q.id }}" value="{{ n }}"{{ req }}><span>{{ n }}</span></label>
           {% endfor %}
         </div>
       </div>
@@ -341,7 +418,7 @@
 {# the editor's forms: a question moved (↑ / ↓ send smjer) or deleted, one
    added. Here, outside the questionnaire's form; their buttons are in it
    and name them (form="…"). Each brings the page back in edit mode. #}
-{% for q in steps if not q.follows %}
+{% for q in steps %}
 <form id="q-mv-{{ q.row }}" class="ed-move" method="post" action="/upitnik/pitanje/{{ q.row }}/pomak" hidden></form>
 <form id="q-x-{{ q.row }}" method="post" action="/upitnik/pitanje/{{ q.row }}/obrisi" hidden></form>
 {% endfor %}
@@ -351,10 +428,12 @@
 {% block scripts %}
 <script>
   // One step at a time (patterns.md §7). The step shown is .on; the bar
-  // counts the steps asked (a follow-up only while its question's answer
-  // calls for it: the pain question at 4 or more, the injuries question
-  // yes; a hidden question, .is-off on the editor's page, never), and a
-  // follow-up not asked has its textarea disabled, so it is not sent. A
+  // counts the steps asked so far and the ones always asked ahead (a
+  // conditional question, 27.10.2026, only while the answer it is asked
+  // after is given: its data-parent's step asked and answered as its
+  // data-is / data-from / data-has says, so a chain is read down its
+  // length; a hidden question, .is-off on the editor's page, never), and
+  // a step not asked has its inputs disabled, so nothing of it is sent. A
   // choice or a scale goes on ~250 ms after a tap or a click; one made with
   // the keyboard (the arrows, Space: the click has no detail) is only
   // marked, and Enter goes on. A multi (several options) is ticked row by
@@ -379,13 +458,22 @@
       var r = form.querySelector('input[type="radio"][name="' + name + '"]:checked');
       return r ? r.value : null;
     }
+    // a choice's or a multi's answer: the options chosen (its radio's, its
+    // ticks'), on the editor's preview his option rows marked .on
+    function given(step) {
+      var on = step.querySelector("input") ? step.querySelectorAll("input:checked") : step.querySelectorAll(".opts > li.on > .t");
+      return [].map.call(on, function (x) { return x.tagName === "INPUT" ? x.value : x.textContent; });
+    }
     function asked(step) {
-      if (step.classList.contains("is-off")) return false;       // a hidden question: on the editor's page only
-      var of = step.getAttribute("data-follows");
+      // a hidden question, or one a hidden question mutes: on the editor's page only
+      if (step.classList.contains("is-off") || step.classList.contains("is-muted")) return false;
+      var of = step.getAttribute("data-parent");
       if (!of) return true;
-      var v = picked(of);
-      if (step.hasAttribute("data-from")) return v !== null && +v >= +step.getAttribute("data-from");
-      return v === step.getAttribute("data-is");
+      var parent = document.getElementById("step-" + of);
+      if (!parent || !asked(parent)) return false;               // down a chain: its question asked first
+      if (step.hasAttribute("data-from")) { var v = picked(of); return v !== null && +v >= +step.getAttribute("data-from"); }
+      if (step.hasAttribute("data-is")) return picked(of) === step.getAttribute("data-is");
+      return given(parent).indexOf(step.getAttribute("data-has")) >= 0;
     }
     function answered(step) {
       var kind = step.getAttribute("data-kind");
@@ -403,10 +491,14 @@
         if (b) b.setAttribute("aria-disabled", answered(s) ? "false" : "true");
       });
     }
+    // a step not asked sends nothing (its inputs disabled); a free text
+    // asked is required, so Dalje can say so
     function sync() {
       steps.forEach(function (s) {
-        var t = s.querySelector("textarea");
-        if (t) { var on = asked(s); t.disabled = !on; t.required = on; }
+        if (!s.hasAttribute("data-kind")) return;                 // the last screen: the consent is the submit's
+        var on = asked(s), t = s.querySelector("textarea");
+        [].forEach.call(s.querySelectorAll("input, textarea"), function (x) { x.disabled = !on; });
+        if (t) t.required = on;
       });
     }
     function draw() {
@@ -445,13 +537,14 @@
       }
       var li = t.closest(".opts > li");
       if (li) {
-        if (li.closest(".q-step").getAttribute("data-kind") === "multi") { li.classList.toggle("on"); fit(); return; }
+        if (li.closest(".q-step").getAttribute("data-kind") === "multi") { li.classList.toggle("on"); fit(); draw(); return; }
         [].forEach.call(li.parentElement.children, function (x) { x.classList.toggle("on", x === li); });
         later(); return;
       }
-      if (t.matches('input[type="checkbox"]')) { fit(); return; }   // a multi's tick: Dalje goes on
+      // a multi's tick: Dalje goes on, and the questions asked after an option may be asked now
+      if (t.matches('input[type="checkbox"]')) { fit(); sync(); draw(); return; }
       if (t.matches('input[type="radio"]')) {
-        sync(); draw();                       // the safety questions decide whether their follow-up is asked
+        sync(); draw();                       // an answer decides whether the questions asked after it are
         if (e.detail > 0) later();            // a tap or a click goes on; the keyboard only marks
       }
     });
@@ -483,4 +576,43 @@
     }
   })();
 </script>
+{% if can_edit_copy %}
+<script>
+  // The editor's "Pita se" (27.10.2026), its two lists; saving is
+  // base.html's editor (an answer chosen saves the question and the answer
+  // together). The question chosen (.if-q) lists the answers it can be
+  // given in .if-a, as his page holds them now: a yes / no Da and Ne, a
+  // scale 1–10 ("ili više" after it: the box's data-kind), a choice or a
+  // multi its options (his list: an option re-worded a moment ago is
+  // there), "—" first, so any answer chosen is a change. "Samo ako …" on
+  // a question asked always picks the nearest question before it that a
+  // condition can name (the last in the list), and lists its answers.
+  (function () {
+    function short(t) { t = t.replace(/\s+/g, " ").trim(); return t.length > 40 ? t.slice(0, 40).trim() + "…" : t; }
+    function fill(box) {
+      var q = box.querySelector(".if-q"), a = box.querySelector(".if-a");
+      var step = q.value ? document.getElementById("step-q" + q.value) : null;
+      var kind = step ? step.getAttribute("data-kind") : "", list = [["", "—"]];
+      if (kind === "yesno") list.push(["yes", "Da"], ["no", "Ne"]);
+      else if (kind === "scale") for (var n = 1; n <= 10; n++) list.push([">=" + n, "" + n]);
+      else if (kind === "choice" || kind === "multi")
+        [].forEach.call(step.querySelectorAll(".opts > li > .t:not([data-fresh])"), function (t) {
+          if (t.textContent.trim()) list.push([t.textContent, short(t.textContent)]);
+        });
+      a.textContent = "";
+      list.forEach(function (o) { var x = document.createElement("option"); x.value = o[0]; x.textContent = o[1]; a.appendChild(x); });
+      box.setAttribute("data-kind", kind);
+    }
+    document.addEventListener("change", function (e) {
+      var t = e.target, box = t.closest ? t.closest(".ed-if") : null;
+      if (!box || !document.body.classList.contains("editing")) return;
+      if (t.classList.contains("if-q")) fill(box);
+      else if (t.classList.contains("if-ask") && t.value) {
+        var q = box.querySelector(".if-q");
+        if (!q.value && q.options.length > 1) { q.selectedIndex = q.options.length - 1; fill(box); }
+      }
+    });
+  })();
+</script>
+{% endif %}
 {% endblock %}

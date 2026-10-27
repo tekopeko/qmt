@@ -100,7 +100,8 @@ also add or remove questions from the questionnaire"). The editor names
 their texts with virtual keys, upitnik.<id>.<field>, on POST /copy/{key}:
 UPITNIK_QUESTION_SLOTS below (a text a Slot, the options a ListSlot) and
 UPITNIK_QUESTION_COLUMNS. What a question is and does (its part, kind,
-scoring, role, switch) is no text: POST /upitnik/pitanje/{id}. The words
+scoring, role, switch, and since 27.10.2026 the earlier question and the
+answer it is asked after) is no text: POST /upitnik/pitanje/{id}. The words
 around the questions stay slots (upitnik.*: the title, the parts'
 headings, yes / no, the consent, the buttons, the pain sentence).
 
@@ -527,23 +528,27 @@ GYM_CARD_COLUMNS = {"title": "title", "lead": "lead", "price": "price", "unit": 
 
 
 def _question(n: int, part: int, kind: str, text: str, options: tuple[str, ...] = (), low: str = "",
-              high: str = "", scoring: str = "", role: str = "", followup_text: str = "") -> dict:
+              high: str = "", scoring: str = "", role: str = "", parent: int | None = None,
+              condition: str = "") -> dict:
     """One of the default questions, a row's values (its id too: the
-    answers' key, q<n>)."""
+    answers' key, q<n>; and the question it is asked after, with the
+    answer that asks it, for one that is)."""
     return {"id": n, "part": part, "kind": kind, "text": text, "options": options, "low": low, "high": high,
-            "scoring": scoring, "role": role, "followup_text": followup_text}
+            "scoring": scoring, "role": role, "parent_id": parent, "condition": condition}
 
 
-# The gym owner's fifteen, as the rows start: the demo seed's
-# (scripts/seed_demo.py, db.add_upitnik_question) and a test's. The
-# migration that made them rows (3f8a6c2d9b71) carries its own copy, and
-# with the ids 1–15 the answers stored before it keep their meaning. Part
-# 1, q1–q4 (choices): the goal, the days a week, the minutes, the place,
-# for the programme's content later, scored never. Part 2, q5–q11 (scales):
-# the score, q5–q7 trening baza and q8–q11 navike. Part 3, q12–q13
-# (scales): for the trainer only. Part 4: q14 the pain question (a scale,
-# its follow-up asked at 4 or more) and q15 the injuries question (yes /
-# no, its follow-up asked at yes).
+# The gym owner's questions as the rows start, in their order: the demo
+# seed's (scripts/seed_demo.py, db.add_upitnik_question) and a test's. The
+# migrations that made them rows (3f8a6c2d9b71, the fifteen with ids 1–15:
+# the answers stored before it keep their meaning) and the two follow-ups
+# questions (5c1e7a9d2b48, which gives them the next ids, 16 and 17, on a
+# database that starts from these) carry their own copies. Part 1, q1–q4
+# (choices): the goal, the days a week, the minutes, the place, for the
+# programme's content later, scored never. Part 2, q5–q11 (scales): the
+# score, q5–q7 trening baza and q8–q11 navike. Part 3, q12–q13 (scales):
+# for the trainer only. Part 4: q14 the pain question (a scale) with q16
+# under it, where it hurts, asked at 4 or more, and q15 the injuries
+# question (yes / no) with q17 under it, a short note, asked at yes.
 UPITNIK_DEFAULT_QUESTIONS = (
     _question(1, 1, "choice", "Koji je tvoj glavni cilj?",
               ("Gubitak težine", "Povećanje snage i mišićne mase", "Bolja kondicija i izdržljivost",
@@ -570,18 +575,19 @@ UPITNIK_DEFAULT_QUESTIONS = (
     _question(13, 3, "scale", "Koliko ti je važna osobna briga o zdravlju i tijelu?",
               low="nije mi prioritet", high="izuzetno važno"),
     _question(14, 4, "scale", "Imaš li često bolove (leđa, vrat, kuk...)?", low="nikad", high="vrlo često",
-              role="pain", followup_text="Gdje te boli?"),
+              role="pain"),
+    _question(16, 4, "text", "Gdje te boli?", parent=14, condition=">=4"),
     _question(15, 4, "yesno", "Imaš li ozljede, operacije ili zdravstvena ograničenja koja trebamo znati?",
-              role="injuries", followup_text="Opiši ukratko."),
+              role="injuries"),
+    _question(17, 4, "text", "Opiši ukratko.", parent=15, condition="yes"),
 )
 
 # a new question ("+ Dodaj pitanje"): a scale in part 2 that scores
-# nothing, shown, after the last, with these placeholders to retype; its
-# options are ready for the day it becomes a choice (a choice keeps two at
-# least), its follow-up's text for the day it takes a role. A scale's ends
-# print as "1 = …" and "10 = …".
+# nothing, shown, asked always, after the last, with these placeholders to
+# retype; its options are ready for the day it becomes a choice (a choice
+# keeps two at least). A scale's ends print as "1 = …" and "10 = …".
 UPITNIK_BLANK = {"part": 2, "kind": "scale", "text": "Novo pitanje", "options": ("Prvi odgovor", "Drugi odgovor"),
-                 "low": "…", "high": "…", "scoring": "", "role": "", "followup_text": "Opiši ukratko."}
+                 "low": "…", "high": "…", "scoring": "", "role": ""}
 
 # A question's texts as the editor's virtual keys name them,
 # upitnik.<id>.<field>, and how each is edited: a text as a Slot, its
@@ -590,18 +596,20 @@ UPITNIK_BLANK = {"part": 2, "kind": "scale", "text": "Novo pitanje", "options": 
 # keeps two at least, upitnik.MIN_OPTIONS, and Zadano puts the placeholders
 # back). The label is the field's word in the editor's bar, after the
 # question's number ("Pitanje 7: tekst", "Pitanje 7: odgovor 2"). Its
-# settings (part, kind, scoring, role, shown) are no texts: POST
-# /upitnik/pitanje/{id} (qmt.upitnik.settings).
+# settings (part, kind, scoring, role, shown, the question it is asked
+# after and the answer: parent_id, condition) are no texts: POST
+# /upitnik/pitanje/{id} (qmt.upitnik.settings, qmt.upitnik.condition).
+# A role's follow-up text was one of them until 27.10.2026 (followup_text):
+# the follow-ups are questions of their own since.
 UPITNIK_QUESTION_SLOTS: dict[str, Slot | ListSlot] = {
     "text": Slot(UPITNIK_BLANK["text"], CAP, "tekst"),
     "options": ListSlot(UPITNIK_BLANK["options"], CAP_ITEMS, CAP, "odgovor"),
     "low": Slot(UPITNIK_BLANK["low"], CAP, "uz 1"),
     "high": Slot(UPITNIK_BLANK["high"], CAP, "uz 10"),
-    "followup_text": Slot(UPITNIK_BLANK["followup_text"], CAP, "dodatno pitanje"),
 }
 # where a row keeps each text (its options have a setter of their own:
 # db.set_upitnik_question_options)
-UPITNIK_QUESTION_COLUMNS = {"text": "text", "low": "low", "high": "high", "followup_text": "followup_text"}
+UPITNIK_QUESTION_COLUMNS = {"text": "text", "low": "low", "high": "high"}
 
 
 def clean(text: str) -> str:

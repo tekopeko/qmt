@@ -364,10 +364,10 @@ class UpitnikQuestion(Base):
     (qmt.upitnik) and only their words were copy slots (upitnik.q<n>.*,
     which migration 3f8a6c2d9b71 turned into rows 1–15, their ids kept).
 
-    The id is the answers' key: a client's answer is stored as "q<id>", a
-    follow-up's as "q<id>b" (OnboardingResponse.answers), so ids come from
-    a sequence and are never reused, and a question deleted or hidden since
-    still names its old answers on the karton (qmt.upitnik.answer_rows).
+    The id is the answers' key: a client's answer is stored as "q<id>"
+    (OnboardingResponse.answers), so ids come from a sequence and are never
+    reused, and a question deleted or hidden since still names its old
+    answers on the karton (qmt.upitnik.answer_rows).
     Its texts are edited in place like copy, through virtual keys
     upitnik.<id>.<field> (app.py, copy_save; copy.UPITNIK_QUESTION_SLOTS),
     cleaned as copy is (copy.clean); an emptied one stays empty, and Zadano
@@ -385,10 +385,26 @@ class UpitnikQuestion(Base):
     scale's answer joins in the score, "" (none), "baza" or "navike"; only
     a scale scores. `role` makes it one of the two safety questions, ""
     (none), "pain" (a scale) or "injuries" (a yes / no), at most one row of
-    each (the partial unique index), and `followup_text` is the free text
-    such a question asks when its answer calls for it ("Gdje te boli?",
-    "Opiši ukratko."). `shown` is the switch: a hidden question is asked
-    of nobody and scores nothing, and stays on the editor's page."""
+    each (the partial unique index). `shown` is the switch: a hidden
+    question is asked of nobody and scores nothing, and stays on the
+    editor's page.
+
+    Since 27.10.2026 any question may be asked only after a given answer
+    to an earlier one (the owner: "if the answer is yes, he would like to
+    again ask if she had it in the last year and then if she says yes …
+    if it was C-section or not"): `parent_id` is the question it depends
+    on and `condition` that question's answer which asks it, "" when it is
+    asked always: "yes" / "no" for a yes / no, an option's text for a
+    choice or a multi (asked when it is among the answers), ">=N" for a
+    scale (N 1–10). Chains are questions whose parent depends on another.
+    A parent deleted nulls parent_id (ON DELETE SET NULL) and leaves the
+    condition, so the editor's line can say the condition no longer holds:
+    such a question, and one whose parent is placed after it or cannot be
+    given that answer any more, is asked always; one whose parent is
+    hidden (or under a hidden one) is asked of nobody (qmt.upitnik.steps:
+    void, muted). The two roles' follow-ups ("Gdje te boli?",
+    "Opiši ukratko.", a followup_text column until then) became such
+    questions that day (migration 5c1e7a9d2b48)."""
 
     __tablename__ = "upitnik_questions"
     # `text` is a column of this class: SQLAlchemy's text() is sql_text in its body
@@ -403,8 +419,10 @@ class UpitnikQuestion(Base):
     high: Mapped[str] = mapped_column(Text, server_default=sql_text("''"), default="")
     scoring: Mapped[str] = mapped_column(String(8), server_default=sql_text("''"), default="")
     role: Mapped[str] = mapped_column(String(10), server_default=sql_text("''"), default="")
-    followup_text: Mapped[str] = mapped_column(Text, server_default=sql_text("''"), default="")
     shown: Mapped[bool] = mapped_column(Boolean, server_default=sql_text("true"), default=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("upitnik_questions.id", ondelete="SET NULL"),
+                                                  nullable=True)
+    condition: Mapped[str] = mapped_column(String(80), server_default=sql_text("''"), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
                                                  onupdate=func.now())
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -483,12 +501,13 @@ class OnboardingResponse(Base):
     2 since 26.10.2026, the gym owner's questions (UpitnikQuestion rows
     since the same day), answers as JSON {"q<the question's id>": the
     option's text, a multi's list of texts, a scale's int, yes / no's bool,
-    a free text; a follow-up's "q<id>b"}, kept as given whatever becomes of
-    the questions, a score of 10 to one decimal (0.0 when no question
-    scored), the goal always "cijelo" (the level alone routes) and the
-    safety flags; 1 for a row from before, {key: the option's index} read
-    against qmt.upitnik.QUESTIONS_V1, an integer score of 14, its goal its
-    own.
+    a free text; until 27.10.2026 a role follow-up's "q<id>b", which
+    migration 5c1e7a9d2b48 renamed to its new question's key}, kept as
+    given whatever becomes of the questions, a score of 10 to one decimal
+    (0.0 when no question scored), the goal always "cijelo" (the level
+    alone routes) and the safety flags; 1 for a row from before, {key: the
+    option's index} read against qmt.upitnik.QUESTIONS_V1, an integer
+    score of 14, its goal its own.
     """
 
     __tablename__ = "onboarding_responses"

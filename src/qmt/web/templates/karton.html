@@ -42,8 +42,13 @@
   .upitnik details ul { padding:9px 0 0 18px; font-size:.88rem; }
   .upitnik details li { margin-bottom:4px; overflow-wrap:anywhere; }
   .upitnik details li strong { white-space:pre-line; }    /* a free text keeps its line breaks */
-  /* a follow-up's free text sits under its question (where it hurts under the pain question) */
+  /* a conditional question's answer sits under the question it is asked
+     after (where it hurts under the pain question; since 27.10.2026 any
+     chain, "carski rez" under "zadnjih godinu dana" under "porod"), one
+     step in a level (d1–d3; deeper ones stay at the third) */
   .upitnik details li.follow { list-style:none; margin-left:14px; color:var(--muted); }
+  .upitnik details li.follow.d2 { margin-left:28px; }
+  .upitnik details li.follow.d3 { margin-left:42px; }
   .upitnik details li.follow strong { color:var(--text); }
 
   /* ===== the upitnik v2 (26.10.2026): part 1's answers as facts, not state
@@ -198,8 +203,8 @@
   <details>
     <summary>Odgovori</summary>
     <ul>
-      {% for question, answer, follow in u_rows %}
-      <li{% if follow %} class="follow"{% endif %}>{{ question }} — <strong>{{ answer }}</strong></li>
+      {% for question, answer, depth in u_rows %}
+      <li{% if depth %} class="follow d{{ [depth, 3] | min }}"{% endif %}>{{ question }} — <strong>{{ answer }}</strong></li>
       {% endfor %}
     </ul>
   </details>

@@ -372,8 +372,10 @@ _QUESTIONS_LOCK = "LOCK TABLE upitnik_questions IN SHARE ROW EXCLUSIVE MODE"
 
 def upitnik_questions(shown: bool = False) -> list[UpitnikQuestion]:
     """In position order: every question (the editor's page, the karton,
-    which prints a hidden question's old answers too), or with shown=True
-    the ones a client is asked."""
+    which prints a hidden question's old answers too, and since 27.10.2026
+    a client's page as well: upitnik.client_steps, over every row, so a
+    hidden question mutes those asked after it), or with shown=True the
+    shown rows only."""
     with session_scope() as s:
         q = select(UpitnikQuestion).order_by(UpitnikQuestion.position)
         return list(s.scalars(q.where(UpitnikQuestion.shown) if shown else q))
@@ -386,9 +388,11 @@ def upitnik_question(question_id: int) -> UpitnikQuestion | None:
 
 def add_upitnik_question(user_id: int | None, values: dict | None = None) -> UpitnikQuestion | None:
     """A new question after the last one: the placeholders
-    (copy.UPITNIK_BLANK: a scale in part 2 that scores nothing), shown.
-    `values` is a whole question instead, in the blank's shape plus its id
-    (one of copy.UPITNIK_DEFAULT_QUESTIONS: the demo seed's, a test's); no
+    (copy.UPITNIK_BLANK: a scale in part 2 that scores nothing), shown,
+    asked always. `values` is a whole question instead, in the blank's
+    shape plus its id, and the question it is asked after with the answer
+    that asks it (parent_id, condition: one of
+    copy.UPITNIK_DEFAULT_QUESTIONS, the demo seed's, a test's); no
     route passes it. None at the cap (MAX_UPITNIK_QUESTIONS). A question
     that came with its own id moves the id sequence past every id there,
     never back: an id is an answer's key (q<id>), so a new question never
@@ -422,7 +426,9 @@ def _question_row(s: Session, question_id: int) -> UpitnikQuestion:
 def delete_upitnik_question(question_id: int) -> bool:
     """Delete a question. The answers clients gave it stay as they are
     (the karton prints them under "(pitanje uklonjeno)"), and its id is
-    never given again. False when it was gone already."""
+    never given again. The questions asked after it are asked always from
+    then on (the foreign key nulls their parent_id; their condition stays,
+    so the editor's line can say why). False when it was gone already."""
     with session_scope() as s:
         try:
             q = _question_row(s, question_id)
@@ -436,8 +442,11 @@ def move_upitnik_question(question_id: int, direction: str, user_id: int | None 
     """Swap a question with its neighbour in the editor's order (every
     question, the hidden too): "gore" the one before it, "dolje" the one
     after. False: no such question, a direction that is neither, or none
-    beyond it that way. The two positions trade in one flush: the unique
-    constraint is deferred to the commit, which sees the swap whole."""
+    beyond it that way. ValueError, with the editor's sentence, when the
+    swap would put a question before the one it is asked after (27.10.2026:
+    its condition needs that answer first). The two positions trade in one
+    flush: the unique constraint is deferred to the commit, which sees the
+    swap whole."""
     if direction not in ("gore", "dolje"):
         return False
     with session_scope() as s:
@@ -449,6 +458,9 @@ def move_upitnik_question(question_id: int, direction: str, user_id: int | None 
         j = i - 1 if direction == "gore" else i + 1
         if not 0 <= j < len(rows):
             return False
+        upper, lower = rows[min(i, j)], rows[max(i, j)]
+        if lower.parent_id == upper.id:
+            raise ValueError("Potpitanje ne može ići ispred svog pitanja.")
         rows[i].position, rows[j].position = rows[j].position, rows[i].position
         rows[i].updated_by = user_id
         return True
@@ -457,18 +469,34 @@ def move_upitnik_question(question_id: int, direction: str, user_id: int | None 
 def set_upitnik_question(question_id: int, changes: dict[str, str], user_id: int | None) -> UpitnikQuestion:
     """Change a question's settings: part, kind, scoring, role, shown, as
     an editor posts them (texts; qmt.upitnik.settings checks them and
-    raises ValueError with the sentence he reads). Taking a role another
-    question holds takes it from that one (one pain question, one injuries
-    question: the role's unique index). Becoming a choice or a multi with
-    fewer than upitnik.MIN_OPTIONS options fills them up with the
-    placeholders (copy.UPITNIK_BLANK), so a client always has two to choose
-    from; a change of kind keeps every text, its options included, and every
-    answer. Returns the row as stored; LookupError: no such question."""
+    raises ValueError with the sentence he reads), and since 27.10.2026
+    when it is asked: parent_id and condition, posted together, the
+    question it is asked after and the answer that asks it, both empty for
+    always (qmt.upitnik.condition checks them against every question as
+    they stand under the lock). Taking a role another question holds takes
+    it from that one (one pain question, one injuries question: the role's
+    unique index). Becoming a choice or a multi with fewer than
+    upitnik.MIN_OPTIONS options fills them up with the placeholders
+    (copy.UPITNIK_BLANK), so a client always has two to choose from; a
+    change of kind keeps every text, its options included, and every
+    answer, and leaves the questions asked after this one as they are: a
+    condition its new kind cannot meet asks them always, and the editor's
+    line says so (qmt.upitnik.steps). Returns the row as stored;
+    LookupError: no such question."""
+    pair = {key: changes[key] for key in ("parent_id", "condition") if key in changes}
+    rest = {key: value for key, value in changes.items() if key not in pair}
     with session_scope() as s:
         s.execute(sa_text(_QUESTIONS_LOCK))
         q = _question_row(s, question_id)
+        if pair:
+            rows = list(s.scalars(select(UpitnikQuestion).order_by(UpitnikQuestion.position)))
+            q.parent_id, q.condition = upitnik.condition(question_id, pair.get("parent_id", ""),
+                                                         pair.get("condition", ""), rows)
+            if not rest:
+                q.updated_by = user_id
+                return q
         new = upitnik.settings({"part": q.part, "kind": q.kind, "scoring": q.scoring, "role": q.role,
-                                "shown": q.shown}, changes)
+                                "shown": q.shown}, rest)
         if new["role"] and new["role"] != q.role:
             for other in s.scalars(select(UpitnikQuestion).where(UpitnikQuestion.role == new["role"],
                                                                  UpitnikQuestion.id != question_id)):
@@ -488,7 +516,7 @@ def set_upitnik_question(question_id: int, changes: dict[str, str], user_id: int
 
 def set_upitnik_question_field(question_id: int, column: str, text: str, user_id: int | None) -> str:
     """Set one text of a question. `column` is where the row keeps it
-    (copy.UPITNIK_QUESTION_COLUMNS: text, low, high, followup_text). The
+    (copy.UPITNIK_QUESTION_COLUMNS: text, low, high). The
     text is cleaned as copy is (copy.clean) and stored as it is, an empty
     one too (an emptied text stays empty, as a gym card's: the placeholder,
     copy.UPITNIK_BLANK, comes back only when the caller passes it, Zadano).
@@ -506,18 +534,37 @@ def set_upitnik_question_field(question_id: int, column: str, text: str, user_id
     return cleaned
 
 
-def set_upitnik_question_options(question_id: int, items: list[str], user_id: int | None) -> list[str]:
+def set_upitnik_question_options(question_id: int, items: list[str], user_id: int | None,
+                                 renamed: tuple[str, str] | None = None) -> list[str]:
     """Set a question's options, the whole list: each cleaned as copy is,
     the empty ones dropped, stored as a list slot's row is
     (copy.dump_items). Returns what is stored. ValueError: more than
     copy.CAP_ITEMS options, or one past copy.CAP (the route keeps two at
-    least: app.py); LookupError: no such question."""
+    least: app.py); LookupError: no such question.
+
+    `renamed` (old text, new text) says the editor re-worded one option in
+    place (27.10.2026): on a choice or a multi, the questions asked after
+    this one at the old text are asked at the new one from then on, in the
+    same transaction, under the questions' lock, so a condition never
+    names an option that is gone. Not when the old text is still among the
+    options (another option said the same), nor when the new one is past
+    upitnik.CONDITION_MAX, the column: that condition stays as it was, and
+    the editor's line says it no longer holds. An option removed carries
+    nothing (its conditions are let go, the same line)."""
     kept = [t for t in (copy.clean(x) for x in items) if t]
     if len(kept) > copy.CAP_ITEMS or any(len(t) > copy.CAP for t in kept):
         raise ValueError(f"{len(kept)} items, at most {copy.CAP_ITEMS} of {copy.CAP} characters")
     with session_scope() as s:
+        if renamed is not None:
+            s.execute(sa_text(_QUESTIONS_LOCK))
         q = _question_row(s, question_id)
         q.options, q.updated_by = copy.dump_items(kept), user_id
+        if renamed is not None and q.kind in upitnik.OPTION_KINDS:
+            old, new = renamed
+            if old != new and old not in kept and new in kept and len(new) <= upitnik.CONDITION_MAX:
+                for child in s.scalars(select(UpitnikQuestion).where(UpitnikQuestion.parent_id == question_id,
+                                                                     UpitnikQuestion.condition == old)):
+                    child.condition, child.updated_by = new, user_id
     return kept
 
 

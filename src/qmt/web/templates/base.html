@@ -897,9 +897,12 @@
   // an upitnik question's "Obriši pitanje" (.ed-q-x, 26.10.2026). A
   // question's switch is an .ed-flag that posts to its own route (data-url,
   // the field data-field), and its settings are selects (.ed-set select:
-  // its part, kind, scoring, role) that save at a change; either answer
-  // brings the page back in edit mode, drawn again (redraw below), since
-  // the page's lines say what the settings do.
+  // its part, kind, scoring, role) that save at a change, "Pita se" a box
+  // of three saved together (ask below); either answer brings the page
+  // back in edit mode, drawn again (redraw below), since the page's lines
+  // say what the settings do. An ↑ / ↓ that would put a question before
+  // the one it is asked after carries its refusal (data-refuse): a press
+  // says it in the bar, and nothing is sent.
   (function () {
     var mode = false, cur = null, orig = "";
     var tog = document.getElementById("copyToggle"), bar = document.getElementById("copyBar");
@@ -1047,6 +1050,7 @@
     var armed = null, armTimer = null;
     function disarm() {     // back to "✕", or to the words a photo's ✕ had (data-text)
       if (armed) { armed.textContent = armed.dataset.text || "✕"; armed.classList.remove("armed"); armed.setAttribute("aria-label", armed.dataset.label); }
+      if (armed && armed.dataset.warn && !cur) bar.hidden = true;   // its warning goes with it (drop below)
       armed = null; clearTimeout(armTimer);
     }
     function remove(x) {
@@ -1199,8 +1203,35 @@
         redraw();
       }).catch(function () { fail("Nije spremljeno — provjeri vezu."); });
     }
+    // "Pita se" (27.10.2026: an upitnik question asked only after an answer
+    // to an earlier one) is three selects in one .ed-if, saved together to
+    // its data-url as parent_id and condition. "Uvijek" (.if-ask) saves at
+    // once, both emptied (nothing to send when nothing is set); "Samo ako
+    // …" shows the other two (.open) and sends nothing; the question
+    // (.if-q) sends nothing either (the page lists its answers in .if-a:
+    // upitnik.html), and an answer chosen sends the two. The page comes
+    // back drawn again, as after any setting; a refusal is said in the bar.
+    function ask(sel) {
+      end(false);
+      var box = sel.closest(".ed-if"), on = box.querySelector(".if-ask");
+      var q = box.querySelector(".if-q"), a = box.querySelector(".if-a");
+      if (sel === on) {
+        box.classList.toggle("open", !!on.value);
+        if (on.value || !on.dataset.value) return;
+      } else if (sel === q || !q.value || !a.value) return;
+      var body = on.value ? "parent_id=" + encodeURIComponent(q.value) + "&condition=" + encodeURIComponent(a.value)
+                          : "parent_id=&condition=";
+      fetch(box.dataset.url, {
+        method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: body, credentials: "same-origin"
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) { says(sel.dataset.label, d.error || "Nije spremljeno."); return; }
+        redraw();
+      }).catch(function () { says(sel.dataset.label, "Nije spremljeno — provjeri vezu."); });
+    }
     document.addEventListener("change", function (e) {
-      if (mode && e.target.matches && e.target.matches(".ed-set select")) setting(e.target);
+      if (!mode || !e.target.matches || !e.target.matches(".ed-set select")) return;
+      if (e.target.closest(".ed-if")) ask(e.target); else setting(e.target);
     });
     // the page drawn again after a change it shows elsewhere too (a
     // question's setting or switch): back in edit mode at the same place
@@ -1217,13 +1248,16 @@
     // into "Obriši?", the second within four seconds sends its form (a
     // plain POST; the page comes back without it, in edit mode: once()
     // below). A question's pill is the button itself, its form named by
-    // form="…" (b.form is that form)
+    // form="…" (b.form is that form). A question others are asked after
+    // (data-warn, 27.10.2026) says at its first tap, in the bar, what
+    // becomes of them, and stays armed long enough to read it.
     function drop(b) {
       if (cur) end(false);
       if (armed !== b) {
         disarm(); armed = b; b.dataset.label = b.getAttribute("aria-label") || ""; b.dataset.text = b.textContent;
         b.textContent = "Obriši?"; b.classList.add("armed"); b.setAttribute("aria-label", "Potvrdi brisanje");
-        armTimer = setTimeout(disarm, 4000); return;
+        if (b.dataset.warn) says(b.dataset.label, b.dataset.warn);
+        armTimer = setTimeout(disarm, b.dataset.warn ? 8000 : 4000); return;
       }
       disarm(); once(); b.form.submit();
     }
@@ -1266,7 +1300,9 @@
       var f = e.target.closest(".ed-flag"), im = e.target.closest(".ed-img"), ix = e.target.closest(".ed-img-x");
       var x = e.target.closest(".ed-x"), a = e.target.closest(".ed-add"), el = e.target.closest(".ed");
       var ax = e.target.closest(".ed-ann-x > button, .ed-gym-x > button, button.ed-q-x");
-      if (f) { e.preventDefault(); e.stopPropagation(); flag(f); }
+      var rf = e.target.closest("[data-refuse]");
+      if (rf) { e.preventDefault(); e.stopPropagation(); end(false); says(rf.getAttribute("aria-label") || "", rf.dataset.refuse); }
+      else if (f) { e.preventDefault(); e.stopPropagation(); flag(f); }
       else if (im) { e.preventDefault(); e.stopPropagation(); pick(im); }
       else if (ix) { e.preventDefault(); e.stopPropagation(); unpick(ix); }
       else if (ax) { e.preventDefault(); e.stopPropagation(); drop(ax); }

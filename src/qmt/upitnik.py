@@ -11,28 +11,49 @@ or a free text), its words (the text, the options, a scale's two ends) and
 what it does: `scoring`, the group a scale's answer joins in the score
 ("baza", trening baza, or "navike"; only a scale scores), and `role`, one
 of the two safety questions ("pain", a scale; "injuries", a yes / no; at
-most one of each), each asking a free text when its answer calls for it
-(`followup_text`). A hidden question (`shown` off) is asked of nobody and
+most one of each). A hidden question (`shown` off) is asked of nobody and
 scores nothing.
 
-The gym owner's fifteen start it (copy.UPITNIK_DEFAULT_QUESTIONS, ids
-1–15): part 1, q1–q4, the goal, the days a week, the minutes and the place
-(choices, never scored: they are for the programme's CONTENT, which they
-will choose later; the owner, 26.10.2026: "Later on, we will implement
-different types of training depending on the equipment … we will
-automatically send them to the appropriate training group"); part 2,
-q5–q11, the scored scales (q5–q7 trening baza, q8–q11 navike); part 3,
-q12–q13, scales for the trainer; part 4, q14 the pain question (a scale: at
-4 or more it asks where it hurts) and q15 the injuries question (yes / no:
-yes asks for a short note).
+Since 27.10.2026 any question may be asked only after a given answer to an
+earlier one (the owner: "add a subquestion … 'Jeste li imali porod' and if
+the answer is yes … ask if she had it in the last year and then if she
+says yes … if it was C-section or not etc."): `parent_id`, the question it
+depends on, and `condition`, the answer to it that asks this one: "yes" /
+"no" for a yes / no, an option's text for a choice or a multi (asked when
+it is among the answers), ">=N" for a scale (N 1–10); "" asks it always.
+Chains follow: a question is asked when its parent was asked and answered
+so. A hidden question hides the questions asked after it, down the whole
+chain (steps: `muted`; Fable's review, the same day: a gym owner who hides
+"Jeste li imali porod?" means its questions too). A condition that
+cannot work otherwise (its question deleted, after it in the order, or no
+longer able to give that answer) asks it always, and the editor's line
+says so (steps: `void`). A re-worded option carries into the conditions
+that named it (db.set_upitnik_question_options). The two roles keep their rules
+but no longer ask anything themselves: their follow-ups became ordinary
+conditional questions that day (migration 5c1e7a9d2b48: "Gdje te boli?"
+under the pain question at ">=4", "Opiši ukratko." under the injuries one
+at "yes").
+
+The gym owner's questions start it (copy.UPITNIK_DEFAULT_QUESTIONS): part
+1, q1–q4, the goal, the days a week, the minutes and the place (choices,
+never scored: they are for the programme's CONTENT, which they will choose
+later; the owner, 26.10.2026: "Later on, we will implement different types
+of training depending on the equipment … we will automatically send them
+to the appropriate training group"); part 2, q5–q11, the scored scales
+(q5–q7 trening baza, q8–q11 navike); part 3, q12–q13, scales for the
+trainer; part 4, q14 the pain question (a scale) with q16 under it, where
+it hurts, asked at 4 or more, and q15 the injuries question (yes / no) with
+q17 under it, a short note, asked at yes.
 
 What stays here, in code, works on whatever the rows say: the screens a
-list of rows makes (steps: each safety question followed by its
-follow-up), what a submitted form must hold (read), the owner's formula
-and its thresholds (score, level_for), his two safety rules with their
-numbers (evaluate: PAIN_ASK, PAIN_HIGH, needs_review), the rules a
-question's settings keep (settings), the editor's lines under his
-settings (setting_line, scoring_summary) and the karton's helpers
+list of rows makes (steps: each with the condition it is asked on, as far
+as that condition can work; client_steps, the ones a client gets), whether
+a question is asked (is_asked, meets, asked_of), what a submitted form must
+hold (read), the owner's formula and
+its thresholds (score, level_for), his two safety rules with their numbers
+(evaluate: PAIN_HIGH, needs_review), the rules a question's settings keep
+(settings, condition), the editor's lines under his settings
+(setting_line, condition_line, scoring_summary) and the karton's helpers
 (answer_rows, chips, pain_where).
 
 The score, the owner's formula: trening baza = the mean of the baza
@@ -55,15 +76,17 @@ whole-body programmes until the "type of training" step comes. q1's goal is
 kept in the answers and shown on the karton; it routes nothing yet.
 
 Answers are stored as JSON (models.OnboardingResponse.answers), keyed by the
-question's row: "q<id>", a follow-up's "q<id>b" (the fifteen kept their ids
-when they became rows, so the answers given before keep their meaning; an
-id is never used twice). A choice is stored as the option's TEXT at the
-time, never its index, so a later re-wording never garbles an old answer; a
-multi as the list of the chosen options' texts; a scale as an int, yes / no
-as a bool, a free text as a string; a follow-up that was not asked is
-absent. Nothing is pruned when a question goes: the karton prints every
-answer kept, under its question's current text, or under "(pitanje
-uklonjeno)" when the row is gone (answer_rows).
+question's row: "q<id>" (the fifteen kept their ids when they became rows,
+so the answers given before keep their meaning; an id is never used twice;
+the old follow-ups' "q<id>b" became their new questions' keys with them,
+5c1e7a9d2b48). A choice is stored as the option's TEXT at the time, never
+its index, so a later re-wording never garbles an old answer; a multi as
+the list of the chosen options' texts; a scale as an int, yes / no as a
+bool, a free text as a string; a question that was not asked is absent.
+Nothing is pruned when a question goes: the karton prints every answer
+kept, under its question's current text (a conditional one indented under
+its question), or under "(pitanje uklonjeno)" when the row is gone
+(answer_rows).
 
 Version 1 (3.9. – 26.10.2026: five scored questions and a goal, points per
 option, the goal routing too) stays readable: QUESTIONS_V1 renders an old
@@ -117,8 +140,22 @@ WEIGHTS = {"baza": Fraction(6, 10), "navike": Fraction(4, 10)}
 ROLES = {"pain": "scale", "injuries": "yesno"}
 ROLE_LABELS = {"": "—", "pain": "Bolovi", "injuries": "Ozljede"}
 
-PAIN_ASK = 4         # the pain question at this or more asks where it hurts (its follow-up)
+# The pain question at this or more: the trainer's amber flag on the
+# karton ("Bolovi N/10 · where"). Until 27.10.2026 it also asked where it
+# hurts; that is a question of its own since, asked on its own condition
+# (">=4" as migration 5c1e7a9d2b48 and the defaults made it).
+PAIN_ASK = 4
 PAIN_HIGH = 7        # the pain question at this or more: početna whatever the score, and see the trainer first
+
+# What a question may be asked after (27.10.2026): an earlier question of a
+# kind whose answer a condition can name (a free text has none), the
+# answer as a condition holds it (the column's length: an option longer
+# than that is no condition), and how much of a question's text the
+# editor's list of them shows.
+CONDITION_KINDS = ("yesno", "choice", "multi", "scale")
+CONDITION_MAX = 80
+SHORT = 40
+_AT_LEAST = re.compile(r">=([1-9]|10)")            # a scale's condition, ">=N": N or more
 
 MAX_SCORE = 10
 SCALE = range(1, 11)                   # a scale question's answers
@@ -131,11 +168,22 @@ REMOVED = "(pitanje uklonjeno)"        # the karton's question for an answer who
 @dataclass(frozen=True)
 class Question:
     """One screen of the questionnaire, made from a row (steps). `id` is
-    the answer's key, "q<row>", a follow-up's "q<row>b"; `row` the row's id
-    (a follow-up's: its question's) and `n` its place in the list it was
-    made from, 1-based (the editor's "Pitanje 7"). A follow-up (`follows`)
-    is asked only when its question's answer calls for it: a scale's at
-    `ask_from` or more, a yes / no's equal to `ask_if`."""
+    the answer's key, "q<row>"; `row` the row's id and `n` its place in
+    the list it was made from, 1-based (the editor's "Pitanje 7").
+    `parent` and `condition` are the row's as stored: the question it is
+    asked after (its row id) and the answer that asks it ("" asks it
+    always). `follows` is that question's key while the condition can work
+    (it is earlier in this list and can be given that answer; its kind
+    `parent_kind`), the question then asked only when its parent was asked
+    and answered so; None asks it always, and for a condition that cannot
+    work `void` says why: "gone" (its question deleted), "later" (it comes
+    after this one), "answer" (it can no longer give that answer: its kind
+    changed, an option was removed). `muted`: the question it is asked
+    after is hidden, or that one's is, up the chain (`muted_by`, the hidden
+    one's place): asked of nobody, whatever its own switch (`shown`) says.
+    `parent_n` is that question's place here, None when it is gone;
+    `depth` how many questions this one hangs under, through conditions
+    that work (the editor's indent, the karton's)."""
     id: str
     row: int
     n: int
@@ -147,35 +195,99 @@ class Question:
     high: str = ""
     scoring: str = ""             # "" | "baza" | "navike": the group a scale joins in the score
     role: str = ""                # "" | "pain" | "injuries": a safety question
-    shown: bool = True            # a hidden question (its follow-up too) is asked of nobody
+    shown: bool = True            # a hidden question is asked of nobody
+    parent: int | None = None
+    condition: str = ""
     follows: str | None = None
-    ask_from: int | None = None
-    ask_if: bool | None = None
+    parent_kind: str = ""
+    void: str = ""
+    parent_n: int | None = None
+    depth: int = 0
+    muted: bool = False
+    muted_by: int | None = None
+
+
+def at_least(condition: str) -> int | None:
+    """A scale's condition, ">=N", as its N (1–10); None for any other."""
+    m = _AT_LEAST.fullmatch(condition)
+    return int(m.group(1)) if m else None
+
+
+def fits(kind: str, options: Sequence[str], condition: str) -> bool:
+    """Whether a question of `kind` (with these options) can be given the
+    answer `condition` names: a yes / no "yes" or "no", a scale ">=N" (N
+    1–10), a choice or a multi one of its options' texts. A free text
+    none."""
+    if kind == "yesno":
+        return condition in ("yes", "no")
+    if kind == "scale":
+        return at_least(condition) is not None
+    if kind in OPTION_KINDS:
+        return condition in options
+    return False
 
 
 def steps(rows: Iterable) -> tuple[Question, ...]:
     """The screens a list of rows makes, in its order (db.upitnik_questions,
-    by position: a client's the shown rows, the editor's every row): each
-    row's question, and right after a safety question its follow-up, the
-    free text its answer may call for (the pain question's at PAIN_ASK or
-    more, the injuries question's at yes). A scoring holds only on a scale,
-    a role only on a row of the kind it needs and only on the first row
-    that holds it: what the routes never let in (settings, the role's
-    unique index) asks nothing here either."""
+    by position: a client's the shown rows, the editor's every row), one
+    per row. A scoring holds only on a scale, a role only on a row of the
+    kind it needs and only on the first row that holds it: what the routes
+    never let in (settings, the role's unique index) asks nothing here
+    either. A condition holds only when it can work (Question: follows):
+    its question earlier in this list and able to give that answer; any
+    other asks the question always (`void` says why). A question whose
+    question is hidden, or hangs under a hidden one, is `muted` (asked of
+    nobody) whether its condition works or not. Build it from every row
+    (db.upitnik_questions()): a hidden question left out of the list
+    could not mute the ones under it."""
+    rows = list(rows)
+    place = {row.id: n for n, row in enumerate(rows, start=1)}
+    by_id = {row.id: row for row in rows}
+
+    def hidden_above(row) -> int | None:
+        """The place of the hidden question a row's condition hangs under,
+        its own question or one further up, or None."""
+        seen = set()
+        while row.condition and row.parent_id in by_id and row.id not in seen:
+            seen.add(row.id)
+            row = by_id[row.parent_id]
+            if not row.shown:
+                return place[row.id]
+        return None
+
     out: list[Question] = []
+    made: dict[int, Question] = {}
     taken: set[str] = set()
     for n, row in enumerate(rows, start=1):
         role = row.role if ROLES.get(row.role) == row.kind and row.role not in taken else ""
         taken.add(role)
+        parent, condition = row.parent_id, row.condition or ""
+        follows, parent_kind, void, depth = None, "", "", 0
+        if condition:
+            p = made.get(parent)
+            if parent not in place:
+                void = "gone"
+            elif p is None:
+                void = "later"
+            elif not fits(p.kind, p.options, condition):
+                void = "answer"
+            else:
+                follows, parent_kind, depth = p.id, p.kind, p.depth + 1
+        muted_by = hidden_above(row)
         q = Question(f"q{row.id}", row.id, n, row.part, row.kind, row.text, tuple(row.option_items),
                      row.low, row.high, row.scoring if row.kind == "scale" and row.scoring in WEIGHTS else "",
-                     role, row.shown)
+                     role, row.shown, parent, condition, follows, parent_kind, void, place.get(parent), depth,
+                     muted_by is not None, muted_by)
         out.append(q)
-        if role:
-            out.append(Question(f"q{row.id}b", row.id, n, row.part, "text", row.followup_text, shown=row.shown,
-                                follows=q.id, ask_from=PAIN_ASK if role == "pain" else None,
-                                ask_if=True if role == "injuries" else None))
+        made[row.id] = q
     return tuple(out)
+
+
+def client_steps(rows: Iterable) -> tuple[Question, ...]:
+    """The screens a client gets, of every row there is (steps): the shown
+    ones that no hidden question mutes, in order. POST /upitnik reads and
+    scores over the same (read, evaluate)."""
+    return tuple(q for q in steps(rows) if q.shown and not q.muted)
 
 
 def _number(value) -> bool:
@@ -183,15 +295,47 @@ def _number(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def meets(kind: str, given, condition: str) -> bool:
+    """Whether an answer, as stored, to a question of `kind` is the one a
+    condition names: yes / no's True for "yes", False for "no"; a scale's
+    N or more for ">=N"; a choice's that option, a multi's list holding it
+    (either shape for either: what was stored)."""
+    if kind == "yesno":
+        return isinstance(given, bool) and given == (condition == "yes")
+    if kind == "scale":
+        n = at_least(condition)
+        return n is not None and _number(given) and given >= n
+    if kind in OPTION_KINDS:
+        return given == condition or (isinstance(given, list) and condition in given)
+    return False
+
+
 def is_asked(q: Question, answers: Mapping) -> bool:
-    """Whether `q` is asked, given the answers before it: always, but for a
-    follow-up, which its question's answer must call for."""
+    """Whether `q` is asked, given the answers to the questions before it,
+    as read() gathers them (a question not asked has no answer there):
+    always, but for a conditional question (follows), whose question must
+    have been asked and answered as its condition says, and never a muted
+    one (a hidden question above it). A chain follows: a question not
+    asked never meets a condition."""
+    if q.muted:
+        return False
     if q.follows is None:
         return True
-    given = answers.get(q.follows)
-    if q.ask_if is not None:
-        return given is q.ask_if
-    return _number(given) and given >= q.ask_from
+    return q.follows in answers and meets(q.parent_kind, answers[q.follows], q.condition)
+
+
+def asked_of(questions: Iterable[Question], answers: Mapping) -> tuple[Question, ...]:
+    """The questions a set of answers was asked, in order: the shown ones
+    no hidden question mutes, a conditional one only when its question was
+    asked and answered as its condition says, whatever else the answers
+    hold."""
+    out, keys = [], set()
+    for q in questions:
+        if q.shown and not q.muted and (q.follows is None or (
+                q.follows in keys and meets(q.parent_kind, answers.get(q.follows), q.condition))):
+            out.append(q)
+            keys.add(q.id)
+    return tuple(out)
 
 
 def read(form: Mapping[str, str | Sequence[str]], asked: Iterable[Question]) -> dict:
@@ -205,8 +349,10 @@ def read(form: Mapping[str, str | Sequence[str]], asked: Iterable[Question]) -> 
     asked must be answered: a choice with one of its options' texts as the
     row holds them now, a multi with one or more of them (stored in the
     options' order, each once), a scale with 1–10, yes / no with YES or NO,
-    a free text (a follow-up's too) not empty. A follow-up not asked is
-    left out, whatever was sent for it (without JS the page shows it to
+    a free text not empty. A conditional question is asked only when its
+    question was asked and answered as its condition says (is_asked, in
+    order: a chain is read down its length); one not asked is left out,
+    whatever was sent for it (without JS the page shows every question to
     everyone)."""
     answers: dict = {}
     for q in asked:
@@ -244,12 +390,13 @@ def score(answers: Mapping, asked: Iterable[Question]) -> float | None:
     """The owner's formula over the questions asked: 0.6 × the mean of the
     baza scales + 0.4 × the mean of the navike scales, to one decimal (half
     up, on exact fractions). A group with no question gives its weight to
-    the other; None when no question scores at all."""
-    asked = tuple(asked)
+    the other; None when no question scores at all. A conditional scale
+    scores only when it was asked (asked_of)."""
+    asked = asked_of(asked, answers)
     means = {}
     for group in WEIGHTS:
         given = [answers[q.id] for q in asked
-                 if q.shown and q.kind == "scale" and q.scoring == group and _number(answers.get(q.id))]
+                 if q.kind == "scale" and q.scoring == group and _number(answers.get(q.id))]
         if given:
             means[group] = Fraction(sum(given), len(given))
     if not means:
@@ -276,13 +423,14 @@ def evaluate(answers: Mapping, asked: Iterable[Question]) -> Result:
     """Score and level over the questions asked, with the two safety rules
     on top: the pain question at PAIN_HIGH or more is početna whatever the
     score; the injuries question's yes needs the trainer's review. With no
-    scored question, početna (and a score of 0.0, which no answer gives)."""
-    asked = tuple(asked)
+    scored question, početna (and a score of 0.0, which no answer gives).
+    A safety question that is conditional counts only when it was asked."""
+    asked = asked_of(asked, answers)
     value = score(answers, asked)
-    pain = next((answers.get(q.id) for q in asked if q.shown and q.role == "pain"), None)
+    pain = next((answers.get(q.id) for q in asked if q.role == "pain"), None)
     pain = pain if _number(pain) else None
     pain_high = pain is not None and pain >= PAIN_HIGH
-    review = any(answers.get(q.id) is True for q in asked if q.shown and q.role == "injuries")
+    review = any(answers.get(q.id) is True for q in asked if q.role == "injuries")
     level = "pocetna" if pain_high or value is None else level_for(value)
     return Result(0.0 if value is None else value, level, pain, pain_high, review)
 
@@ -346,16 +494,90 @@ def settings(now: Mapping, changes: Mapping[str, str]) -> dict:
     return new
 
 
+def condition(question_id: int, parent: str, answer: str, rows: Sequence) -> tuple[int | None, str]:
+    """The question a question is asked after and the answer that asks
+    it, after an editor's change (POST /upitnik/pitanje/{id}: parent_id
+    and condition, posted together), as the row stores them, or ValueError
+    with the sentence his bar shows. `rows` are every question, in order
+    (db.upitnik_questions(), read under the questions' lock). Both empty:
+    asked always. Else the question must be one of these rows, never this
+    one nor one that hangs under this one, however far down (no circle),
+    and before it (its answer is in by then); of a kind whose answer a
+    condition can name (CONDITION_KINDS: no free text); and the answer must
+    fit it as it is now (fits: yes / no "yes" or "no", a scale ">=N" with N
+    1–10, a choice or a multi one of its options), at most CONDITION_MAX
+    characters (an option's text, as the column holds it)."""
+    if not parent and not answer:
+        return None, ""
+    if not parent or not answer:
+        raise ValueError("Odaberi pitanje i odgovor.")
+    by_id = {row.id: row for row in rows}
+    pid = int(parent) if parent.isdigit() else None
+    if pid not in by_id:
+        raise ValueError("Nepoznato pitanje.")
+    if pid == question_id:
+        raise ValueError("Pitanje ne može ovisiti o samome sebi.")
+    seen, up = set(), by_id[pid].parent_id
+    while up is not None and up not in seen:       # a stored circle (no route makes one) ends here too
+        if up == question_id:
+            raise ValueError("Pitanje ne može ovisiti o svom potpitanju.")
+        seen.add(up)
+        up = by_id[up].parent_id if up in by_id else None
+    order = [row.id for row in rows]
+    if question_id in order and order.index(pid) > order.index(question_id):
+        raise ValueError("Pitanje može ovisiti samo o pitanju prije njega.")
+    p = by_id[pid]
+    if p.kind not in CONDITION_KINDS:
+        raise ValueError("Pitanje sa slobodnim tekstom nema odgovor za uvjet.")
+    if not fits(p.kind, p.option_items, answer):
+        raise ValueError("Uz pitanje Da / Ne uvjet je Da ili Ne." if p.kind == "yesno"
+                         else "Uz skalu uvjet je broj od 1 do 10." if p.kind == "scale"
+                         else "To pitanje nema taj odgovor.")
+    if len(answer) > CONDITION_MAX:
+        raise ValueError(f"Uvjet može biti odgovor od najviše {CONDITION_MAX} znakova — skrati ga.")
+    return pid, answer
+
+
+def short(text: str, n: int = SHORT) -> str:
+    """A text as the editor's lists show it: on one line, its first `n`
+    characters, "…" when there is more."""
+    text = " ".join(text.split())
+    return text if len(text) <= n else text[:n].rstrip() + "…"
+
+
+def answer_choices(kind: str, options: Sequence[str]) -> list[tuple[str, str]]:
+    """The answers a condition may name on a question of `kind`, as the
+    editor's select lists them, (value, words): yes / no Da and Ne, a
+    scale 1–10 (">=N", "N": the select says "ili više" after it), a choice
+    or a multi its options (short); none for a free text."""
+    if kind == "yesno":
+        return [("yes", "Da"), ("no", "Ne")]
+    if kind == "scale":
+        return [(f">={n}", str(n)) for n in SCALE]
+    if kind in OPTION_KINDS:
+        return [(option, short(option)) for option in options]
+    return []
+
+
+def blocked_moves(questions: Sequence[Question]) -> dict[str, tuple[bool, bool]]:
+    """Each question's ↑ and ↓ in the editor's order (every question):
+    whether that move would put a question before the one it is asked
+    after (db.move_upitnik_question refuses it: "Potpitanje ne može ići
+    ispred svog pitanja."), so the page says so at the press."""
+    out = {}
+    for i, q in enumerate(questions):
+        above = questions[i - 1] if i else None
+        below = questions[i + 1] if i + 1 < len(questions) else None
+        out[q.id] = (above is not None and q.parent == above.row,
+                     below is not None and below.parent == q.row)
+    return out
+
+
 def setting_line(q: Question) -> str:
     """The grey line under a question's settings in edit mode, what they
     do: "Dio 2 · skala · boduje se: trening baza", "Dio 4 · skala · uloga:
-    bolovi (4+ pita gdje, 7+ početna)"; a hidden question's says it is
-    asked of nobody, a follow-up's when it is asked."""
-    if q.follows is not None:
-        if not q.shown:
-            return f"Dodatno pitanje uz pitanje {q.n} · skriveno s njim"
-        when = f"odgovor {q.ask_from} ili više" if q.ask_from is not None else "odgovor Da"
-        return f"Dodatno pitanje uz pitanje {q.n} · pita se kad je {when}"
+    bolovi (7+ početna)"; a hidden question's says it is asked of nobody.
+    When it is asked is condition_line's."""
     words = [f"Dio {q.part}", KIND_WORDS.get(q.kind, q.kind)]
     if not q.shown:
         hidden = "skriveno: nitko ga ne dobiva" + (" i ne boduje se" if q.scoring else "")
@@ -368,10 +590,43 @@ def setting_line(q: Question) -> str:
     elif q.kind == "scale" and not q.role:
         words.append("ne boduje se")
     if q.role == "pain":
-        words.append(f"uloga: bolovi ({PAIN_ASK}+ pita gdje, {PAIN_HIGH}+ početna)")
+        words.append(f"uloga: bolovi ({PAIN_HIGH}+ početna)")
     elif q.role == "injuries":
-        words.append("uloga: ozljede (Da pita opis i traži pregled trenera)")
+        words.append("uloga: ozljede (Da traži pregled trenera)")
     return " · ".join(words)
+
+
+def condition_words(condition: str) -> str:
+    """A condition as the editor's line says it, after "pitanje N": "= Da",
+    "= Ne", "≥ 4", "= Kod kuće s girjom"."""
+    n = at_least(condition)
+    if n is not None:
+        return f"≥ {n}"
+    return "= " + {"yes": "Da", "no": "Ne"}.get(condition, condition)
+
+
+def condition_line(q: Question) -> str:
+    """The editor's line under the grey one, when a question is asked only
+    after an answer: "Pita se samo ako pitanje 16 = Da" ("… ≥ 4", "… = Kod
+    kuće s girjom"); for a muted one, that nobody gets it and which hidden
+    question is why ("Pita se samo ako pitanje 17 = Da — pitanje 16 je
+    skriveno, pa ni ovo nitko ne dobiva"); and when its condition cannot
+    work, that the question is asked always and why ("Pita se uvijek —
+    uvjet ne vrijedi: pitanje 16 dolazi kasnije", "… pitanje je obrisano",
+    "… pitanje 16 nema odgovor „Da”"). His page says the last two in
+    amber. "" for a question asked always by its settings."""
+    if not q.condition:
+        return ""
+    if q.muted:
+        return (f"Pita se samo ako pitanje {q.parent_n} {condition_words(q.condition)} — "
+                f"pitanje {q.muted_by} je skriveno, pa ni ovo nitko ne dobiva")
+    if q.follows is not None:
+        return f"Pita se samo ako pitanje {q.parent_n} {condition_words(q.condition)}"
+    n = at_least(q.condition)
+    said = f"{n} ili više" if n is not None else {"yes": "Da", "no": "Ne"}.get(q.condition, q.condition)
+    why = {"gone": "pitanje je obrisano", "later": f"pitanje {q.parent_n} dolazi kasnije",
+           "answer": f"pitanje {q.parent_n} nema odgovor „{said}”"}.get(q.void, "pitanje je obrisano")
+    return f"Pita se uvijek — uvjet ne vrijedi: {why}"
 
 
 def _pitanja(n: int) -> str:
@@ -381,11 +636,12 @@ def _pitanja(n: int) -> str:
 
 def scoring_summary(questions: Iterable[Question]) -> tuple[str, bool]:
     """The editor's line above the first question in edit mode: how many
-    questions each group scores with (the shown scales) and what the result
-    is then, and whether none scores at all (his page then says that every
-    client starts at početna)."""
+    questions each group scores with (the shown scales no hidden question
+    mutes) and what the result is then, and whether none scores at all
+    (his page then says that every client starts at početna)."""
     questions = tuple(questions)
-    count = {g: sum(1 for q in questions if q.shown and q.kind == "scale" and q.scoring == g) for g in WEIGHTS}
+    count = {g: sum(1 for q in questions if q.shown and not q.muted and q.kind == "scale" and q.scoring == g)
+             for g in WEIGHTS}
     line = f"Bodovanje: trening baza = {_pitanja(count['baza'])}, navike = {_pitanja(count['navike'])}."
     if count["baza"] and count["navike"]:
         line += " Rezultat = 0,6 × baza + 0,4 × navike."
@@ -412,28 +668,29 @@ def answer_text(value, yes: str = "Da", no: str = "Ne") -> str:
     return str(value)
 
 
+# an answer's key: "q<id>", or an old follow-up's "q<id>b" that migration
+# 5c1e7a9d2b48 had no question to give to (its question deleted before it)
 _ANSWER_KEY = re.compile(r"q([1-9][0-9]*)(b?)")
 
 
-def answer_rows(answers: Mapping, rows: Iterable, yes: str = "Da", no: str = "Ne") -> list[tuple[str, str, bool]]:
-    """(question, answer, is a follow-up) for every answer stored, the
-    trainer's list on the karton. `rows` are every question there is now
+def answer_rows(answers: Mapping, rows: Iterable, yes: str = "Da", no: str = "Ne") -> list[tuple[str, str, int]]:
+    """(question, answer, depth) for every answer stored, the trainer's
+    list on the karton. `rows` are every question there is now
     (db.upitnik_questions(): the hidden too), in their order: each answer
-    of one prints under its current text (a follow-up's under its
-    follow-up's, wherever the role is now; an emptied text names the
-    question by its place, "Pitanje 3"); then the answers to questions
-    deleted since, under REMOVED, by their number. A client's answers are
-    kept as they were given: nothing here drops one."""
+    of one prints under its current text (an emptied text names the
+    question by its place, "Pitanje 3"), a conditional question's `depth`
+    levels in, under the question it is asked after (steps: as far as its
+    condition works now); then the answers to questions deleted since,
+    under REMOVED, by their number (an old follow-up's one level in). A
+    client's answers are kept as they were given: nothing here drops one."""
     out, seen = [], set()
-    for n, row in enumerate(rows, start=1):
-        for key, text, follow in ((f"q{row.id}", row.text, False), (f"q{row.id}b", row.followup_text, True)):
-            if key in answers:
-                seen.add(key)
-                name = text or (f"Pitanje {n}, dodatno" if follow else f"Pitanje {n}")
-                out.append((name, answer_text(answers[key], yes, no), follow))
+    for q in steps(rows):
+        if q.id in answers:
+            seen.add(q.id)
+            out.append((q.text or f"Pitanje {q.n}", answer_text(answers[q.id], yes, no), q.depth))
     gone = [(int(m.group(1)), m.group(2), key) for key in answers
             if key not in seen and (m := _ANSWER_KEY.fullmatch(key))]
-    out += [(REMOVED, answer_text(answers[key], yes, no), bool(b)) for _, b, key in sorted(gone)]
+    out += [(REMOVED, answer_text(answers[key], yes, no), 1 if b else 0) for _, b, key in sorted(gone)]
     return out
 
 
@@ -462,16 +719,20 @@ def chips(answers: Mapping, rows: Iterable) -> list[str]:
     return out
 
 
-def pain_where(answers: Mapping) -> str | None:
+def pain_where(answers: Mapping, rows: Iterable) -> str:
     """Where it hurts, as the client wrote it, for the trainer's pain flag
-    on the karton: the follow-up asked after a scale ("q<id>b" whose
-    "q<id>" holds a number). Only the pain question, a scale, has one (the
-    injuries question's follows a yes / no), so this finds it in any
-    response, whichever question held the role when it was given."""
-    for key, given in answers.items():
-        if key.endswith("b") and isinstance(given, str) and _number(answers.get(key[:-1])):
-            return given
-    return None
+    on the karton: the answer to the first free-text question asked after
+    the pain question (the first text row, in order, whose parent is the
+    row holding the pain role now, whatever its condition: "Gdje te
+    boli?", asked at 4 or more, as migration 5c1e7a9d2b48 and the defaults
+    made it); "" when there is no such question or no answer to it. `rows`
+    are every question there is now (db.upitnik_questions())."""
+    rows = list(rows)
+    pain = next((row for row in rows if row.role == "pain" and row.kind == ROLES["pain"]), None)
+    where = next((row for row in rows if pain is not None and row.parent_id == pain.id and row.kind == "text"),
+                 None)
+    given = answers.get(f"q{where.id}") if where is not None else None
+    return given if isinstance(given, str) else ""
 
 
 # ---- version 1 (3.9. – 26.10.2026), frozen: an old row's answers ----

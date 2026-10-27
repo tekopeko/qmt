@@ -342,10 +342,11 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
 
 # A row's field as the editor names it: an announcement's
 # aktualno.<id>.<field>, a gym card's dvorana.<id>.<field> (year_price: an
-# underscore), an upitnik question's upitnik.<id>.<field> (followup_text;
-# the upitnik's slots, upitnik.title or upitnik.part1.h, have no number
-# there, and the old upitnik.q<n>.* keys are no key at all now). At most
-# nine digits, so no id is past what the column can hold.
+# underscore), an upitnik question's upitnik.<id>.<field> (the upitnik's
+# slots, upitnik.title or upitnik.part1.h, have no number there, and the
+# old upitnik.q<n>.* keys are no key at all now, nor a follow-up's
+# upitnik.<id>.followup_text since 27.10.2026). At most nine digits, so no
+# id is past what the column can hold.
 _ANNOUNCEMENT_KEY = re.compile(r"aktualno\.([1-9][0-9]{0,8})\.([a-z]+)")
 _GYM_CARD_KEY = re.compile(r"dvorana\.([1-9][0-9]{0,8})\.([a-z_]+)")
 _UPITNIK_KEY = re.compile(r"upitnik\.([1-9][0-9]{0,8})\.([a-z_]+)")
@@ -469,8 +470,10 @@ def _copy_save_question(question_id: int, field: str, slot, text: str, index: st
     puts the two placeholders back. The options keep at least
     upitnik.MIN_OPTIONS: removing one past that is refused, or a choice
     has nothing to choose (a client's answer is an option's text, so an
-    option re-worded or removed never garbles one already stored). A
-    question deleted meanwhile answers 404, as an unknown key does."""
+    option re-worded or removed never garbles one already stored). An
+    option re-worded in place (27.10.2026) carries into the conditions
+    that named it (db.set_upitnik_question_options: renamed). A question
+    deleted meanwhile answers 404, as an unknown key does."""
     try:
         if isinstance(slot, copy.ListSlot):
             if reset == "1":
@@ -487,14 +490,29 @@ def _copy_save_question(question_id: int, field: str, slot, text: str, index: st
                     removes = False
                 if removes:
                     return JSONResponse({"ok": False, "error": "Pitanje treba bar dva odgovora."}, status_code=400)
+            before = list(items)                        # _edit_list changes items in place
             return _edit_list(items, items == list(slot.default), slot, text, index,
-                              lambda changed: db.set_upitnik_question_options(question_id, changed, user_id))
+                              lambda changed: db.set_upitnik_question_options(
+                                  question_id, changed, user_id, renamed=_renamed(before, changed, index)))
         return _copy_save_row(
             slot, text, reset, None,
             lambda cleaned: db.set_upitnik_question_field(question_id, copy.UPITNIK_QUESTION_COLUMNS[field],
                                                           cleaned, user_id))
     except LookupError:
         return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
+
+
+def _renamed(before: list[str], after: list[str], index: str) -> tuple[str, str] | None:
+    """The option an edit re-worded, (old text, new text): one replaced in
+    place, at an index within the list, the list as long as it was. None
+    for an option added, removed, or saved as it was."""
+    try:
+        i = int(index)
+    except ValueError:
+        return None
+    if 0 <= i < len(before) == len(after) and before[i] != after[i]:
+        return before[i], after[i]
+    return None
 
 
 def _copy_save_list(key: str, slot: copy.ListSlot, text: str, index: str, reset: str,
@@ -1636,18 +1654,19 @@ def _render_karton(request: Request, viewer, subject, own: bool):
     # The upitnik block. A version-2 response: its score ("6,4 / 10"), part
     # 1's answers as chips, and for the trainer every answer it holds under
     # its question as the gym owner words it now (every question there is,
-    # a hidden one too; one deleted since under "(pitanje uklonjeno)": a
+    # a hidden one too, a conditional one indented under the one it is
+    # asked after; one deleted since under "(pitanje uklonjeno)": a
     # client's answers are never dropped), and where it hurts, the pain
-    # flag's words, found in the response itself (upitnik.pain_where:
-    # whichever question held the role then). A version-1 row: its answers
-    # as QUESTIONS_V1 reads them.
+    # flag's words (upitnik.pain_where: the answer to the free-text question
+    # asked after the pain question). A version-1 row: its answers as
+    # QUESTIONS_V1 reads them.
     pain_where = None
     if onboarding is not None and onboarding.version >= 2:
         rows = db.upitnik_questions()
         yes, no = (texts.get(f"upitnik.{k}") or copy.SLOTS[f"upitnik.{k}"].default for k in ("yes", "no"))
         u_rows = upitnik.answer_rows(answers, rows, yes, no)
         u_chips, u_score = upitnik.chips(answers, rows), upitnik.score_text(onboarding.score)
-        pain_where = upitnik.pain_where(answers)
+        pain_where = upitnik.pain_where(answers, rows)
     else:
         u_rows, u_chips, u_score = upitnik.answer_rows_v1(answers), [], None
     today = config.today()
@@ -1700,17 +1719,21 @@ def karton_client(request: Request, user_id: int):
 def upitnik_page(request: Request):
     """The online-trening upitnik (qmt.upitnik, version 2 since 26.10.2026),
     one question per screen, its questions the rows of upitnik_questions in
-    their order (qmt.upitnik.steps: each safety question followed by its
-    follow-up). A client with an online plan fills it, from the first
-    question every time: a refill starts fresh, nothing is preselected; he
-    is asked the shown questions. The trainer and the owner get it too, a
-    plan or not: this is where they edit it (they never submit it: POST
-    /upitnik refuses them). Their page holds every question, a hidden one
-    marked off (a step only in edit mode), and in edit mode each
-    question's controls (its switch, ↑ / ↓, its settings, "Obriši
-    pitanje"), the line under them that says what the settings do, the
-    scoring's summary above the first question, and "+ Dodaj pitanje"
-    under the last while there is room for another."""
+    their order (qmt.upitnik.steps), a conditional one (27.10.2026) only
+    when the answer it is asked after is given (the page's script, from
+    each step's data-parent and its condition). A client with an online
+    plan fills it, from the first question every time: a refill starts
+    fresh, nothing is preselected; he is asked the shown questions that no
+    hidden question mutes (upitnik.client_steps, built from every row, so
+    a hidden question hides the questions asked after it). The
+    trainer and the owner get it too, a plan or not: this is where they
+    edit it (they never submit it: POST /upitnik refuses them). Their page
+    holds every question, a hidden one marked off (a step only in edit
+    mode), and in edit mode each question's controls (its switch, ↑ / ↓,
+    "Obriši pitanje", its settings, "Pita se" among them), the lines under
+    them that say what the settings do and when it is asked, the scoring's
+    summary above the first question, and "+ Dodaj pitanje" under the last
+    while there is room for another."""
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
@@ -1719,8 +1742,11 @@ def upitnik_page(request: Request):
     if not editor and not _has_online(user):
         return RedirectResponse(
             "/karton?error=Upitnik+je+dio+online+članarine+—+javi+se+treneru.", status_code=303)
-    rows = db.upitnik_questions(shown=not editor)
-    steps = upitnik.steps(rows)
+    rows = db.upitnik_questions()
+    steps = upitnik.steps(rows) if editor else upitnik.client_steps(rows)
+    # the questions others are asked after (shown ones that a deletion
+    # would leave asked of everyone): their "Obriši pitanje" says so
+    parents = {q.parent for q in steps if q.condition and q.shown and q.parent is not None} if editor else set()
     return templates.TemplateResponse(request, "upitnik.html", _ctx(
         request, user, steps=steps, scale=upitnik.SCALE, yes=upitnik.YES, no=upitnik.NO,
         text_max=upitnik.TEXT_MAX, pain_high_at=upitnik.PAIN_HIGH,
@@ -1728,19 +1754,23 @@ def upitnik_page(request: Request):
         first_step=next((q.id for q in steps if q.shown), None),
         last_row=len(rows), summary=upitnik.scoring_summary(steps) if editor else None,
         lines={q.id: upitnik.setting_line(q) for q in steps} if editor else {},
+        ifs={q.id: upitnik.condition_line(q) for q in steps} if editor else {},
+        blocked=upitnik.blocked_moves(steps) if editor else {}, parents=parents,
         kinds=upitnik.KINDS, scorings=upitnik.SCORING, roles=upitnik.ROLE_LABELS, role_kinds=upitnik.ROLES,
-        parts=upitnik.PARTS,
+        parts=upitnik.PARTS, cond_kinds=upitnik.CONDITION_KINDS, short=upitnik.short,
+        answer_choices=upitnik.answer_choices,
         can_add_question=editor and len(rows) < db.MAX_UPITNIK_QUESTIONS))
 
 
 @app.post("/upitnik")
 async def upitnik_submit(request: Request):
-    """A filled upitnik: every question asked (the shown rows, as they are
-    now) must be answered (upitnik.read: a choice with one of its options
+    """A filled upitnik: every question asked (the shown rows no hidden
+    question mutes, as they are now: upitnik.client_steps) must be
+    answered (upitnik.read: a choice with one of its options
     as the row holds them now, a multi with one or more of them, a scale
-    1–10, yes / no, a free text, a follow-up's when its question calls for
-    it) and the consent ticked, or back to the form saying why, nothing
-    stored. Then scored and leveled over the same questions
+    1–10, yes / no, a free text; a conditional question when the answer it
+    is asked after was given) and the consent ticked, or back to the form
+    saying why, nothing stored. Then scored and leveled over the same questions
     (upitnik.evaluate: the scored scales, the safety rules), saved with the
     goal upitnik.GOAL, and straight to the programmes: the flash names the
     level, and for a client in pain adds the sentence that sends him to the
@@ -1761,7 +1791,7 @@ async def upitnik_submit(request: Request):
     from urllib.parse import quote
 
     texts = db.copy_texts()
-    asked = upitnik.steps(db.upitnik_questions(shown=True))
+    asked = upitnik.client_steps(db.upitnik_questions())
     # every value a field was sent with (a multi's ticks are several), each
     # cleaned as a copy text is, so an option's text compares as the row
     # stored it (a browser sends a line break inside one as CRLF)
@@ -1811,10 +1841,15 @@ async def upitnik_pitanje(request: Request, question_id: int):
     change (fetch, JSON back, as POST /copy/{key}): part ("1"–"4"), kind
     (choice, multi, scale, yesno, text), scoring ("", baza, navike: a
     scale's), role ("", pain: a scale, injuries: a yes / no; taking one
-    another question holds takes it from that one) and shown ("on" /
-    "off"). The rules are qmt.upitnik.settings', its sentence the 400's
-    error; a question that is not there is a 404. The answer is the row's
-    settings as stored ("on": its switch, as a flag's answer says it)."""
+    another question holds takes it from that one), shown ("on" / "off"),
+    and since 27.10.2026 its "Pita se", two fields posted together:
+    parent_id (an earlier question's id) and condition (the answer to it
+    that asks this one: "yes" / "no", an option's text, ">=N"), both empty
+    for always. The rules are qmt.upitnik.settings' and
+    qmt.upitnik.condition's (the question before it, no circle, an answer
+    it can give), their sentence the 400's error; a question that is not
+    there is a 404. The answer is the row's settings as stored ("on": its
+    switch, as a flag's answer says it)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -1827,7 +1862,8 @@ async def upitnik_pitanje(request: Request, question_id: int):
     except ValueError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     return JSONResponse({"ok": True, "id": q.id, "part": q.part, "kind": q.kind, "scoring": q.scoring,
-                         "role": q.role, "shown": q.shown, "on": q.shown})
+                         "role": q.role, "shown": q.shown, "on": q.shown, "parent_id": q.parent_id,
+                         "condition": q.condition})
 
 
 @app.post("/upitnik/pitanje/{question_id}/pomak")
@@ -1835,11 +1871,18 @@ def upitnik_pitanje_pomak(request: Request, question_id: int, smjer: str = Form(
     """The editor's ↑ / ↓ (edit mode, a plain form): the question trades
     places with the one before it (smjer=gore) or after it (dolje), in the
     order of every question, the hidden too. Back to it on /upitnik; at
-    either end nothing moves."""
+    either end nothing moves. A move that would put a question before the
+    one it is asked after (27.10.2026) is refused: back to the top of the
+    page, where the sentence shows ("Potpitanje ne može ići ispred svog
+    pitanja."; his page says it at the press already, data-refuse)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    db.move_upitnik_question(question_id, smjer, user.id)
+    try:
+        db.move_upitnik_question(question_id, smjer, user.id)
+    except ValueError as e:
+        from urllib.parse import quote
+        return RedirectResponse("/upitnik?error=" + quote(str(e)), status_code=303)
     return RedirectResponse(f"/upitnik#step-q{question_id}", status_code=303)
 
 

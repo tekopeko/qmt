@@ -7,7 +7,8 @@ Idempotent — safe to re-run. Passwords are for LOCAL DEV ONLY.
     # ivan@qmt.local  / lozinka123
     # ana@qmt.local   / lozinka123
 
-Also the upitnik's fifteen questions (ids 1–15) and ivan's answers to them.
+Also the upitnik's questions (the gym owner's fifteen, ids 1–15, and the two
+asked after the safety questions, 16 and 17) and ivan's answers to them.
 """
 
 from __future__ import annotations
@@ -196,10 +197,11 @@ def seed_gym_cards() -> None:
 
 
 def seed_upitnik() -> None:
-    """The upitnik's fifteen questions (copy.UPITNIK_DEFAULT_QUESTIONS,
-    with their ids 1–15, the keys ivan's answers below are stored under),
-    in place of whatever questions there were: a dev RESET, as the rest
-    (main() has dropped every response already)."""
+    """The upitnik's questions (copy.UPITNIK_DEFAULT_QUESTIONS: the
+    fifteen with their ids 1–15, the keys ivan's answers below are stored
+    under, and q16 / q17 asked after q14 / q15), in place of whatever
+    questions there were: a dev RESET, as the rest (main() has dropped
+    every response already)."""
     from sqlalchemy import delete
 
     from qmt.copy import UPITNIK_DEFAULT_QUESTIONS
@@ -221,12 +223,12 @@ def seed_karton() -> None:
 
     ivan = db.get_user_by_email("ivan@qmt.local")
     # the upitnik v2 (26.10.2026): part 1 as the defaults word it, scales that
-    # land him in srednja (6,4 / 10), no pain to speak of, no injuries; scored
-    # over the questions seed_upitnik made
+    # land him in srednja (6,4 / 10), no pain to speak of, no injuries (so
+    # neither q16 nor q17 is asked); scored over the questions seed_upitnik made
     answers = {"q1": "Povećanje snage i mišićne mase", "q2": "3", "q3": "45-60", "q4": "U teretani",
                "q5": 7, "q6": 6, "q7": 5, "q8": 6, "q9": 8, "q10": 8, "q11": 6,
                "q12": 4, "q13": 8, "q14": 3, "q15": False}
-    result = upitnik.evaluate(answers, upitnik.steps(db.upitnik_questions(shown=True)))
+    result = upitnik.evaluate(answers, upitnik.client_steps(db.upitnik_questions()))
     level = result.level
     db.save_onboarding(ivan.id, json.dumps(answers, ensure_ascii=False), result.score, level, upitnik.GOAL,
                        version=upitnik.VERSION, pain_level=result.pain_level, pain_high=result.pain_high,
