@@ -100,17 +100,31 @@
      outside edit mode he sees the visitor's page. Edit mode shows them, the
      strip's content dimmed but not its toggle, which stays readable to
      switch it back on. The toggle is the strip's first item, the photo's
-     pills and "Obriši najavu" after it (.ed-img, .has-img below), centred
-     on it like the rest: base.html gives them the margin and the alignment
-     of a column. "Obriši najavu" is dimmed by a rule of its own: its form
-     has no box (display: contents), so the form's opacity would not reach
-     it. */
+     pills, ↑ / ↓ and "Obriši najavu" after it (.ed-img, .has-img below),
+     centred on it like the rest: base.html gives them the margin and the
+     alignment of a column. "Obriši najavu" is dimmed by a rule of its own:
+     its form has no box (display: contents), so the form's opacity would
+     not reach it. */
   .evs.is-off, .event.is-off { display: none; }
   body.editing .evs.is-off { display: grid; }
   body.editing .event.is-off { display: flex; }
   body.editing .event.is-off > :not(.ed-flag), body.editing .event.is-off .ed-ann-x > button { opacity: .55; }
   body.editing .event .ed-flag, body.editing .event .ed-img, body.editing .event .ed-img-x,
-  body.editing .event .ed-ann-x > button { margin: 0; align-self: center; }
+  body.editing .event .ed-ann-x > button, body.editing .event .ed-ann-mv { margin: 0; align-self: center; }
+  /* ↑ / ↓ (29.10.2026, the owner's request: Amir puts the cards in the
+     order he likes): a plain form per card (POST /aktualno/<id>/pomak, smjer gore or
+     dolje), its two pills base.html's .ed-mv, side by side 8px apart (the
+     gap of /upitnik's pills), after the photo's pills. The form is their
+     box, not display: contents as "Obriši najavu"'s: a column (a phone's
+     card, a photo card) gives each of the card's items a line of its own,
+     and the pair keeps one; and as the card's own child it is lifted over
+     a photo's gradient (.has-img > :not(.bg), below) and dimmed with the
+     content of a card that is off (above). Edit mode only. The page comes
+     back at the card (#najava-<id>, the editor's article), clear of the
+     floating pill, as /upitnik's steps are. */
+  .ed-ann-mv { display: none; }
+  body.editing .ed-ann-mv { display: flex; gap: 8px; }
+  .event { scroll-margin-top: 96px; }
   /* Edit mode: the cards one under the other, each the row's width, so the
      editor reaches a card that is off, which has no dot (the script makes
      dots for the cards a visitor sees). Not a scroller then, and no dots:
@@ -134,7 +148,7 @@
     .event .text { flex-basis: auto; }
     .event .foot { margin-left: 0; margin-top: 4px; }
     body.editing .event .ed-flag, body.editing .event .ed-img, body.editing .event .ed-img-x,
-    body.editing .event .ed-ann-x > button { align-self: flex-start; }
+    body.editing .event .ed-ann-x > button, body.editing .event .ed-ann-mv { align-self: flex-start; }
   }
   /* An announcement over a photo (.has-img: the owner's upload, its row's
      image): Shape's photo cards, in the stage's language (.stage,
@@ -152,7 +166,11 @@
   .event.has-img .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .event.has-img::after { content: ""; position: absolute; inset: 0;
                           background: linear-gradient(180deg, rgba(0,0,0,.25) 0%, rgba(0,0,0,.05) 35%, rgba(0,0,0,.82) 100%); }
-  .event.has-img > :not(.bg) { position: relative; z-index: 1; }
+  /* the card's own children are lifted over the gradient; so is "Obriši
+     najavu", a child of its form, which has no box (display: contents):
+     left under the gradient it could not be tapped on a photo card
+     (29.10.2026, found with the arrows) */
+  .event.has-img > :not(.bg), .event.has-img .ed-ann-x > button { position: relative; z-index: 1; }
   /* the photo's glass chip (.tag, below), not a plain card's accent tint;
      its 1px border comes off the padding, so the chip keeps its size */
   .event.has-img .tag { padding: 4px 11px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.16);
@@ -167,7 +185,8 @@
   .event.has-img .act { background: #fff; color: #111; border-color: transparent; }
   .event.has-img .act:hover { background: #e2e2e2; color: #111; border-color: transparent; }
   body.editing .event.has-img .ed-flag, body.editing .event.has-img .ed-img,
-  body.editing .event.has-img .ed-img-x, body.editing .event.has-img .ed-ann-x > button { align-self: flex-start; }
+  body.editing .event.has-img .ed-img-x, body.editing .event.has-img .ed-ann-x > button,
+  body.editing .event.has-img .ed-ann-mv { align-self: flex-start; }
   /* a wide banner on a desktop, the whole column across */
   @media (min-width: 900px) { .event.has-img { min-height: 320px; } }
 
@@ -509,7 +528,8 @@
        the photo, where the lead, a member's button and its note were; a
        member's way in is the bar's tabs and the offer cards' buttons. Rows
        of the announcements table since 18.10.2026 (db.announcements, in
-       creation order), as many as he adds, up to eight. One card per view
+       his order: a new card last, ↑ / ↓ since 29.10.2026), as many as he
+       adds, up to eight. One card per view
        at every width, as wide as the row: a swipe row (.swipe-row) with a
        dot per card under it everywhere, made by the script, which also
        moves the row on by itself every 5 s (data-auto, in ms); edit mode
@@ -530,9 +550,12 @@
        it is .has-img with the photo as its first child, served by /slika,
        and data-photo, which tells the audit its text sits on a photograph.
        An editor's card always carries data-image, where the script puts a
-       photo it has just sent, and its pills: "Dodaj sliku" (or "Promijeni
-       sliku"), with a photo "Ukloni sliku", and "Obriši najavu", a plain
-       form its pill sends at the second tap (base.html). After the row's
+       photo it has just sent, its id, najava-<id>, where a move brings the
+       page back, and its pills: "Dodaj sliku" (or "Promijeni sliku"), with
+       a photo "Ukloni sliku", ↑ / ↓, a plain form that moves it one place
+       in his order at a tap (29.10.2026; the first card's ↑ and the last
+       one's ↓ disabled), and "Obriši najavu", a plain form its pill sends
+       at the second tap (base.html). After the row's
        dots an editor gets "+ Dodaj najavu", a plain form too, while there
        are fewer than eight (can_add); with every card deleted his box is
        empty, and that form is how he starts again. A visitor gets none of
@@ -548,12 +571,14 @@
     <div class="evs swipe-row{% if ev_shown == 1 %} single{% endif %}{% if not ev_shown %} is-off{% endif %}" id="aktualno" data-auto="5000"{% if can_edit_copy %} data-flag-group{% endif %}>
       {% for a in announcements %}{% set ev = "aktualno." ~ a.id %}{% set on = a.shown %}{% set photo = a.image %}{% set n = "Najava " ~ loop.index ~ ": " %}
       {% if on or can_edit_copy %}
-      <article class="card event{% if photo %} has-img{% endif %}{% if not on %} is-off{% endif %}"{% if photo %} data-photo{% endif %}{% if can_edit_copy %} data-flag="{{ ev }}.show" data-image="{{ ev }}.image"{% endif %}>
+      <article class="card event{% if photo %} has-img{% endif %}{% if not on %} is-off{% endif %}"{% if photo %} data-photo{% endif %}{% if can_edit_copy %} data-flag="{{ ev }}.show" data-image="{{ ev }}.image" id="najava-{{ a.id }}"{% endif %}>
         {% if photo %}<img class="bg" src="/slika/{{ photo }}" alt="" loading="eager" decoding="async">{% endif %}
         {% if can_edit_copy %}<button type="button" class="ed-flag" data-copy="{{ ev }}.show" data-label="{{ n ~ ANNOUNCEMENT['show'].label }}"
                 aria-pressed="{{ 'true' if on else 'false' }}">{{ "Prikazano" if on else "Skriveno" }}</button>
         <button type="button" class="ed-img" data-copy="{{ ev }}.image" data-label="{{ n ~ ANNOUNCEMENT['image'].label }}">{{ "Promijeni sliku" if photo else "Dodaj sliku" }}</button>
         {% if photo %}<button type="button" class="ed-img-x" aria-label="Ukloni sliku" data-copy="{{ ev }}.image">Ukloni sliku</button>{% endif %}
+        <form method="post" action="/aktualno/{{ a.id }}/pomak" class="ed-ann-mv"><button type="submit" class="ed-mv" name="smjer" value="gore" aria-label="{{ n }}jedno mjesto gore"{% if loop.first %} disabled{% endif %}>↑</button>
+          <button type="submit" class="ed-mv" name="smjer" value="dolje" aria-label="{{ n }}jedno mjesto dolje"{% if loop.last %} disabled{% endif %}>↓</button></form>
         <form method="post" action="/aktualno/{{ a.id }}/obrisi" class="ed-ann-x"><button type="submit" aria-label="Obriši najavu">Obriši najavu</button></form>{% endif %}
         {% if a.tag or can_edit_copy %}<span class="tag">{{ c.field(ev ~ ".tag", a.tag, n ~ ANNOUNCEMENT["tag"].label) }}</span>{% endif %}
         <div class="head"><h2>{{ c.field(ev ~ ".title", a.title, n ~ ANNOUNCEMENT["title"].label) }}</h2>{% if a.when_text or can_edit_copy %}<p class="when">{{ c.field(ev ~ ".when", a.when_text, n ~ ANNOUNCEMENT["when"].label) }}</p>{% endif %}</div>

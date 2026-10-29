@@ -181,10 +181,8 @@
   .q-ed, .q-ed-line, .q-sum, .q-add { display: none; }
   body.editing .q-ed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
   body.editing .q-ed .ed-flag, body.editing .q-ed .ed-q-x { margin: 0; }
-  .q-ed .ed-mv { min-width: 32px; min-height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line);
-                 box-shadow: none; background: var(--surface-2); color: var(--muted); font: 700 .9rem var(--font-body); }
-  .q-ed .ed-mv:hover { transform: none; color: var(--text); background: color-mix(in srgb, var(--text) 10%, var(--surface-2)); }
-  .q-ed .ed-mv:disabled, .q-ed .ed-mv:disabled:hover { opacity: .45; cursor: default; color: var(--muted); background: var(--surface-2); }
+  /* ↑ / ↓ (.ed-mv) are base.html's since 29.10.2026, when the landing's
+     announcements got them too */
   /* a setting's pill is as tall as its select, 32px, the other pills' height
      (the select is the tap target, so it fills the pill: its hairline is an
      inset shadow, not a border, and a coarse pointer's 36px selects,

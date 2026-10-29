@@ -256,10 +256,15 @@ class Announcement(Base):
     (app.py, copy_save), cleaned as copy is (copy.clean); an emptied one
     stays empty since 20.10.2026, and Zadano puts its placeholder back
     (copy.ANNOUNCEMENT_BLANK).
-    `position` is creation order, 1-based: the order the landing shows them
-    in (nothing reorders them yet; a deleted card leaves a gap). `shown` is
-    the switch: a hidden card is on an editor's page only. `image` is the
-    stored photo's file name (served by /slika), or NULL: a plain card."""
+    `position` is the editor's order, 1-based: the order the landing shows
+    them in. A new card comes last, and since 29.10.2026 his ↑ / ↓ swap a
+    card with its neighbour (db.move_announcement; the owner: "Lets make it
+    so that Amir can change the order of these announcement pages"), which
+    is why the constraint is deferred, as the upitnik's: a swap is checked
+    when it commits, whole (migration b18ebed39701). A deleted card leaves a
+    gap. `shown` is the switch: a hidden card is on an editor's page only.
+    `image` is the stored photo's file name (served by /slika), or NULL: a
+    plain card."""
 
     __tablename__ = "announcements"
 
@@ -277,7 +282,9 @@ class Announcement(Base):
                                                  onupdate=func.now())
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-    __table_args__ = (UniqueConstraint("position", name="uq_announcements_position"),)
+    # deferred: ↑ / ↓ swap two positions, checked when the swap commits
+    __table_args__ = (UniqueConstraint("position", name="uq_announcements_position", deferrable=True,
+                                       initially="DEFERRED"),)
 
 
 class GymCard(Base):

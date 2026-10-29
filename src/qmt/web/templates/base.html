@@ -500,6 +500,18 @@
     body.editing .ed-q-x.armed, body.editing .ed-q-x.armed:hover {
       color: var(--accent-tint-ink); border-color: transparent;
       background: linear-gradient(var(--accent-dim), var(--accent-dim)) var(--surface); }
+    /* ↑ / ↓: a row one place up or down in the editor's order, at a tap
+       (a move loses nothing, so nothing asks first). /upitnik's questions'
+       since 26.10.2026; here since 29.10.2026, when the landing's
+       announcements got them too (form.ed-ann-mv): a second page needs the
+       rule. A 32px round pill in the switch's off look (--surface-2 /
+       --muted, a hairline, no glow); disabled where there is no place to
+       go (the first one's ↑, the last one's ↓), dimmed. Its page shows it
+       in edit mode only (/upitnik's .q-ed, the landing's form). */
+    .ed-mv { min-width: 32px; min-height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line);
+             box-shadow: none; background: var(--surface-2); color: var(--muted); font: 700 .9rem var(--font-body); }
+    .ed-mv:hover { transform: none; color: var(--text); background: color-mix(in srgb, var(--text) 10%, var(--surface-2)); }
+    .ed-mv:disabled, .ed-mv:disabled:hover { opacity: .45; cursor: default; color: var(--muted); background: var(--surface-2); }
     /* width: max-content: centred by left: 50%, the bar would otherwise
        shrink to half the window and wrap its buttons long before max-width */
     .copy-bar { position: fixed; top: calc(72px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
@@ -1265,10 +1277,10 @@
     // tab as an admin, please dont make it editable but default"): every
     // page opens in normal mode, and leaving it ends edit mode (a tab, the
     // menu, a link, a reload by hand). The editor's own forms are the one
-    // way it outlives a load: "+ Dodaj najavu" and "Obriši najavu" (the
-    // gym's "+ Dodaj karticu" and "Obriši karticu" too, and /upitnik's
-    // "+ Dodaj pitanje", ↑ / ↓ and "Obriši pitanje", and a question's
-    // setting or switch, redraw() above) reload the page, so
+    // way it outlives a load: "+ Dodaj najavu", "Obriši najavu" and a
+    // card's ↑ / ↓ (the gym's "+ Dodaj karticu" and "Obriši karticu" too,
+    // and /upitnik's "+ Dodaj pitanje", ↑ / ↓ and "Obriši pitanje", and a
+    // question's setting or switch, redraw() above) reload the page, so
     // right before one goes it leaves a one-shot flag in this tab's
     // sessionStorage (once()), and the page that comes back reads it, drops
     // it and turns edit mode on: the editor lands where he was. (Until then
@@ -1286,10 +1298,11 @@
       sessionStorage.removeItem("qmt-editing-once");
       if (again) setMode(true);
     } catch (e) {}
-    // the add forms go as plain submits; drop() sends the delete forms with
-    // form.submit(), which fires no submit event, so it calls once() itself
+    // the add and move forms go as plain submits; drop() sends the delete
+    // forms with form.submit(), which fires no submit event, so it calls
+    // once() itself
     document.addEventListener("submit", function (e) {
-      if (mode && e.target.matches("form.ed-add-ann, form.ed-add-gym, form.ed-add-q, form.ed-move")) once();
+      if (mode && e.target.matches("form.ed-add-ann, form.ed-add-gym, form.ed-add-q, form.ed-move, form.ed-ann-mv")) once();
     });
     // Back or Forward can bring a page out of the browser's cache as it was
     // left, edit mode and all (Chrome does, measured): it was left, so it

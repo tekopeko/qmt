@@ -153,8 +153,9 @@ MAX_ANNOUNCEMENTS = 8          # the owner's number (18.10.2026)
 
 
 def announcements(all: bool = False) -> list[Announcement]:
-    """In position order (creation order): the shown ones, or with all=True
-    every one, the hidden too (an editor's page)."""
+    """In position order (the editor's order: a new card last, ↑ / ↓ since
+    29.10.2026): the shown ones, or with all=True every one, the hidden too
+    (an editor's page)."""
     with session_scope() as s:
         q = select(Announcement).order_by(Announcement.position)
         return list(s.scalars(q if all else q.where(Announcement.shown)))
@@ -205,6 +206,32 @@ def delete_announcement(ann_id: int) -> str | None:
         image = a.image
         s.delete(a)
         return image
+
+
+def move_announcement(ann_id: int, direction: str, user_id: int | None = None) -> bool:
+    """Swap a card with its neighbour in the editor's order, the order the
+    landing shows them in (29.10.2026: every card, the hidden too): "gore"
+    the one before it, "dolje" the one after. False: no such card, a
+    direction that is neither, or none beyond it that way. Under the table
+    lock add_announcement takes, so two moves (or a move and an add) never
+    read the order half changed. The two positions trade in one flush: the
+    unique constraint is deferred to the commit, which sees the swap whole.
+    A gap a deleted card left does not matter: the neighbours trade their
+    values."""
+    if direction not in ("gore", "dolje"):
+        return False
+    with session_scope() as s:
+        s.execute(sa_text("LOCK TABLE announcements IN SHARE ROW EXCLUSIVE MODE"))
+        rows = list(s.scalars(select(Announcement).order_by(Announcement.position)))
+        i = next((k for k, a in enumerate(rows) if a.id == ann_id), None)
+        if i is None:
+            return False
+        j = i - 1 if direction == "gore" else i + 1
+        if not 0 <= j < len(rows):
+            return False
+        rows[i].position, rows[j].position = rows[j].position, rows[i].position
+        rows[i].updated_by = user_id
+        return True
 
 
 def set_announcement_field(ann_id: int, field: str, text: str, user_id: int | None) -> str:

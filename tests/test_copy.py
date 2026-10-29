@@ -3,7 +3,8 @@ POST /copy/{key} (the save), _copy.html (the macros), the editor in base.html,
 the landing's announcements (rows since 18.10.2026: their fields edited
 through virtual keys on the same routes, "+ Dodaj najavu" and "Obriši
 najavu", the cap of eight, and the migration that made the two old sets of
-slots rows), their photos (POST /copy/{key}/slika, GET /slika/{name}), the
+slots rows; since 29.10.2026 their order, ↑ / ↓, and the migration that
+deferred its constraint), their photos (POST /copy/{key}/slika, GET /slika/{name}), the
 gym's cards (rows since 20.10.2026, the same way: virtual keys, "+ Dodaj
 karticu" and "Obriši karticu", the cap of eight, their migration), the
 reference prices (the price.<plan>.* and addon.* slots), the migration
@@ -34,9 +35,11 @@ they must), the editor's switch and photo pills, adding and deleting a card, the
 gym's cards added, hidden and deleted, the opening hours' rows removed, added
 and emptied, a text emptied and brought back with Zadano, and the install
 banner's week between asks.
-Beside the walk, on the same server: /clanarine's add form, whose script
-shows the tier select that fits the chosen plan (the online plan's QMove
-tiers are the landing cards' titles; the rest is in tests/test_clanarina.py).
+Beside the walk, on the same server: the editor's ↑ / ↓ with the gym
+owner's five announcements (29.10.2026), and /clanarine's add form, whose
+script shows the tier select that fits the chosen plan (the online plan's
+QMove tiers are the landing cards' titles; the rest is in
+tests/test_clanarina.py).
 """
 
 from __future__ import annotations
@@ -63,6 +66,7 @@ from alembic.operations import Operations
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import inspect as sa_inspect, text as sa_text
+from sqlalchemy.exc import IntegrityError
 
 from qmt import auth, config, copy, db, storage
 from qmt.models import PLAN_TYPES, Base, SiteCopy, User
@@ -434,7 +438,7 @@ def test_the_announcements_show_what_is_on_and_the_editor_keeps_what_is_off():
         assert 'is-off"' not in page
     page = client_for("trener@test.local").get("/").text                    # the editor has it, marked off
     assert second in page and 'data-flag-group' in page and 'class="evs swipe-row single"' in page
-    assert f'<article class="card event is-off" data-flag="aktualno.{two}.show" data-image="aktualno.{two}.image">' in page
+    assert f'<article class="card event is-off" data-flag="aktualno.{two}.show" data-image="aktualno.{two}.image" id="najava-{two}">' in page
 
     db.set_announcement_shown(one, False)                                   # both off: not even their box
     page = TestClient(app).get("/").text
@@ -483,6 +487,162 @@ def test_two_quick_adds_never_pass_the_cap():
     for th in threads: th.join()
     assert sorted(landed) == [False] * 4 + [True] * 2
     assert [a.position for a in db.announcements(all=True)] == list(range(1, 9))
+
+
+# ---------- the announcements' order: ↑ / ↓ (29.10.2026) ----------
+#
+# The owner: "Lets make it so that Amir can change the order of these
+# announcement pages as well as edit them and create/remove them." They
+# showed in creation order; each card's ↑ / ↓ in edit mode swap it with its
+# neighbour (db.move_announcement, POST /aktualno/{id}/pomak).
+
+FIVE = ("QMOVE 2 X 60", "ŽENE 40+", "MUŠKARCI 40+", "POSTPARTUM", "SKI READY")   # the gym owner's five, as on prod
+
+
+def five() -> list[int]:
+    """Five cards titled as the gym owner's are, in that order: their ids."""
+    ids = []
+    for title in FIVE:
+        a = db.add_announcement(None)
+        db.set_announcement_field(a.id, "title", title, None)
+        ids.append(a.id)
+    return ids
+
+
+def titles(all: bool = True) -> list[str]:
+    """The cards' titles in the order the landing shows them (every card's, or the shown ones')."""
+    return [a.title for a in db.announcements(all=all)]
+
+
+def test_an_announcement_moves_one_place_up_or_down():
+    """db.move_announcement swaps a card with its neighbour in the editor's
+    order, every card's, the hidden too: "gore" the one before it, "dolje"
+    the one after. The two positions trade (a gap a deleted card left does
+    not matter: the neighbours trade their values) and the moved card
+    records who moved it. At either end, for a card that is not there and
+    for a direction that is neither, nothing moves (False). The landing
+    follows, a visitor's shown cards and the editor's every one, numbered
+    by their new places."""
+    make_user("ivan@test.local"); uid = make_user("trener@test.local", is_trainer=True)
+    q, z, m, p, s = five()
+    assert db.move_announcement(m, "gore", uid) is True                     # MUŠKARCI 40+ before ŽENE 40+
+    assert titles() == ["QMOVE 2 X 60", "MUŠKARCI 40+", "ŽENE 40+", "POSTPARTUM", "SKI READY"]
+    assert db.announcement(m).updated_by == uid and db.announcement(z).updated_by is None   # the moved one's
+    assert db.move_announcement(m, "dolje", uid) is True                    # and back
+    assert titles() == list(FIVE)
+    db.set_announcement_shown(p, False)                                     # a hidden card keeps its place
+    assert db.move_announcement(s, "gore", uid) is True                     # SKI READY passes the hidden POSTPARTUM
+    assert titles() == ["QMOVE 2 X 60", "ŽENE 40+", "MUŠKARCI 40+", "SKI READY", "POSTPARTUM"]
+    assert titles(all=False) == ["QMOVE 2 X 60", "ŽENE 40+", "MUŠKARCI 40+", "SKI READY"]
+    for ann_id, way in ((q, "gore"), (p, "dolje"), (99999, "gore"), (z, "lijevo"), (z, ""), (z, "GORE")):
+        assert db.move_announcement(ann_id, way, uid) is False, (ann_id, way)
+    assert titles() == ["QMOVE 2 X 60", "ŽENE 40+", "MUŠKARCI 40+", "SKI READY", "POSTPARTUM"]
+    assert [a.position for a in db.announcements(all=True)] == [1, 2, 3, 4, 5]
+
+    db.delete_announcement(z)                                               # a gap: 1, 3, 4, 5
+    assert db.move_announcement(m, "gore", uid) is True                     # across it: the two trade 1 and 3
+    assert [(a.title, a.position) for a in db.announcements(all=True)] == [
+        ("MUŠKARCI 40+", 1), ("QMOVE 2 X 60", 3), ("SKI READY", 4), ("POSTPARTUM", 5)]
+
+    for c in (TestClient(app), client_for("ivan@test.local")):              # a visitor's landing: the shown ones,
+        page = c.get("/").text                                              # in the new order
+        at = [page.index(t) for t in ("MUŠKARCI 40+", "QMOVE 2 X 60", "SKI READY")]
+        assert at == sorted(at) and "POSTPARTUM" not in page
+    page = client_for("trener@test.local").get("/").text                    # the editor's: every one, numbered anew
+    for n, ann_id in enumerate((m, q, s, p), start=1):
+        assert f'data-copy="aktualno.{ann_id}.title" data-max="2000" data-label="Najava {n}: naslov">' in page, n
+        assert f'aria-label="Najava {n}: jedno mjesto gore"' in page.split(f'id="najava-{ann_id}">')[1].split("</article>")[0]
+
+
+def test_only_the_editor_moves_a_card_and_it_comes_back_to_it():
+    """POST /aktualno/{id}/pomak (smjer gore or dolje): a guest is sent to
+    log in and a client gets 403, nothing moved. The trainer's move comes
+    back 303 to /#najava-<id>, the editor's card; so does a move at either
+    end, of a card that is not there or with no direction (or one that is
+    neither), nothing moved."""
+    make_user("ivan@test.local"); uid = make_user("trener@test.local", is_trainer=True)
+    q, z, m, p, s = five()
+    path = f"/aktualno/{z}/pomak"
+    r = TestClient(app).post(path, data={"smjer": "gore"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+    assert client_for("ivan@test.local").post(path, data={"smjer": "gore"}, follow_redirects=False).status_code == 403
+    assert titles() == list(FIVE)
+
+    t = client_for("trener@test.local")
+    r = t.post(path, data={"smjer": "gore"}, follow_redirects=False)        # ŽENE 40+ first
+    assert r.status_code == 303 and r.headers["location"] == f"/#najava-{z}"
+    assert titles() == ["ŽENE 40+", "QMOVE 2 X 60", "MUŠKARCI 40+", "POSTPARTUM", "SKI READY"]
+    assert db.announcement(z).updated_by == uid
+    r = t.post(f"/aktualno/{q}/pomak", data={"smjer": "dolje"}, follow_redirects=False)   # QMOVE one down
+    assert r.status_code == 303 and r.headers["location"] == f"/#najava-{q}"
+    assert titles() == ["ŽENE 40+", "MUŠKARCI 40+", "QMOVE 2 X 60", "POSTPARTUM", "SKI READY"]
+    for ann_id, data in ((z, {"smjer": "gore"}), (s, {"smjer": "dolje"}), (99999, {"smjer": "gore"}),
+                         (m, {"smjer": "lijevo"}), (m, {})):
+        r = t.post(f"/aktualno/{ann_id}/pomak", data=data, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == f"/#najava-{ann_id}", (ann_id, data)
+    assert titles() == ["ŽENE 40+", "MUŠKARCI 40+", "QMOVE 2 X 60", "POSTPARTUM", "SKI READY"]
+
+
+# one card's ↑ / ↓, as the editor's landing prints them: its id, the
+# card's number in each label, and whether each arrow is disabled
+MOVES = re.compile(r'<form method="post" action="/aktualno/(\d+)/pomak" class="ed-ann-mv">'
+                   r'<button type="submit" class="ed-mv" name="smjer" value="gore" '
+                   r'aria-label="Najava (\d): jedno mjesto gore"( disabled)?>↑</button>\s*'
+                   r'<button type="submit" class="ed-mv" name="smjer" value="dolje" '
+                   r'aria-label="Najava (\d): jedno mjesto dolje"( disabled)?>↓</button></form>')
+
+
+def test_the_editor_gets_the_arrows_on_every_card_and_a_visitor_nothing():
+    """The editor's landing: every card, a hidden one too, carries its
+    ↑ / ↓, one form each, between the photo's pills and "Obriši najavu";
+    each arrow is named by its card's place ("Najava 2: jedno mjesto
+    gore"); the first card's ↑ and the last one's ↓ are disabled; each card
+    is its article, id najava-<id>, where a move comes back. A visitor's
+    landing (a guest's, a client's) carries none of it: no pomak, no
+    ed-ann-mv, no ed-mv and no id="najava-" in its body, and its articles
+    are as they were."""
+    make_user("ivan@test.local"); make_user("trener@test.local", is_trainer=True)
+    ids = five()
+    db.set_announcement_shown(ids[2], False)
+    page = client_for("trener@test.local").get("/").text
+    forms = MOVES.findall(page)
+    assert [int(f[0]) for f in forms] == ids
+    assert [(f[1], f[3]) for f in forms] == [(str(n), str(n)) for n in range(1, 6)]
+    assert [(bool(f[2]), bool(f[4])) for f in forms] == [(True, False)] + [(False, False)] * 3 + [(False, True)]
+    for ann_id in ids:
+        card = page.split(f'id="najava-{ann_id}">')[1].split("</article>")[0]
+        assert card.index('class="ed-img"') < card.index('class="ed-ann-mv"') < card.index('class="ed-ann-x"'), ann_id
+    assert page.count('id="najava-') == 5
+    for c in (TestClient(app), client_for("ivan@test.local")):
+        page = c.get("/").text
+        body = page[page.index("<body"):]
+        for mark in ("pomak", "ed-ann-mv", "ed-mv", 'id="najava-'):
+            assert mark not in body, mark
+        assert body.count('<article class="card event">') == 4 == body.count("<article")
+
+
+def test_moves_at_once_keep_every_card_in_one_place():
+    """Taps at the same moment (two editors, or a finger that does not
+    wait): each move reads the order and swaps under the table lock, so no
+    two interleave. Whatever order they leave, every card holds one place
+    and no place two (the deferred constraint refuses a commit otherwise),
+    and none of them fails."""
+    ids = five()
+    done, failed = [], []
+
+    def move(ann_id: int, way: str) -> None:
+        try:
+            done.append(db.move_announcement(ann_id, way))
+        except Exception as e:                      # a deadlock, or two cards in one place
+            failed.append(repr(e))
+
+    threads = ([threading.Thread(target=move, args=(ids[1], "dolje")) for _ in range(4)]
+               + [threading.Thread(target=move, args=(ids[3], "gore")) for _ in range(4)])
+    for th in threads: th.start()
+    for th in threads: th.join()
+    assert failed == [] and len(done) == 8
+    cards = db.announcements(all=True)
+    assert sorted(a.id for a in cards) == sorted(ids) and [a.position for a in cards] == [1, 2, 3, 4, 5]
 
 
 # ---------- the announcements' photos ----------
@@ -561,8 +721,8 @@ def test_a_photo_is_stored_upright_small_and_bare_and_its_card_shows_it_to_every
         for mark in ("data-image", 'class="ed-img"', 'class="ed-img-x"', 'id="edImgFile"'):
             assert mark not in page, mark
     page = t.get("/").text                                                  # the editor: both cards take a photo
-    assert f'<article class="card event has-img" data-photo data-flag="aktualno.{one}.show" data-image="aktualno.{one}.image">' in page
-    assert f'<article class="card event" data-flag="aktualno.{two}.show" data-image="aktualno.{two}.image">' in page
+    assert f'<article class="card event has-img" data-photo data-flag="aktualno.{one}.show" data-image="aktualno.{one}.image" id="najava-{one}">' in page
+    assert f'<article class="card event" data-flag="aktualno.{two}.show" data-image="aktualno.{two}.image" id="najava-{two}">' in page
     assert re.search(rf'<button type="button" class="ed-img" data-copy="aktualno\.{one}\.image" data-label="Najava 1: slika">'
                      r'Promijeni sliku</button>\s*<button type="button" class="ed-img-x" aria-label="Ukloni sliku" '
                      rf'data-copy="aktualno\.{one}\.image">Ukloni sliku</button>', page)
@@ -721,6 +881,40 @@ def test_the_migration_turns_the_two_announcement_slots_into_rows():
     assert db.copy_texts() == {"hero.kicker": "Ostaje kakav jest.", "event1.title": "Treninzi za umirovljenike",
                                "event1.show": "off", "event1.image": "aktualno-1-0123456789abcdef.jpg",
                                "event2.cta": "Prijavi se"}
+
+
+def test_the_migration_defers_the_position_constraint_and_back():
+    """b18ebed39701, run for real on qmt_test as a database from before it
+    is: there uq_announcements_position is immediate, and a swap of two
+    cards is refused at its first UPDATE (two cards in one place for a
+    moment), nothing moved. After it the constraint is DEFERRABLE
+    INITIALLY DEFERRED (pg_constraint) and the swap commits; no row
+    changes. Downgrade makes it immediate again, the rows as they are."""
+    mig = _migration("b18ebed39701_announcements_position_deferred.py")
+    assert (mig.revision, mig.down_revision) == ("b18ebed39701", "5c1e7a9d2b48")
+    _, z, *_ = five()
+
+    def deferred() -> tuple[bool, bool]:
+        with db.engine.connect() as conn:
+            return tuple(conn.execute(sa_text("SELECT condeferrable, condeferred FROM pg_constraint "
+                                              "WHERE conname = 'uq_announcements_position'")).one())
+
+    with db.engine.begin() as conn:                                         # the constraint as before the revision
+        conn.execute(sa_text("ALTER TABLE announcements DROP CONSTRAINT uq_announcements_position"))
+        conn.execute(sa_text("ALTER TABLE announcements ADD CONSTRAINT uq_announcements_position UNIQUE (position)"))
+    assert deferred() == (False, False)
+    with pytest.raises(IntegrityError):
+        db.move_announcement(z, "gore")
+    assert titles() == list(FIVE)
+    with db.engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        mig.upgrade()
+    assert deferred() == (True, True)
+    assert titles() == list(FIVE) and [a.position for a in db.announcements(all=True)] == [1, 2, 3, 4, 5]
+    assert db.move_announcement(z, "gore") is True and titles()[:2] == ["ŽENE 40+", "QMOVE 2 X 60"]
+    with db.engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        mig.downgrade()
+    assert deferred() == (False, False)
+    assert titles() == ["ŽENE 40+", "QMOVE 2 X 60", "MUŠKARCI 40+", "POSTPARTUM", "SKI READY"]
 
 
 # ---------- the gym's cards: rows, edited through virtual keys ----------
@@ -1955,10 +2149,11 @@ PHOTO = r"""() => {
   return out;
 }"""
 
-# The announcements in edit mode (add_drop, with three cards): one under the
-# other, the page and the hero no wider than the screen, nothing in the row
-# or in "+ Dodaj najavu" wider than its box, and nothing in a card (its
-# texts, its link, its pills) outside it. Scoped to them: MEASURE in edit
+# The announcements in edit mode (add_drop, with three cards; the ↑ / ↓
+# walk, with five): one under the other, the page and the hero no wider
+# than the screen, nothing in the row or in "+ Dodaj najavu" wider than its
+# box, and nothing in a card (its texts, its link, its pills, ↑ / ↓ among
+# them) outside it. Scoped to them: MEASURE in edit
 # mode would also count the lists' ✕, which hangs 6px past its item on
 # purpose (base.html, .ed-x).
 EDIT_ROW = r"""() => {
@@ -1974,7 +2169,7 @@ EDIT_ROW = r"""() => {
       out.push(`${el.tagName.toLowerCase()}.${el.className} overflows its box by ${el.scrollWidth - el.clientWidth}px`);
   }
   for (const card of cards) { const c = box(card);
-    for (const el of card.querySelectorAll('span.t, .tag, .act, .ed-flag, .ed-img, .ed-img-x, .ed-ann-x > button')) {
+    for (const el of card.querySelectorAll('span.t, .tag, .act, .ed-flag, .ed-img, .ed-img-x, .ed-ann-x > button, .ed-mv')) {
       if (!vis(el)) continue; const b = box(el);
       if (b.left < c.left - 1 || b.right > c.right + 1 || b.top < c.top - 1 || b.bottom > c.bottom + 1)
         out.push(`"${el.textContent.trim().slice(0, 12)}…" leaves its card`);
@@ -2911,6 +3106,117 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         problems += walk(pw, "trener@test.local", (360, 1280), "one-word", strict=False, hours=(360,))
     print("\n".join(problems))
     assert not problems, f"{len(problems)} layout problems, listed above"
+
+
+# Each card's ↑ / ↓ in edit mode (the ↑ / ↓ walk): side by side on one
+# line, 32px at least, the first card's ↑ and the last one's ↓ disabled,
+# and above a photo's gradient: a press at an arrow's middle reaches it
+# (each brought into view first, where elementFromPoint looks: at once,
+# not by base.html's smooth scroll). "Obriši najavu" the same (drop): on a
+# photo card it sat under the gradient until 29.10.2026, out of reach.
+ARROWS = r"""() => [...document.querySelectorAll('#aktualno .event')].map(card => {
+  const [up, down] = card.querySelectorAll('.ed-ann-mv > .ed-mv'), [u, d] = [up, down].map(b => b.getBoundingClientRect());
+  const reach = b => { b.scrollIntoView({block: 'center', behavior: 'instant'}); const r = b.getBoundingClientRect();
+    return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b; };
+  return {id: card.id, line: Math.abs(u.top - d.top) < 0.5 && d.left >= u.right,
+          big: [u.width, u.height, d.width, d.height].every(x => x >= 32), disabled: [up.disabled, down.disabled],
+          reach: reach(up) && reach(down), drop: reach(card.querySelector('.ed-ann-x > button')),
+          photo: card.classList.contains('has-img')};
+})"""
+MOVED = r"""() => ({editing: document.body.classList.contains('editing'), hash: location.hash,
+  order: [...document.querySelectorAll('#aktualno .event')].map(c => c.id), once: sessionStorage.getItem('qmt-editing-once'),
+  top: document.getElementById(location.hash.slice(1)).getBoundingClientRect().top,
+  pill: document.querySelector('.topbar').getBoundingClientRect().bottom, half: innerHeight / 2})"""
+
+
+def test_the_editor_moves_a_card_in_a_browser(server):
+    """The editor's ↑ / ↓ in a browser (29.10.2026), with the gym owner's
+    five cards, the third over a photo, at 360, 390 (touch) and 1280px.
+    Outside edit mode they take no room. In edit mode each card's two
+    arrows sit side by side on one line, 32px at least, the first card's ↑
+    and the last one's ↓ disabled, the photo card's above its gradient
+    (a press reaches them), and nothing overflows: the page, the hero, the
+    row, every pill inside its card (EDIT_ROW). ↓ on the first card brings
+    the page back in edit mode (the one-shot flag) at /#najava-<id>, the
+    two cards swapped, the moved card in view under the floating pill; ↑
+    puts it back. At 390px the photo card moves up and back the same way.
+    No page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright
+    make_user("trener@test.local", is_trainer=True)
+    ids = five()
+    config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)                    # the third over a photo (this
+    name = f"aktualno-{ids[2]}-0123456789abcdef.jpg"                         # test's own MEDIA_DIR)
+    Image.new("RGB", (1600, 900), (70, 92, 112)).save(config.MEDIA_DIR / name, "JPEG", quality=82)
+    db.set_announcement_image(ids[2], name)
+    order = lambda: [a.id for a in db.announcements(all=True)]
+    problems: list[str] = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        for w in (360, 390, 1280):
+            phone = w < 600
+            ctx = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
+            pg = ctx.new_page(); errs: list[str] = []
+            pg.on("pageerror", lambda e: errs.append(f"page error: {e}"))
+            pg.on("console", lambda m: errs.append(f"console: {m.text}") if m.type == "error" else None)
+            where = f"[↑ / ↓ {w}px]"
+
+            def check(ok: bool, what: str) -> None:
+                if not ok:
+                    problems.append(f"{where} {what}")
+
+            def press(card: int, way: str) -> dict:
+                """An arrow pressed (a finger on a phone, the mouse on a
+                desktop) and the page that comes back, at the card."""
+                try:
+                    with pg.expect_navigation(timeout=10000):
+                        arrow = pg.locator(f"#najava-{card} .ed-mv[value={way}]")
+                        arrow.tap(timeout=5000) if phone else arrow.click(timeout=5000)
+                except PlaywrightTimeout:
+                    problems.append(f"{where} {way} on card {card}: the press did not reach it, or no page came back")
+                    return {}
+                pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(150)   # the fragment's scroll lands
+                state = pg.evaluate(MOVED)
+                check(state["editing"] and state["once"] is None, f"after {way} the page is not in edit mode: {state}")
+                check(state["hash"] == f"#najava-{card}", f"after {way} the address is {pg.url}")
+                check(state["pill"] <= state["top"] < state["half"], f"after {way} the card is not in view under the pill: {state}")
+                problems.extend(f"{where} after {way}: {p}" for p in pg.evaluate(EDIT_ROW))
+                return state
+
+            pg.goto(server + "/login"); pg.fill("main input[name=email]", "trener@test.local")
+            pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
+            pg.wait_for_load_state("networkidle")
+            pg.goto(server + "/"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+            hidden = "[...document.querySelectorAll('.ed-ann-mv')].every(f => getComputedStyle(f).display === 'none')"
+            check(pg.evaluate(hidden), "the arrows show outside edit mode")
+            pg.click("#copyToggle")
+            problems += [f"{where} {p}" for p in pg.evaluate(EDIT_ROW)]
+            seen = pg.evaluate(ARROWS)
+            check([c["id"] for c in seen] == [f"najava-{i}" for i in ids], f"the cards: {[c['id'] for c in seen]}")
+            check([c["photo"] for c in seen] == [False, False, True, False, False], "the third card is not over its photo")
+            for n, c in enumerate(seen):
+                check(c["line"] and c["big"] and c["reach"], f"card {n + 1}'s arrows: {c}")
+                check(c["drop"], f"card {n + 1}'s Obriši najavu is out of reach: {c}")
+                check(c["disabled"] == [n == 0, n == len(seen) - 1], f"card {n + 1}'s arrows disabled: {c['disabled']}")
+
+            state = press(ids[0], "dolje")                                  # ↓ on the first card
+            check(state.get("order", [])[:2] == [f"najava-{ids[1]}", f"najava-{ids[0]}"], f"after ↓ the page: {state}")
+            check(order() == [ids[1], ids[0], *ids[2:]], f"after ↓ the rows: {order()}")
+            press(ids[0], "gore")                                           # and back
+            check(order() == ids, f"after ↑ the rows: {order()}")
+            if w == 390:                                                    # the photo card's, a finger's press
+                state = press(ids[2], "gore")
+                check(order() == [ids[0], ids[2], ids[1], *ids[3:]] and state.get("order", [None])[1] == f"najava-{ids[2]}",
+                      f"after ↑ on the photo card: {order()}")
+                press(ids[2], "dolje")
+                check(order() == ids, f"after ↓ on the photo card: {order()}")
+            pg.click("#copyToggle")                                         # Gotovo: no room for them again
+            check(pg.evaluate(hidden), "the arrows show after Gotovo")
+            problems += [f"{where} {e}" for e in errs]
+            ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
 
 
 def test_the_clanarine_add_form_shows_the_select_that_fits_the_plan(server):

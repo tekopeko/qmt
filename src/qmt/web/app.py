@@ -789,7 +789,7 @@ def landing(request: Request):
         gym_cards=gym, can_add_gym=editor and len(gym) < db.MAX_GYM_CARDS, plan_labels=PLAN_LABELS))
 
 
-# ---------- the announcements: add and delete (their fields: POST /copy/{key}) ----------
+# ---------- the announcements: add, delete and move (their fields: POST /copy/{key}) ----------
 
 @app.post("/aktualno/nova")
 def aktualno_nova(request: Request):
@@ -817,6 +817,22 @@ def aktualno_obrisi(request: Request, ann_id: int):
     if image:
         storage.delete(image)
     return RedirectResponse("/#aktualno", status_code=303)
+
+
+@app.post("/aktualno/{ann_id}/pomak")
+def aktualno_pomak(request: Request, ann_id: int, smjer: str = Form("")):
+    """The editor's ↑ / ↓ (edit mode, a plain form, 29.10.2026): the card
+    trades places with the one before it (smjer=gore) or after it (dolje),
+    in the order of every card, the hidden too. Back to it on the landing
+    (#najava-<id>, the editor's article; the page comes back in edit mode,
+    the one-shot flag base.html sets). At either end, for a card gone or a
+    direction that is neither, nothing moves and it comes back the same
+    way."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    db.move_announcement(ann_id, smjer, user.id)
+    return RedirectResponse(f"/#najava-{ann_id}", status_code=303)
 
 
 # ---------- the gym's cards: add and delete (their fields: POST /copy/{key}) ----------
