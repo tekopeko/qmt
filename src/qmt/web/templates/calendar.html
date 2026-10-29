@@ -39,7 +39,10 @@
   .sess .cap { font-size: .76rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .sess.mine { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-dim); }
   .sess.full:not(.mine) .cap { color: var(--danger); font-weight: 700; }
-  .sess.past, .sess.canceled { opacity: .45; }
+  /* a closed termin (empty, CLOSE_EMPTY_HOURS or less to go: db.is_closed)
+     dims as a past one does, never crossed out: a line through means the
+     trainer canceled it */
+  .sess.past, .sess.canceled, .sess.closed { opacity: .45; }
   .sess.canceled .name { text-decoration: line-through; }
   .tag-11 { font-size: .72rem; font-weight: 800; letter-spacing: .05em;
             background: var(--accent-dim); color: var(--accent-tint-ink); border-radius: 6px;
@@ -183,7 +186,7 @@
     .sess-row .rs .need { white-space: normal; text-align: right; max-width: 6.2em; line-height: 1.2; }
     .sess-row .chev { font-size: 1.15rem; line-height: 1; color: var(--muted); }
     .week.one-day .sess-row.mine { box-shadow: inset 3px 0 0 var(--accent); }   /* .sess.mine's bar */
-    .sess-row.past, .sess-row.canceled { opacity: .45; }
+    .sess-row.past, .sess-row.canceled, .sess-row.closed { opacity: .45; }
     .sess-row.canceled .rn { text-decoration: line-through; }
 
     /* "Moje rezervacije" in the same row style: the day as a kicker line,
@@ -220,6 +223,16 @@
   .sheet .sheet-series input { flex: none; width: 20px; height: 20px; margin: 0; padding: 0;
                                accent-color: var(--accent-fill); }
   @media (pointer: coarse) { .sheet .fb-x button { min-width: 36px; min-height: 36px; } }
+
+  /* ===== #seriesDlg (29.10.2026): a weekly series that left dates out
+     says which and why, the owner's "popup warning … so that the client
+     know not all slots were actually booked". The .fb-modal idiom, opened
+     at load (showModal); the dates not booked one per line in --text, the
+     rest the muted lead. Without the script it is an open <dialog>: a card
+     in the page's flow under the alert, not one laid over the week. ===== */
+  .series-dlg .sd-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px;
+                         font-size: .92rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .series-dlg:not(:modal) { position: static; margin: 0 0 18px; }
   @media (max-width: 860px) {
     .fb-modal.sheet { margin: auto 0 0; width: 100%; max-width: none; border-width: 1px 0 0;
                       border-radius: var(--r-lg) var(--r-lg) 0 0; padding-bottom: env(safe-area-inset-bottom); }
@@ -326,6 +339,34 @@
 </div>
 {% endmacro %}
 
+{% if series_report %}
+{# a weekly series that left dates out (the redirect's booked= / skipped= /
+   paket=, app._series_report): which and why, the reasons in words here #}
+{% set why = {"popunjen": "termin je popunjen", "otkazan": "termin je otkazan",
+              "rezervirano": "već imaš rezervaciju", "zatvoren": "termin je zatvoren",
+              "prosao": "termin je već prošao", "prozor": "termin je predaleko unaprijed",
+              "razdoblje": "članarina tada ne vrijedi"} %}
+<dialog id="seriesDlg" class="fb-modal series-dlg" aria-labelledby="seriesDlgTitle" open>
+  <div class="fb-box">
+    <h2 id="seriesDlgTitle">Nisu rezervirani svi termini</h2>
+    <p class="fb-lead">Rezervirano: {% for d in series_report.booked %}{{ d.strftime("%-d.%-m.") }}{% if not loop.last %}, {% endif %}{% else %}ništa{% endfor %}</p>
+    {% if series_report.skipped %}
+    <p class="fb-lead">Nije rezervirano:</p>
+    <ul class="sd-list">
+      {% for d, key in series_report.skipped %}<li>{{ d.strftime("%-d.%-m.") }} — {{ why[key] }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if series_report.quota %}
+    <p class="fb-lead">Paket od {{ series_report.quota }} treninga je popunjen, ostatak nije rezerviran.</p>
+    {% endif %}
+    <div class="fb-actions">
+      <form method="dialog"><button type="submit" class="btn btn-sm" autofocus>U redu</button></form>
+    </div>
+  </div>
+</dialog>
+{% endif %}
+
 <div class="week-head">
   <div>
     <h1>Raspored</h1>
@@ -335,7 +376,8 @@
   <div class="week-nav">
     <a class="btn btn-ghost btn-sm" href="/raspored?week={{ prev_week }}">← prošli tjedan</a>
     <a class="btn btn-ghost btn-sm" href="/raspored">danas</a>
-    <a class="btn btn-ghost btn-sm" href="/raspored?week={{ next_week }}">idući tjedan →</a>
+    {# none past the booking window's last week for a client #}
+    {% if next_week %}<a class="btn btn-ghost btn-sm" href="/raspored?week={{ next_week }}">idući tjedan →</a>{% endif %}
   </div>
   {% if not user.is_trainer %}{{ view_switch("week") }}{% endif %}
   {% endif %}
@@ -406,26 +448,30 @@
   {% endfor %}
 </nav>
 {% endif %}
-{% if week_empty %}
+{% if beyond_window %}
+  {# a client past the booking window (a month's day, a typed ?week=): nothing to book yet #}
+  <p class="hint" style="padding: 30px 0 10px;">Termini se objavljuju {{ weeks_ahead }} unaprijed.</p>
+{% elif week_empty %}
   <p class="hint" style="padding: 30px 0 10px;">Ovaj tjedan nema termina.
   {% if user.is_trainer %}<a class="act act-quiet" href="/admin">Dodaj ih u rasporedu →</a>{% endif %}</p>
 {% endif %}
 <div class="week{% if week_empty %} all-empty{% endif %}" data-selected="{{ selected_day.isoformat() }}"
-     data-week="{{ monday.isoformat() }}" data-prev="{{ prev_week }}" data-next="{{ next_week }}">
+     data-week="{{ monday.isoformat() }}" data-prev="{{ prev_week }}" data-next="{{ next_week or '' }}">
   {% for day in days %}
   <div class="day-col {% if day.is_today %}today{% endif %} {% if not day.sessions %}empty-day{% endif %}" data-day="{{ day.date.isoformat() }}">
     <div class="day-head"><span class="long">{{ day.name }}</span><span class="short">{{ weekdays_short[day.date.weekday()] }}</span><span class="num">{{ day.date.strftime("%-d.%-m.") }}</span></div>
     {% for s in day.sessions %}
       <div class="sess {% if s.mine %}mine{% endif %} {% if s.full %}full{% endif %}
-                  {% if s.past %}past{% endif %} {% if s.canceled %}canceled{% endif %}">
+                  {% if s.past %}past{% endif %} {% if s.canceled %}canceled{% endif %} {% if s.closed %}closed{% endif %}">
         <div class="t">{{ s.time }}–{{ s.end }}</div>
         <div class="name">{{ s.title }}{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
         {# capacity line: for the trainer the Polaznici button already carries it,
-           so only the canceled/1:1 states show here; clients still need "X/8 mjesta" #}
-        {% set show_cap = s.canceled or not user.is_trainer %}
+           so only the canceled/closed states show here; clients still need "X/8 mjesta" #}
+        {% set show_cap = s.canceled or s.closed or not user.is_trainer %}
         {% if show_cap %}
         <div class="cap">
           {% if s.canceled %}otkazano
+          {% elif s.closed %}zatvoreno
           {% elif s.one_on_one %}{{ "rezervirano ✓" if s.mine else ("slobodno" if not s.full else "zauzeto") }}
           {# free spots: green count, same convention as the trainer's Polaznici
              button; when full the .sess.full rule paints the whole line red #}
@@ -450,8 +496,10 @@
                     aria-label="Otkaži {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">Otkaži</button>
           </form>
           {% else %}<div class="cap">rezervirano ✓</div>{% endif %}
+        {% elif s.closed %}{# the cap says it: nothing to book #}
         {% elif not s.allowed %}
           <div class="cap" title="Za ovaj tip termina treba aktivna članarina — javi se treneru.">potrebna članarina</div>
+        {% elif s.after_period %}{# after his plan's dospijeće: the line under the week says until when #}
         {% elif not s.full %}
           <form method="post" action="/book/{{ s.id }}">
             <input type="hidden" name="week" value="{{ monday.isoformat() }}">
@@ -463,16 +511,16 @@
       </div>
       {# the same termin as a phone's row (shown only in the one-day view) #}
       {% if user.is_trainer %}
-      <a class="sess-row{% if s.past %} past{% endif %}{% if s.canceled %} canceled{% endif %}" href="/admin/session/{{ s.id }}">
+      <a class="sess-row{% if s.past %} past{% endif %}{% if s.canceled %} canceled{% endif %}{% if s.closed %} closed{% endif %}" href="/admin/session/{{ s.id }}">
         <span class="rt">{{ s.time }}–{{ s.end }}</span>
         <span class="rn">{{ s.title }}</span>{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}
-        <span class="rs">{% if s.canceled %}<span class="no">otkazano</span>{% else %}<span>Polaznici <b class="{{ 'no' if s.full else 'ok' }}">{{ s.booked }}</b>/{{ s.capacity }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></span>
+        <span class="rs">{% if s.canceled %}<span class="no">otkazano</span>{% elif s.closed %}<span>zatvoreno</span>{% else %}<span>Polaznici <b class="{{ 'no' if s.full else 'ok' }}">{{ s.booked }}</b>/{{ s.capacity }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></span>
       </a>
       {% else %}
-      {# what a tap does: book (free, allowed), mine (cancel while allowed), mine-late (say until when); nothing otherwise #}
+      {# what a tap does: book (free, allowed, open, inside the paid period), mine (cancel while allowed), mine-late (say until when); nothing otherwise #}
       {%- if s.canceled or s.past %}{% set act = "" %}
       {%- elif s.mine %}{% set act = "mine" if s.can_cancel else "mine-late" %}
-      {%- elif s.allowed and not s.full %}{% set act = "book" %}
+      {%- elif s.allowed and not s.full and not s.closed and not s.after_period %}{% set act = "book" %}
       {%- else %}{% set act = "" %}{% endif %}
       {%- set when = weekdays_short[day.date.weekday()] ~ " " ~ day.date.strftime("%-d.%-m.") %}
       {% if act %}
@@ -480,15 +528,17 @@
               aria-label="{{ s.title }}, {{ when }} u {{ s.time }}–{{ s.end }}: {{ 'slobodno' if act == 'book' else 'rezervirano' }}"
               data-id="{{ s.id }}" data-title="{{ s.title }}" data-date="{{ day.date.isoformat() }}" data-day="{{ when }}"
               data-time="{{ s.time }}" data-end="{{ s.end }}" data-booked="{{ s.booked }}" data-capacity="{{ s.capacity }}"
-              data-state="{{ act }}" data-weekly="{{ '1' if s.weekly else '0' }}" data-oneonone="{{ '1' if s.one_on_one else '0' }}">
+              data-state="{{ act }}" data-weekly="{{ '1' if s.weekly else '0' }}" data-oneonone="{{ '1' if s.one_on_one else '0' }}"
+              {%- if s.repeat_until %} data-until="{{ s.repeat_until.strftime('%-d.%-m.') }}"{% endif %}>
       {% else %}
-      <div class="sess-row{% if s.mine %} mine{% endif %}{% if s.past %} past{% endif %}{% if s.canceled %} canceled{% endif %}">
+      <div class="sess-row{% if s.mine %} mine{% endif %}{% if s.past %} past{% endif %}{% if s.canceled %} canceled{% endif %}{% if s.closed %} closed{% endif %}">
       {% endif %}
         <span class="rt">{{ s.time }}–{{ s.end }}</span>
         <span class="rn">{{ s.title }}</span>{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}
         <span class="rs">
           {%- if s.canceled %}<span class="no">otkazano</span>
           {%- elif s.mine %}<span class="ok">rezervirano ✓</span>
+          {%- elif s.closed %}<span>zatvoreno</span>
           {%- elif not s.past and not s.allowed %}<span class="need">potrebna članarina</span>
           {%- elif s.one_on_one %}{% if s.full %}<span class="no">zauzeto</span>{% else %}<span>slobodno</span>{% endif %}
           {%- elif s.full %}<span class="no">puno</span>
@@ -508,6 +558,11 @@
 {# the moment they most want to know what a plan costs — so say it here;
    how to join is on that page #}
 <p class="hint gate-line">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća. <a class="btn btn-sm" href="/moja-clanarina">Pogledaj cjenik →</a></p>
+{% endif %}
+{% if period_until %}
+{# the week's termini after a running plan's dospijeće offer nothing: said
+   once, the no-plan gate's line, with the way to renew #}
+<p class="hint gate-line">Članarina vrijedi do {{ period_until.strftime("%-d.%-m.") }} — za kasnije termine produlji članarinu. <a class="btn btn-sm" href="/moja-clanarina">Moja članarina →</a></p>
 {% endif %}
 
 {% if mine_days and not user.is_trainer %}
@@ -545,7 +600,7 @@
     <form id="sheetBook" method="post" hidden>
       <input type="hidden" name="week" value="{{ monday.isoformat() }}">
       <input type="hidden" name="day" value="{{ selected_day.isoformat() }}">
-      <label class="sheet-series" id="sheetSeries"><input type="checkbox" name="series" value="1"> Isti termin svaki tjedan do kraja plaćenog razdoblja</label>
+      <label class="sheet-series" id="sheetSeries"><input type="checkbox" name="series" value="1"> <span>Isti termin svaki tjedan do <span id="sheetUntil"></span></span></label>
       <div class="fb-actions">
         <button type="button" class="btn-ghost btn-sm" data-sheet-close>Odustani</button>
         <button type="submit" class="btn btn-sm" autofocus>Rezerviraj</button>
@@ -607,7 +662,9 @@
       i += n;
       if (i >= 0 && i < btns.length) { show(btns[i].getAttribute("data-day"), true); return; }
       // over the week's edge: the idući / prošli tjedan link, on the day next to this one
+      // (none past the booking window's last week for a client)
       var to = week.getAttribute(n > 0 ? "data-next" : "data-prev");
+      if (!to) return;
       location.href = location.pathname + "?week=" + to + "&day=" + (n > 0 ? to : shift(to, 6));
     }
     for (var b = 0; b < btns.length; b++) {
@@ -651,7 +708,9 @@
       cancel.setAttribute("action", "/cancel/" + d.id);
       var days = sheet.querySelectorAll("input[name=day]");
       for (i = 0; i < days.length; i++) days[i].value = d.date;
-      el("sheetSeries").hidden = d.weekly !== "1";
+      // the repeat's bound for this row (data-until), only while a later week falls inside it
+      el("sheetSeries").hidden = !(d.weekly === "1" && d.until);
+      el("sheetUntil").textContent = d.until || "";
       book.querySelector("input[name=series]").checked = false;
       sheet.showModal();
       var go = d.state === "book" ? book.querySelector("[type=submit]")
@@ -664,6 +723,16 @@
       if (e.target.closest("#sheet [data-sheet-close]")) sheet.close();
     });
     sheet.addEventListener("click", function (e) { if (e.target === sheet) sheet.close(); });
+  })();
+
+  // #seriesDlg: rendered open (without the script, a card in the page); here
+  // it becomes the modal, at load. U redu, Escape and the backdrop close it.
+  (function () {
+    var d = document.getElementById("seriesDlg");
+    if (!d || !d.showModal) return;
+    d.close();                   // open as a plain dialog: showModal() would throw
+    d.showModal();
+    d.addEventListener("click", function (e) { if (e.target === d) d.close(); });
   })();
 </script>
 {% endblock %}

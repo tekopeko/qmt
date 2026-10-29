@@ -205,8 +205,13 @@ def test_a_lapsed_plan_says_so_and_one_due_soon_counts_the_days():
         [("is-active", "online"), ("is-lapsed", "grupni")]
     g = card(page, "grupni")
     assert '<span class="chip lapsed">istekla</span>' in g
-    assert f"Članarina je istekla {lapsed.dospijece:{D}} Nova uplata počinje od dana uplate." in text(g)
+    # lapsed inside the month that began at its due date: an uplata buys
+    # that month (the fixed month, 29.10.2026), so it starts at the due date
+    assert f"Članarina je istekla {lapsed.dospijece:{D}} Nova uplata počinje od {lapsed.next_payment:{D}}" in text(g)
     assert "Rezerviraj termin" not in g                               # no door while lapsed
+    gone = set_membership(uid, "grupni", next_payment=today - timedelta(days=40))   # a whole month unpaid
+    g = card(client_for("ivan@test.local").get("/moja-clanarina").text, "grupni")
+    assert f"Članarina je istekla {gone.dospijece:{D}} Nova uplata počinje od dana uplate." in text(g)
     assert '<span class="chip due">dospijeva za 3 dana</span>' in card(page, "online")
     assert "Otvori online treninge" in card(page, "online")           # still running: still a door
     assert f"Vrijedi do {soon.dospijece:{D}}" in text(card(page, "online"))
@@ -234,6 +239,102 @@ def test_member_without_a_plan_sees_why_every_plan_and_an_empty_ledger():
     assert '<span class="featured-tag">Najpopularnije</span>' in card(page, "grupni")
     assert "Još nema zabilježenih uplata." in section(page, "mcBills")
     assert "<table" not in page
+
+
+# ---------- the fixed month (29.10.2026) ----------
+
+def test_the_month_is_fixed_an_uplata_buys_the_month_from_the_due_date(monkeypatch):
+    """The owner: the membership month runs from due date to due date and
+    never moves while the client keeps paying. Due 1.5.: paying on 28.4.
+    (early), 7.5. (the grace week, on trust) or 12.5. (locked out since 8.5.,
+    the month still running) all buy 1.5.-1.6.; 2.6., after a whole month
+    unpaid, starts afresh, 2.6.-2.7. A plan never held starts from today.
+    db.next_cycle says it before; record_payment does it."""
+    uid = make_user("ivan@test.local", plans=("grupni",))
+    due = date(2026, 5, 1)
+    for paid, buys in ((date(2026, 4, 28), date(2026, 6, 1)), (date(2026, 5, 7), date(2026, 6, 1)),
+                       (date(2026, 5, 12), date(2026, 6, 1)), (date(2026, 6, 2), date(2026, 7, 2))):
+        monkeypatch.setattr(config, "today", lambda paid=paid: paid)
+        m = set_membership(uid, "grupni", next_payment=due)
+        assert db.next_cycle(m, paid) == (buys, buys + timedelta(days=7)), paid
+        m = db.record_payment(uid, "grupni")
+        assert (m.paid_on, m.next_payment, m.dospijece) == (paid, buys, buys + timedelta(days=7)), paid
+    assert db.next_cycle(None, date(2026, 5, 12)) == (date(2026, 6, 12), date(2026, 6, 19))
+    fresh = make_user("sara@test.local")
+    assert db.record_payment(fresh, "online").next_payment == date(2026, 7, 2)   # new: from today (2.6.)
+
+
+def test_clanarine_says_what_an_uplata_buys_and_the_flash_names_the_same_dates():
+    """Before an uplata is recorded, each plan's row says what it buys
+    (db.next_cycle), the add form says it for a plan not held, "od danas";
+    the flash after it names the same dates."""
+    make_user("trener@test.local", is_trainer=True)
+    uid = make_user("ivan@test.local", plans=("grupni", "online"))
+    today = config.today()
+    due = today - timedelta(days=3)                                     # in the grace week
+    set_membership(uid, "grupni", next_payment=due)
+    gone = today - timedelta(days=45)                                   # a whole month unpaid
+    set_membership(uid, "online", next_payment=gone)
+    t = client_for("trener@test.local")
+    row = member_card(t.get("/clanarine").text, "ivan@test.local")
+    for start in (add_month(due), add_month(today)):                    # grupni's month, online's fresh one
+        line = (f'<div class="hint next-cycle">Uplata produljuje do {start:%-d.%-m.} '
+                f'(vrijedi do {start + timedelta(days=7):%-d.%-m.})</div>')
+        assert line in row, line
+    nxt = add_month(today)
+    assert (f'<p class="hint next-cycle">Uplata: od danas do {nxt:%-d.%-m.} '
+            f'(vrijedi do {nxt + timedelta(days=7):%-d.%-m.})</p>') in row
+    r = t.post(f"/clanarine/{uid}/uplata", data={"plan": "grupni"}, follow_redirects=False)
+    m = {x.plan: x for x in db.memberships_for(uid)}["grupni"]
+    assert m.next_payment == add_month(due)                             # the month that began at the due date
+    assert unquote(r.headers["location"]) == (
+        f"/clanarine?ok=Grupni trening: uplata evidentirana — sljedeća {add_month(due):{D}} "
+        f"(vrijedi do {add_month(due) + timedelta(days=7):{D}})")
+
+
+def test_a_lapsed_plans_grace_week_termini_show_on_trust_until_an_uplata():
+    """The grace week is on trust: due 1.5., the client trains through 8.5.
+    unpaid. A lapsed plan whose grace week holds his termini (next_payment
+    through dospijeće, not canceled) says so in its row, in amber, until a
+    payment lands, whichever month it buys; a plan still running says
+    nothing."""
+    from qmt.models import Booking
+    make_user("trener@test.local", is_trainer=True)
+    uid = make_user("ivan@test.local", plans=("grupni",))
+    today = config.today()
+    due = today - timedelta(days=10)                                    # dospijeće 3 days ago: lapsed
+
+    def termin(day: date, canceled: bool = False):
+        sid = db.add_oneoff_session("Grupni trening", datetime(day.year, day.month, day.day, 18, tzinfo=config.TZ),
+                                    60, 8, None)
+        with db.session_scope() as s:
+            s.add(Booking(user_id=uid, session_id=sid))
+        if canceled:
+            db.set_session_canceled(sid, True)
+
+    for day in (due, due + timedelta(days=4), due + timedelta(days=7)):  # the grace week, both ends counted
+        termin(day)
+    termin(due + timedelta(days=2), canceled=True)                      # called off: not counted
+    termin(due - timedelta(days=2))                                     # the paid month: not counted
+    t = client_for("trener@test.local")
+
+    def note() -> str | None:
+        m = re.search(r'<div class="trust">(.*?)</div>', member_card(t.get("/clanarine").text, "ivan@test.local"))
+        return m and m.group(1)
+
+    set_membership(uid, "grupni", next_payment=due)
+    assert db.trust_bookings(uid, "grupni") == 3
+    assert note() == "3 termina na povjerenje — neplaćeno"
+    set_membership(uid, "grupni", next_payment=due + timedelta(days=4))   # still in its grace week: running
+    assert note() is None
+    set_membership(uid, "grupni", next_payment=due)
+    db.record_payment(uid, "grupni")                                    # paid: the month from the due date
+    assert db.trust_bookings(uid, "grupni") == 0 and note() is None
+    set_membership(uid, "grupni", next_payment=today - timedelta(days=40))   # a month gone: a fresh start
+    termin(today - timedelta(days=38))
+    assert note() == "1 termin na povjerenje — neplaćeno"
+    db.record_payment(uid, "grupni")
+    assert note() is None
 
 
 # ---------- the links that lead here ----------
@@ -643,7 +744,8 @@ def test_the_trainer_records_the_online_tier_and_the_flash_names_it():
     loc = uplata(plan="online", tier="elite")
     m = {x.plan: x for x in db.memberships_for(uid)}["online"]
     assert m.tier == "elite"
-    assert loc == f"/clanarine?ok=Online trening (QMove ELITE): uplata evidentirana — sljedeća {m.next_payment:{D}}"
+    assert loc == (f"/clanarine?ok=Online trening (QMove ELITE): uplata evidentirana — "
+                   f"sljedeća {m.next_payment:{D}} (vrijedi do {m.dospijece:{D}})")
     db.set_copy("offer.online3.title", "", None)                        # the title emptied: the default names the tier
     assert copy.online_tier_names(db.copy_texts())["elite"] == "QMove ELITE"
     db.set_copy("offer.online3.title", "QMove ELITE+", None)            # the card renamed: the tier with it

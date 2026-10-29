@@ -246,11 +246,138 @@ def test_past_and_canceled_sessions_refuse_booking():
         db.book(uid, sid)
 
 
-def test_horizon_enforced():
+def test_the_booking_window_is_this_week_and_three_more():
+    """BOOKING_WEEKS (4): the running week and three more (the owner,
+    29.10.2026), week-aligned: 28 days on a Monday, 22 on a Sunday, and each
+    Monday a whole week more."""
+    assert config.BOOKING_WEEKS == 4
+    monday, sunday, last = date(2026, 11, 2), date(2026, 11, 8), date(2026, 11, 29)
+    assert db.booking_window(monday) == (monday, last)
+    assert db.booking_window(sunday) == (monday, last)
+    assert (last - monday).days + 1 == 28 and (last - sunday).days + 1 == 22
+    assert db.booking_window(date(2026, 11, 9)) == (date(2026, 11, 9), date(2026, 12, 6))
+    assert db.weeks_text(4) == "4 tjedna" and db.weeks_text(4, words=True) == "četiri tjedna"
+    assert [db.weeks_text(n) for n in (1, 2, 5, 11, 21, 22)] == [
+        "1 tjedan", "2 tjedna", "5 tjedana", "11 tjedana", "21 tjedan", "22 tjedna"]
+
+
+def test_a_termin_on_the_windows_sunday_books_and_the_monday_after_is_refused():
+    uid = make_user("ivan@test.local")                 # paid a month from today: the window is the bound
+    last = db.booking_window(config.today())[1]
+    sunday = db.add_oneoff_session("Grupni trening", _at(last), 60, 8, None)
+    after = db.add_oneoff_session("Grupni trening", _at(last + timedelta(days=1), 7), 60, 8, None)
+    db.book(uid, sunday)
+    with pytest.raises(db.BookingError) as refused:
+        db.book(uid, after)
+    assert str(refused.value) == f"Rezervacije su moguće do {last:%-d.%-m.}, četiri tjedna unaprijed."
+    assert db.user_booking_ids(uid, [sunday, after]) == {sunday}
+
+
+def test_a_termin_after_dospijece_is_refused_and_the_calendar_says_until_when():
+    """The paid period bounds booking as the window does (the owner: paid on
+    1.4., the latest date is 8.5., the grace week included). The calendar
+    shows the bound instead of letting the client hit it: a row after
+    dospijeće offers nothing (no Rezerviraj; on a phone no sheet) and the
+    week gets one line under its termini."""
     uid = make_user("ivan@test.local")
-    sid = future_session(hours_from_now=24 * (config.BOOKING_HORIZON_DAYS + 3))
-    with pytest.raises(db.BookingError, match="unaprijed"):
-        db.book(uid, sid)
+    today = config.today()
+    _due(uid, today)                                   # due today: dospijeće in a week
+    until = today + timedelta(days=7)
+    inside = db.add_oneoff_session("Grupni trening", _at(until), 60, 8, None)
+    after_day = until + timedelta(days=1)
+    after = db.add_oneoff_session("Grupni trening", _at(after_day, 7), 60, 8, None)
+    db.book(uid, inside)                               # the grace week's last day: on trust
+    with pytest.raises(db.BookingError) as refused:
+        db.book(uid, after)
+    assert str(refused.value) == f"Članarina vrijedi do {until:%-d.%-m.} — za kasnije termine treba nova uplata."
+
+    c = client_for("ivan@test.local")
+    page = c.get(f"/raspored?week={after_day - timedelta(days=after_day.weekday())}&day={after_day}").text
+    line = (f'<p class="hint gate-line">Članarina vrijedi do {until:%-d.%-m.} — za kasnije termine '
+            'produlji članarinu. <a class="btn btn-sm" href="/moja-clanarina">Moja članarina →</a></p>')
+    assert page.count(line) == 1 and "Nemaš aktivnu članarinu" not in page
+    assert f'action="/book/{after}"' not in page and f'data-id="{after}"' not in page   # no Rezerviraj, no sheet
+    i = page.index('<span class="rt">07:00–08:00</span>')    # its phone row: plain, its places still said
+    row = page[page.rindex("<div", 0, i):page.index("</div>", i)]
+    assert row.startswith('<div class="sess-row">') and '<b class="ok">0</b>/8' in row
+    assert "za kasnije termine" not in c.get("/raspored").text   # this week holds no termin after it
+
+
+def test_an_empty_termin_closes_four_hours_before_it_starts():
+    """The owner (29.10.2026): no booking 4 h before the start
+    (CLOSE_EMPTY_HOURS) and the termin closes itself, every kind alike; one
+    booking keeps it open to anyone until it starts. A canceled termin
+    stays "otkazan" (canceled wins)."""
+    assert config.CLOSE_EMPTY_HOURS == 4
+    uid = make_user("ivan@test.local", plans=("grupni", "individualni"))
+    ana = make_user("ana@test.local")
+    empty = future_session(hours_from_now=3)
+    with pytest.raises(db.BookingError, match="^Termin je zatvoren.$"):
+        db.book(uid, empty)
+    held = future_session(hours_from_now=3)
+    with db.session_scope() as s:                      # ana booked it before it would have closed
+        s.add(Booking(user_id=ana, session_id=held))
+    db.book(uid, held)                                 # one booking: open, three hours before too
+    later = future_session(hours_from_now=4 + 1 / 60)
+    db.book(uid, later)                                # 4 h 1 min ahead, nobody in it: still open
+    solo = db.add_oneoff_session("Individualni trening", datetime.now(config.TZ) + timedelta(hours=3),
+                                 60, 1, None, kind="individualni")
+    with pytest.raises(db.BookingError, match="zatvoren"):
+        db.book(uid, solo)                             # an empty 1:1 termin closes too
+    gone = future_session(hours_from_now=3)
+    db.set_session_canceled(gone, True)
+    with pytest.raises(db.BookingError, match="otkazan"):
+        db.book(uid, gone)                             # canceled wins
+    assert db.user_booking_ids(uid, [empty, held, later, solo, gone]) == {held, later}
+
+
+def test_is_closed_is_exact_at_four_hours():
+    sid = future_session(hours_from_now=30)
+    with db.session_scope() as s:
+        sess = s.get(TrainingSession, sid)
+    at = sess.starts_at - timedelta(hours=4)
+    assert db.is_closed(sess, 0, at)                                  # four hours before: closed
+    assert not db.is_closed(sess, 0, at - timedelta(seconds=1))       # a second earlier: open
+    assert not db.is_closed(sess, 1, at + timedelta(hours=3, minutes=59))   # one booking: open to the start
+    assert not db.is_closed(sess, 0, sess.starts_at)                  # started: "prošao", not "zatvoren"
+    sess.canceled = True
+    assert not db.is_closed(sess, 0, at)                              # canceled: "otkazan"
+
+
+def test_the_calendar_says_zatvoreno_for_a_closed_termin():
+    """A closed termin says "zatvoreno" where "otkazano" would sit, dimmed
+    as a past one (.closed), never crossed out: for a client (no
+    Rezerviraj, no sheet) and on the trainer's grid (his row still leads to
+    the roster). A termin with a booking in it never closes."""
+    make_user("trener@test.local", is_trainer=True)
+    make_user("ivan@test.local")
+    ana = make_user("ana@test.local")
+    closed = future_session(hours_from_now=2, title="Prazan trening")
+    held = future_session(hours_from_now=2, title="Zauzet trening")      # the same hour, so the same day
+    with db.session_scope() as s:
+        s.add(Booking(user_id=ana, session_id=held))
+        day = s.get(TrainingSession, closed).starts_at.astimezone(config.TZ).date()
+    week = f"/raspored?week={day - timedelta(days=day.weekday())}&day={day}"
+
+    page = client_for("ivan@test.local").get(week).text
+    i = page.index('<div class="name">Prazan trening</div>')              # the grid's card
+    card = page[page.rindex('<div class="sess', 0, i):page.index('<div class="sess-row', i)]
+    assert re.match(r'<div class="sess\s[^"]*\bclosed\b', card) and "canceled" not in card
+    assert re.search(r'<div class="cap">\s*zatvoreno\s*</div>', card) and f"/book/{closed}" not in card
+    i = page.index('<span class="rn">Prazan trening</span>')              # the phone's row
+    row = page[page.rindex('<div class="sess-row', 0, i):page.index("</div>", i)]
+    assert row.startswith('<div class="sess-row closed">') and "<span>zatvoreno</span>" in row
+    assert f'data-id="{closed}"' not in page                     # nothing to tap
+    assert 'data-state="book"' in _row(page, held) and f'action="/book/{held}"' in page   # one booking: open
+
+    page = client_for("trener@test.local").get(week).text
+    assert f'<a class="sess-row closed" href="/admin/session/{closed}">' in page
+    i = page.index(f'<a class="sess-row closed" href="/admin/session/{closed}">')
+    assert "<span>zatvoreno</span>" in page[i:page.index("</a>", i)]
+    card = page[page.index('<div class="name">Prazan trening</div>'):]
+    assert re.match(r'<div class="name">Prazan trening</div>\s*<div class="cap">\s*zatvoreno', card)
+    assert f'<form method="get" action="/admin/session/{closed}">' in page   # his Polaznici still there
+    assert page.count("zatvoreno") == 2                          # its card and its row, the held one neither
 
 
 def test_capacity_race_no_overbooking():
@@ -330,6 +457,22 @@ def test_booking_error_is_visible_even_without_week_param():
     assert loc.startswith("/raspored?error="), loc   # parseable query, message shown
 
 
+def test_materialize_stops_at_the_windows_last_week():
+    """Week views mint the booking window's weeks (this one and three more),
+    no further: a termin past it could not be booked yet."""
+    from sqlalchemy import func, select
+    with db.session_scope() as s:
+        s.add(SessionTemplate(title="Grupni", weekday=0, start_min=18 * 60))
+    first, last = db.booking_window(config.today())
+    for k in range(6):
+        db.materialize_week(first + timedelta(days=7 * k))
+    with db.session_scope() as s:
+        starts = [x.astimezone(config.TZ).date() for x in s.scalars(
+            select(TrainingSession.starts_at).order_by(TrainingSession.starts_at))]
+    assert starts == [first + timedelta(days=7 * k) for k in range(4)]
+    assert starts[-1] == last - timedelta(days=6)
+
+
 def test_materialize_clamped_to_booking_window():
     """A client walking ?week= must not mint rows for arbitrary past/future weeks."""
     with db.session_scope() as s:
@@ -350,7 +493,7 @@ def test_materialize_clamped_to_booking_window():
 def test_canceled_session_booking_can_be_dropped_inside_cutoff():
     """The cutoff protects the trainer's planning — meaningless once THEY canceled."""
     uid = make_user("ivan@test.local")
-    sid = future_session(hours_from_now=1)      # inside the 12 h cutoff
+    sid = future_session(hours_from_now=5)      # inside the 12 h cutoff (and open: 4 h is when an empty one closes)
     db.book(uid, sid)
     db.set_session_canceled(sid, True)
     db.cancel_booking(uid, sid)                 # must NOT raise
@@ -684,7 +827,11 @@ def test_expired_plan_blocks_after_grace_week():
     backdate(8)                                  # dospijeće (grace 7d) passed
     with pytest.raises(db.BookingError, match="članarina"):
         db.book(uid, sid)
-    backdate(7)                                  # dospijeće is exactly today
+    backdate(7)                                  # dospijeće is exactly today: the plan runs...
+    assert db.active_plan_kinds(uid) == {"grupni"}
+    with pytest.raises(db.BookingError, match="Članarina vrijedi do"):
+        db.book(uid, sid)                        # ...but tomorrow's termin is past it (29.10.2026)
+    backdate(6)                                  # dospijeće tomorrow, the termin's day: on trust
     db.book(uid, sid)
 
 
@@ -702,7 +849,7 @@ def test_record_payment_date_math():
     assert m2.next_payment == db._add_month(first_due)
 
     from qmt.models import Membership
-    with db.session_scope() as s:                # long-lapsed plan restarts
+    with db.session_scope() as s:                # lapsed past its whole month: afresh from today
         row = s.scalar(db.select(Membership).where(Membership.user_id == uid))
         row.next_payment = today - timedelta(days=40)
     m3 = db.record_payment(uid, "grupni")
@@ -1084,59 +1231,86 @@ def _weeks(day: date, *ks: int) -> list[date]:
     return [day + timedelta(days=7 * k) for k in ks]
 
 
-def test_series_books_each_following_week_of_the_paid_period_and_no_further():
+def _ahead(week: int, weekday: int = 2) -> int:
+    """Days from today to `weekday` (0 = Monday) of the week `week` weeks
+    on (0 = this one). The series runs over the booking window's weeks
+    (this one and three more), so a test that counts them places its termin
+    by week: next week's, and the window holds two later weeks, on any day
+    the suite runs."""
+    return 7 * week + weekday - config.today().weekday()
+
+
+def test_series_books_the_same_slot_on_every_later_week_of_the_window_and_no_further():
+    """"Isti termin svaki tjedan" books the slot on every later week of the
+    booking window (the owner, 29.10.2026: all four weeks, "that is the hard
+    cap"), whatever the paid period holds beyond it: from next week's termin,
+    the window's third and fourth weeks, the bound its last day."""
     from sqlalchemy import func, select
     uid = make_user("ivan@test.local")
-    tid, sid, day = _weekly()
-    _due(uid, day + timedelta(days=24))              # paid until day+23: three more weeks fit
+    last = db.booking_window(config.today())[1]
+    tid, sid, day = _weekly(days_ahead=_ahead(1))      # next week's Wednesday
+    _due(uid, last + timedelta(days=30))               # paid far past the window: the window is the bound
     db.book(uid, sid)
     with db.session_scope() as s:
         rows = s.scalar(select(func.count()).select_from(TrainingSession))
 
-    weeks = _weeks(day, 1, 2, 3)
-    assert db.series_preview(uid, sid) == {"n": 3, "last": weeks[-1],
-                                            "until": day + timedelta(days=23)}
+    weeks = _weeks(day, 1, 2)
+    assert db.series_preview(uid, sid) == {"n": 2, "last": weeks[-1], "until": last}
     with db.session_scope() as s:                     # read-only: unopened weeks count as free
         assert s.scalar(select(func.count()).select_from(TrainingSession)) == rows
 
     res = db.book_series(uid, sid)
-    assert res == {"booked": weeks, "skipped": [], "stopped": None,
-                   "until": day + timedelta(days=23), "quota": None}
+    assert res == {"booked": weeks, "skipped": [], "stopped": None, "until": last, "quota": None}
     ids = [_occurrence(tid, d, open_week=False) for d in weeks]
     assert db.user_booking_ids(uid, ids) == set(ids)
-    assert _occurrence(tid, day + timedelta(days=28), open_week=False) is None   # past the period: untouched
+    assert _occurrence(tid, day + timedelta(days=21), open_week=False) is None   # past the window: untouched
 
     again = db.book_series(uid, sid)                 # twice: nothing new, and each date says why
     assert again["booked"] == [] and again["skipped"] == [(d, "već rezervirano") for d in weeks]
 
 
-def test_series_ignores_the_booking_horizon_inside_the_paid_period(monkeypatch):
-    """book() refuses a termin more than BOOKING_HORIZON_DAYS ahead; the series
-    books the paid period, creating weeks nobody has opened. The horizon is
-    shrunk to 10 days so this holds in any month: with the real 28, a date past
-    it fits in one cycle only when the cycle is longer than 28 days, and a
-    February cycle is not."""
-    monkeypatch.setattr(config, "BOOKING_HORIZON_DAYS", 10)
+def test_series_stops_at_dospijece_inside_the_window():
+    """The other bound: a plan whose dospijeće falls inside the window cuts
+    the series there (the grace week counts, as for book()), and the
+    offer's "do …" is that day."""
     uid = make_user("ivan@test.local")
-    ana = make_user("ana@test.local")
-    tid, sid, day = _weekly()
-    _due(uid, day + timedelta(days=24))
+    tid, sid, day = _weekly(days_ahead=_ahead(1))      # next week's Wednesday
     db.book(uid, sid)
-    far = _weeks(day, 2, 3)                          # 16 and 23 days out
-    assert [_occurrence(tid, d, open_week=False) for d in far] == [None, None]
-
-    assert db.book_series(uid, sid)["booked"] == _weeks(day, 1, 2, 3)
-    for d in far:
-        occ = _occurrence(tid, d, open_week=False)   # the series created it...
-        assert db.user_booking_ids(uid, [occ]) == {occ}
-        with pytest.raises(db.BookingError, match="unaprijed"):
-            db.book(ana, occ)                        # ...and book() alone still refuses it
+    _due(uid, day)                                     # due that day: dospijeće a week on, inside the window
+    until = day + timedelta(days=7)
+    assert until < db.booking_window(config.today())[1]
+    assert db.series_preview(uid, sid) == {"n": 1, "last": until, "until": until}
+    res = db.book_series(uid, sid)
+    assert res["booked"] == [until] and res["until"] == until and res["skipped"] == []
+    assert _occurrence(tid, day + timedelta(days=14), open_week=False) is None   # past dospijeće: untouched
 
 
-def test_series_skips_full_canceled_and_held_dates_and_says_why():
+def test_series_skips_a_closed_date_and_says_why():
+    """An offer reopened a week after its termin: this week's date is empty
+    and starts within four hours, so it has closed (db.is_closed); the run
+    skips it with its reason and books the window's later weeks."""
+    uid = make_user("ivan@test.local")
+    soon = (datetime.now(config.TZ) + timedelta(hours=2)).replace(second=0, microsecond=0)
+    tid = db.add_template("Tjedni trening", soon.weekday(), soon.hour * 60 + soon.minute, 60, 8, None)
+    with db.session_scope() as s:                    # the termin they booked, a week ago
+        sess = TrainingSession(template_id=tid, title="Tjedni trening", kind="grupni",
+                               starts_at=datetime(soon.year, soon.month, soon.day, soon.hour, soon.minute,
+                                                  tzinfo=config.TZ) - timedelta(days=7))
+        s.add(sess)
+        s.flush()
+        s.add(Booking(user_id=uid, session_id=sess.id))
+        sid = sess.id
+    last = db.booking_window(config.today())[1]
+    res = db.book_series(uid, sid)
+    assert res["skipped"] == [(soon.date(), "zatvoren")]
+    assert res["booked"] == [d for d in _weeks(soon.date(), 1, 2, 3) if d <= last] and res["booked"]
+
+
+def test_series_skips_full_canceled_and_held_dates_and_says_why(monkeypatch):
+    monkeypatch.setattr(config, "BOOKING_WEEKS", 5)  # three later weeks after next week's termin, any day
     uid = make_user("ivan@test.local", plans=("individualni",))
     ana = make_user("ana@test.local", plans=("individualni",))
-    tid, sid, day = _weekly(capacity=1, kind="individualni")    # a weekly 1:1 slot
+    tid, sid, day = _weekly(days_ahead=_ahead(1), capacity=1, kind="individualni")    # a weekly 1:1 slot
     _due(uid, day + timedelta(days=24), plan="individualni")
     db.book(uid, sid)
     full, canceled, held = (_occurrence(tid, d) for d in _weeks(day, 1, 2, 3))
@@ -1152,14 +1326,15 @@ def test_series_skips_full_canceled_and_held_dates_and_says_why():
     assert db.user_booking_ids(uid, [full, canceled]) == set()
 
 
-def test_series_stops_where_the_paket_runs_out():
+def test_series_stops_where_the_paket_runs_out(monkeypatch):
+    monkeypatch.setattr(config, "BOOKING_WEEKS", 5)  # three later weeks after next week's termin, any day
     uid = make_user("ivan@test.local", plans=())
     db.record_payment(uid, "grupni", sessions_per_cycle=12)
-    tid, sid, day = _weekly()
+    tid, sid, day = _weekly(days_ahead=_ahead(1))
     _due(uid, day + timedelta(days=24), sessions=12)
     db.book(uid, sid)
     for h in range(9):                               # 10 of 12 used in this cycle
-        db.book(uid, future_session(hours_from_now=24 + h))
+        db.book(uid, db.add_oneoff_session("Grupni trening", _at(day, 7 + h), 60, 8, None))
     assert db.cycle_usage(uid, "grupni", on=day)["used"] == 10
 
     res = db.book_series(uid, sid)
@@ -1230,39 +1405,41 @@ def test_series_reopened_late_counts_only_the_weeks_still_ahead():
         s.flush()
         s.add(Booking(user_id=uid, session_id=sess.id))
         sid = sess.id
-    _due(uid, past + timedelta(days=20))             # paid until past+19: weeks past+7 (gone) and past+14
-    assert db.series_preview(uid, sid) == {"n": 1, "last": past + timedelta(days=14),
-                                            "until": past + timedelta(days=19)}
-    assert db.book_series(uid, sid)["booked"] == [past + timedelta(days=14)]
+    _due(uid, past + timedelta(days=20))             # dospijeće past+27: weeks past+7 (gone), +14 and +21
+    assert db.series_preview(uid, sid) == {"n": 2, "last": past + timedelta(days=21),
+                                            "until": past + timedelta(days=27)}
+    assert db.book_series(uid, sid)["booked"] == _weeks(past, 2, 3)
     assert _occurrence(tid, past + timedelta(days=7), open_week=False) is None
 
 
 def test_series_offer_follows_a_booking_and_runs_from_the_calendar():
     from urllib.parse import unquote
     uid = make_user("ivan@test.local")
-    tid, sid, day = _weekly()
+    tid, sid, day = _weekly(days_ahead=_ahead(1))
     _due(uid, day + timedelta(days=24))
     monday = (day - timedelta(days=day.weekday())).isoformat()
-    weeks = _weeks(day, 1, 2, 3)
+    weeks = _weeks(day, 1, 2)
     c = client_for("ivan@test.local")
 
     r = c.post(f"/book/{sid}", data={"week": monday}, follow_redirects=False)
     loc = r.headers["location"]
     assert "ok=" in loc and loc.endswith(f"&series={sid}")      # the usual ok, plus the offer
     page = c.get(loc).text.replace("&nbsp;", " ")
-    until = day + timedelta(days=23)
-    assert f"Isti termin svaki tjedan do {until:%-d.%-m.} — još 3 termina →" in page
+    until = db.booking_window(config.today())[1]               # the window's last day: dospijeće is later
+    assert f"Isti termin svaki tjedan do {until:%-d.%-m.} — još 2 termina →" in page
     assert f'action="/book/{sid}/series"' in page
     assert page.count('class="alert ok"') == 1      # the offer IS the confirmation
 
     r = c.post(f"/book/{sid}/series", data={"week": monday}, follow_redirects=False)
-    assert unquote(r.headers["location"]) == (f"/raspored?week={monday}&ok=Rezervirano još 3 termina: "
+    assert unquote(r.headers["location"]) == (f"/raspored?week={monday}&ok=Rezervirano još 2 termina: "
                                               + ", ".join(f"{d:%-d.%-m.}" for d in weeks))
+    assert 'id="seriesDlg"' not in c.get(r.headers["location"]).text   # every date booked: no dialog
     ids = [_occurrence(tid, d, open_week=False) for d in weeks]
     assert db.user_booking_ids(uid, ids) == set(ids)
     loc = unquote(c.post(f"/book/{sid}/series", data={"week": monday},
                          follow_redirects=False).headers["location"])
     assert "error=Nijedan termin nije rezerviran" in loc and "(već rezervirano)" in loc
+    assert loc.endswith("&skipped=" + ",".join(f"{d}:rezervirano" for d in weeks))   # nothing booked: no booked=
 
     # someone else's booking: no offer, and running it anyway books nothing
     ana = make_user("ana@test.local")
@@ -1301,7 +1478,7 @@ def test_series_race_for_the_last_spot_no_overbooking():
     single spot left: exactly one gets it, and nobody deadlocks (each series
     locks its dates in order)."""
     from sqlalchemy import func, select
-    tid, sid, day = _weekly(capacity=8)
+    tid, sid, day = _weekly(days_ahead=_ahead(1), capacity=8)
     first = _occurrence(tid, day + timedelta(days=7))
     for i in range(7):                               # 7 of 8 taken
         db.book(make_user(f"f{i}.race@test.local"), first)
@@ -1322,13 +1499,13 @@ def test_series_race_for_the_last_spot_no_overbooking():
     won = [u for u, r in results.items() if day + timedelta(days=7) in r["booked"]]
     assert len(won) == 1, f"overbooked: {results}"
     for u, r in results.items():
-        assert r["booked"] == (_weeks(day, 1, 2, 3) if u in won else _weeks(day, 2, 3))
+        assert r["booked"] == (_weeks(day, 1, 2) if u in won else _weeks(day, 2))
         assert r["skipped"] == ([] if u in won else [(day + timedelta(days=7), "popunjen")])
     with db.session_scope() as s:
         n = s.scalar(select(func.count()).select_from(Booking).where(Booking.session_id == first))
         rows = s.scalar(select(func.count()).select_from(TrainingSession)
                         .where(TrainingSession.template_id == tid))
-    assert n == 8 and rows == 4                      # full, and no week was created twice
+    assert n == 8 and rows == 3                      # full, and no week was created twice
 
 
 # ---------- auth modal + install banner (patterns.md §2, §3) ----------
@@ -1479,22 +1656,23 @@ def test_book_with_series_books_the_following_weeks_at_once():
     more. Without it the flow is the old one (the offer in the alert)."""
     from urllib.parse import unquote
     uid = make_user("ivan@test.local")
-    tid, sid, day = _weekly()
+    tid, sid, day = _weekly(days_ahead=_ahead(1))
     _due(uid, day + timedelta(days=24))
     monday = (day - timedelta(days=day.weekday())).isoformat()
-    weeks = _weeks(day, 1, 2, 3)
+    weeks = _weeks(day, 1, 2)
     c = client_for("ivan@test.local")
 
     r = c.post(f"/book/{sid}", data={"week": monday, "day": day.isoformat(), "series": "1"},
                follow_redirects=False)
     loc = unquote(r.headers["location"])
-    assert loc == (f"/raspored?week={monday}&day={day}&ok=Rezervirano ✓ — rezervirano još 3 termina: "
+    assert loc == (f"/raspored?week={monday}&day={day}&ok=Rezervirano ✓ — rezervirano još 2 termina: "
                    + ", ".join(f"{d:%-d.%-m.}" for d in weeks))
     assert "series=" not in loc
     ids = [_occurrence(tid, d, open_week=False) for d in weeks]
     assert db.user_booking_ids(uid, [sid, *ids]) == {sid, *ids}
     page = c.get(loc).text
     assert 'class="series-offer"' not in page and page.count('class="alert ok"') == 1
+    assert 'id="seriesDlg"' not in page                       # every date booked: the line alone
 
     # a termin with no weekly slot: the booking stands, the alert says why the rest did not
     one = future_session(hours_from_now=30)
@@ -1509,6 +1687,121 @@ def test_book_with_series_books_the_following_weeks_at_once():
                                           follow_redirects=False)
     assert r.headers["location"].endswith(f"&series={sid}")
     assert db.user_booking_ids(ana, [sid, *ids]) == {sid}
+
+
+def _dialog(page: str) -> str:
+    """#seriesDlg's markup, from its tag to its end."""
+    i = page.index('<dialog id="seriesDlg"')
+    return page[i:page.index("</dialog>", i)]
+
+
+def test_a_series_that_left_dates_out_opens_the_dialog_saying_which_and_why():
+    """The owner: "a popup warning … so that the client know not all slots
+    were actually booked". A run that skipped a date or ran out of its paket
+    comes back with its line AND #seriesDlg (an open <dialog>, the .fb-modal
+    idiom, which the page's script makes the modal), by either way in: the
+    sheet's checkbox and the offer after a booking. The redirect carries
+    dates and reason keys; the words are the page's."""
+    from urllib.parse import unquote
+    uid = make_user("ivan@test.local", plans=("individualni",))
+    ana = make_user("ana@test.local", plans=("individualni",))
+    tid, sid, day = _weekly(days_ahead=_ahead(1), capacity=1, kind="individualni")
+    _due(uid, day + timedelta(days=24), plan="individualni")
+    full, booked = _weeks(day, 1, 2)
+    db.book(ana, _occurrence(tid, full))                       # the week after is ana's
+    monday = (day - timedelta(days=day.weekday())).isoformat()
+    c = client_for("ivan@test.local")
+
+    loc = c.post(f"/book/{sid}", data={"week": monday, "day": day.isoformat(), "series": "1"},
+                 follow_redirects=False).headers["location"]   # the sheet's checkbox
+    assert unquote(loc).endswith(f"&booked={booked}&skipped={full}:popunjen")
+    page = c.get(loc).text
+    assert page.count('class="alert ok"') == 1                 # the line stays
+    assert '<dialog id="seriesDlg" class="fb-modal series-dlg" aria-labelledby="seriesDlgTitle" open>' in page
+    assert page.index('<dialog id="seriesDlg"') < page.index('<div class="week-head">')   # under the alert
+    dlg = _dialog(page)
+    assert shown(dlg) == (f"Nisu rezervirani svi termini Rezervirano: {booked:%-d.%-m.} "
+                          f"Nije rezervirano: {full:%-d.%-m.} — termin je popunjen U redu")
+    assert '<form method="dialog"><button type="submit" class="btn btn-sm" autofocus>U redu</button></form>' in dlg
+    assert db.user_booking_ids(uid, [sid, _occurrence(tid, booked, open_week=False)]) == \
+        {sid, _occurrence(tid, booked, open_week=False)}
+
+    # the offer's way in, and a paket that runs out: what was booked, and the paket's sentence
+    petra = make_user("petra@test.local", plans=())
+    db.record_payment(petra, "grupni", sessions_per_cycle=2)
+    tid2, sid2, day2 = _weekly(days_ahead=_ahead(1, 4))        # next week's Friday
+    _due(petra, day2 + timedelta(days=20), sessions=2)         # one cycle holds the three Fridays
+    week2 = (day2 - timedelta(days=day2.weekday())).isoformat()
+    cp = client_for("petra@test.local")
+    assert cp.post(f"/book/{sid2}", data={"week": week2}, follow_redirects=False).headers["location"] \
+        .endswith(f"&series={sid2}")                           # 1 of 2, and the offer
+    loc = cp.post(f"/book/{sid2}/series", data={"week": week2}, follow_redirects=False).headers["location"]
+    assert unquote(loc).endswith(f"&booked={day2 + timedelta(days=7)}&paket=2")
+    page = cp.get(loc).text
+    assert shown(_dialog(page)) == (f"Nisu rezervirani svi termini Rezervirano: {day2 + timedelta(days=7):%-d.%-m.} "
+                                    "Paket od 2 treninga je popunjen, ostatak nije rezerviran. U redu")
+    assert "Nije rezervirano" not in page
+
+    # read strictly: dates and reason keys only; nothing booked says so; junk opens nothing
+    page = c.get(f"/raspored?week={monday}&booked=nije-datum&skipped={full}:rezervirano,nije-datum:popunjen,"
+                 f"{booked}:%3Cb%3E&paket=x").text
+    assert shown(_dialog(page)) == (f"Nisu rezervirani svi termini Rezervirano: ništa "
+                                    f"Nije rezervirano: {full:%-d.%-m.} — već imaš rezervaciju U redu")
+    for junk in (f"skipped={full}:nesto", "paket=0", f"booked={booked}", "skipped=&paket=", "paket=99999"):
+        assert 'id="seriesDlg"' not in c.get(f"/raspored?week={monday}&{junk}").text, junk
+
+
+def test_the_sheets_checkbox_names_the_repeats_bound_per_row():
+    """The phone's sheet says "Isti termin svaki tjedan do …" with the row's
+    own date (data-until: the earlier of the window's last day and the
+    client's dospijeće for its kind); a row whose next week falls past that
+    offers no checkbox (no data-until)."""
+    uid = make_user("ivan@test.local", plans=("grupni", "individualni"))
+    last = db.booking_window(config.today())[1]
+    tid, sid, day = _weekly(days_ahead=_ahead(1))              # grupni, next week's Wednesday
+    db.add_template("Individualni trening", day.weekday(), 20 * 60, 60, 1, None, kind="individualni")
+    monday = day - timedelta(days=day.weekday())
+    db.materialize_week(monday)
+    solo = next(r["session"].id for r in db.sessions_between(_at(day, 20), _at(day, 21)))
+    _due(uid, day + timedelta(days=24))                        # grupni: paid past the window
+    _due(uid, day - timedelta(days=3), plan="individualni")    # individualni: dospijeće day + 4
+
+    page = client_for("ivan@test.local").get(f"/raspored?week={monday}&day={day}").text
+    assert ('<label class="sheet-series" id="sheetSeries"><input type="checkbox" name="series" value="1"> '
+            '<span>Isti termin svaki tjedan do <span id="sheetUntil"></span></span></label>') in page
+    row = _row(page, sid)
+    assert 'data-state="book"' in row and f'data-until="{last:%-d.%-m.}"' in row
+    row = _row(page, solo)
+    assert 'data-state="book"' in row and 'data-weekly="1"' in row and "data-until" not in row
+
+
+def test_a_clients_weeks_end_at_the_window_and_the_trainer_walks_on():
+    """A client's week navigation stops at the booking window's last week
+    (no "idući tjedan", no swipe past it: data-next is empty); a week past
+    it (a day of the month view, a typed ?week=) shows him nothing, with one
+    line. The trainer, who plans the timetable, walks on and sees what is
+    there."""
+    make_user("trener@test.local", is_trainer=True)
+    make_user("ivan@test.local")
+    last = db.booking_window(config.today())[1]
+    last_monday = last - timedelta(days=6)
+    beyond = last_monday + timedelta(days=7)
+    db.add_oneoff_session("Daleki trening", _at(beyond + timedelta(days=2)), 60, 8, None)
+    c = client_for("ivan@test.local")
+
+    page = c.get(f"/raspored?week={last_monday - timedelta(days=7)}").text
+    assert f'<a class="btn btn-ghost btn-sm" href="/raspored?week={last_monday}">idući tjedan →</a>' in page
+    page = c.get(f"/raspored?week={last_monday}").text
+    assert "idući tjedan →" not in page and 'data-next=""' in page
+    page = c.get(f"/raspored?week={beyond}").text
+    assert '<p class="hint" style="padding: 30px 0 10px;">Termini se objavljuju 4 tjedna unaprijed.</p>' in page
+    for gone in ("Daleki trening", "Ovaj tjedan nema termina.", "idući tjedan →", 'class="day-strip"'):
+        assert gone not in page, gone
+    assert f'href="/raspored?week={last_monday}">← prošli tjedan</a>' in page
+
+    page = client_for("trener@test.local").get(f"/raspored?week={beyond}").text
+    assert "Daleki trening" in page and "objavljuju" not in page
+    assert f'href="/raspored?week={beyond + timedelta(days=7)}">idući tjedan →</a>' in page
 
 
 def test_the_shown_day_survives_book_cancel_and_refusals():

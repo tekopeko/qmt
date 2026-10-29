@@ -52,7 +52,7 @@ is deliberately small:
 | brand | `--accent` (text) · `--accent-fill` (button fill) · `--accent-dim` (tint) | **the one loud colour — spend it on actions and the current state, never on decoration** |
 | brand, on its own tint | `--accent-tint-ink` | accent-coloured text sitting ON `--accent-dim` (`.btn-quiet`, `.tag-11`, the featured chip): plain `--accent` measures 4.0–4.3:1 there, under AA |
 | positive state | `--good` (text) · `--good-fill` / `--good-ink` (button) | "you have this", success |
-| absence / caution | `--warn` (karton only, amber) | the one non-brand hue, defined per theme in `karton.html` |
+| absence / caution | `--warn` (text) · `--warn-soft` (tint) | amber, the one non-brand hue: the karton's flags and "Nisam bio/la", /clanarine's trust note (base tokens since 29.10.2026) |
 
 Both themes are first-class: every token has a dark and a light value, the page
 pre-paints the saved theme, and a design that only looks right in one is wrong.

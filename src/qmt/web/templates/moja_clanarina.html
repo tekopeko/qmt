@@ -205,7 +205,7 @@
       </dl>
       {# the state in one plain sentence; a date ends in its own full stop #}
       <p class="pc-status">
-        {%- if not p.active %}Članarina je istekla {{ dospijece }} Nova uplata počinje od dana uplate.
+        {%- if not p.active %}Članarina je istekla {{ dospijece }} Nova uplata počinje od {{ next_payment if p.continues else "dana uplate." }}
         {%- elif p.cancelling %}Pretplata je otkazana i vrijedi do {{ dospijece }}
         {%- elif p.auto_renew %}Pretplata se obnavlja automatski {{ next_payment }} karticom.
         {%- elif p.overdue %}Uplata je dospjela {{ next_payment }} — članarina vrijedi još do {{ dospijece }} Uplatu obavi u dvorani, gotovinom ili karticom.

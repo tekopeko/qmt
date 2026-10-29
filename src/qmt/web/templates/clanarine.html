@@ -1,12 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Trenutne članarine — QMT{% endblock %}
+{% block head %}
+<style>
+  /* what an uplata recorded now buys (db.next_cycle, 29.10.2026), said
+     before it is recorded: under its row's buttons, muted and small */
+  .next-cycle { margin-top: 4px; font-size: .78rem; font-variant-numeric: tabular-nums; }
+  /* a lapsed plan's termini in its grace week, trained on trust and not
+     paid (db.trust_bookings): base.html's amber, --warn (the karton's
+     flags' colour; AA on --surface in both themes). In the row's action
+     cell, above its .next-cycle line: that cell never wraps and has the
+     room (the Status column is at its narrowest there, and broke the
+     note word by word) */
+  .trust { margin-top: 4px; color: var(--warn); font-size: .78rem; font-weight: 600; }
+</style>
+{% endblock %}
 {% block content %}
 <h1>Trenutne članarine</h1>
 <p class="hint">
   Ručna evidencija uplata (gotovina ili kartica u dvorani) — plaćanje kroz aplikaciju stiže
-  kasnije. Nakon evidentirane uplate sljedeća je za <strong>mjesec dana</strong>, dospijeće
-  <strong>tjedan</strong> nakon toga. Bez aktivne članarine polaznik ne može rezervirati
-  termine tog tipa.
+  kasnije. Mjesec članarine je fiksan: uplata ga produljuje za <strong>mjesec dana od
+  dospijeća</strong>, ne od dana uplate, a novo dospijeće je <strong>tjedan</strong> nakon
+  toga — do njega se trenira na povjerenje. Bez aktivne članarine polaznik ne može
+  rezervirati termine tog tipa.
 </p>
 {# the members' page, where its texts and prices are edited in place: said
    here, beside the members' payments, since 18.10.2026, when the trainer's
@@ -70,6 +85,9 @@
             <input type="hidden" name="plan" value="{{ m.plan }}">
             <button class="btn-sm btn-ghost" type="submit">Ukloni</button>
           </form>
+          {% if row["trust"][m.plan] %}<div class="trust">{{ row["trust"][m.plan] }}</div>{% endif %}
+          {% set nxt, dosp = row["next"][m.plan] %}
+          <div class="hint next-cycle">Uplata produljuje do {{ nxt.strftime("%-d.%-m.") }} (vrijedi do {{ dosp.strftime("%-d.%-m.") }})</div>
         </td>
       </tr>
     {% endfor %}
@@ -100,6 +118,7 @@
     </select>
     <button class="btn-sm btn-signal" type="submit" style="white-space:nowrap;">Dodaj + evidentiraj uplatu</button>
   </form>
+  <p class="hint next-cycle">Uplata: od danas do {{ new_cycle[0].strftime("%-d.%-m.") }} (vrijedi do {{ new_cycle[1].strftime("%-d.%-m.") }})</p>
   {% endif %}
 </div>
 {% else %}

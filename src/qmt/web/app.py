@@ -934,6 +934,9 @@ def moja_clanarina(request: Request):
         plans.append({"key": m.plan, "active": active, "chip": chip,
                       # the grace week: next_payment has passed, dospijeće has not
                       "overdue": active and today > m.next_payment,
+                      # lapsed while the month that began at the due date still
+                      # runs: an uplata buys that month (db.next_cycle), not one from today
+                      "continues": not active and today < add_month(m.next_payment),
                       "paid_on": m.paid_on, "next_payment": m.next_payment, "dospijece": m.dospijece,
                       "sessions": m.sessions_per_cycle,
                       # the online plan's QMove tier, its Paket fact (NULL: the base tier);
@@ -1102,9 +1105,46 @@ def _month_overview(user_id: int, first: date, today: date, booked: set[date]) -
             "this_month": first == today.replace(day=1), "month_weeks": weeks}
 
 
+# A series run that left dates out comes back with them in the query
+# (#seriesDlg, calendar.html): the dates as ISO days and each skipped one's
+# reason as a key, _refusal's reason made ASCII; the template says them in
+# words. "prozor" and "razdoblje" cannot happen in a run (its dates are the
+# window's and the period's), "prošao" only on an offer reopened late.
+SKIP_KEYS = {"popunjen": "popunjen", "otkazan": "otkazan", "već rezervirano": "rezervirano",
+             "zatvoren": "zatvoren", "prošao": "prosao", "prozor": "prozor", "razdoblje": "razdoblje"}
+
+
+def _series_report(res: dict) -> dict:
+    """The query a series run's page comes back with when the run left
+    dates out (a skipped date, a spent paket), for the dialog; {} when it
+    booked every date it had."""
+    if not res["skipped"] and res["stopped"] != "paket":
+        return {}
+    return {"booked": ",".join(d.isoformat() for d in res["booked"]),
+            "skipped": ",".join(f"{d.isoformat()}:{SKIP_KEYS.get(why, why)}" for d, why in res["skipped"]),
+            "paket": res["quota"] if res["stopped"] == "paket" else None}
+
+
+def _read_series_report(booked: str | None, skipped: str | None, paket: str | None) -> dict | None:
+    """_series_report's query back: {"booked": [dates], "skipped": [(date,
+    key)], "quota": the paket size or None}, or None when nothing was left
+    out (no dialog). A date that is not one, a key that is no reason, a
+    paket that is no number: dropped."""
+    dates = [d for d in (_iso_day(x) for x in (booked or "").split(",")[:10]) if d]
+    misses = []
+    for part in (skipped or "").split(",")[:10]:
+        when, _, key = part.partition(":")
+        when = _iso_day(when)
+        if when and key in SKIP_KEYS.values():
+            misses.append((when, key))
+    quota = int(paket) if paket and paket.isdigit() and 0 < int(paket) < 1000 else None
+    return {"booked": dates, "skipped": misses, "quota": quota} if misses or quota else None
+
+
 @app.get("/raspored", response_class=HTMLResponse)
 def calendar(request: Request, week: str | None = None, series: str | None = None,
-             day: str | None = None, view: str | None = None, month: str | None = None):
+             day: str | None = None, view: str | None = None, month: str | None = None,
+             booked: str | None = None, skipped: str | None = None, paket: str | None = None):
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
@@ -1112,6 +1152,14 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
 
     today = config.today()
     now = datetime.now(config.TZ)
+    # the booking window (db.booking_window): this week and BOOKING_WEEKS - 1
+    # more. A client's week navigation ends at its last week, and a week past
+    # it shows him nothing, which nobody could book yet; the trainer, who
+    # plans the timetable, walks every week
+    window_last = db.booking_window(today)[1]
+    last_monday = window_last - timedelta(days=6)
+    plans = db.memberships_for(user.id)
+    beyond_window, period_until = False, None
     # ?view=month: a client's month overview (the phone's "Mjesec") in the
     # week grid's place. A trainer has no month view: the week page it is.
     month_view = view == "month" and not user.is_trainer
@@ -1128,10 +1176,17 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
             monday = _monday_of(today)               # garbage ?week= falls back to now
         db.materialize_week(monday)
 
+        beyond_window = not user.is_trainer and monday > last_monday
         start = datetime(monday.year, monday.month, monday.day, tzinfo=config.TZ)
-        rows = db.sessions_between(start, start + timedelta(days=7))
+        rows = [] if beyond_window else db.sessions_between(start, start + timedelta(days=7), now)
         mine = db.user_booking_ids(user.id, [r["session"].id for r in rows])
         my_plans = db.active_plan_kinds(user.id)
+        # a client's running plans and their dospijeće: a termin after it
+        # cannot be booked (db._refusal's "razdoblje"), so its row offers
+        # nothing and the week says until when the plan runs; a weekly
+        # repeat stops at the earlier of it and the window's last day
+        # (db._series_dates). Never the trainer's: he does not book.
+        paid_until = {} if user.is_trainer else {m.plan: m.dospijece for m in plans if m.is_active(today)}
 
         # Group into 7 day columns; precompute everything the template needs so it
         # stays logic-free.
@@ -1144,6 +1199,11 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
                 local = sess.starts_at.astimezone(config.TZ)
                 if local.date() != d:
                     continue
+                until = paid_until.get(sess.kind)
+                bound = min(until, window_last) if until else None
+                after_period = bool(until) and d > until
+                if after_period:
+                    period_until = min(period_until or until, until)
                 sessions.append({
                     "id": sess.id, "title": sess.title,
                     "time": local.strftime("%H:%M"),
@@ -1152,14 +1212,21 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
                     "full": r["booked"] >= sess.capacity,
                     "canceled": sess.canceled,
                     "past": sess.starts_at <= now,
+                    # empty, and CLOSE_EMPTY_HOURS or less to go (db.is_closed)
+                    "closed": r["closed"],
                     "mine": sess.id in mine,
                     "can_cancel": sess.id in mine and now < db.cancel_deadline(sess),
                     "one_on_one": sess.capacity == 1,
                     # may this client book this kind? (trainer never books via UI)
                     "allowed": user.is_trainer or sess.kind in my_plans,
+                    # after his plan's dospijeće: nothing to book here yet
+                    "after_period": after_period,
                     # from the weekly timetable: the phone's sheet offers the
-                    # "isti termin svaki tjedan" checkbox only for these
+                    # "isti termin svaki tjedan do …" checkbox on these, with
+                    # the series' bound, while a later week falls inside it
                     "weekly": sess.template_id is not None,
+                    "repeat_until": (bound if sess.template_id is not None and bound
+                                     and d + timedelta(days=7) <= bound else None),
                 })
             # key is "sessions", NOT "items" — Jinja resolves dict.items to the builtin method
             days.append({"date": d, "name": WEEKDAYS[i], "is_today": d == today, "sessions": sessions,
@@ -1221,7 +1288,6 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
         if preview:
             series_offer = dict(preview, session_id=series_id, noun=_termin(preview["n"]))
 
-    plans = db.memberships_for(user.id)
     overview = {}
     if month_view:
         overview = _month_overview(user.id, shown_month, today, {d["date"] for d in mine_days})
@@ -1233,7 +1299,14 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
         request, user,
         days=days, monday=monday, series_offer=series_offer, selected_day=selected_day,
         prev_week=(monday - timedelta(days=7)).isoformat(),
-        next_week=(monday + timedelta(days=7)).isoformat(),
+        # none past the window's last week for a client (the phone's swipe too)
+        next_week=(None if not user.is_trainer and monday >= last_monday
+                   else (monday + timedelta(days=7)).isoformat()),
+        beyond_window=beyond_window, weeks_ahead=db.weeks_text(config.BOOKING_WEEKS),
+        # the week's termini after a running plan's dospijeće: the earliest
+        # such dospijeće, said once under the termini
+        period_until=period_until,
+        series_report=None if user.is_trainer else _read_series_report(booked, skipped, paket),
         mine_days=mine_days, next_booking=next_booking, cutoff_hours=config.CANCEL_CUTOFF_HOURS,
         # with no plan running a client is told booking needs one (the plans
         # themselves are on /moja-clanarina since 18.10.2026)
@@ -1244,7 +1317,7 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
 
 def _redirect_back(week: str, error: str | None = None, ok: str | None = None,
                    cta: str | None = None, series: int | None = None,
-                   day: str = "") -> RedirectResponse:
+                   day: str = "", report: dict | None = None) -> RedirectResponse:
     """Back to the calendar, on the right week, with feedback visible.
     The separator depends on whether `back` already has a query string —
     "/&error=..." is not a query string and the message silently vanishes.
@@ -1252,13 +1325,14 @@ def _redirect_back(week: str, error: str | None = None, ok: str | None = None,
     the alert builds the link itself, so a crafted ?cta= cannot become an
     off-site href. `series` (a session id) asks the calendar to offer that
     booking's weekly repeat. `day` is the day a phone was showing (ISO; any
-    other value is dropped), so the page comes back on it."""
+    other value is dropped), so the page comes back on it. `report` is a
+    series run's dates left out (_series_report), for the dialog."""
     from urllib.parse import quote
 
     back = f"/raspored?week={week}" if week else "/raspored"
     shown = _iso_day(day)
     for key, val in (("day", shown and shown.isoformat()), ("error", error), ("ok", ok),
-                     ("cta", cta), ("series", series)):
+                     ("cta", cta), ("series", series), *(report or {}).items()):
         if val:
             back += ("&" if "?" in back else "?") + f"{key}=" + quote(str(val))
     return RedirectResponse(back, status_code=303)
@@ -1286,12 +1360,15 @@ def book(request: Request, session_id: int, week: str = Form(""), series: str = 
         except db.BookingError as e:
             return _redirect_back(week, "Rezervirano ✓, ali " + _lower_first(str(e)), day=day)
         text, any_more = _series_feedback(res)
+        # a date left out: the dialog says which and why (#seriesDlg)
+        report = _series_report(res)
         if not any_more:
             # the booking stands, the repeat found nothing to add: say so
             # without contradicting the ✓ ("nijedan termin nije rezerviran")
             why = text.split(" — ", 1)[1] if " — " in text else ""
-            return _redirect_back(week, ok="Rezervirano ✓ — samo ovaj termin" + (", " + why if why else "."), day=day)
-        return _redirect_back(week, ok="Rezervirano ✓ — " + _lower_first(text), day=day)
+            return _redirect_back(week, ok="Rezervirano ✓ — samo ovaj termin" + (", " + why if why else "."),
+                                  day=day, report=report)
+        return _redirect_back(week, ok="Rezervirano ✓ — " + _lower_first(text), day=day, report=report)
     return _redirect_back(week, ok="Rezervirano ✓", series=session_id, day=day)
 
 
@@ -1329,8 +1406,9 @@ def _series_feedback(res: dict) -> tuple[str, bool]:
 
 @app.post("/book/{session_id}/series")
 def book_series(request: Request, session_id: int, week: str = Form(""), day: str = Form("")):
-    """"Isti termin svaki tjedan": the slot just booked, on every following
-    week of the paid period (the rules are db.book_series')."""
+    """"Isti termin svaki tjedan": the slot just booked, on every later week
+    of the booking window up to the plan's dospijeće (the rules are
+    db.book_series'). A date left out opens the dialog (#seriesDlg)."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -1344,7 +1422,9 @@ def book_series(request: Request, session_id: int, week: str = Form(""), day: st
     except db.BookingError as e:
         return _redirect_back(week, str(e), day=day)
     text, ok = _series_feedback(res)
-    return _redirect_back(week, ok=text, day=day) if ok else _redirect_back(week, text, day=day)
+    report = _series_report(res)
+    return (_redirect_back(week, ok=text, day=day, report=report) if ok
+            else _redirect_back(week, text, day=day, report=report))
 
 
 @app.post("/cancel/{session_id}")
@@ -2252,11 +2332,25 @@ def clanarine_page(request: Request):
     if redirect:
         return redirect
     texts = db.copy_texts()
+    today = config.today()
+    rows = db.memberships_overview()
+    for row in rows:
+        # what an uplata recorded now buys, said beside its button
+        # (db.next_cycle, the rule record_payment follows)
+        row["next"] = {m.plan: db.next_cycle(m, today) for m in row["plans"]}
+        # a lapsed plan's termini in its grace week: trained on trust, unpaid
+        row["trust"] = {}
+        for m in row["plans"]:
+            n = db.trust_bookings(row["user"].id, m.plan) if not m.is_active(today) else 0
+            if n:
+                row["trust"][m.plan] = f"{n} {_termin(n)} na povjerenje — neplaćeno"
     # the online tiers by name for the forms' Paket selects: the QMove
     # cards' titles, the gym owner's text (renaming a card renames the tier)
     return templates.TemplateResponse(request, "clanarine.html", _ctx(
-        request, user, copy_texts=texts, rows=db.memberships_overview(),
-        plans=PLAN_TYPES, plan_labels=PLAN_LABELS, today=config.today(),
+        request, user, copy_texts=texts, rows=rows,
+        plans=PLAN_TYPES, plan_labels=PLAN_LABELS, today=today,
+        # a plan not held starts from today (the add form's line)
+        new_cycle=db.next_cycle(None, today),
         online_tier_names=copy.online_tier_names(texts)))
 
 
@@ -2282,7 +2376,7 @@ def clanarine_uplata(request: Request, user_id: int, plan: str = Form(...),
     # the flash names the tier as grupni's names its treninga: by its card's title
     named = f" ({copy.online_tier_names(db.copy_texts())[m.tier]})" if plan == "online" else ""
     msg = (f"{PLAN_LABELS[plan]}{f' ({quota} treninga/mj)' if quota else ''}{named}: uplata evidentirana — "
-           f"sljedeća {m.next_payment.strftime('%-d.%-m.%Y.')}")
+           f"sljedeća {m.next_payment.strftime('%-d.%-m.%Y.')} (vrijedi do {m.dospijece.strftime('%-d.%-m.%Y.')})")
     return RedirectResponse(f"/clanarine?ok={quote(msg)}", status_code=303)
 
 

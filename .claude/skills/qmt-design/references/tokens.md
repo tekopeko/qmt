@@ -1,6 +1,6 @@
 # QMT design tokens (generated from base.html — do not edit by hand)
 
-_Regenerated 2026-09-25 by scripts/extract_tokens.py_
+_Regenerated 2026-10-29 by scripts/extract_tokens.py_
 
 | token | light | dark | note |
 |---|---|---|---|
@@ -21,6 +21,8 @@ _Regenerated 2026-09-25 by scripts/extract_tokens.py_
 | `--good-ink` | `#ffffff` | `#06280f` | text ON green |
 | `--good-fill` | `#15803d` | `#34b06a` | solid green button |
 | `--good-strong` | `#116932` | `#2b9a5c` |  |
+| `--warn` | `#a34a08` | `#fbbf24` | amber: absence, caution — the karton's flags and "Nisam bio/la", /clanarine's trust note (base's since 29.10.2026) |
+| `--warn-soft` | `rgba(163, 74, 8, .13)` | `rgba(251, 191, 36, .15)` | its tint |
 | `--shadow` | `0 1px 2px rgba(20, 20, 22, .05), 0 8px 24px rgba(20, 20, 22, .06)` | `0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35)` |  |
 | `--shadow-btn` | `0 2px 10px rgba(225, 6, 0, .28)` | `0 2px 12px rgba(255, 52, 43, .35)` |  |
 

@@ -707,11 +707,12 @@ def materialize_week(monday) -> None:
 
     Runs on every week view. Safe under concurrency: the INSERT is
     ON CONFLICT DO NOTHING against uq_session_template_start, so two requests
-    materializing the same week cannot double-create.
+    materializing the same week cannot double-create. Only the weeks of the
+    booking window (booking_window: this week and BOOKING_WEEKS - 1 more): a
+    termin further ahead could not be booked yet.
     """
-    this_monday = config.today() - timedelta(days=config.today().weekday())
-    horizon_monday = this_monday + timedelta(days=config.BOOKING_HORIZON_DAYS + 7)
-    if monday < this_monday or monday > horizon_monday:
+    this_monday, last_day = booking_window(config.today())
+    if monday < this_monday or monday > last_day - timedelta(days=6):
         # Past weeks render whatever exists; fabricating "history" or letting a
         # client mint unbounded rows by walking ?week= is not materialization's job.
         return
@@ -722,8 +723,11 @@ def materialize_week(monday) -> None:
             _materialize(s, t, monday + timedelta(days=t.weekday))
 
 
-def sessions_between(start: datetime, end: datetime) -> list[dict]:
-    """Sessions in [start, end) with booking counts, oldest first."""
+def sessions_between(start: datetime, end: datetime, now: datetime | None = None) -> list[dict]:
+    """Sessions in [start, end) with booking counts, oldest first. `closed`
+    is is_closed() at `now` (the page's own moment, so a row and the page
+    around it agree; the current time when none is given)."""
+    now = now or datetime.now(config.TZ)
     with session_scope() as s:
         rows = s.execute(
             select(TrainingSession, func.count(Booking.id))
@@ -732,7 +736,7 @@ def sessions_between(start: datetime, end: datetime) -> list[dict]:
             .group_by(TrainingSession.id)
             .order_by(TrainingSession.starts_at)
         ).all()
-        return [{"session": sess, "booked": n} for sess, n in rows]
+        return [{"session": sess, "booked": n, "closed": is_closed(sess, n, now)} for sess, n in rows]
 
 
 def user_booking_ids(user_id: int, session_ids: list[int]) -> set[int]:
@@ -786,6 +790,42 @@ class MembershipRequired(BookingError):
         self.kind = kind
 
 
+def booking_window(today: date) -> tuple[date, date]:
+    """The days a termin may be booked on: (this week's Monday, the Sunday
+    of the week BOOKING_WEEKS - 1 weeks on). Week-aligned on purpose, the
+    owner's "the running week and three more weeks" (29.10.2026): 28 days
+    on a Monday, 22 on a Sunday, and each Monday a whole week more."""
+    monday = today - timedelta(days=today.weekday())
+    return monday, monday + timedelta(days=7 * config.BOOKING_WEEKS - 1)
+
+
+def is_closed(sess: TrainingSession, booked: int, now: datetime) -> bool:
+    """Has this termin closed? An empty termin closes CLOSE_EMPTY_HOURS
+    before it starts (the owner, 29.10.2026: nobody booked it by then, so
+    nobody comes); one booking keeps it open to anyone until it starts.
+    Derived, never stored, so no cron: a termin the trainer canceled stays
+    "otkazan" and one that started is "prošao". Every kind alike, a 1:1
+    termin too."""
+    return (not sess.canceled and now < sess.starts_at
+            and sess.starts_at - now <= timedelta(hours=config.CLOSE_EMPTY_HOURS) and booked == 0)
+
+
+_NUMBER_WORDS = ("nula", "jedan", "dva", "tri", "četiri", "pet", "šest", "sedam", "osam", "devet", "deset")
+
+
+def weeks_text(n: int, words: bool = False) -> str:
+    """n weeks in Croatian, the noun after its count: "4 tjedna" (words:
+    "četiri tjedna"); 1 tjedan, 2-4 tjedna, 5 and on tjedana (21 tjedan)."""
+    if n % 10 == 1 and n % 100 != 11:
+        noun = "tjedan"
+    elif 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        noun = "tjedna"
+    else:
+        noun = "tjedana"
+    count = _NUMBER_WORDS[n] if words and 0 <= n < len(_NUMBER_WORDS) else str(n)
+    return f"{count} {noun}"
+
+
 def book(user_id: int, session_id: int) -> None:
     now = datetime.now(config.TZ)
     with session_scope() as s:
@@ -798,36 +838,46 @@ def book(user_id: int, session_id: int) -> None:
         s.add(Booking(user_id=user_id, session_id=session_id))
 
 
-def _refusal(s, user_id: int, sess: TrainingSession | None, now: datetime,
-             horizon: bool = True) -> tuple[str, BookingError] | None:
+def _refusal(s, user_id: int, sess: TrainingSession | None,
+             now: datetime) -> tuple[str, BookingError] | None:
     """Why `user_id` may not book `sess`: (reason, the error book() raises),
     or None when the booking may go in. The caller holds the session row FOR
     UPDATE, so the counts below are the ones that decide.
 
-    book() and book_series() both ask this, so their rules cannot drift. The
-    checks run in book()'s order, so a single booking gets exactly the message
-    it always got. The series passes horizon=False: it books the paid period
-    ahead and is bounded by that period's end instead."""
+    book() and book_series() both ask this, so their rules cannot drift, and
+    both are bound by the same two limits: the booking window (this week and
+    BOOKING_WEEKS - 1 more) and the plan's paid period with its grace week
+    (dospijeće). In order: canceled, started, closed (an empty termin
+    CLOSE_EMPTY_HOURS before it starts), past the window, no plan, past
+    dospijeće, a spent paket, full, already held."""
     if sess is None or sess.canceled:
         return "otkazan", BookingError("Termin ne postoji ili je otkazan.")
     if sess.starts_at <= now:
         return "prošao", BookingError("Termin je već počeo ili prošao.")
-    if horizon and sess.starts_at > now + timedelta(days=config.BOOKING_HORIZON_DAYS):
-        return "horizont", BookingError(
-            f"Rezervacije se otvaraju {config.BOOKING_HORIZON_DAYS} dana unaprijed.")
+    # counted once, inside the lock: it decides "zatvoren" and "popunjen"
+    taken = s.scalar(select(func.count()).select_from(Booking).where(Booking.session_id == sess.id))
+    if is_closed(sess, taken, now):
+        return "zatvoren", BookingError("Termin je zatvoren.")
+    day = sess.starts_at.astimezone(config.TZ).date()
+    last = booking_window(config.today())[1]
+    if day > last:
+        return "prozor", BookingError(
+            f"Rezervacije su moguće do {last:%-d.%-m.}, "
+            f"{weeks_text(config.BOOKING_WEEKS, words=True)} unaprijed.")
     if sess.kind not in active_plan_kinds(user_id, s):
         return "članarina", _plan_needed(sess.kind)
-    # tiered plan: this termin's cycle must still have a trening left
     m = _membership(s, user_id, sess.kind)
-    if m is not None and m.sessions_per_cycle:
-        day = sess.starts_at.astimezone(config.TZ).date()
+    if day > m.dospijece:
+        return "razdoblje", BookingError(
+            f"Članarina vrijedi do {m.dospijece:%-d.%-m.} — za kasnije termine treba nova uplata.")
+    # tiered plan: this termin's cycle must still have a trening left
+    if m.sessions_per_cycle:
         start, end = m.cycle_bounds(day)
         if _cycle_used(s, user_id, sess.kind, start, end) >= m.sessions_per_cycle:
             return "paket", BookingError(
                 f"Iskoristio/la si svih {m.sessions_per_cycle} treninga u ciklusu "
                 f"{start:%-d.%-m.}–{(end - timedelta(days=1)):%-d.%-m.} — "
                 "otkaži neki termin ili pričekaj sljedeći ciklus.")
-    taken = s.scalar(select(func.count()).select_from(Booking).where(Booking.session_id == sess.id))
     if taken >= sess.capacity:
         return "popunjen", BookingError("Termin je popunjen.")
     if _holds(s, user_id, sess.id):
@@ -933,29 +983,31 @@ def _weekly_template(s, sess: TrainingSession) -> SessionTemplate:
 
 
 def _series_dates(sess: TrainingSession, m: Membership) -> tuple[list[date], date]:
-    """The dates of `sess`'s slot on the following weeks of its paid period
-    that are still ahead, and that period's last day. The period is the cycle
-    containing `sess` (Membership.cycle_bounds), cut at dospijeće: a termin in
-    the grace week repeats up to dospijeće, never into a month nobody has paid
-    for. Past weeks are left out, so an offer reopened long after the booking
-    never creates sessions in history."""
+    """The dates of `sess`'s slot on every later week of the booking window
+    that are still ahead, and the series' bound: the earlier of the window's
+    last day and the plan's dospijeće (the owner, 29.10.2026: the same
+    termin "for all 4 weeks … that is the hard cap", and never past the paid
+    period with its grace week, the bound book() keeps too). Past weeks are
+    left out, so an offer reopened long after the booking never creates
+    sessions in history."""
     day = sess.starts_at.astimezone(config.TZ).date()
-    end = min(m.cycle_bounds(day)[1], m.dospijece + timedelta(days=1))
     today = config.today()
+    until = min(booking_window(today)[1], m.dospijece)
     dates, nxt = [], day + timedelta(days=7)
-    while nxt < end:
+    while nxt <= until:
         if nxt >= today:
             dates.append(nxt)
         nxt += timedelta(days=7)
-    return dates, end - timedelta(days=1)
+    return dates, until
 
 
 def series_preview(user_id: int, session_id: int) -> dict | None:
     """The offer after booking `session_id`: {"n": weeks left, "last": the
-    last of them, "until": the paid period's last day}, or None when there is
-    nothing to offer (a one-off termin, a slot off the timetable, no active
-    plan of its kind, no week left). Read-only: a week nobody has opened yet
-    counts as free, and the real run (book_series) skips what is full."""
+    last of them, "until": the series' bound (_series_dates)}, or None when
+    there is nothing to offer (a one-off termin, a slot off the timetable, no
+    active plan of its kind, no week left). Read-only: a week nobody has
+    opened yet counts as free, and the real run (book_series) skips what is
+    full."""
     with session_scope() as s:
         sess = s.get(TrainingSession, session_id)
         if sess is None or sess.kind not in active_plan_kinds(user_id, s):
@@ -969,19 +1021,20 @@ def series_preview(user_id: int, session_id: int) -> dict | None:
 
 
 def book_series(user_id: int, session_id: int) -> dict:
-    """Book `session_id`'s slot on every following week of its paid period.
+    """Book `session_id`'s slot on every later week of the booking window,
+    up to the plan's dospijeće (_series_dates).
 
     ONE transaction, dates in order: the session rows are locked in starts_at
     order, so two series (or a series and book()) cannot deadlock. Each date
     is materialized the way a week view does it, locked FOR UPDATE and judged
-    by book()'s own rules (_refusal) except the horizon: the paid period is
-    the bound here. A canceled, full or already-held date is skipped and
-    reported; a spent paket stops the run and the rest stays unbooked. The
-    quota is counted inside this transaction, so what the loop books counts
-    as it goes.
+    by book()'s own rules (_refusal), the window and the period included. A
+    canceled, closed, full or already-held date is skipped and reported; a
+    spent paket stops the run and the rest stays unbooked. The quota is
+    counted inside this transaction, so what the loop books counts as it
+    goes.
 
     Returns {"booked": [dates], "skipped": [(date, reason)], "stopped":
-    "paket" | None, "until": the period's last day, "quota": the paket size
+    "paket" | None, "until": the series' bound, "quota": the paket size
     (None = unlimited), which the message names}."""
     now = datetime.now(config.TZ)
     with session_scope() as s:
@@ -999,7 +1052,7 @@ def book_series(user_id: int, session_id: int) -> dict:
             occ = s.execute(select(TrainingSession).where(
                 TrainingSession.template_id == t.id, TrainingSession.starts_at == starts,
             ).with_for_update()).scalar_one_or_none()
-            refused = _refusal(s, user_id, occ, now, horizon=False)
+            refused = _refusal(s, user_id, occ, now)
             if refused is None:
                 s.add(Booking(user_id=user_id, session_id=occ.id))
                 s.flush()                    # counted by the next date's quota check
@@ -1138,6 +1191,34 @@ def release_reminder(user_id: int, kind: str, ref: str) -> None:
             ReminderLog.ref == ref))
 
 
+def next_cycle(m: Membership | None, today: date) -> tuple[date, date]:
+    """What an uplata recorded on `today` buys: the plan's new (next_payment,
+    dospijeće). One rule, which record_payment() follows and /clanarine
+    states before the uplata is recorded.
+
+    The membership month is fixed (the owner, 29.10.2026): due 1.5., paying
+    on 28.4., 1.5., 7.5. (the grace week, trained on trust) or 12.5. (locked
+    out since 8.5.) all buy 1.5.-1.6., the month that began at the due date
+    and has not ended. Only once that whole month has passed unpaid (a real
+    gap) does a payment start a fresh month from that day: 2.6. buys
+    2.6.-2.7. A plan never held starts from today."""
+    base = m.next_payment if m is not None and today < _add_month(m.next_payment) else today
+    nxt = _add_month(base)
+    return nxt, nxt + timedelta(days=Membership.GRACE_DAYS)
+
+
+def trust_bookings(user_id: int, plan: str) -> int:
+    """The client's live termini of `plan` in its grace week, next_payment
+    through dospijeće: booked and trained on trust. While the plan is lapsed
+    they are unpaid (/clanarine's amber note); any uplata moves next_payment
+    on, and they stop counting, whichever month it buys."""
+    with session_scope() as s:
+        m = _membership(s, user_id, plan)
+        if m is None:
+            return 0
+        return _cycle_used(s, user_id, plan, m.next_payment, m.dospijece + timedelta(days=1))
+
+
 def record_payment(user_id: int, plan: str, method: str = "gotovina",
                    amount_eur=None, stripe_invoice_id: str | None = None,
                    stripe_subscription_id: str | None = None,
@@ -1153,9 +1234,14 @@ def record_payment(user_id: int, plan: str, method: str = "gotovina",
     none, never demotes a member). No other plan has a tier: theirs is NULL
     whatever is passed.
 
-    Paying early extends from the CURRENT due date, not from today — a payment
-    a week ahead must never shorten the cycle. A lapsed plan restarts from
-    today (nobody owes "back months" for time the gym wasn't used).
+    The membership month is fixed (next_cycle): it runs from due date to due
+    date and never moves while the client keeps paying. Paying early, in the
+    grace week, or after dospijeće while the month that began at the due date
+    is still running all buy that same month; only a payment after a whole
+    month passed unpaid starts afresh from today (nobody owes "back months"
+    for time the gym wasn't used). Until 29.10.2026 a lapsed plan restarted
+    from today, which let a client pay on the last grace day every month and
+    get five weeks for four.
 
     Every call also appends to the immutable `payments` ledger — memberships
     hold only the current cycle, the ledger holds the owner's history. A Stripe
@@ -1169,13 +1255,12 @@ def record_payment(user_id: int, plan: str, method: str = "gotovina",
         if stripe_invoice_id and s.scalar(select(Payment.id).where(
                 Payment.stripe_invoice_id == stripe_invoice_id)):
             return m
-        base = m.next_payment if m is not None and m.next_payment > today else today
+        next_payment = next_cycle(m, today)[0]
         if m is None:
-            m = Membership(user_id=user_id, plan=plan, paid_on=today,
-                           next_payment=_add_month(base))
+            m = Membership(user_id=user_id, plan=plan, paid_on=today, next_payment=next_payment)
             s.add(m)
         else:
-            m.paid_on, m.next_payment = today, _add_month(base)
+            m.paid_on, m.next_payment = today, next_payment
         if stripe_subscription_id:
             # a paid invoice is proof the subscription is live again
             m.stripe_subscription_id = stripe_subscription_id

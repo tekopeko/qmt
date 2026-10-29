@@ -191,6 +191,22 @@ def test_cash_plan_taken_over_by_subscription_extends_from_due_date(stripe_on):
     assert m.stripe_subscription_id == "sub_9"
 
 
+def test_an_invoice_paid_in_the_grace_week_buys_the_month_from_the_due_date(stripe_on):
+    """The webhook records through db.record_payment, so the fixed month
+    (29.10.2026) holds for a card as for cash: a charge that lands after the
+    due date, in the grace week, extends from the due date, not from the day
+    it was paid."""
+    ivan = make_user("ivan@test.local")
+    db.record_payment(ivan, "grupni")
+    due = config.today() - timedelta(days=5)
+    with db.session_scope() as s:
+        s.query(Membership).filter_by(user_id=ivan, plan="grupni").one().next_payment = due
+    stripe_on["subs"]["sub_g"] = {"id": "sub_g", "metadata": {"qmt_user_id": str(ivan), "qmt_plan": "grupni"}}
+    assert post_event(invoice_paid("in_g", "sub_g")).status_code == 200
+    m = db.memberships_for(ivan)[0]
+    assert m.next_payment == db._add_month(due) and m.stripe_subscription_id == "sub_g"
+
+
 def test_cancel_and_delete_keep_paid_time_but_stop_renewing(stripe_on):
     ivan = make_user("ivan@test.local")
     stripe_on["subs"]["sub_1"] = {"id": "sub_1", "metadata": {"qmt_user_id": str(ivan), "qmt_plan": "grupni"}}

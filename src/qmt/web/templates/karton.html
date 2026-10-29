@@ -53,10 +53,9 @@
 
   /* ===== the upitnik v2 (26.10.2026): part 1's answers as facts, not state
      (neutral pills), and for the trainer the two safety flags: red "needs a
-     look" (q15 yes), amber pain (q14 at 4 or more, with where). --warn is
-     the karton's amber, the .act-absent values (AA on their tints). */
-  .upitnik { --warn:#a34a08; --warn-soft:rgba(163,74,8,.13); }
-  [data-theme="dark"] .upitnik { --warn:#fbbf24; --warn-soft:rgba(251,191,36,.15); }
+     look" (q15 yes), amber pain (q14 at 4 or more, with where). --warn /
+     --warn-soft are base.html's amber tokens (this page's until 29.10.2026,
+     when /clanarine's trust note needed them too). */
   .upitnik .u-fact { font:600 .78rem var(--font-body); color:var(--text); background:var(--surface-2);
                      border-radius:999px; padding:3px 11px; overflow-wrap:anywhere; }
   .upitnik .u-flags { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
@@ -120,10 +119,8 @@
   .le-actions { display:flex; align-items:center; gap:4px; margin-left:auto; }
   .le-actions form { margin:0; }
   /* .act / .act-quiet are global (base.html) — absence is the one coloured action — amber, and never the red primary */
-  .act-absent { --warn:#a34a08; --warn-soft:rgba(163,74,8,.13);
-                background:var(--warn-soft); color:var(--warn);
+  .act-absent { background:var(--warn-soft); color:var(--warn);
                 border-color:color-mix(in srgb, var(--warn) 40%, transparent); }
-  [data-theme="dark"] .act-absent { --warn:#fbbf24; --warn-soft:rgba(251,191,36,.15); }
   /* deepen the tint like every other action — a full amber fill shouted */
   .act-absent:hover { background:color-mix(in srgb, var(--warn) 26%, transparent);
                       color:var(--warn); border-color:var(--warn); }

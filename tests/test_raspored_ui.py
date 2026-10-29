@@ -248,6 +248,78 @@ def test_phone_shows_one_day_switches_it_and_opens_the_sheet(server):
     assert not problems, f"{len(problems)} problems, listed above"
 
 
+# ---------- a series that left a date out: the dialog (29.10.2026) ----------
+
+SERIES = r"""() => {
+  const d = document.getElementById('seriesDlg'), de = document.documentElement;
+  const r = d ? d.getBoundingClientRect() : null;
+  return {
+    open: !!d && d.open, modal: !!d && d.matches(':modal'),
+    text: d ? d.textContent.replace(/\s+/g, ' ').trim() : '',
+    focus: document.activeElement ? document.activeElement.textContent.trim() : '',
+    overflow: de.scrollWidth - de.clientWidth,
+    inside: !!r && r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
+  };
+}"""
+
+
+def test_phone_series_with_a_skipped_date_opens_the_dialog_and_u_redu_closes_it(server):
+    """The sheet's "Isti termin svaki tjedan do …" (the row's own bound)
+    ticked on a weekly 1:1 slot whose next week someone else holds: the page
+    comes back with #seriesDlg open as the modal, the focus on U redu,
+    saying what was booked and what was not and why, inside a 390px screen
+    with nothing overflowing; U redu closes it."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+
+    make_user("ivan@test.local", plans=("individualni",))
+    ana = make_user("ana@test.local", plans=("individualni",))
+    today = config.today()
+    mon = today - timedelta(days=today.weekday()) + timedelta(days=7)     # next week
+    wed = mon + timedelta(days=2)
+    db.add_template("Individualni trening", 2, 20 * 60, 60, 1, None, kind="individualni")
+    db.materialize_week(mon)
+    db.materialize_week(mon + timedelta(days=7))
+    db.book(ana, _session_at(wed + timedelta(days=7), 20))               # the week after is ana's
+    last = db.booking_window(today)[1]                                   # ivan is paid past it: the bound
+
+    problems = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx = browser.new_context(viewport={"width": 390, "height": 800}, has_touch=True, is_mobile=True)
+        pg = ctx.new_page(); errs = []
+        pg.on("pageerror", lambda e: errs.append(str(e)))
+        pg.goto(server + "/login")
+        pg.evaluate("localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        pg.goto(f"{server}/raspored?week={mon}&day={wed}"); pg.wait_for_load_state("networkidle")
+
+        pg.click(".week .day-col.is-on button.sess-row[data-state=book]")
+        label = " ".join(pg.inner_text("#sheetSeries").split())
+        if label != f"Isti termin svaki tjedan do {last:%-d.%-m.}":
+            problems.append(f"the sheet's checkbox says {label!r}")
+        pg.check("#sheetSeries input")
+        with pg.expect_navigation():
+            pg.click("#sheetBook button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        st = pg.evaluate(SERIES)
+        want = (f"Nisu rezervirani svi termini Rezervirano: {wed + timedelta(days=14):%-d.%-m.} "
+                f"Nije rezervirano: {wed + timedelta(days=7):%-d.%-m.} — termin je popunjen U redu")
+        if not (st["open"] and st["modal"]) or st["focus"] != "U redu" or st["text"] != want \
+                or st["overflow"] or not st["inside"]:
+            problems.append(f"the dialog after the series: {st}")
+        pg.click("#seriesDlg button")                                    # U redu
+        st = pg.evaluate(SERIES)
+        if st["open"] or st["overflow"]:
+            problems.append(f"U redu did not close the dialog: {st}")
+        problems += [f"js: {e}" for e in errs]
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
 # ---------- the month view (18.10.2026) ----------
 
 VIEW = r"""() => {
