@@ -81,6 +81,16 @@ and the Social Club feed.
   through tjedan 2 to tjedan 4", so every week is reachable, none locked by
   the calendar. For QMT's programme page: the days as such cards in one
   column, any of them openable, the number in the chip.
+- `app-24-home-challenge-preporuceno-za-tebe-2026-10-30.png` (Home Challenge,
+  further down, desktop 2834×1466 retina; `app-17` had this section as text
+  only): "PREPORUČENO ZA TEBE" under a short orange-to-pink bar at its left,
+  then photo cards three to a row (≈560×420, 24px radius, a bottom gradient):
+  a white chip top-right "3x tjedno" / "4x tjedno", the name bottom-left
+  ("Summer Quick Workouts", "Challenge 16" …, white, bold, not italic), a
+  pale pill "Početnik" under it and a round › at the right end. The
+  programmes the questionnaire's answers fit, as a catalogue to pick from:
+  the shape for QMT's /treninzi list once a client has more than one
+  programme (today's rows carry the same facts as text).
 
 ## Moj napredak — the calendar (`app-08`; top part from the page text)
 
