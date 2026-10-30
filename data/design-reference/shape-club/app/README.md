@@ -102,6 +102,26 @@ and the Social Club feed.
   only mentions which equipment is necessary there." Whether the Gym Program's
   training page is the same, or the exercise list with a checkmark per
   exercise he remembers, is the open capture.
+- `app-26-moj-profil-paid-2026-10-30.png` (`/user/profile`, desktop 2858×1584
+  retina; `app-07` was the trial's): the light profile page, sharp: the pill
+  "SHAPE CLUB · Česta pitanja" with the bell and ☰, "Ovdje možeš promijeniti
+  svoje podatke.", the white accordion card "Profil i kontakt — Osnovni
+  podaci, fotografija i obavijesti." open (a ˄ circle at the right): the
+  avatar circle with "Promijeni sliku" (dark pill) and "Ukloni" (red outline),
+  "JPG, PNG ili GIF. Max 5MB.", the IME and E-MAIL floating-label inputs, the
+  newsletter checkbox, "Pošalji link za reset lozinke" (underlined); then
+  "Preferencije treninga — Prilagodi treninge prema svom ritmu." with the
+  select "PREFERIRANI BROJ TRENINGA TJEDNO 3".
+- The Gym Program's "TJEDAN 2 - TRENUTNI TJEDAN" on 30.10.2026, a day after
+  paying (`app-22`; the URL is `/dashboard?mode=gym`), and "TJEDAN 4 -
+  TRENUTNI TJEDAN" on 17.10.2026 (`app-10`, the trial): the Gym Program runs
+  on ONE shared four-week calendar, not from each member's start. The two
+  dates fit a cycle that began on Monday 22.9. (week 4 = 13.–19.10.) and the
+  next on 20.10. (week 2 = 27.10.–2.11.): a member who joins mid-cycle lands
+  in the running week, the earlier weeks behind her, "0/12 treninga" all the
+  same. Not a bug, a cohort model. The Home Challenge is the other model,
+  per member from week 1 with every week reachable (`app-23`); QMT's days
+  ("Dan 1 … Dan N", done whenever) follow the second.
 
 ## Moj napredak — the calendar (`app-08`; top part from the page text)
 
