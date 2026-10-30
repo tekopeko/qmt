@@ -73,6 +73,14 @@ and the Social Club feed.
   "Pokreni trening" bottom-right. The week opens on the current one (week
   2 for a fresh account: the programme runs by calendar weeks, 3 trainings a
   week, 12 in all).
+- `app-23-dashboard-home-challenge-week-accordion-2026-10-30.png` (Home
+  Challenge, `?mode=challenge`, desktop 2880×1776 retina): the weeks as an
+  accordion in the right card, "TJEDAN 1 ›" shut and "TJEDAN 2 ˅" open, its
+  trainings numbered through the challenge ("4. TRENING Gluteus, noge i core",
+  "5. TRENING"), the chip top-LEFT in this mode; the owner: "You can scroll
+  through tjedan 2 to tjedan 4", so every week is reachable, none locked by
+  the calendar. For QMT's programme page: the days as such cards in one
+  column, any of them openable, the number in the chip.
 
 ## Moj napredak — the calendar (`app-08`; top part from the page text)
 
