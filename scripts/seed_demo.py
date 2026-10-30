@@ -152,9 +152,67 @@ def fill_bookings() -> None:
     print(f"  {booked} rezervacija")
 
 
-# The library's demo (30.10.2026): tags on some of the default exercises,
-# a few exercises no programme holds yet, and the similar exercises a
-# client may swap one for (stored one way, read both: Exercise.alternatives).
+# The demo's nine programmes, one per (razina × cilj), as the app made them
+# for itself until 30.10.2026 (db.ensure_online_skeletons, gone that day:
+# since then nothing in the app makes, fills or refills a programme, every
+# one is Amir's), so the dev demo stays what it was. Its exercises are
+# library rows, one per name, reused by every programme that holds them;
+# their instructions are the technique cues alone, never a dose (one row
+# serves every razina).
+DEMO_EXERCISES = {
+    "Goblet čučanj": "Pete cijelo vrijeme na podu, trup uspravan, koljena prate smjer stopala.",
+    "Sklekovi": "Tijelo u ravnoj liniji, bez propadanja kuka.",
+    "Veslanje u pretklonu": "Povuci prema pojasu, leđa ravna.",
+    "Plank": "Lopatice aktivne, gluteusi stisnuti.",
+    "Potisak s bučicama na klupi": "Lopatice skupljene, spusti kontrolirano.",
+    "Potisak iznad glave": "Trup čvrst, bez zaklona u leđima.",
+    "Biceps pregib": "Laktovi mirni uz tijelo, puni opseg pokreta.",
+    "Iskorak unatrag": "Koljeno prati smjer stopala, trup uspravan.",
+    "Rumunjsko mrtvo dizanje": "Neutralna kralježnica, kukovi idu unatrag.",
+    "Glute most": "Stisni gluteuse gore i zadrži sekundu.",
+}
+# Each programme's Dan 1 (no title, no weekday, no intro): per cilj, its
+# exercises in their order, in section trening, each with its dose per
+# razina, (sets, reps, seconds, note), and DEMO_REST seconds of rest between
+# sets. Each programme is titled by its cilj and razina ("Cijelo tijelo —
+# srednja razina") and has DEMO_INTRO for an intro.
+DEMO_PROGRAMS = {
+    "cijelo": [
+        ("Goblet čučanj", {"pocetna": (3, 8, None, "8 kg"), "srednja": (4, 10, None, "16 kg"),
+                           "napredna": (4, 12, None, "24 kg")}),
+        ("Sklekovi", {"pocetna": (3, 5, None, "s koljena"), "srednja": (3, 10, None, ""),
+                      "napredna": (4, 15, None, "")}),
+        ("Veslanje u pretklonu", {"pocetna": (3, 10, None, "2 × 6 kg"), "srednja": (3, 12, None, "2 × 10 kg"),
+                                  "napredna": (4, 12, None, "2 × 14 kg")}),
+        ("Plank", {"pocetna": (3, None, 20, ""), "srednja": (3, None, 40, ""), "napredna": (3, None, 60, "")}),
+    ],
+    "gornji": [
+        ("Potisak s bučicama na klupi", {"pocetna": (3, 8, None, "2 × 6 kg"), "srednja": (4, 10, None, "2 × 12 kg"),
+                                         "napredna": (4, 12, None, "2 × 18 kg")}),
+        ("Veslanje u pretklonu", {"pocetna": (3, 10, None, "2 × 6 kg"), "srednja": (4, 10, None, "2 × 12 kg"),
+                                  "napredna": (4, 12, None, "2 × 16 kg")}),
+        ("Potisak iznad glave", {"pocetna": (3, 8, None, "2 × 4 kg"), "srednja": (3, 10, None, "2 × 8 kg"),
+                                 "napredna": (4, 10, None, "2 × 12 kg")}),
+        ("Biceps pregib", {"pocetna": (2, 10, None, "2 × 4 kg"), "srednja": (3, 12, None, "2 × 8 kg"),
+                           "napredna": (3, 15, None, "2 × 10 kg")}),
+    ],
+    "donji": [
+        ("Goblet čučanj", {"pocetna": (3, 8, None, "8 kg"), "srednja": (4, 10, None, "20 kg"),
+                           "napredna": (4, 12, None, "28 kg")}),
+        ("Iskorak unatrag", {"pocetna": (3, 6, None, "po nozi"), "srednja": (3, 10, None, "po nozi · 2 × 8 kg"),
+                             "napredna": (4, 10, None, "po nozi · 2 × 12 kg")}),
+        ("Rumunjsko mrtvo dizanje", {"pocetna": (3, 8, None, "12 kg"), "srednja": (4, 10, None, "24 kg"),
+                                     "napredna": (4, 10, None, "32 kg")}),
+        ("Glute most", {"pocetna": (3, 12, None, ""), "srednja": (3, 15, None, "10 kg"),
+                        "napredna": (4, 15, None, "20 kg")}),
+    ],
+}
+DEMO_REST = 60                   # seconds between sets, every DEMO_PROGRAMS item's
+DEMO_INTRO = "Odmor 60–90 s između serija. Tempo kontroliran."
+
+# The library's demo (30.10.2026): tags on some of DEMO_EXERCISES, a few
+# exercises no programme holds yet, and the similar exercises a client may
+# swap one for (stored one way, read both: Exercise.alternatives).
 # name -> (tags, instructions for a new one, rep note, similar exercises)
 LIBRARY = {
     "Goblet čučanj": ("noge, bučice", None, "Spust dok su bedra paralelna s podom, pa natrag do pune ekstenzije.",
@@ -171,10 +229,11 @@ LIBRARY = {
 }
 
 # The days' demo (30.10.2026, stage 2): ivan's programme (srednja × cijelo)
-# gets a title and a weekday on its Dan 1, a warm-up and a stretch around the
-# defaults, and a Dan 2, so the demo shows two days and all three sections.
+# gets a title and a weekday on its Dan 1, a warm-up and a stretch around its
+# DEMO_PROGRAMS exercises, and a Dan 2, so the demo shows two days and all
+# three sections.
 # (day title, weekday, [(exercise, section, sets, reps, seconds, rest, note)]):
-# Dan 1's items are added to the defaults, Dan 2's make a new day.
+# Dan 1's items are added to DEMO_PROGRAMS', Dan 2's make a new day.
 DAYS = [
     ("Cijelo tijelo", 0, [("Čučanj s vlastitom težinom", "zagrijavanje", 2, 15, None, 30, ""),
                           ("Istezanje stražnje lože", "istezanje", 2, None, 30, None, "po nozi")]),
@@ -185,22 +244,32 @@ DAYS = [
 
 
 def seed_program() -> None:
-    """The 9 combo programmes, each with its Dan 1 of the default exercises
-    (library rows, the cues; each item its razina's dose and 60 s of rest,
-    db._DEFAULT_ITEMS), then the library's demo (LIBRARY) and the days' demo
-    (DAYS, ivan's programme). A dev RESET: the library goes with the
-    programmes (their clips' files are left alone: the dev .env may point
-    storage at R2)."""
+    """The 9 combo programmes (DEMO_PROGRAMS), each with its Dan 1 of the
+    demo exercises in section trening (library rows, DEMO_EXERCISES: the
+    cues; each item its razina's dose and DEMO_REST seconds of rest), then
+    the library's demo (LIBRARY) and the days' demo (DAYS, ivan's
+    programme). A dev RESET: the library goes with the programmes (their
+    clips' files are left alone: the dev .env may point storage at R2)."""
     from sqlalchemy import delete, select
 
     from qmt.models import Exercise, Program
+    from qmt.upitnik import GOALS, LEVELS
 
     with db.session_scope() as s:
         s.execute(delete(Program))          # their days and items with them
         s.execute(delete(Exercise))         # and the pairs of similar exercises
-    made = db.ensure_online_skeletons()
-    with db.session_scope() as s:
-        ids = {e.name: e.id for e in s.scalars(select(Exercise))}
+    ids = {name: db.create_exercise(name, cue) for name, cue in DEMO_EXERCISES.items()}
+    made = made_items = 0
+    for level, level_label in LEVELS.items():
+        for goal, goal_label in GOALS.items():
+            pid = db.create_program(f"{goal_label} — {level_label.lower()}", DEMO_INTRO, level, goal)
+            day_id = db.add_day(pid)
+            for name, doses in DEMO_PROGRAMS[goal]:
+                sets, reps, seconds, note = doses[level]
+                item_id = db.add_day_item(day_id, ids[name], "trening")
+                db.update_day_item(item_id, "trening", sets, reps, seconds, DEMO_REST, note)
+                made_items += 1
+            made += 1
     for name, (tags, instructions, rep_note, _) in LIBRARY.items():
         if name not in ids:
             ids[name] = db.create_exercise(name, instructions or "", rep_note, tags)
@@ -216,8 +285,8 @@ def seed_program() -> None:
         for name, section, sets, reps, seconds, rest, note in items:
             item_id = db.add_day_item(day_id, ids[name], section)
             db.update_day_item(item_id, section, sets, reps, seconds, rest, note)
-    print(f"  {made} programa (razina × cilj), svi s osnovnim vježbama (Dan 1); {len(ids)} vježbi u bazi; "
-          f"srednja × cijelo: {len(DAYS)} dana, sva tri dijela")
+    print(f"  {made} demo programa (razina × cilj), svaki s Danom 1 ({made_items} stavki u svima); "
+          f"{len(ids)} vježbi u bazi; srednja × cijelo: {len(DAYS)} dana, sva tri dijela")
 
 
 def seed_announcements() -> None:

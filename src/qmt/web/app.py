@@ -2200,7 +2200,6 @@ def treninzi(request: Request):
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/treninzi')}", status_code=303)
     if user.is_trainer:
-        db.ensure_online_skeletons()             # fresh deploys heal themselves
         rows = db.all_programs()
         goal_order = list(upitnik.GOALS)
         # one section per razina, goals in a fixed order inside each

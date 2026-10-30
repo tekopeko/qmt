@@ -690,15 +690,16 @@ Index("uq_exercises_name", func.lower(Exercise.name), unique=True)
 
 
 class Program(Base):
-    """An online course variant: fixed (razina × cilj) slots, matched, not
-    assigned.
+    """An online course variant: tagged with a (razina × cilj) combo,
+    matched, not assigned.
 
     The online side is AUTOMATED — the upitnik routes a client into a razina
     and a cilj, and they see exactly the programmes tagged with that combo.
-    The trainer edits the content of the nine skeleton slots (created by
-    `db.ensure_online_skeletons`); no per-client hand-outs anywhere. Since
-    30.10.2026 a programme is a list of days (ProgramDay), each day its
-    exercises in three sections (ProgramDayItem).
+    Every programme is the trainer's own (30.10.2026: no default slots, no
+    default exercises, nothing refilled; one with no day, or a day with no
+    exercise, stays so until he changes it); no per-client hand-outs
+    anywhere. Since 30.10.2026 a programme is a list of days (ProgramDay),
+    each day its exercises in three sections (ProgramDayItem).
     """
 
     __tablename__ = "programs"

@@ -4,8 +4,9 @@
 <h1>Online treninzi</h1>
 <p class="hint">
   Sve je automatski: upitnik svrsta polaznika u razinu i cilj, a on odmah vidi programe
-  označene tom kombinacijom — ništa se ne dodjeljuje ručno. Ti samo uređuješ sadržaj
-  devet osnovnih varijanti (skice se stvore same) ili dodaš dodatne programe za istu kombinaciju.
+  označene tom kombinacijom — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku
+  kombinaciju koju nudiš napravi program pa mu dodaj dane i vježbe. Kombinacija bez programa
+  polazniku kaže da se program još priprema.
 </p>
 
 <h2 style="font-size:1.05rem; margin-bottom:12px;">Programi po razinama</h2>
@@ -62,7 +63,7 @@
 </table>
 </div>
 
-<h2 style="font-size:1.05rem; margin-bottom:12px;">Dodatni program za kombinaciju</h2>
+<h2 style="font-size:1.05rem; margin-bottom:12px;">Novi program</h2>
 <form method="post" action="/treninzi" class="card" style="max-width:560px; padding:20px 22px;">
   <div class="field"><label for="np-title">Naziv</label>
     <input id="np-title" type="text" name="title" placeholder="npr. Gornji dio tijela — tjedan 2" required></div>
@@ -78,6 +79,6 @@
   </div>
   <div class="field"><label for="np-intro">Uvod (neobavezno)</label>
     <textarea id="np-intro" name="intro" rows="2" placeholder="Kratke upute, cilj programa…"></textarea></div>
-  <button type="submit">Kreiraj i dodaj vježbe</button>
+  <button type="submit">Kreiraj i dodaj dane</button>
 </form>
 {% endblock %}

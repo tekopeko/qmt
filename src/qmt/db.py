@@ -1560,10 +1560,10 @@ def client_can_view(program: Program, user_id: int) -> bool:
 
 EXERCISE_NAME_MAX = 160          # the column's length
 EXERCISE_DUPLICATE = "Vježba s tim imenom već postoji."
-# Every write that may set a name (a new exercise, a save, the skeletons'
-# defaults) takes the table in this mode first: it conflicts with itself, so
-# two saves cannot both find a name free and both write it (tested: without
-# it the C locale's index lets "Čučanj" and "ČUČANJ" both in).
+# Every write that may set a name (a new exercise, a save) takes the table in
+# this mode first: it conflicts with itself, so two saves cannot both find a
+# name free and both write it (tested: without it the C locale's index lets
+# "Čučanj" and "ČUČANJ" both in).
 _EXERCISES_LOCK = "LOCK TABLE exercises IN SHARE ROW EXCLUSIVE MODE"
 
 
@@ -1764,126 +1764,6 @@ def video_programs(name: str) -> list[Program] | None:
                 or s.scalar(select(func.count()).select_from(intro.subquery()))):
             return None
         return list(s.scalars(select(Program).where(or_(Program.id.in_(_holding(ids)), Program.id.in_(intro)))))
-
-
-# The nine combo slots start with these: library rows, one per name, made
-# the first time a slot needs one and found by name after that, whatever its
-# case (Amir's own row of the name, if he made it first). Their instructions
-# are the technique cues only, never a dose: one row serves every razina.
-# The dose is the slot's Dan 1 item's (_DEFAULT_ITEMS, per razina).
-_DEFAULT_EXERCISES = {
-    "Goblet čučanj": "Pete cijelo vrijeme na podu, trup uspravan, koljena prate smjer stopala.",
-    "Sklekovi": "Tijelo u ravnoj liniji, bez propadanja kuka.",
-    "Veslanje u pretklonu": "Povuci prema pojasu, leđa ravna.",
-    "Plank": "Lopatice aktivne, gluteusi stisnuti.",
-    "Potisak s bučicama na klupi": "Lopatice skupljene, spusti kontrolirano.",
-    "Potisak iznad glave": "Trup čvrst, bez zaklona u leđima.",
-    "Biceps pregib": "Laktovi mirni uz tijelo, puni opseg pokreta.",
-    "Iskorak unatrag": "Koljeno prati smjer stopala, trup uspravan.",
-    "Rumunjsko mrtvo dizanje": "Neutralna kralježnica, kukovi idu unatrag.",
-    "Glute most": "Stisni gluteuse gore i zadrži sekundu.",
-}
-# a slot's Dan 1 exercises in their order (section trening), per cilj, each
-# with its dose per razina, (sets, reps, seconds, note): the same structure
-# per cilj, the dose scaling with the razina; the doses the items' notes
-# said until 30.10.2026 ("3 × 8 · 8 kg"), as migration 7c3bf996c983 parses
-# them. Every default item rests DEFAULT_REST seconds between sets.
-_DEFAULT_ITEMS = {
-    "cijelo": [
-        ("Goblet čučanj", {"pocetna": (3, 8, None, "8 kg"), "srednja": (4, 10, None, "16 kg"),
-                           "napredna": (4, 12, None, "24 kg")}),
-        ("Sklekovi", {"pocetna": (3, 5, None, "s koljena"), "srednja": (3, 10, None, ""),
-                      "napredna": (4, 15, None, "")}),
-        ("Veslanje u pretklonu", {"pocetna": (3, 10, None, "2 × 6 kg"), "srednja": (3, 12, None, "2 × 10 kg"),
-                                  "napredna": (4, 12, None, "2 × 14 kg")}),
-        ("Plank", {"pocetna": (3, None, 20, ""), "srednja": (3, None, 40, ""), "napredna": (3, None, 60, "")}),
-    ],
-    "gornji": [
-        ("Potisak s bučicama na klupi", {"pocetna": (3, 8, None, "2 × 6 kg"), "srednja": (4, 10, None, "2 × 12 kg"),
-                                         "napredna": (4, 12, None, "2 × 18 kg")}),
-        ("Veslanje u pretklonu", {"pocetna": (3, 10, None, "2 × 6 kg"), "srednja": (4, 10, None, "2 × 12 kg"),
-                                  "napredna": (4, 12, None, "2 × 16 kg")}),
-        ("Potisak iznad glave", {"pocetna": (3, 8, None, "2 × 4 kg"), "srednja": (3, 10, None, "2 × 8 kg"),
-                                 "napredna": (4, 10, None, "2 × 12 kg")}),
-        ("Biceps pregib", {"pocetna": (2, 10, None, "2 × 4 kg"), "srednja": (3, 12, None, "2 × 8 kg"),
-                           "napredna": (3, 15, None, "2 × 10 kg")}),
-    ],
-    "donji": [
-        ("Goblet čučanj", {"pocetna": (3, 8, None, "8 kg"), "srednja": (4, 10, None, "20 kg"),
-                           "napredna": (4, 12, None, "28 kg")}),
-        ("Iskorak unatrag", {"pocetna": (3, 6, None, "po nozi"), "srednja": (3, 10, None, "po nozi · 2 × 8 kg"),
-                             "napredna": (4, 10, None, "po nozi · 2 × 12 kg")}),
-        ("Rumunjsko mrtvo dizanje", {"pocetna": (3, 8, None, "12 kg"), "srednja": (4, 10, None, "24 kg"),
-                                     "napredna": (4, 10, None, "32 kg")}),
-        ("Glute most", {"pocetna": (3, 12, None, ""), "srednja": (3, 15, None, "10 kg"),
-                        "napredna": (4, 15, None, "20 kg")}),
-    ],
-}
-DEFAULT_REST = 60                # seconds between sets, every default item's
-
-
-def ensure_online_skeletons() -> int:
-    """Create any missing (razina × cilj) slot and fill EMPTY ones: a slot
-    with no day gets Dan 1 (no title, no weekday, no intro) holding the
-    default exercises in section trening, library rows (_DEFAULT_EXERCISES)
-    the items point at, each with its razina's dose (_DEFAULT_ITEMS) and
-    DEFAULT_REST.
-
-    Runs when the trainer opens Online treninzi — a fresh deploy heals itself,
-    no seed run needed. A slot with ANY day, even an empty one, is Amir's
-    work and never touched. Returns how many programmes were created. The
-    work is done under the library's lock, so two openings at once neither
-    make a slot twice nor fill one twice.
-    """
-    from .upitnik import GOALS, LEVELS
-
-    combos = {(level, goal) for level in LEVELS for goal in GOALS}
-
-    def todo(s: Session) -> tuple[set, list]:
-        have = {(p.level, p.goal) for p in s.scalars(select(Program).where(Program.level.is_not(None)))}
-        empty = s.execute(
-            select(Program.id, Program.level, Program.goal)
-            .outerjoin(ProgramDay, ProgramDay.program_id == Program.id)
-            .where(Program.level.is_not(None))
-            .group_by(Program.id).having(func.count(ProgramDay.id) == 0)
-            .order_by(Program.id)).all()
-        return combos - have, empty
-
-    with session_scope() as s:
-        missing, empty = todo(s)
-    if not missing and not empty:
-        return 0
-    made = 0
-    with session_scope() as s:
-        s.execute(sa_text(_EXERCISES_LOCK))
-        missing, _ = todo(s)                     # again, under the lock: another opening may have done it
-        for level, level_label in LEVELS.items():
-            for goal, goal_label in GOALS.items():
-                if (level, goal) in missing:
-                    s.add(Program(title=f"{goal_label} — {level_label.lower()}",
-                                  level=level, goal=goal,
-                                  intro="Odmor 60–90 s između serija. Tempo kontroliran."))
-                    made += 1
-        s.flush()
-        _, empty = todo(s)
-        ids: dict[str, int] = {}
-        for pid, level, goal in empty:
-            day = ProgramDay(program_id=pid, position=1, title="", weekday=None, intro="")
-            s.add(day)
-            s.flush()
-            for position, (name, doses) in enumerate(_DEFAULT_ITEMS.get(goal, ()), start=1):
-                if name not in ids:
-                    found = _named(s, name)
-                    if found is None:
-                        e = Exercise(name=name, instructions=_DEFAULT_EXERCISES[name])
-                        s.add(e)
-                        s.flush()
-                        found = e.id
-                    ids[name] = found
-                sets, reps, seconds, note = doses.get(level, (None, None, None, ""))
-                s.add(ProgramDayItem(day_id=day.id, position=position, section="trening", exercise_id=ids[name],
-                                     sets=sets, reps=reps, seconds=seconds, rest_seconds=DEFAULT_REST, note=note))
-    return made
 
 
 def all_programs() -> list[tuple[Program, int, int]]:

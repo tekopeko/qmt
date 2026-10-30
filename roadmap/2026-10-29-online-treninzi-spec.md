@@ -43,7 +43,11 @@ of a termin in the gym).
   `created_at` / `updated_at`. An exercise used by any day cannot be deleted (refused with
   the programmes named); an unused one can. Nothing else is soft: a renamed exercise is
   renamed everywhere, which is the point of a library.
-- **`Program`** stays as it is (the nine matched slots + whatever Amir adds).
+- **`Program`** stays as it is: whatever Amir makes, matched by the razina × cilj it is
+  tagged with. No slot makes itself since 30.10.2026, and none is filled or refilled (the
+  owner: "No refilling either way please, no default, everything modular so that he can
+  change it."): a programme with no day, or a day with no exercise, stays so until he
+  changes it.
 - **`ProgramDay`** (built 30.10.2026, `program_days`) — `program_id` (CASCADE),
   `position` (Dan 1 … Dan N, the editor's ↑ / ↓; dense: a day deleted, the later ones move
   up), `title` (160, "" for none: "Cijelo tijelo"; the label "Dan 1 · Cijelo tijelo"),

@@ -7,10 +7,10 @@ Railway tunnel so nothing is exposed:
 `railway run` injects the real DATABASE_URL (internal, over the tunnel), so this
 talks to prod without any public database access.
 
-Creates verified demo clients, a believable week of bookings, and a couple of
-personalized programmes, then grants the trainer. ADDITIVE and idempotent — it
-never wipes anything (unlike scripts/seed_demo.py, which is dev-only). Safe to
-re-run.
+Creates verified demo clients and a believable week of bookings, then grants
+the trainer. No programme: the live site's programmes are Amir's, and nothing
+makes one on its own (30.10.2026). ADDITIVE and idempotent — it never wipes
+anything (unlike scripts/seed_demo.py, which is dev-only). Safe to re-run.
 
     --login-pw PW   also set this password on the demo clients so you can log in
                     AS them (to see the client side). Omit -> they are review-only
@@ -115,12 +115,6 @@ def fill_bookings(client_ids: list[int]) -> None:
     print(f"  bookings: {booked} rezervacija")
 
 
-def seed_programs() -> None:
-    """The 9 (razina × cilj) skeletons — the trainer fills in the content."""
-    made = db.ensure_online_skeletons()
-    print(f"  programmes: {made} skica (razina × cilj)")
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--login-pw", default=None,
@@ -144,8 +138,6 @@ def main() -> None:
     ensure_memberships(ids)
     print("week:")
     fill_bookings(ids)
-    print("treninzi:")
-    seed_programs()
 
     if db.set_trainer(OWNER_EMAIL):
         print(f"trainer: {OWNER_EMAIL} → admin")

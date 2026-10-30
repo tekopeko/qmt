@@ -23,6 +23,13 @@ whole list, each exercise's clip opened in place. Migrations 4c2e8a6f1d39
 (the items into the library) and 7c3bf996c983 (the items into days) run for
 real on qmt_test, there and back. The browser half walks the trainer through
 the library and through a day on a phone.
+
+Since the same day nothing makes, fills or refills a programme but Amir (the
+owner: "he should be able to create a training with no exercises, if he does
+that its his fault, okay? No refilling either way please, no default,
+everything modular so that he can change it."): opening /treninzi makes
+nothing, a programme with no day and a day with no exercise stay so, and a
+client is told what is not there yet.
 """
 
 from __future__ import annotations
@@ -163,6 +170,21 @@ def location(r) -> str:
     return unquote(r.headers["location"]).replace("+", " ")
 
 
+def stored_counts() -> tuple[int, ...]:
+    """(programmes, days, their items, exercises) as stored."""
+    with db.engine.connect() as conn:
+        return tuple(conn.execute(sa_text(f"SELECT count(*) FROM {t}")).scalar_one()
+                     for t in ("programs", "program_days", "program_day_items", "exercises"))
+
+
+def admin_row(page: str, title: str) -> tuple[str, str, bool] | None:
+    """A programme's row in the trainer's /treninzi table: its Dani, its
+    Vježbe and whether "prazno!" stands beside them; None without one."""
+    m = re.search(rf'<td><strong>{re.escape(title)}</strong></td>\s*<td>(\d+)</td>\s*'
+                  rf'<td>(\d+)( <span[^>]*>prazno!</span>)?</td>', page)
+    return m and (m.group(1), m.group(2), m.group(3) is not None)
+
+
 # ---------- programmes: matching, gates, order ----------
 
 def test_program_visible_only_by_matching_combo():
@@ -192,102 +214,117 @@ def test_program_visible_only_by_matching_combo():
     assert ci.get(f"/treninzi/{bare}").status_code == 403
 
 
-def test_ensure_online_skeletons_idempotent_and_prefilled():
-    """Every (razina × cilj) slot is made once, with Dan 1 of four default
-    exercises; reruns add nothing. A slot with a day is Amir's work, even an
-    empty day: emptied, it stays empty, and what he puts in it stays his. A
-    slot whose every day he deleted has no day, and gets Dan 1 again."""
-    from qmt import upitnik
-
-    assert db.ensure_online_skeletons() == len(upitnik.LEVELS) * len(upitnik.GOALS)
-    assert db.ensure_online_skeletons() == 0            # second run adds nothing
-    rows = [(p, nd, ni) for p, nd, ni in db.all_programs() if p.level]
-    combos = {(p.level, p.goal) for p, _, _ in rows}
-    assert combos == {(lv, g) for lv in upitnik.LEVELS for g in upitnik.GOALS}
-    # every slot ships with its Dan 1 of default exercises — no combo renders empty...
-    assert all((nd, ni) == (1, 4) for _, nd, ni in rows)
-    counts = {p.id: (nd, ni) for p, nd, ni in rows}
-    db.ensure_online_skeletons()                        # ...and reruns never duplicate them
-    assert {p.id: (nd, ni) for p, nd, ni in db.all_programs() if p.level} == counts
-
-    pid, other = rows[0][0].id, rows[1][0].id
-    for it in items_of(pid):                            # emptied: the day stays, empty
-        db.delete_day_item(it.id)
-    db.ensure_online_skeletons()
-    assert item_names(pid) == [] and len(db.get_program(pid).days) == 1
-    hold(pid, db.create_exercise("Trenerova vježba"))
-    db.ensure_online_skeletons()
-    assert item_names(pid) == ["Trenerova vježba"]
-    db.delete_day(db.get_program(other).days[0].id)    # no day at all: filled again
-    db.ensure_online_skeletons()
-    assert len(db.get_program(other).days) == 1 and len(item_names(other)) == 4
+def test_opening_treninzi_makes_no_programme_and_no_exercise():
+    """Nothing makes a programme but Amir (30.10.2026): the trainer's
+    /treninzi lists what there is and makes nothing, no programme, day,
+    item or exercise, on an empty database (each razina "Nema programa za
+    ovu razinu.") and on one with a programme, however often it opens."""
+    ct, *_ = trainer_with_clients()
+    assert stored_counts() == (0, 0, 0, 0)
+    for _ in range(2):
+        page = ct.get("/treninzi").text
+        assert stored_counts() == (0, 0, 0, 0) and db.all_programs() == []
+    assert page.count("Nema programa za ovu razinu.") == 3
+    pid = db.create_program("Tjedan 1", None, "srednja", "gornji")
+    hold(pid, db.create_exercise("Plank"))
+    assert stored_counts() == (1, 1, 1, 1)
+    for _ in range(2):
+        page = ct.get("/treninzi").text
+        assert stored_counts() == (1, 1, 1, 1)
+    assert [p.id for p, _, _ in db.all_programs()] == [pid]
+    assert page.count("Nema programa za ovu razinu.") == 2 and admin_row(page, "Tjedan 1") == ("1", "1", False)
 
 
-# The nine slots' doses as the items' notes said them until 30.10.2026
-# (HEAD's db._DEFAULT_ITEMS, to the character): the structured defaults are
-# these, as the days' migration parses them.
-OLD_DEFAULT_DOSES = {
-    "cijelo": [{"pocetna": "3 × 8 · 8 kg", "srednja": "4 × 10 · 16 kg", "napredna": "4 × 12 · 24 kg"},
-               {"pocetna": "3 × 5 (s koljena)", "srednja": "3 × 10", "napredna": "4 × 15"},
-               {"pocetna": "3 × 10 · 2 × 6 kg", "srednja": "3 × 12 · 2 × 10 kg", "napredna": "4 × 12 · 2 × 14 kg"},
-               {"pocetna": "3 × 20 s", "srednja": "3 × 40 s", "napredna": "3 × 60 s"}],
-    "gornji": [{"pocetna": "3 × 8 · 2 × 6 kg", "srednja": "4 × 10 · 2 × 12 kg", "napredna": "4 × 12 · 2 × 18 kg"},
-               {"pocetna": "3 × 10 · 2 × 6 kg", "srednja": "4 × 10 · 2 × 12 kg", "napredna": "4 × 12 · 2 × 16 kg"},
-               {"pocetna": "3 × 8 · 2 × 4 kg", "srednja": "3 × 10 · 2 × 8 kg", "napredna": "4 × 10 · 2 × 12 kg"},
-               {"pocetna": "2 × 10 · 2 × 4 kg", "srednja": "3 × 12 · 2 × 8 kg", "napredna": "3 × 15 · 2 × 10 kg"}],
-    "donji": [{"pocetna": "3 × 8 · 8 kg", "srednja": "4 × 10 · 20 kg", "napredna": "4 × 12 · 28 kg"},
-              {"pocetna": "3 × 6 po nozi", "srednja": "3 × 10 po nozi · 2 × 8 kg",
-               "napredna": "4 × 10 po nozi · 2 × 12 kg"},
-              {"pocetna": "3 × 8 · 12 kg", "srednja": "4 × 10 · 24 kg", "napredna": "4 × 10 · 32 kg"},
-              {"pocetna": "3 × 12", "srednja": "3 × 15 · 10 kg", "napredna": "4 × 15 · 20 kg"}],
-}
+def test_a_programme_whose_last_day_is_deleted_stays_with_none():
+    """Its last day deleted, a programme has no day and gets none back:
+    not from /treninzi, nor from its own pages (the trainer's, a client's).
+    The table shows it with 0 days and 0 exercises, "prazno!"; its editor
+    says "Trening još nema dana — dodaj prvi.", and its delete no longer
+    promises a refill."""
+    ct, *_ = trainer_with_clients()
+    pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    hold(pid, db.create_exercise("Plank"))
+    r = ct.post(f"/treninzi/{pid}/dan/{did}/obrisi", follow_redirects=False)
+    assert location(r) == f"/treninzi/{pid}/uredi?ok=Dan je obrisan."
+    assert stored_counts() == (1, 0, 0, 1)
+    ct.get("/treninzi")
+    view, editor = ct.get(f"/treninzi/{pid}").text, ct.get(f"/treninzi/{pid}/uredi").text
+    ci = client_for("ivan@test.local")                                      # pocetna / cijelo: his
+    assert ci.get("/treninzi").status_code == 200 and ci.get(f"/treninzi/{pid}").status_code == 200
+    table = ct.get("/treninzi").text                                        # again, after its pages
+    assert stored_counts() == (1, 0, 0, 1) and db.get_program(pid).days == []
+    assert admin_row(table, "Cijelo tijelo — početna") == ("0", "0", True)
+    assert '<p class="hint">Trening još nema dana — dodaj prvi u uređivanju.</p>' in view
+    assert '<p class="hint">Trening još nema dana — dodaj prvi.</p>' in editor
+    assert ('data-confirm="&quot;Cijelo tijelo — početna&quot; — briše se trening s danima i vježbama; '
+            'same vježbe i njihovi videi ostaju u bazi vježbi."') in editor
+    assert "Prazan slot" not in editor and "osnovnim vježbama" not in editor
 
 
-def test_ensure_online_skeletons_makes_one_library_row_per_name():
-    """The nine slots' default exercises are library rows, one per name,
-    reused across the slots (Goblet čučanj in the six of cijelo and donji);
-    an exercise of the name Amir made first, in another case, is the one
-    they use, his instructions kept; a rerun makes none. Each slot's Dan 1
-    (no title, no weekday, no intro) holds them in section trening, each
-    with its razina's dose structured, (sets, reps, seconds, note), the
-    doses the items' notes said until then, and 60 s of rest; the library's
-    instructions are the cues alone, never a dose."""
-    mine = db.create_exercise("goblet ČUČANJ", "Moje upute.")
-    db.ensure_online_skeletons()
-    rows = db.exercises()
-    library = [e.name for e, _ in rows]
-    assert len(library) == 10 and len({n.casefold() for n in library}) == 10
-    assert library == sorted(library, key=alpha_key)
-    used = {e.name: n for e, n in rows}
-    assert used["goblet ČUČANJ"] == 6 and used["Veslanje u pretklonu"] == 6 and used["Plank"] == 3
-    assert db.exercise(mine).instructions == "Moje upute."
-    parse = _migration("7c3bf996c983_program_days.py").parse_dose
-    for p, nd, ni in db.all_programs():
-        want = {"cijelo": ["goblet ČUČANJ", "Sklekovi", "Veslanje u pretklonu", "Plank"],
-                "gornji": ["Potisak s bučicama na klupi", "Veslanje u pretklonu", "Potisak iznad glave", "Biceps pregib"],
-                "donji": ["goblet ČUČANJ", "Iskorak unatrag", "Rumunjsko mrtvo dizanje", "Glute most"]}[p.goal]
-        assert item_names(p.id) == want, p.title
-        day = db.get_program(p.id).days[0]
-        assert (day.position, day.title, day.weekday, day.intro, day.intro_video, day.label) == (1, "", None, "", None, "Dan 1")
-        doses = [(it.sets, it.reps, it.seconds, it.note) for it in day.items]
-        assert doses == [parse(old[p.level]) for old in OLD_DEFAULT_DOSES[p.goal]], p.title
-        assert {(it.section, it.rest_seconds) for it in day.items} == {("trening", 60)}
-    assert db.exercise(next(e.id for e, _ in rows if e.name == "Plank")).instructions == "Lopatice aktivne, gluteusi stisnuti."
-    assert not [e.name for e, _ in rows if e.instructions[:1].isdigit()]
-    doses = {(p.level, p.goal): [(i.sets, i.reps, i.seconds, i.note) for i in items_of(p.id)]
-             for p, _, _ in db.all_programs()}
-    assert doses[("pocetna", "cijelo")] == [(3, 8, None, "8 kg"), (3, 5, None, "s koljena"), (3, 10, None, "2 × 6 kg"),
-                                            (3, None, 20, "")]
-    assert doses[("napredna", "cijelo")] == [(4, 12, None, "24 kg"), (4, 15, None, ""), (4, 12, None, "2 × 14 kg"),
-                                             (3, None, 60, "")]
-    assert doses[("srednja", "donji")] == [(4, 10, None, "20 kg"), (3, 10, None, "po nozi · 2 × 8 kg"),
-                                           (4, 10, None, "24 kg"), (3, 15, None, "10 kg")]
-    assert doses[("srednja", "gornji")][1] == (4, 10, None, "2 × 12 kg")          # Veslanje: its dose per cilj too
-    pid = next(p.id for p, _, _ in db.all_programs() if (p.level, p.goal) == ("pocetna", "cijelo"))
-    assert [(i.dose, i.rest_text) for i in items_of(pid)] == [("3 × 8", "60 s"), ("3 × 5", "60 s"), ("3 × 10", "60 s"),
-                                                              ("3 × 20 s", "60 s")]
-    db.ensure_online_skeletons()
-    assert len(db.exercises()) == 10
+def test_a_day_whose_last_exercise_is_removed_stays_empty():
+    """Its last exercise taken out (✕), a day stays, with none, and gets
+    none back: not from /treninzi, nor from the programme's pages or its
+    own (the trainer's, a client's). The table shows 1 day and 0
+    exercises, "prazno!"; the client's day says "Dan još nema vježbi."."""
+    ct, *_ = trainer_with_clients()
+    pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    iid = hold(pid, db.create_exercise("Plank"))
+    day = f"/treninzi/{pid}/dan/{did}"
+    r = ct.post(f"{day}/stavke/{iid}/obrisi", follow_redirects=False)
+    assert r.headers["location"] == f"{day}/uredi"
+    assert stored_counts() == (1, 1, 0, 1)
+    for path in ("/treninzi", f"/treninzi/{pid}", f"/treninzi/{pid}/uredi", day, f"{day}/uredi"):
+        assert ct.get(path).status_code == 200, path
+    ci = client_for("ivan@test.local")                                      # pocetna / cijelo: his
+    assert ci.get("/treninzi").status_code == 200 and ci.get(f"/treninzi/{pid}").status_code == 200
+    client_day = ci.get(day).text
+    table = ct.get("/treninzi").text
+    assert stored_counts() == (1, 1, 0, 1) and [len(d.items) for d in db.get_program(pid).days] == [0]
+    assert admin_row(table, "Cijelo tijelo — početna") == ("1", "0", True)
+    assert '<p class="hint" style="margin-top:22px;">Dan još nema vježbi.</p>' in client_day
+
+
+def test_a_client_is_told_what_is_not_there_yet():
+    """A client whose combination has no programme (another combination's
+    is not his): "Program za tvoju kombinaciju još se priprema."; one whose
+    programme has no day sees it listed, "0 dana", and its page says
+    "Trening još nema dana.". What he opens makes nothing either."""
+    trainer_with_clients()
+    db.create_program("Gornji blok", None, "pocetna", "gornji")             # ana's combination
+    ci = client_for("ivan@test.local")                                      # pocetna / cijelo
+    page = ci.get("/treninzi").text
+    assert '<p style="margin-bottom:6px;"><strong>Program za tvoju kombinaciju još se priprema.</strong></p>' in page
+    assert "Gornji blok" not in page and stored_counts() == (1, 0, 0, 0)
+    pid = db.create_program("Tjedan 1", None, "pocetna", "cijelo")
+    page = ci.get("/treninzi").text
+    assert "još se priprema" not in page and f'href="/treninzi/{pid}"' in page and '<div class="hint">0 dana</div>' in page
+    assert '<p class="hint">Trening još nema dana.</p>' in ci.get(f"/treninzi/{pid}").text
+    assert stored_counts() == (2, 0, 0, 0)
+
+
+def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
+    """The lead says what is automatic (the matching) and what is his (the
+    programmes, their days and exercises), and what a combination with no
+    programme tells its client; the form is "Novi program", its button
+    "Kreiraj i dodaj dane", which opens the new programme's editor, the
+    programme with no day."""
+    ct, *_ = trainer_with_clients()
+    page = ct.get("/treninzi").text
+    lead = ("Sve je automatski: upitnik svrsta polaznika u razinu i cilj, a on odmah vidi programe označene tom "
+            "kombinacijom — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku kombinaciju koju nudiš "
+            "napravi program pa mu dodaj dane i vježbe. Kombinacija bez programa polazniku kaže da se program "
+            "još priprema.")
+    assert f'<p class="hint"> {lead} </p>' in " ".join(page.split())
+    assert '<h2 style="font-size:1.05rem; margin-bottom:12px;">Novi program</h2>' in page
+    assert '<button type="submit">Kreiraj i dodaj dane</button>' in page
+    assert 'placeholder="npr. Gornji dio tijela — tjedan 2"' in page
+    for gone in ("skice se stvore same", "devet osnovnih varijanti", "Dodatni program", "Kreiraj i dodaj vježbe"):
+        assert gone not in page, gone
+    r = ct.post("/treninzi", data={"title": "Tjedan 1", "level": "srednja", "goal": "donji"}, follow_redirects=False)
+    pid = db.all_programs()[0][0].id
+    assert r.headers["location"] == f"/treninzi/{pid}/uredi" and stored_counts() == (1, 0, 0, 0)
 
 
 def test_a_day_says_its_label_and_an_item_its_dose_and_rest():
