@@ -123,6 +123,34 @@ and the Social Club feed.
   per member from week 1 with every week reachable (`app-23`); QMT's days
   ("Dan 1 … Dan N", done whenever) follow the second.
 
+## The Gym Program's training page (`/gym-program-video/1212`, a paid account, 30.10.2026; `app-27…`)
+
+**The owner was right: a Gym Program training is exercise by exercise**, not
+one video (that is the Home Challenge's page, `app-19` / `app-25`). What the
+page holds (`app-27`, desktop 2880×1742 retina, the first open):
+
+- **A segmented progress bar across the top**, one segment per exercise
+  (seven here), inside a rounded track: the first segment filled white, the
+  rest grey.
+- Under it one line: "← Povratak" at the left, then the exercise's name,
+  "Rumunjsko mrtvo dizanje bučicama", and at the right a pale pill "Završi
+  Trening".
+- **One exercise's video**, a portrait clip of 0:22 looped in the native
+  player, letterboxed in a wide dark rounded box, with round ‹ › buttons at
+  the box's left and right edges to step to the previous / next exercise.
+- **A first-open tour** (coach marks) over it: a dark card anchored to the
+  bar, a blue ring counting down ("26"), "1/6", a "Preskoči" pill, the
+  sentence "Ovdje vidiš napredak kroz vježbe. Kad spremiš progres, stavka
+  postaje zelena.", a hairline, "Nazad" (muted) and "Dalje" (white) pills.
+  Six steps, each pointing at a part of the page; the owner: "when opening
+  for the first time, it has a guide here". So progress is SAVED per
+  exercise ("spremiš progres": presumably sets / reps / weight), and the
+  saved item turns green in the list.
+- Still to capture: the other five tour steps, the page without the tour
+  (the exercise list under the video, the progress form), an exercise saved
+  (green), the ‹ › states and the bar's filled segments, and "Završi
+  Trening"'s end screen.
+
 ## Moj napredak — the calendar (`app-08`; top part from the page text)
 
 - `TANAMANA` as the h1, tabs "Aktivnost | Napredak | Tvoji Ciljevi".
