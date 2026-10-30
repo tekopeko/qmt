@@ -21,7 +21,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .. import auth, config, copy, db, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, ONLINE_TIER_SLOTS, ONLINE_TIERS, PAYMENT_METHODS, PLAN_ABBR,
                       PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, WEEKDAYS as DAY_WEEKDAYS, add_month,
-                      plural, sub_month)
+                      duration_text, plural, sub_month)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -67,6 +67,9 @@ templates.env.globals["ONLINE_TIER_SLOTS"] = ONLINE_TIER_SLOTS
 templates.env.globals["SECTIONS"] = SECTIONS
 templates.env.globals["WEEKDAYS"] = DAY_WEEKDAYS
 templates.env.globals["plural"] = plural
+# a programme as the library's pages name it, "Booty build (napredna razina)"
+# (vjezba.html: the programmes that hold an exercise)
+templates.env.filters["program_name"] = db.program_name
 # a price slot's text as the page prints it, and whether it is a number at
 # all: "€" follows "50" and "od 30", not "na upit" (landing.html,
 # _plan_price.html), nor an amount that carries its own (21.10.2026: a gym
@@ -1725,7 +1728,10 @@ def _diary_rows(subject_id: int) -> list[dict]:
     """The dnevnik, newest first: every past termin this client booked, each
     carrying what was written about it — an osvrt, a "nisam bio/la", or nothing
     yet. Session-less legacy rows keep their place by date. Nothing is dropped:
-    an osvrt whose termin falls outside booking_history's window still shows."""
+    an osvrt whose termin falls outside booking_history's window still shows.
+    Since 30.10.2026 his finished online passes (db.passes) join them by when
+    they were started, each with its day's number of exercises now (`size`,
+    None for a day that is gone)."""
     from datetime import datetime, time
 
     sessions = db.booking_history(subject_id)
@@ -1744,6 +1750,11 @@ def _diary_rows(subject_id: int) -> list[dict]:
         at = (x.session.starts_at.astimezone(config.TZ) if x.session
               else datetime.combine(x.date, time(0), tzinfo=config.TZ))
         rows.append({"session": x.session, "log": x, "at": at})
+    workouts = db.passes(subject_id)
+    sizes = db.day_sizes({w.day_id for w in workouts if w.day_id is not None})
+    for w in workouts:
+        rows.append({"session": None, "log": None, "workout": w, "at": w.started_at.astimezone(config.TZ),
+                     "size": sizes.get(w.day_id, 0) if w.day_id is not None else None})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows
 
@@ -2403,27 +2414,328 @@ def vjezba_obrisi(request: Request, exercise_id: int):
 @app.get("/treninzi/{program_id}", response_class=HTMLResponse)
 def program_view(request: Request, program_id: int):
     """A programme: its intro, then its days as cards, each a link to its
-    page."""
+    page and saying the viewer's state on it (30.10.2026: "odrađen 2×", "u
+    tijeku", nothing for a day never done; db.day_states, one query)."""
     user, p = _program_or_403(request, program_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse(request, "trening_view.html", _ctx(
-        request, user, p=p))
+        request, user, p=p, states=db.day_states(user.id, [d.id for d in p.days])))
+
+
+def _day_or_404(program_id: int, day_id: int):
+    """A day of this programme, its items loaded; 404 when it is gone or is
+    another programme's."""
+    day = db.get_day(day_id)
+    if day is None or day.program_id != program_id:
+        raise HTTPException(status_code=404)
+    return day
+
+
+def _day_items(day) -> list:
+    """The day's exercises in its display order, its sections in their
+    order, each in position order (ProgramDay.by_section): the player's
+    exercise k is items[k - 1]."""
+    return [it for rows in day.by_section.values() for it in rows]
+
+
+def _date_text(d: date) -> str:
+    """A pass's day as the history prints it: "12.11.", "12.11.2025." in
+    another year."""
+    return f"{d.day}.{d.month}." + (f"{d.year}." if d.year != config.today().year else "")
+
+
+templates.env.globals["pass_date"] = _date_text
+
+
+def _state_line(state: dict) -> str:
+    """The viewer's state on a day (db.day_state), in the day page's words:
+    a pass in progress first, then how often and when last, else none."""
+    if state["open"] is not None:
+        return "U tijeku — nastavi gdje si stao/la."
+    if state["count"]:
+        last, today = state["last"], config.today()
+        when = ("danas" if last == today else "jučer" if last == today - timedelta(days=1)
+                else _date_text(last))
+        return f"Odrađen {state['count']}× · zadnji put {when}"
+    return "Još nije odrađen."
 
 
 @app.get("/treninzi/{program_id}/dan/{day_id}", response_class=HTMLResponse)
 def program_day_view(request: Request, program_id: int, day_id: int):
     """A day of a programme, the client's page (the trainer's too): its
     intro and intro video, then the whole list of its exercises in their
-    sections, each with its dose, rest and note, its clip opened in place."""
+    sections, each with its dose, rest and note, its clip opened in place.
+    Since 30.10.2026 (stage 3, the player) the viewer's state on it under
+    the lead ("Još nije odrađen." / "Odrađen 2× · zadnji put 12.11." / "U
+    tijeku — …"), "Kreni" into the player (or "Nastavi", with "Odbaci
+    započeti trening", while a pass is open, whose saved exercises the list
+    ticks), and at the bottom his last five passes ("Povijest"), each with
+    its sets."""
     user, p = _program_or_403(request, program_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    day = db.get_day(day_id)
-    if day is None or day.program_id != program_id:
-        raise HTTPException(status_code=404)
+    day = _day_or_404(program_id, day_id)
+    state = db.day_state(user.id, day_id)
     return templates.TemplateResponse(request, "trening_day.html", _ctx(
-        request, user, p=p, day=day))
+        request, user, p=p, day=day, state=state, state_line=_state_line(state),
+        done=state["open"].done_items if state["open"] is not None else {},
+        history=db.passes(user.id, day_id, limit=5), order=[it.id for it in _day_items(day)],
+        feelings=FEELING_LABELS))
+
+
+# ---------- the player (30.10.2026, stage 3 of the online treninzi spec) ----------
+# The owner: a client does a day exercise by exercise, as on Shape Club's Gym
+# Program page, the set log prefilled as Shape does it (reps from the plan,
+# kg from the last saved log), the whole list beside it, the swap among the
+# similar exercises, the osvrt at the end, and every pass kept. "Kreni" on a
+# day opens a pass (db.start_pass), each exercise's screen saves its set log
+# (db.save_sets) and may swap it (db.swap_exercise), the finish screen's
+# osvrt closes it (db.finish_pass), "Odbaci" drops it (db.drop_pass). Every
+# route goes through _program_or_403 and the day check, as the day's page: a
+# client reaches only his matched programmes' days; staff may use it too,
+# their passes their own (staff have no karton: they show on the days only).
+
+def _day_base(program_id: int, day_id: int) -> str:
+    return f"/treninzi/{program_id}/dan/{day_id}"
+
+
+def _next_k(items: list, log) -> int:
+    """Where "Kreni" / "Nastavi" lands: the first exercise the pass has not
+    saved, the last when it has saved them all."""
+    done = log.done_items
+    return next((n for n, it in enumerate(items, start=1) if it.id not in done), len(items))
+
+
+def _kg_value(kg) -> str:
+    """A weight as a number input's value: "20", "2.5" (its dot); "" for
+    none (0)."""
+    return f"{float(kg):g}" if kg else ""
+
+
+def _log_rows(it, entry: dict | None, last: list[dict] | None) -> list[dict]:
+    """The set log's rows for an item, as the player prints them, each
+    {"reps", "kg", "sec": an input's value, "extra": a set past the plan's}:
+    the sets this pass saved for it, as saved; else a row per planned set
+    (the plan's sets, 1 when it says none, MAX_SETS at most), its reps and
+    its seconds the plan's, its kg the last saved log's of the exercise
+    (`last`: set i's, the last one's for a set past them; none without);
+    then one empty row more ("dodatna serija"), while there is room."""
+    planned = min(it.sets or 1, db.MAX_SETS)
+    if entry is not None:
+        rows = [{"reps": str(s.get("reps", "")), "kg": _kg_value(s.get("kg")), "sec": str(s.get("seconds", ""))}
+                for s in entry.get("sets", []) if isinstance(s, dict)]
+    else:
+        rows = []
+        for i in range(planned):
+            kg = _kg_value((last[i] if i < len(last) else last[-1]).get("kg")) if last else ""
+            rows.append({"reps": "" if it.reps is None else str(it.reps), "kg": kg,
+                         "sec": "" if it.seconds is None else str(it.seconds)})
+    if len(rows) < db.MAX_SETS:
+        rows.append({"reps": "", "kg": "", "sec": ""})
+    for n, row in enumerate(rows, start=1):
+        row["extra"] = n > planned
+    return rows
+
+
+def _player(request: Request, user, p, day, items: list, k: int, log, error: str | None = None,
+            posted: list[dict] | None = None, status_code: int = 200):
+    """Exercise k's screen in the pass `log`: the segmented bar (one segment
+    per exercise), the clip with ‹ ›, the exercise's card (the swapped one's
+    name, clip and cues when the pass swapped it, "Zamjena za: …" naming the
+    plan's), its set log (_log_rows; `posted`, what a refused save sent, kept
+    under `error`), the swap list (the plan's exercise's similar exercises,
+    "Vrati …" first when swapped) and the day's whole list."""
+    it = items[k - 1]
+    done, swaps = log.done_items, log.swap_items
+    by_id = db.exercises_by_id({it.exercise_id, *swaps.values()})
+    planned = by_id.get(it.exercise_id) or it.exercise
+    swapped = by_id.get(swaps[it.id]) if it.id in swaps else None
+    ex = swapped or planned
+    entry = done.get(it.id)
+    rows = posted if posted is not None else _log_rows(it, entry, None if entry else db.last_sets(user.id, ex.id))
+    return templates.TemplateResponse(request, "trening_player.html", _ctx(
+        request, user, p=p, day=day, items=items, k=k, n_items=len(items), it=it, ex=ex, planned=planned,
+        swapped=swapped, alternatives=[a for a in planned.alternatives if swapped is None or a.id != swapped.id],
+        log=log, done=done, done_n=sum(1 for x in items if x.id in done), saved=entry is not None,
+        swap_names={x.id: by_id[swaps[x.id]].name for x in items if x.id in swaps and swaps[x.id] in by_id},
+        rows=rows, timed=it.seconds is not None, max_sets=db.MAX_SETS,
+        error=error or request.query_params.get("error"), base=_day_base(p.id, day.id)), status_code=status_code)
+
+
+def _pass_day(request: Request, program_id: int, day_id: int):
+    """(user, programme, day, its items) for the player's routes, or (None,
+    …) for a guest; 403 / 404 as the day's page."""
+    user, p = _program_or_403(request, program_id)
+    if user is None:
+        return None, None, None, None
+    day = _day_or_404(program_id, day_id)
+    return user, p, day, _day_items(day)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/kreni")
+def pass_start(request: Request, program_id: int, day_id: int):
+    """"Kreni" (and "Nastavi": the same form): the viewer's pass through the
+    day, a new one or the one in progress, then the first exercise it has
+    not saved (exercise 1 of a new one; the last when all are). A day with
+    no exercise starts nothing."""
+    user, p, day, items = _pass_day(request, program_id, day_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    base = _day_base(program_id, day_id)
+    if not items:
+        return RedirectResponse(base, status_code=303)
+    log = db.start_pass(user.id, p, day)
+    return RedirectResponse(f"{base}/vjezba/{_next_k(items, log)}", status_code=303)
+
+
+@app.get("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}", response_class=HTMLResponse)
+def pass_exercise(request: Request, program_id: int, day_id: int, k: int):
+    """Exercise k of the day (1-based, its display order) in the viewer's
+    pass in progress; k that is no exercise of it is 404, and without a pass
+    in progress the day's page (where "Kreni" is)."""
+    user, p, day, items = _pass_day(request, program_id, day_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not 1 <= k <= len(items):
+        raise HTTPException(status_code=404)
+    log = db.open_pass(user.id, day_id)
+    if log is None:
+        return RedirectResponse(_day_base(program_id, day_id), status_code=303)
+    return _player(request, user, p, day, items, k, log)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}")
+async def pass_save(request: Request, program_id: int, day_id: int, k: int):
+    """Exercise k's "Spremi": its set log, `rows` rows of reps_n and kg_n (a
+    timed exercise's sec_n), read by db.read_sets and saved into the pass
+    (db.save_sets: the exercise done, the swapped one when swapped); then
+    the next exercise, or the finish screen after the last. A refusal comes
+    back as the screen, its sentence under the name and what was typed
+    kept."""
+    user, p, day, items = _pass_day(request, program_id, day_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not 1 <= k <= len(items):
+        raise HTTPException(status_code=404)
+    base = _day_base(program_id, day_id)
+    log = db.open_pass(user.id, day_id)
+    if log is None:
+        return RedirectResponse(base, status_code=303)
+    form = await request.form()
+
+    def field(name: str) -> str:
+        value = form.get(name)
+        return value if isinstance(value, str) else ""
+
+    it, timed = items[k - 1], items[k - 1].seconds is not None
+    n = min(max(_id(field("rows")) or 1, 1), 30)
+    raw = [{"seconds": field(f"sec_{i}")} if timed else {"reps": field(f"reps_{i}"), "kg": field(f"kg_{i}")}
+           for i in range(1, n + 1)]
+    swaps = log.swap_items
+    exercise = (db.exercises_by_id([swaps[it.id]]).get(swaps[it.id]) if it.id in swaps else None) or it.exercise
+    try:
+        saved = db.save_sets(log.id, user.id, it, db.read_sets(raw, timed), exercise)
+    except ValueError as err:
+        # what was typed, back in its inputs: a weight with a comma as a
+        # number input's value takes a dot, or the browser would empty it
+        planned = min(it.sets or 1, db.MAX_SETS)
+        kept = [{"reps": r.get("reps", ""), "kg": r.get("kg", "").replace(",", "."), "sec": r.get("seconds", ""),
+                 "extra": i > planned} for i, r in enumerate(raw, start=1)]
+        return _player(request, user, p, day, items, k, log, error=str(err), posted=kept, status_code=400)
+    if not saved:
+        return RedirectResponse(base, status_code=303)
+    return RedirectResponse(f"{base}/vjezba/{k + 1}" if k < len(items) else f"{base}/kraj", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}/zamjena")
+def pass_swap(request: Request, program_id: int, day_id: int, k: int, exercise_id: str = Form(""),
+              vrati: str = Form("")):
+    """"⇄" in the swap list: a similar exercise in place of exercise k for
+    this pass (`exercise_id`), or the plan's back (`vrati`); back on its
+    screen, a refusal's sentence with it."""
+    user, p, day, items = _pass_day(request, program_id, day_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not 1 <= k <= len(items):
+        raise HTTPException(status_code=404)
+    from urllib.parse import quote
+    base = _day_base(program_id, day_id)
+    log = db.open_pass(user.id, day_id)
+    if log is None:
+        return RedirectResponse(base, status_code=303)
+    back = f"{base}/vjezba/{k}"
+    try:
+        db.swap_exercise(log.id, user.id, items[k - 1], None if vrati else _id(exercise_id) or -1)
+    except ValueError as err:
+        return RedirectResponse(f"{back}?error={quote(str(err))}", status_code=303)
+    return RedirectResponse(back, status_code=303)
+
+
+def _finish_page(request: Request, user, p, day, log, error: str | None = None, form: dict | None = None,
+                 status_code: int = 200):
+    """The finish screen: the day, how many of its exercises the pass saved
+    and how long it has run, then the osvrt (`form`, what a refused one
+    sent, kept under `error`)."""
+    items = _day_items(day)
+    done = log.done_items
+    return templates.TemplateResponse(request, "trening_kraj.html", _ctx(
+        request, user, p=p, day=day, log=log, n_items=len(items), done_n=sum(1 for x in items if x.id in done),
+        elapsed=duration_text(int((datetime.now(config.TZ) - log.started_at).total_seconds())),
+        feelings=FEELING_LABELS, v=form or {"effort": None, "feeling": "", "note": ""}, error=error,
+        base=_day_base(p.id, day.id)), status_code=status_code)
+
+
+@app.get("/treninzi/{program_id}/dan/{day_id}/kraj", response_class=HTMLResponse)
+def pass_end_page(request: Request, program_id: int, day_id: int):
+    """The finish screen of the viewer's pass in progress; without one, the
+    day's page."""
+    user, p, day, items = _pass_day(request, program_id, day_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    log = db.open_pass(user.id, day_id)
+    if log is None:
+        return RedirectResponse(_day_base(program_id, day_id), status_code=303)
+    return _finish_page(request, user, p, day, log)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/kraj")
+def pass_finish(request: Request, program_id: int, day_id: int, effort: str = Form(""), feeling: str = Form(""),
+                note: str = Form("")):
+    """"Spremi trening": the osvrt (napor 1–10, osjećaj or none, a comment)
+    finishes the pass (db.finish_pass: its length the server's clock), then
+    the day's page saying so. A refused osvrt ("Neispravan osvrt.") comes
+    back as the finish screen, what was chosen kept."""
+    user, p, day, items = _pass_day(request, program_id, day_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    from urllib.parse import quote
+    base = _day_base(program_id, day_id)
+    log = db.open_pass(user.id, day_id)
+    if log is None:
+        return RedirectResponse(base, status_code=303)
+    try:
+        db.finish_pass(log.id, user.id, _id(effort), feeling or None, note)
+    except ValueError as err:
+        kept = {"effort": _id(effort), "feeling": feeling, "note": note}
+        return _finish_page(request, user, p, day, log, error=str(err), form=kept, status_code=400)
+    return RedirectResponse(f"{base}?ok={quote('Trening je spremljen.')}", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/odustani")
+def pass_drop(request: Request, program_id: int, day_id: int):
+    """"Odbaci": the viewer's pass in progress through the day is deleted,
+    the sets it saved with it (a finished pass is never deleted here); back
+    on the day's page."""
+    user, p, day, items = _pass_day(request, program_id, day_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    from urllib.parse import quote
+    base = _day_base(program_id, day_id)
+    log = db.open_pass(user.id, day_id)
+    if log is None or not db.drop_pass(log.id, user.id):
+        return RedirectResponse(base, status_code=303)
+    return RedirectResponse(f"{base}?ok={quote('Započeti trening je odbačen.')}", status_code=303)
 
 
 @app.get("/treninzi/{program_id}/uredi", response_class=HTMLResponse)

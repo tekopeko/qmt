@@ -20,6 +20,7 @@ measured against what it really sits on; the reported ratio is the real one.
 import collections
 import json
 import sys
+from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
 
@@ -54,9 +55,13 @@ ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana",
 # /upitnik opens on the guide through the training (29.10.2026), ?od=1 on its first question; /vodic is the guide alone.
 # The programmes' days (30.10.2026): "trening:1" is the first programme on
 # the client's /treninzi, "dan:1" its first day's page (the demo seed: ivan's
-# Dan 1, all three sections), both found by their links (a reseed gives new ids).
+# Dan 1, all three sections, two finished passes in its Povijest), both found
+# by their links (a reseed gives new ids). The player (30.10.2026, stage 3):
+# "kreni:1" presses Kreni on dan:1 and lands on its first exercise, "kraj:1"
+# is the finish screen the player's "Završi trening" leads to; after it the
+# walk drops that pass (…/odustani), so the next run starts clean.
 CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "/moja-clanarina", "/prehrana", "/profil", "/treninzi",
-          "trening:1", "dan:1", "/upitnik", "/upitnik?od=1", "/vodic"]
+          "trening:1", "dan:1", "kreni:1", "kraj:1", "/upitnik", "/upitnik?od=1", "/vodic"]
 # the library of exercises (30.10.2026): its list, and one exercise's page,
 # "vjezba:<name>", found on the list by the seed's name (scripts/seed_demo.py:
 # a reseed gives the exercises new ids). Goblet čučanj has tags, similar
@@ -196,6 +201,41 @@ def resolve(pg, r: str) -> str | None:
     return path
 
 
+def player(pg, r: str) -> str | None:
+    """The player's pages of the pass the walk opens on day N (dan:N, found
+    first): "kreni:N" presses the day's Kreni (Nastavi, should a pass be in
+    progress already: the same form) and is the exercise it lands on;
+    "kraj:N" is where that exercise's "Završi trening" leads. Both kept in
+    FOUND."""
+    kind, n = r.split(":")[:2]
+    if kind == "kreni":
+        day = FOUND.get(f"dan:{n}") or resolve(pg, f"dan:{n}")
+        if not day:
+            return None
+        pg.goto(BASE + day)
+        pg.wait_for_load_state("networkidle")
+        button = pg.locator("main form.go button[type=submit]")
+        if not button.count():
+            return None
+        with pg.expect_navigation():
+            button.first.click()
+    else:
+        start = FOUND.get(f"kreni:{n}")
+        if not start:
+            return None
+        pg.goto(BASE + start)
+        pg.wait_for_load_state("networkidle")
+        end = pg.locator("main a.pl-end")
+        if not end.count():
+            return None
+        with pg.expect_navigation():
+            end.first.click()
+    pg.wait_for_load_state("networkidle")
+    path = urlparse(pg.url).path
+    FOUND[r] = path
+    return path
+
+
 def run(pg, routes, who, theme, width, findings):
     for r in routes:
         key = f"{who}/{theme}/{width}px{r}"
@@ -211,6 +251,11 @@ def run(pg, routes, who, theme, width, findings):
             path = resolve(pg, r)
             if not path:
                 findings["head"].append((key, f"nothing found for {r!r} (the demo seed? the client's walk first?)"))
+                continue
+        elif r.startswith(("kreni:", "kraj:")):        # the player, on the pass the walk opens
+            path = player(pg, r)
+            if not path:
+                findings["head"].append((key, f"nothing found for {r!r} (the demo seed? dan:N first?)"))
                 continue
         pg.goto(BASE + path)
         pg.wait_for_load_state("networkidle")
@@ -228,6 +273,9 @@ def run(pg, routes, who, theme, width, findings):
             findings["head"].append((key, f"h1 count = {h['h1']}"))
         if h["jump"]:
             findings["head"].append((key, f"heading jump {h['jump']}"))
+        if r.startswith("kraj:") and f"dan:{r.split(':')[1]}" in FOUND:
+            # the pass "kreni:N" opened goes again, so a re-run starts clean
+            pg.request.post(BASE + FOUND[f"dan:{r.split(':')[1]}"] + "/odustani")
 
 
 def main():

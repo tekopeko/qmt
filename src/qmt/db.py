@@ -9,20 +9,23 @@ count-then-insert check (the same race macro_tracker's LLM quota had), so
 from __future__ import annotations
 
 import calendar
+import json
+import re
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import Iterator
 
-from sqlalchemy import create_engine, delete as sa_delete, func, or_, select, text as sa_text
+from sqlalchemy import and_, create_engine, delete as sa_delete, func, or_, select, text as sa_text, union
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload, selectinload, sessionmaker
+from sqlalchemy.orm import Session, aliased, joinedload, selectinload, sessionmaker
 
 from . import config, copy, upitnik
-from .models import (ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, Announcement, Base, Booking, Exercise,
-                     GymCard, Membership, OnboardingResponse, Payment, Program, ProgramDay, ProgramDayItem,
+from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, Announcement, Base, Booking,
+                     Exercise, GymCard, Membership, OnboardingResponse, Payment, Program, ProgramDay, ProgramDayItem,
                      ReminderLog, SessionTemplate, SiteCopy, TrainingLog, TrainingSession, UpitnikQuestion, User,
-                     alpha_key, exercise_alternatives)
+                     WorkoutLog, alpha_key, exercise_alternatives)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -1701,18 +1704,29 @@ def exercises(q: str = "") -> list[tuple[Exercise, int]]:
     return [(e, used.get(e.id, 0)) for e in sorted(rows, key=lambda e: alpha_key(e.name))]
 
 
+def program_name(p: Program) -> str:
+    """A programme as the library's pages name it: its title, and its
+    razina's label after it when it has one, "Booty build (napredna
+    razina)" (30.10.2026, the owner: three live programmes share the title
+    "Booty build", one per razina, and the title alone sent him to the wrong
+    one). The label is upitnik.LEVELS', lower-cased mid-sentence."""
+    label = upitnik.LEVELS.get(p.level or "")
+    return f"{p.title} ({label.lower()})" if label else p.title
+
+
 def exercise_programs(exercise_id: int) -> list[Program]:
     """The programmes that hold an exercise in any of their days, in the
-    alphabet's order."""
+    alphabet's order of their names (program_name)."""
     with session_scope() as s:
         rows = list(s.scalars(select(Program).where(Program.id.in_(_holding([exercise_id])))))
-    return sorted(rows, key=lambda p: alpha_key(p.title))
+    return sorted(rows, key=lambda p: alpha_key(program_name(p)))
 
 
 def in_programs(titles: list[str]) -> str:
-    """Why an exercise cannot be deleted: "Vježba je u 3 programa (Cijelo
-    tijelo — početna, Core control, Donji dio tijela — srednja) — prvo je
-    makni iz njih.", the titles up to three, then "…"."""
+    """Why an exercise cannot be deleted: "Vježba je u 3 programa (Booty
+    build (napredna razina), Core control, Donji dio tijela — srednja) —
+    prvo je makni iz njih.", the programmes' names (program_name) up to
+    three, then "…"."""
     n = len(titles)
     named = ", ".join(titles[:3]) + (" …" if n > 3 else "")
     noun = "programu" if n % 10 == 1 and n % 100 != 11 else "programa"
@@ -1728,7 +1742,8 @@ def delete_exercise(exercise_id: int) -> str | None:
         e = s.get(Exercise, exercise_id, with_for_update=True)
         if e is None:
             return None
-        titles = sorted(s.scalars(select(Program.title).where(Program.id.in_(_holding([exercise_id])))),
+        titles = sorted((program_name(p) for p in s.scalars(select(Program)
+                                                              .where(Program.id.in_(_holding([exercise_id]))))),
                         key=alpha_key)
         if titles:
             raise ValueError(in_programs(titles))
@@ -1754,16 +1769,22 @@ def set_exercise_video(exercise_id: int, name: str | None, user_id: int | None =
 def video_programs(name: str) -> list[Program] | None:
     """Who may watch a stored clip (/media): None when neither an exercise
     nor a day holds it (an exercise's clip, a day's intro video), else the
-    programmes that hold its exercise in a day, or whose day it introduces (a
-    client watches it through one of his matched programmes; staff watch
-    any)."""
+    programmes that hold its exercise in a day, or an exercise it is similar
+    to (since 30.10.2026 the player shows a similar exercise swapped in, its
+    clip too), or whose day it introduces (a client watches it through one
+    of his matched programmes; staff watch any)."""
     with session_scope() as s:
         ids = select(Exercise.id).where(Exercise.video == name)
         intro = select(ProgramDay.program_id).where(ProgramDay.intro_video == name)
         if not (s.scalar(select(func.count()).select_from(ids.subquery()))
                 or s.scalar(select(func.count()).select_from(intro.subquery()))):
             return None
-        return list(s.scalars(select(Program).where(or_(Program.id.in_(_holding(ids)), Program.id.in_(intro)))))
+        t = exercise_alternatives
+        similar = union(select(t.c.alternative_id).where(t.c.exercise_id.in_(ids)),
+                        select(t.c.exercise_id).where(t.c.alternative_id.in_(ids)))
+        return list(s.scalars(select(Program).where(or_(Program.id.in_(_holding(ids)),
+                                                        Program.id.in_(_holding(select(similar.subquery()))),
+                                                        Program.id.in_(intro)))))
 
 
 def all_programs() -> list[tuple[Program, int, int]]:
@@ -2067,3 +2088,301 @@ def move_day_item(item_id: int, direction: str) -> bool:
         rows[i].position, rows[j].position = rows[j].position, rows[i].position
         p.updated_at = func.now()
         return True
+
+
+# ---------- a client's passes through a day (30.10.2026, stage 3: the player) ----------
+# A pass (models.WorkoutLog) is opened by "Kreni" on a day, filled exercise by
+# exercise by the player's "Spremi" (that exercise's set log), and finished by
+# the osvrt at the end. Every write takes the pass's row first (FOR UPDATE):
+# `done` and `swaps` are read, changed and written whole, so two saves at once
+# (two tabs) never lose one another's entry. A pass is the client's own: every
+# function here matches it by its id AND its client.
+
+# what a logged set's numbers may be, (least, most); else BAD_NUMBER. A weight
+# goes in steps of half a kilo.
+SET_LIMITS = {"reps": (0, 999), "kg": (0, 500), "seconds": (0, 3600)}
+MAX_SETS = 12
+NO_SET = "Upiši bar jednu seriju."
+TOO_MANY_SETS = f"Najviše {MAX_SETS} serija."
+NOT_SIMILAR = "Ta vježba nije među sličnima."
+BAD_OSVRT = "Neispravan osvrt."                  # the karton's sentence for the same three fields
+PASS_FINISHED = "Trening je već završen."
+
+
+def _set_number(raw: str | None, field: str) -> int | float | None:
+    """One number of the set log as posted: "" (or spaces) is none; else
+    ASCII digits (a weight "2,5" or "2.5", in steps of 0.5) within
+    SET_LIMITS, or ValueError BAD_NUMBER."""
+    value = (raw or "").strip()
+    if not value:
+        return None
+    least, most = SET_LIMITS[field]
+    if field == "kg":
+        if not re.fullmatch(r"[0-9]{1,3}(?:[.,][0-9]{1,2})?", value):
+            raise ValueError(BAD_NUMBER)
+        kg = Decimal(value.replace(",", "."))
+        if (kg * 2) % 1 or not least <= kg <= most:
+            raise ValueError(BAD_NUMBER)
+        return float(kg)
+    if not re.fullmatch(r"[0-9]{1,4}", value):
+        raise ValueError(BAD_NUMBER)
+    number = int(value)
+    if not least <= number <= most:
+        raise ValueError(BAD_NUMBER)
+    return number
+
+
+def read_sets(rows: list[dict[str, str]], timed: bool) -> list[dict]:
+    """A set log as the player posts it, row by row ({"reps": "10", "kg":
+    "2,5"}, a timed exercise's {"seconds": "30"}), as it is stored: [{"reps":
+    10, "kg": 2.5}, …] or [{"seconds": 30}, …]. A row with every field empty
+    is dropped; in a row that has a number, an empty field is 0 (a weight of
+    0 is none). ValueError with the sentence to show: a number that is none
+    or out of its range ("Neispravan broj."), no set left ("Upiši bar jednu
+    seriju."), more than MAX_SETS ("Najviše 12 serija.")."""
+    fields = ("seconds",) if timed else ("reps", "kg")
+    sets = []
+    for row in rows:
+        values = {f: _set_number(row.get(f), f) for f in fields}
+        if all(v is None for v in values.values()):
+            continue
+        sets.append({"seconds": values["seconds"] or 0} if timed
+                    else {"reps": values["reps"] or 0, "kg": float(values["kg"] or 0)})
+    return _checked_sets(sets)
+
+
+def _checked_sets(sets: list[dict]) -> list[dict]:
+    """Sets as stored (read_sets'), checked again where they are written."""
+    if not sets:
+        raise ValueError(NO_SET)
+    if len(sets) > MAX_SETS:
+        raise ValueError(TOO_MANY_SETS)
+    clean = []
+    for st in sets:
+        if set(st) == {"seconds"}:
+            fields = ("seconds",)
+        elif set(st) == {"reps", "kg"}:
+            fields = ("reps", "kg")
+        else:
+            raise ValueError(BAD_NUMBER)
+        for f in fields:
+            least, most = SET_LIMITS[f]
+            v = st[f]
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not least <= v <= most:
+                raise ValueError(BAD_NUMBER)
+            if f != "kg" and v != int(v) or f == "kg" and (v * 2) % 1:
+                raise ValueError(BAD_NUMBER)
+        clean.append({"seconds": int(st["seconds"])} if fields == ("seconds",)
+                     else {"reps": int(st["reps"]), "kg": float(st["kg"])})
+    return clean
+
+
+def _pass_row(s: Session, log_id: int, user_id: int) -> WorkoutLog | None:
+    """A client's pass, its row locked."""
+    return s.scalar(select(WorkoutLog).where(WorkoutLog.id == log_id, WorkoutLog.user_id == user_id)
+                    .with_for_update())
+
+
+def _json(data: dict) -> str:
+    return json.dumps(data, ensure_ascii=False)
+
+
+def start_pass(user_id: int, program: Program, day: ProgramDay) -> WorkoutLog:
+    """The client's pass in progress through a day: the open one if there is
+    one, else a new one, its snapshots taken now (the programme's title, the
+    day's label). Two "Kreni" at once open one pass: the second insert meets
+    the partial unique index (uq_workout_logs_open) and does nothing, and
+    both read the one row."""
+    with session_scope() as s:
+        s.execute(pg_insert(WorkoutLog).values(
+            user_id=user_id, program_id=program.id, day_id=day.id, program_title=program.title[:160],
+            day_label=day.label[:200], done="{}", swaps="{}", note="",
+        ).on_conflict_do_nothing(index_elements=["user_id", "day_id"], index_where=WorkoutLog.finished_at.is_(None)))
+        return s.scalar(select(WorkoutLog).where(WorkoutLog.user_id == user_id, WorkoutLog.day_id == day.id,
+                                                 WorkoutLog.finished_at.is_(None)))
+
+
+def open_pass(user_id: int, day_id: int) -> WorkoutLog | None:
+    """The client's pass in progress through a day, or None."""
+    with session_scope() as s:
+        return s.scalar(select(WorkoutLog).where(WorkoutLog.user_id == user_id, WorkoutLog.day_id == day_id,
+                                                 WorkoutLog.finished_at.is_(None)))
+
+
+def get_pass(log_id: int, user_id: int) -> WorkoutLog | None:
+    """A pass of this client's, in progress or finished; None for another's."""
+    with session_scope() as s:
+        return s.scalar(select(WorkoutLog).where(WorkoutLog.id == log_id, WorkoutLog.user_id == user_id))
+
+
+def save_sets(log_id: int, user_id: int, item: ProgramDayItem, sets: list[dict], exercise: Exercise) -> bool:
+    """Write an exercise's set log into a pass in progress: `item`'s entry
+    (the exercise done, its name as it is now, the item's section, `sets`,
+    stamped now), replacing the one it had. `exercise` is the item's, or the
+    similar one swapped in for this pass. False for no such pass of this
+    client, or an item of another day. ValueError: the sets' sentences
+    (read_sets), PASS_FINISHED for a pass already finished, NOT_SIMILAR for
+    an exercise that is neither the item's nor its swap."""
+    sets = _checked_sets(sets)
+    with session_scope() as s:
+        log = _pass_row(s, log_id, user_id)
+        if log is None or log.day_id != item.day_id:
+            return False
+        if log.finished_at is not None:
+            raise ValueError(PASS_FINISHED)
+        if exercise.id != item.exercise_id and log.swap_items.get(item.id) != exercise.id:
+            raise ValueError(NOT_SIMILAR)
+        done = WorkoutLog._object(log.done)
+        done[str(item.id)] = {"exercise_id": exercise.id, "name": exercise.name, "section": item.section,
+                              "sets": sets, "at": datetime.now(config.TZ).isoformat()}
+        log.done = _json(done)
+        return True
+
+
+def swap_exercise(log_id: int, user_id: int, item: ProgramDayItem, exercise_id: int | None) -> bool:
+    """Swap the similar exercise `exercise_id` in for `item` in this pass
+    (None: the plan's back). Only one of the item's exercise's similar
+    exercises (Exercise.alternatives), else ValueError NOT_SIMILAR
+    ("Ta vježba nije među sličnima."); PASS_FINISHED for a pass finished.
+    What the pass saved of the item stays as it was saved. False for no
+    such pass of this client, or an item of another day."""
+    with session_scope() as s:
+        if exercise_id is not None:
+            planned = s.scalar(select(Exercise).where(Exercise.id == item.exercise_id)
+                               .options(selectinload(Exercise.alternatives_to),
+                                        selectinload(Exercise.alternatives_from)))
+            if planned is None or exercise_id not in {a.id for a in planned.alternatives}:
+                raise ValueError(NOT_SIMILAR)
+        log = _pass_row(s, log_id, user_id)
+        if log is None or log.day_id != item.day_id:
+            return False
+        if log.finished_at is not None:
+            raise ValueError(PASS_FINISHED)
+        swaps = WorkoutLog._object(log.swaps)
+        if exercise_id is None:
+            swaps.pop(str(item.id), None)
+        else:
+            swaps[str(item.id)] = exercise_id
+        log.swaps = _json(swaps)
+        return True
+
+
+def finish_pass(log_id: int, user_id: int, effort: int | None, feeling: str | None, note: str) -> bool:
+    """Finish a pass with its osvrt: napor 1–10, osjećaj (a FEELING_LABELS
+    key, or none), a comment (stripped). The finish is the server's clock,
+    and so is the pass's length (finished − started, whole seconds). False
+    for no such pass of this client. ValueError: BAD_OSVRT ("Neispravan
+    osvrt.", the karton's) for an effort outside 1–10 or a feeling that is
+    none of the labels, PASS_FINISHED for a pass finished already."""
+    if effort is None or not 1 <= effort <= 10 or (feeling and feeling not in FEELING_LABELS):
+        raise ValueError(BAD_OSVRT)
+    with session_scope() as s:
+        log = _pass_row(s, log_id, user_id)
+        if log is None:
+            return False
+        if log.finished_at is not None:
+            raise ValueError(PASS_FINISHED)
+        now = datetime.now(config.TZ)
+        log.finished_at = now
+        log.elapsed_seconds = max(0, int((now - log.started_at).total_seconds()))
+        log.effort, log.feeling, log.note = effort, feeling or None, (note or "").strip()
+        return True
+
+
+def drop_pass(log_id: int, user_id: int) -> bool:
+    """Delete a pass in progress ("Odbaci"), what it saved with it. A
+    finished pass is never deleted here: False, as for none."""
+    with session_scope() as s:
+        log = _pass_row(s, log_id, user_id)
+        if log is None or log.finished_at is not None:
+            return False
+        s.delete(log)
+        return True
+
+
+def passes(user_id: int, day_id: int | None = None, limit: int | None = None) -> list[WorkoutLog]:
+    """A client's finished passes, newest first: a day's, or every day's
+    when none is named; at most `limit`."""
+    q = select(WorkoutLog).where(WorkoutLog.user_id == user_id, WorkoutLog.finished_at.is_not(None))
+    if day_id is not None:
+        q = q.where(WorkoutLog.day_id == day_id)
+    q = q.order_by(WorkoutLog.started_at.desc(), WorkoutLog.id.desc())
+    if limit is not None:
+        q = q.limit(limit)
+    with session_scope() as s:
+        return list(s.scalars(q))
+
+
+def last_sets(user_id: int, exercise_id: int) -> list[dict] | None:
+    """The sets the client last saved for an exercise, in any pass of his,
+    finished or in progress, any day of any programme (the newest entry for
+    it by when it was saved): what the player prefills the weights from.
+    None when he never logged it."""
+    with session_scope() as s:
+        rows = list(s.scalars(select(WorkoutLog.done).where(WorkoutLog.user_id == user_id)
+                              .order_by(WorkoutLog.started_at, WorkoutLog.id)))
+    newest, sets = None, None
+    for raw in rows:                     # oldest pass first: on a tie the later pass's entry wins
+        for entry in WorkoutLog._object(raw).values():
+            if not isinstance(entry, dict) or entry.get("exercise_id") != exercise_id:
+                continue
+            try:
+                at = datetime.fromisoformat(str(entry.get("at")))
+            except ValueError:
+                continue
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=config.TZ)
+            if newest is None or at >= newest:
+                newest, sets = at, [x for x in entry.get("sets", []) if isinstance(x, dict)]
+    return sets
+
+
+def day_states(user_id: int, day_ids) -> dict[int, dict]:
+    """A client's state on each of these days, in one query: day id ->
+    {"open": his pass in progress or None, "count": his finished passes,
+    "last": the newest one's day (Zagreb) or None}. A day he never started
+    is not in it."""
+    day_ids = list(day_ids)
+    if not day_ids:
+        return {}
+    finished = WorkoutLog.finished_at.is_not(None)
+    agg = (select(WorkoutLog.day_id.label("day_id"),
+                  func.count().filter(finished).label("n"),
+                  func.max(WorkoutLog.started_at).filter(finished).label("last"))
+           .where(WorkoutLog.user_id == user_id, WorkoutLog.day_id.in_(day_ids))
+           .group_by(WorkoutLog.day_id).subquery())
+    opened = aliased(WorkoutLog)
+    with session_scope() as s:
+        rows = s.execute(select(agg.c.day_id, agg.c.n, agg.c.last, opened)
+                         .outerjoin(opened, and_(opened.user_id == user_id, opened.day_id == agg.c.day_id,
+                                                 opened.finished_at.is_(None)))).all()
+    return {day_id: {"open": log, "count": n, "last": last.astimezone(config.TZ).date() if last else None}
+            for day_id, n, last, log in rows}
+
+
+def day_state(user_id: int, day_id: int) -> dict:
+    """A client's state on a day (day_states' dict): {"open": None, "count":
+    0, "last": None} for a day he never started."""
+    return day_states(user_id, [day_id]).get(day_id, {"open": None, "count": 0, "last": None})
+
+
+def day_sizes(day_ids) -> dict[int, int]:
+    """How many exercises each of these days holds now (a day that is gone,
+    or holds none, is not in it)."""
+    day_ids = list(day_ids)
+    if not day_ids:
+        return {}
+    with session_scope() as s:
+        return dict(s.execute(select(ProgramDayItem.day_id, func.count()).where(ProgramDayItem.day_id.in_(day_ids))
+                              .group_by(ProgramDayItem.day_id)).all())
+
+
+def exercises_by_id(ids) -> dict[int, Exercise]:
+    """These exercises of the library, each with its similar exercises loaded."""
+    ids = list(ids)
+    if not ids:
+        return {}
+    with session_scope() as s:
+        return {e.id: e for e in s.scalars(select(Exercise).where(Exercise.id.in_(ids))
+                                           .options(selectinload(Exercise.alternatives_to),
+                                                    selectinload(Exercise.alternatives_from)))}

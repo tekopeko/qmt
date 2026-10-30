@@ -124,6 +124,13 @@
   /* deepen the tint like every other action — a full amber fill shouted */
   .act-absent:hover { background:color-mix(in srgb, var(--warn) 26%, transparent);
                       color:var(--warn); border-color:var(--warn); }
+  /* an online pass (30.10.2026): the termin row's shape, a kicker over it
+     ("Online trening"), the day and the programme as they were named when it
+     started, then how many exercises and how long; the trainer's view folds
+     its sets under "Serije" (base.html's details.sets). Read only. */
+  .log-entry .le-kicker { font:700 .7rem var(--font-body); letter-spacing:.12em; text-transform:uppercase;
+                          color:var(--muted); margin-bottom:2px; }
+  .log-entry .le-sub { font-size:.8rem; margin-top:2px; overflow-wrap:anywhere; }
   .le-edit { display:none; padding-top:10px; }
   .log-entry.editing .le-edit { display:block; }
   .log-entry.editing .le-read p { display:none; }
@@ -241,7 +248,29 @@
     {% for row in diary %}
     {% set log = row.log %}{% set s = row.session %}
 
-    {% if log and not log.absent %}
+    {% if row.workout %}{% set w = row.workout %}
+    {# an online pass (30.10.2026): its day and programme as named when it
+       started (the snapshots), the exercises it saved of the day's and how
+       long it took, the osvrt; nothing here edits or deletes it #}
+    <div class="log-entry online" id="pass-{{ w.id }}">
+      <div class="le-kicker">Online trening</div>
+      <div class="le-head">
+        <span class="when">{{ weekdays_short[row.at.weekday()] }} {{ row.at.strftime("%-d.%-m.%Y.") }}</span>
+        {% if w.effort %}<span class="rpe">napor {{ w.effort }}/10</span>{% endif %}
+        {% if w.feeling %}<span class="rpe feel {% if w.feeling == 'slabo' %}low{% endif %}">{{ feelings.get(w.feeling, w.feeling) }}</span>{% endif %}
+      </div>
+      <div class="hint le-sub">{{ w.day_label }} — {{ w.program_title }}</div>
+      <div class="hint le-sub">{% if row.size is not none %}{{ w.done_count }} od {{ row.size }} {{ plural(row.size, "vježbe", "vježbe", "vježbi") }}{% else %}{{ w.done_count }} {{ plural(w.done_count, "vježba", "vježbe", "vježbi") }}{% endif %}{% if w.elapsed_text %} · {{ w.elapsed_text }}{% endif %}</div>
+      {% if w.note %}<p>{{ w.note }}</p>{% endif %}
+      {% if not own %}{% set lines = w.lines() %}{% if lines %}
+      <details class="sets">
+        <summary>Serije</summary>
+        <ul>{% for name, sets in lines %}<li><strong>{{ name }}:</strong> {% for s in sets %}<span class="set">{{ s }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</li>{% endfor %}</ul>
+      </details>
+      {% endif %}{% endif %}
+    </div>
+
+    {% elif log and not log.absent %}
     {# written up: the osvrt reads first, editable in place #}
     <div class="log-entry" id="log-{{ log.id }}">
       <div class="le-read">

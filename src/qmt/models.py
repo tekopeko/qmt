@@ -846,3 +846,136 @@ class ProgramDayItem(Base):
     def rest_text(self) -> str:
         """The rest between sets, "60 s" (always seconds), "" when not set."""
         return "" if self.rest_seconds is None else f"{self.rest_seconds} s"
+
+
+def kg_text(kg: float | int | None) -> str:
+    """A weight as the app prints it, a comma for the half: "20", "2,5";
+    "" for none (0: no weight)."""
+    return f"{float(kg):g}".replace(".", ",") if kg else ""
+
+
+def set_text(s: dict) -> str:
+    """One logged set as the history prints it: "10 × 20 kg", "10" with no
+    weight (its kg 0), "30 s" for a timed exercise's."""
+    if "seconds" in s:
+        return f"{s.get('seconds') or 0} s"
+    reps, kg = s.get("reps") or 0, kg_text(s.get("kg"))
+    return f"{reps} × {kg} kg" if kg else f"{reps}"
+
+
+class WorkoutLog(Base):
+    """One pass of a client through a day of an online programme (30.10.2026,
+    stage 3 of roadmap/2026-10-29-online-treninzi-spec.md; the owner: the
+    tick is stored "so that we have a record of a user's history. He can
+    repeat the training if he wants"). "Kreni" on a day opens one
+    (db.start_pass), the player walks the day exercise by exercise and each
+    "Spremi" writes that exercise's set log into it, and the osvrt at the end
+    (the same three fields as after a termin: napor, osjećaj, komentar)
+    finishes it (db.finish_pass). A day can be done again and again: every
+    pass is a row. At most one pass per client and day is in progress
+    (`finished_at` NULL: the partial unique index uq_workout_logs_open); one
+    left open is continued ("Nastavi") or dropped ("Odbaci").
+
+    `program_title` and `day_label` are snapshots taken at the start, as the
+    exercises' names in `done` are at each save, so a programme or a day
+    renamed or deleted later never garbles the history (the foreign keys are
+    SET NULL; the upitnik's rule: a client's record is never pruned).
+    `elapsed_seconds` is set at the finish from the server's clock (finished
+    − started, whole seconds), never from what a page posts.
+
+    `done` is a JSON object, one entry per exercise saved in this pass, keyed
+    by the day's item id: {"<item id>": {"exercise_id": 12, "name": "Goblet
+    čučanj", "section": "trening", "sets": [{"reps": 10, "kg": 20.0}, …] (a
+    timed exercise's [{"seconds": 30}, …]), "at": "<iso>"}}; a re-save
+    replaces the entry. The exercise is the one done, the swapped one when
+    the client swapped it. `swaps` is a JSON object {"<item id>": <exercise
+    id>}, the similar exercise swapped in for this pass (absent: the plan's).
+    Both are written by db.py only (json), read through done_items and
+    swap_items. `effort` (1–10), `feeling` (a FEELING_LABELS key) and `note`
+    are the osvrt."""
+
+    __tablename__ = "workout_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    program_id: Mapped[int | None] = mapped_column(ForeignKey("programs.id", ondelete="SET NULL"), nullable=True)
+    day_id: Mapped[int | None] = mapped_column(ForeignKey("program_days.id", ondelete="SET NULL"), nullable=True,
+                                               index=True)
+    program_title: Mapped[str] = mapped_column(String(160))
+    day_label: Mapped[str] = mapped_column(String(200))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    elapsed_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    done: Mapped[str] = mapped_column(Text, server_default=text("'{}'"), default="{}")
+    swaps: Mapped[str] = mapped_column(Text, server_default=text("'{}'"), default="{}")
+    effort: Mapped[int | None] = mapped_column(Integer, nullable=True)       # RPE 1–10
+    feeling: Mapped[str | None] = mapped_column(String(10), nullable=True)  # FEELING_LABELS key
+    note: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+
+    __table_args__ = (
+        # one pass in progress per client and day
+        Index("uq_workout_logs_open", "user_id", "day_id", unique=True,
+              postgresql_where=sql_text("finished_at IS NULL")),
+        Index("ix_workout_logs_user_id_started_at", "user_id", "started_at"),
+    )
+
+    @staticmethod
+    def _object(raw: str | None) -> dict:
+        try:
+            data = json.loads(raw or "{}")
+        except ValueError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    @property
+    def in_progress(self) -> bool:
+        return self.finished_at is None
+
+    @property
+    def done_items(self) -> dict[int, dict]:
+        """The exercises saved in this pass: item id -> its entry (above);
+        an entry that cannot be read is left out."""
+        return {int(k): v for k, v in self._object(self.done).items()
+                if k.isascii() and k.isdigit() and isinstance(v, dict)}
+
+    @property
+    def done_count(self) -> int:
+        return len(self.done_items)
+
+    @property
+    def swap_items(self) -> dict[int, int]:
+        """The swaps of this pass: item id -> the similar exercise's id."""
+        return {int(k): v for k, v in self._object(self.swaps).items()
+                if k.isascii() and k.isdigit() and isinstance(v, int)}
+
+    @property
+    def elapsed_text(self) -> str:
+        """How long the pass took, "38 min", "1 h 05 min" (to the nearest
+        minute, one at least); "" before it is finished."""
+        return duration_text(self.elapsed_seconds)
+
+    @property
+    def date(self) -> SADate:
+        """The day it was started on, in Zagreb."""
+        from .config import TZ
+        return self.started_at.astimezone(TZ).date()
+
+    def lines(self, order=()) -> list[tuple[str, list[str]]]:
+        """Each exercise saved, (its name, its sets as the history says them:
+        ["10 × 20 kg", "10 × 20 kg"]), the history's "Serije": in `order`
+        (item ids, the day's display order) first, the rest in the order
+        they were saved."""
+        rank = {item_id: n for n, item_id in enumerate(order)}
+        entries = sorted(self.done_items.items(),
+                         key=lambda kv: (rank.get(kv[0], len(rank)), str(kv[1].get("at", ""))))
+        return [(str(e.get("name", "")), [set_text(s) for s in e.get("sets", []) if isinstance(s, dict)])
+                for _, e in entries]
+
+
+def duration_text(seconds: int | None) -> str:
+    """A duration as the player and the history say it: "38 min", "1 h 05
+    min", to the nearest minute and one at least; "" for none."""
+    if seconds is None:
+        return ""
+    minutes = max(1, (int(seconds) + 30) // 60)
+    return f"{minutes} min" if minutes < 60 else f"{minutes // 60} h {minutes % 60:02d} min"

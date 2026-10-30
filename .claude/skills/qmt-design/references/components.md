@@ -344,6 +344,15 @@ are `--r-xl`; `.log-entry` rows are `--r-md` and keep the accent inset bar for
 puts `.u-fact` pills and the muted score ("6,4 / 10") on its `.u-meta` line, the
 trainer's `.u-flag`s under it, and the `.u-note` under the ramp; under "Odgovori"
 a conditional question's answer is `li.follow` (no bullet, muted question), indented 14px a level under the one it is asked after: `.d1`, `.d2`, `.d3` (deeper stays at `.d3`), since 27.10.2026 ("Gdje te boli?" under the pain question, a chain's answers each further in).
+**An online pass in the diary** (30.10.2026, `.log-entry.online`, `id="pass-<id>"`):
+a finished pass among the termini by when it started, a written termin row's
+shape: `.le-kicker` "Online trening" over it (700 .7rem, .12em, uppercase,
+muted: a caption, not the accent's), then `.le-head` (the date, `.rpe` "napor
+7/10", `.rpe.feel` the osjećaj, grey for "Slabo"), two muted `.le-sub` lines
+(.8rem: "Dan 1 · Cijelo tijelo — Cijelo tijelo — srednja razina", the
+snapshots; "6 od 8 vježbi · 38 min", a day since deleted "6 vježbi") and the
+comment. No `.le-actions`: nothing on the karton edits or deletes a pass. The
+trainer's view adds `details.sets` "Serije" (base.html, below) under it.
 
 **Upitnik (`upitnik.html`, 26.10.2026; patterns.md §7).** One `form.quiz` (640px,
 centred) holds every step; for a member the page sets `solo_page` (`not can_edit_copy`),
@@ -371,7 +380,8 @@ radius, hairline, muted 700 .72rem; alt text "" so a reader hears the option, no
 the letter), so the editor's redrawn rows get it too; chosen
 (`:has(input:checked)`, the editor's preview `.on`) the row inverts (`--text`
 ground, `--bg` ink) with a ✓ `::after` at its right end; focus is a 2px accent ring
-on the row. **`.scale`** (a scale question: q5–q14 of the fifteen): ten `label.sc`, each a circle `span` (≤56px,
+on the row (`.opts` / `.opt` and the scale below are base.html's since 30.10.2026,
+when the online trening's finish screen asked its osvrt in them). **`.scale`** (a scale question: q5–q14 of the fifteen): ten `label.sc`, each a circle `span` (≤56px,
 `aspect-ratio: 1`, hairline on `--surface`, 700 1rem tabular), chosen inverted like
 a row; a 5 × 2 grid until its box (`.scale-box`, a query container) is 454px, ten in
 a row from there (40px each at least); `.scale-ends` under it, muted .85rem, "1 = …"
@@ -513,7 +523,76 @@ turns 90° (points down) on `details[open]`. Open, `.dx-body` (also `.ex-video`)
 the clip (`controls playsinline preload="none"`) or a muted "Vježba još nema
 videa.", "Jedno ponavljanje: …" and the instructions (`pre-line`). Native
 `<details>`: it opens without JS. A day with no item says "Dan još nema vježbi."
-(the trainer: "… — dodaj ih u uređivanju.").
+(the trainer: "… — dodaj ih u uređivanju."). The row's words (`.dx-cap`,
+`.dx-list`, `.dx-n`, `.dx-line`, `.dx-name`, `.dx-dose`, `.dx-sub`) are base.html's
+since 30.10.2026: the player's list is the same rows.
+**The way into the player (30.10.2026, stage 3).** A day card's muted line ends
+with the viewer's state ("… · odrađen 2×", "… · u tijeku"; nothing for a day never
+done). The day's page: under the lead `.dx-state`, one muted 600 .92rem line
+("Još nije odrađen." / "Odrađen 2× · zadnji put 12.11." / "U tijeku — nastavi
+gdje si stao/la."), pulled 12px up into the lead's room; then `.dx-start`, a
+wrapping row: "Kreni" / "Nastavi" (the page's one `.btn`, its own form
+`form.go`, the column's width below 600px) and, while a pass is open, "Odbaci
+započeti trening" (`.act.act-quiet`, `data-confirm`); 24px under it the
+`.day-body`. A day with no item has neither (the state line stays when it has
+passes). While a pass is open a saved row's `.dx-dose` starts with `.dx-ok`, a
+`--good` ✓ (`role="img"`, `aria-label="spremljeno"`). **Povijest** at the
+bottom (`.dx-hist`, 34px above): an `h2.dx-cap`, then an `ol.hist` of
+`.card.hist-row` (12px 16px, 10px apart): `.hist-line` (600, tabular: "12.11. ·
+6/8 vježbi · 38 min · napor 7 · dobro"), `.hist-note` (the comment, muted .9rem,
+`pre-line`) and `details.sets`.
+**`details.sets`** (base.html, 30.10.2026: the day's Povijest, the trainer's
+karton): a pass's sets folded under "Serije": the summary a 32px muted row (600
+.85rem) with a › that turns down when open, then a line per exercise
+("<strong>Goblet čučanj:</strong> 10 × 20 kg · 10 × 20 kg", .88rem, tabular),
+each set a `.set` that never breaks across lines.
+
+**The player (`trening_player.html`) and the finish screen (`trening_kraj.html`,
+30.10.2026).** Shape's Gym Program training page in QMT's tokens, the one-task
+layout (`solo_page = not user.is_trainer`). `.pl`: 640px, centred; from 1000px
+1044px with `.pl-grid`, two columns (`minmax(0, 640px) minmax(0, 380px)`, 24px
+apart: the list keeps 380px, the player takes the rest), the dock hidden. On top
+`.pl-segs`: a 4px segment per exercise, 4px apart in a rounded track, `.done`
+`--accent`, `.cur` `--text` at 60%, the rest `--surface-2`; under it `.pl-line`:
+"← Natrag" (`.act.act-quiet`) · `.pl-timer` (a `--surface-2` pill, a 14px clock,
+600 .82rem tabular "0:18"; rendered `hidden`, the script counts from
+`data-started`) · "Završi trening" (`.act.pl-end`, at the right). `.pl-stage`: the
+clip in `.ex-video`'s black box (`--r-lg`, at most `min(62vh, 560px)` tall), or
+`.empty` (`--surface-2`, 120px, the muted sentence); `.pl-nav` ‹ › 40px round at
+its edges (`--surface` at 90% with a hairline and the shadow, `--text`), links;
+a 60px sideways swipe on the stage or the card does the same (the script; not
+from inside the form, the swap list or "Kako se izvodi"). `.card.pl-card` (18px
+16px, 22px 24px from 600px): `.pl-eyebrow` "TRENUTNA VJEŽBA" (700 .74rem, .16em,
+muted) with `.pl-chip` "3/8" (`--surface-2`) and `.pl-saved` "✓ Spremljeno"
+(`--good`), `h1.pl-name` (`clamp(1.35rem, 5vw, 1.9rem)`), `.pl-for` "Zamjena za:
+…" (muted), the alert, `.pl-dose` (700 1.05rem), `.pl-sub` lines (rest, note),
+`details.pl-how` "Kako se izvodi" (a 32px summary, a › that turns). The set log
+`form.pl-log`: `table.pl-sets` (rows 8px apart; `thead` SET · PON. · KG, 700
+.72rem muted, the value columns centred; `tbody th` the set's number, 700 1rem,
+`tr.extra`'s muted with `.pl-x` "dodatna serija" under it; inputs 44px,
+centred, 600 tabular), then `.pl-foot`: "+" (`.btn-ghost.pl-add`, 40px round, at
+the right; rendered `hidden`, the script's) over "Spremi" (`.btn.pl-save`, the
+card's width on a phone, 200px from 600px). `.pl-more`: "Preskoči →"
+(`.act.act-quiet`) and `details.swap` (its summary the same quiet pill "⇄
+Zamijeni vježbu"; open, it takes the line: `.swap-h` "Slične vježbe", `.swap-row`s
+(a hairline row, the name 600 and `.swap-tags` muted, an `.act` ⇄), "Vrati …"
+first when swapped). `aside.pl-side#popis`: `h2` "Vježbe", the sections'
+`h3.dx-cap`, `ol.dx-list` of `a.card.pl-row` (56px, the day page's row words; the
+current one `.is-cur`, a 2px inset `--accent` ring and `aria-current="step"`; a
+swapped one's name with `.pl-swapped` "(zamjena)" muted; a saved one `.dx-ok`).
+`.pl-dock` (phones): a fixed dark pill, the topbar's glass (theme-free), 48px,
+700 .9rem tabular "Vježbe · 3/8 ✓" → `#popis`, centred 12px over
+`env(safe-area-inset-bottom)`, 70px when staff's ✎ pill is on the page; `.pl`
+keeps 56px under it. **The finish screen** `.kr` (640px, centred):
+`.kr-eyebrow` "TRENING ODRAĐEN", the day's label as the h1, `.kr-sum` (muted 600
+tabular "6 od 8 vježbi · 38 min"), the alert, then the osvrt: three `.kr-field`s
+26px apart, each under an `h2.dx-cap` (Napor: the upitnik's `.scale-box` /
+`.scale` of ten `label.sc` radios, required, and `.scale-ends` "1 = lagano" /
+"10 = maksimalno"; Osjećaj "(neobavezno)": `.opts` of three `label.opt` radios;
+Komentar "(neobavezno)": a 96px textarea), "Spremi trening" (`.btn`, the
+column's width below 600px), and `.kr-more`: "Natrag na vježbe"
+(`.act.act-quiet`) and "Odbaci trening" (`.act.act-quiet` in `--accent`,
+`data-confirm`).
 
 **Calendar (`calendar.html`).** Seven `.day-col` on desktop → on phones one day
 at a time (17.10.2026): the `.day-strip` picks it, the grid gets `.one-day` and

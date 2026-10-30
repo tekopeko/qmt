@@ -599,6 +599,27 @@ def test_an_exercise_a_programme_holds_is_not_deleted():
     assert db.delete_exercise(eid) is None                                  # gone already: nothing to do
 
 
+def test_a_programme_is_named_with_its_razina_on_the_library_pages():
+    """Programmes may share a title, one per razina (the owner, 30.10.2026:
+    three live "Booty build"s, and "U 17 programa: …, Booty build, …" sent
+    him to the wrong one): the exercise's page and the delete refusal name
+    a programme that has a razina by its title and the razina's label,
+    lower-cased, "Booty build (napredna razina)", in the alphabet's order;
+    one without a razina is its title."""
+    ct, *_ = trainer_with_clients()
+    eid = db.create_exercise("Plank")
+    for level in ("pocetna", "srednja", "napredna"):
+        hold(db.create_program("Booty build", None, level, "donji"), eid)
+    hold(db.create_program("Core control", None), eid)
+    names = ["Booty build (napredna razina)", "Booty build (početna razina)", "Booty build (srednja razina)", "Core control"]
+    assert [db.program_name(p) for p in db.exercise_programs(eid)] == names
+    assert f'<p class="hint">U 4 programa: {", ".join(names)}.</p>' in ct.get(f"/treninzi/vjezbe/{eid}").text
+    with pytest.raises(ValueError) as refused:
+        db.delete_exercise(eid)
+    assert str(refused.value) == ("Vježba je u 4 programa (Booty build (napredna razina), Booty build (početna razina), "
+                                  "Booty build (srednja razina) …) — prvo je makni iz njih.")
+
+
 # ---------- the library: the clip ----------
 
 def test_a_clip_is_stored_replaced_and_removed(monkeypatch):
@@ -1344,7 +1365,8 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     mig = _migration("4c2e8a6f1d39_exercise_library.py")
     assert (mig.revision, mig.down_revision) == ("4c2e8a6f1d39", "b18ebed39701")
     with db.engine.begin() as conn:                                         # the tables as before the revision
-        conn.execute(sa_text("DROP TABLE program_day_items, program_days, exercise_alternatives, exercises"))
+        # (workout_logs, 3890252ee50f's, points at program_days: it goes first)
+        conn.execute(sa_text("DROP TABLE workout_logs, program_day_items, program_days, exercise_alternatives, exercises"))
         conn.execute(sa_text("CREATE TABLE program_items (id serial PRIMARY KEY, "
                              "program_id integer NOT NULL REFERENCES programs (id) ON DELETE CASCADE, "
                              "position integer NOT NULL, title varchar(160) NOT NULL, body text, "
@@ -1442,7 +1464,8 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     mig = _migration("7c3bf996c983_program_days.py")
     assert (mig.revision, mig.down_revision) == ("7c3bf996c983", "4c2e8a6f1d39")
     with db.engine.begin() as conn:                                         # the tables as before the revision
-        conn.execute(sa_text("DROP TABLE program_day_items, program_days"))
+        # (workout_logs, 3890252ee50f's, points at program_days: it goes first)
+        conn.execute(sa_text("DROP TABLE workout_logs, program_day_items, program_days"))
         conn.execute(sa_text("CREATE TABLE program_items (id serial PRIMARY KEY, "
                              "program_id integer NOT NULL REFERENCES programs (id) ON DELETE CASCADE, "
                              "position integer NOT NULL, "

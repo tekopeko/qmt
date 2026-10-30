@@ -64,62 +64,11 @@
   .q-h label { display: inline; margin: 0; font: inherit; letter-spacing: inherit; text-transform: inherit;
                color: inherit; cursor: inherit; }
 
-  /* ===== a choice and yes / no: Shape's rows, a letter badge at the left =====
-     A client's row is a label around a radio (a multi's, 26.10.2026, around
-     a checkbox: several rows may be chosen); the editor's choices are his
-     options list (c.field_points: li rows, which base.html's editor redraws),
-     so the letter is a counter, the same for both shapes. Chosen, a row
-     inverts with a ✓ at its right end (an input's :checked; the editor's
-     preview marks .on). */
-  .opts { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none;
-          counter-reset: opt; }
-  .opts > .opt, .opts > li {
-    position: relative; display: flex; align-items: center; gap: 14px; min-height: 64px; margin: 0;
-    padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface);
-    color: var(--text); font: 600 1rem/1.4 var(--font-body); text-transform: none; letter-spacing: 0;
-    cursor: pointer; transition: background .15s, border-color .15s, color .15s;
-  }
-  .opts > .opt::before, .opts > li::before {
-    counter-increment: opt; content: counter(opt, upper-alpha); content: counter(opt, upper-alpha) / "";
-    flex: none; display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--line);
-    border-radius: 7px; font: 700 .72rem var(--font-body); color: var(--muted);
-  }
-  .opts > .opt > .t, .opts > li > .t { min-width: 0; overflow-wrap: anywhere; }
-  /* the radio itself is the row (and a scale's circle): kept for the keyboard and the form, not shown */
-  .opt input, .sc input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; margin: 0; padding: 0;
-                          border: 0; opacity: 0; pointer-events: none; }
-  @media (hover: hover) {
-    .opts > .opt:hover, body:not(.editing) .opts > li:hover { border-color: color-mix(in srgb, var(--text) 35%, var(--line)); }
-  }
-  .opts > .opt:has(input:checked), body:not(.editing) .opts > li.on {
-    background: var(--text); color: var(--bg); border-color: var(--text);
-  }
-  .opts > .opt:has(input:checked)::before, body:not(.editing) .opts > li.on::before {
-    color: var(--bg); border-color: color-mix(in srgb, var(--bg) 45%, transparent);
-  }
-  .opts > .opt:has(input:checked)::after, body:not(.editing) .opts > li.on::after {
-    content: "✓"; content: "✓" / ""; margin-left: auto; padding-left: 4px; font-weight: 700;
-  }
-  .opts > .opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* the choice rows (.opts / .opt) and the scale's ten round buttons
+     (.scale-box / .scale / .sc, .scale-ends) are base.html's since
+     30.10.2026, when the online trening's finish screen (its osvrt) needed
+     them too */
 
-  /* ===== a scale: ten round buttons, 5 × 2 until ten in a row keep 40px each ===== */
-  .scale-box { container-type: inline-size; }
-  .scale { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px 8px; }
-  @container (min-width: 454px) {       /* ten of 40px and nine gaps of 6 */
-    .scale { grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
-  }
-  .sc { position: relative; display: flex; justify-content: center; margin: 0; cursor: pointer;
-        font: 700 1rem var(--font-body); text-transform: none; letter-spacing: 0; color: var(--text); }
-  .sc > span { display: grid; place-items: center; width: 100%; max-width: 56px; aspect-ratio: 1;
-               border: 1px solid var(--line); border-radius: 50%; background: var(--surface);
-               font-variant-numeric: tabular-nums; transition: background .15s, border-color .15s, color .15s; }
-  @media (hover: hover) { .sc:hover > span { border-color: color-mix(in srgb, var(--text) 35%, var(--line)); } }
-  .sc:has(input:checked) > span { background: var(--text); color: var(--bg); border-color: var(--text); }
-  .sc:has(input:focus-visible) > span { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .scale-ends { display: flex; justify-content: space-between; gap: 16px; margin-top: 12px;
-                font-size: .85rem; color: var(--muted); }
-  .scale-ends > span { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
-  .scale-ends > span + span { text-align: right; }
   /* the editor's preview of the pain sentence (q14), in edit mode only */
   .q-preview { display: none; }
   body.editing .q-preview { display: block; margin-top: 22px; }

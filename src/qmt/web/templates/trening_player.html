@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+{# The player (30.10.2026, stage 3 of roadmap/2026-10-29-online-treninzi-spec.md):
+   one exercise of a day per screen, Shape Club's Gym Program training page
+   in QMT's tokens (the owner: "the set log is good, yes, but default value
+   should be input like in shape club"; "the whole list"; the swap, "we
+   should add it as well"). The one-task layout for a member (the small pill,
+   the brand alone: base.html's solo_page; staff keep their bar), a 640px
+   column; from 1000px two columns, the player and the day's list beside it
+   (Shape's right column). Top to bottom: the segmented bar (one segment per
+   exercise) and the line under it (← Natrag, the training's timer, Završi
+   trening); the clip with ‹ › at its edges; the exercise's card (its words,
+   "Kako se izvodi", its set log, Preskoči and the swap list); the list. On a
+   phone a fixed dark pill at the bottom leads to the list (#popis). Every
+   part works without the script: ‹ › and every row are links, the set log
+   one form with one extra row, the swap list a <details>; the script adds
+   the timer, "+" (another row) and the swipe between exercises. #}
+{% set solo_page = not user.is_trainer %}
+{% block title %}{{ ex.name }} — {{ day.label }} — QMT{% endblock %}
+{% block head %}
+<style>
+  /* ===== the column: the questionnaire's 640px, centred; from 1000px the
+     player and the list side by side (the list 380px, the player the rest,
+     640px at most) ===== */
+  .pl { max-width: 640px; margin: 0 auto; }
+  /* the bar: a segment per exercise, 4px, the saved ones in the accent, the
+     one on screen in the text's colour at 60%, the rest the inset grey */
+  .pl-segs { display: flex; gap: 4px; margin: 2px 0 10px; border-radius: 999px; overflow: hidden; }
+  .pl-segs > span { flex: 1 1 0; height: 4px; background: var(--surface-2); }
+  .pl-segs > .done { background: var(--accent); }
+  .pl-segs > .cur { background: color-mix(in srgb, var(--text) 60%, transparent); }
+  .pl-line { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .pl-line .pl-end { margin-left: auto; }
+  /* the training's time since "Kreni" (the script counts it; none without it) */
+  .pl-timer { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px;
+              background: var(--surface-2); color: var(--text); font: 600 .82rem var(--font-body);
+              font-variant-numeric: tabular-nums; }
+  .pl-timer svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2;
+                  stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ===== the clip: the dark box (.ex-video's black, base.html), ‹ › at its
+     edges, round 40px. No clip: the inset grey, the sentence in it ===== */
+  .pl-stage { position: relative; margin-bottom: 14px; }
+  .pl-stage.ex-video video { max-height: min(62vh, 560px); margin: 0; border-radius: var(--r-lg); }
+  .pl-stage.empty { display: flex; align-items: center; justify-content: center; min-height: 120px;
+                    padding: 16px 56px; border-radius: var(--r-lg); background: var(--surface-2); }
+  .pl-stage.empty p { color: var(--muted); font-size: .9rem; text-align: center; }
+  .pl-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 40px;
+            display: grid; place-items: center; border-radius: 50%; text-decoration: none;
+            background: color-mix(in srgb, var(--surface) 90%, transparent); color: var(--text);
+            border: 1px solid var(--line); box-shadow: var(--shadow); font: 600 1.35rem/1 var(--font-body); }
+  .pl-nav:hover { background: var(--surface); }
+  .pl-nav.prev { left: 10px; }
+  .pl-nav.next { right: 10px; }
+
+  /* ===== the exercise's card: Shape's "TRENUTNA VJEŽBA" ===== */
+  .pl-card { padding: 18px 16px 16px; }
+  @media (min-width: 600px) { .pl-card { padding: 22px 24px 20px; } }
+  .pl-eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+                font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .pl-chip { padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--text);
+             letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+  .pl-saved { color: var(--good); letter-spacing: .02em; text-transform: none; font-size: .8rem; }
+  .pl-name { font-size: clamp(1.35rem, 5vw, 1.9rem); line-height: 1.15; margin: 8px 0 6px; overflow-wrap: anywhere; }
+  .pl-for { color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
+  .pl-dose { margin-top: 4px; font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+  .pl-sub { margin-top: 2px; color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
+  .pl-card .alert { margin: 12px 0 0; }
+  .pl-card .alert > span { min-width: 0; overflow-wrap: anywhere; }
+  .pl-how { margin-top: 8px; }
+  .pl-how > summary, .swap > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px;
+                                       min-height: 32px; cursor: pointer; }
+  .pl-how > summary::-webkit-details-marker, .swap > summary::-webkit-details-marker { display: none; }
+  .pl-how > summary { color: var(--text); font: 600 .9rem var(--font-body); }
+  .pl-how > summary::before { content: "›"; content: "›" / ""; display: inline-block; color: var(--muted);
+                              font-size: 1.15rem; line-height: 1; transition: transform .2s; }
+  .pl-how[open] > summary::before { transform: rotate(90deg); }
+  .pl-how p { margin: 4px 0 6px; font-size: .92rem; white-space: pre-line; overflow-wrap: anywhere; }
+
+  /* ===== the set log: SET · PON. · KG (a timed exercise: SET · SEK.), a
+     row per set, 44px inputs; a row past the plan's says "dodatna serija";
+     "+" adds one (the script), "Spremi" saves and goes on ===== */
+  .pl-log { margin-top: 14px; }
+  .pl-sets { width: 100%; border-collapse: separate; border-spacing: 0 8px; margin-top: -8px; }
+  .pl-sets thead th { padding: 0 4px; text-align: left; font: 700 .72rem var(--font-body);
+                      letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .pl-sets thead th + th { text-align: center; }        /* over the inputs, whose numbers are centred */
+  .pl-sets tbody th { width: 1%; padding: 0 12px 0 4px; text-align: left; white-space: nowrap; vertical-align: middle;
+                      font: 700 1rem var(--font-body); font-variant-numeric: tabular-nums; color: var(--text); }
+  .pl-sets td { padding: 0 4px; }
+  .pl-sets input { height: 44px; padding: 0 10px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pl-sets tr.extra > th { color: var(--muted); }
+  .pl-x { display: block; font: 500 .7rem var(--font-body); color: var(--muted); }
+  .pl-foot { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; margin-top: 4px; }
+  .pl-add { width: 40px; height: 40px; padding: 0; font: 600 1.3rem/1 var(--font-body); }
+  .pl-save { align-self: stretch; }
+  @media (min-width: 600px) { .pl-save { align-self: flex-start; min-width: 200px; } }
+  /* under it, quiet: Preskoči, and the swap list (a native <details>: it
+     opens without the script, then takes the line's width) */
+  .pl-more { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+             gap: 8px; margin-top: 12px; }
+  .swap[open] { flex: 1 0 100%; }
+  .swap > summary { padding: 5px 13px; border-radius: 999px; color: var(--muted); font: 600 .77rem var(--font-body); }
+  .swap > summary:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+  @media (pointer: coarse) { .swap > summary { padding: 8px 15px; } }
+  .swap-h { margin: 6px 0 8px; font: 700 .72rem var(--font-body); letter-spacing: .12em; text-transform: uppercase;
+            color: var(--muted); }
+  .swap-list { list-style: none; padding: 0; display: grid; gap: 8px; }
+  .swap-row { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border: 1px solid var(--line);
+              border-radius: var(--r-md); background: var(--surface); }
+  .swap-row form { margin: 0; flex: none; }
+  .swap-name { flex: 1; min-width: 0; font-weight: 600; font-size: .92rem; overflow-wrap: anywhere; }
+  .swap-tags { display: block; color: var(--muted); font-weight: 500; font-size: .8rem; }
+  .swap-back .act { white-space: normal; text-align: left; overflow-wrap: anywhere; }
+
+  /* ===== the list: the day's page's rows (base.html's .dx-*), each a link
+     to its exercise; the one on screen ringed in the accent, a saved one a
+     green ✓ before its dose, a swapped one its similar exercise's name ===== */
+  .pl-side { margin-top: 26px; scroll-margin-top: 90px; }
+  .pl-side-h { font-size: 1.05rem; }
+  .pl-rows { list-style: none; padding: 0; margin: 0; }
+  .pl-row { display: block; min-height: 56px; padding: 12px 14px 12px 18px; color: var(--text); text-decoration: none;
+            transition: background .15s; }
+  .pl-row:hover { background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
+  .pl-row.is-cur { box-shadow: inset 0 0 0 2px var(--accent), var(--shadow); }
+  .pl-swapped { color: var(--muted); font-weight: 500; }
+  .dx-ok { color: var(--good); }
+
+  /* ===== a phone: the list under the player, and a dark pill at the
+     bottom that leads to it (the topbar's glass, theme-free: the bar is
+     always dark), clear of the editor's ✎ pill for staff ===== */
+  .pl-dock { position: fixed; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 45;
+             transform: translateX(-50%); display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px;
+             border-radius: 999px; background: rgba(22, 22, 24, .86); color: #fff; border: 1px solid rgba(255, 255, 255, .09);
+             box-shadow: 0 10px 30px rgba(0, 0, 0, .35); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+             font: 700 .9rem var(--font-body); font-variant-numeric: tabular-nums; text-decoration: none; white-space: nowrap; }
+  .pl-dock:hover { color: #fff; }
+  body:has(#copyToggle) .pl-dock { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
+  .pl { padding-bottom: 56px; }
+
+  @media (min-width: 1000px) {
+    .pl { max-width: 1044px; padding-bottom: 0; }
+    .pl-grid { display: grid; grid-template-columns: minmax(0, 640px) minmax(0, 380px); gap: 24px;
+               justify-content: center; align-items: start; }
+    .pl-side { margin-top: 0; }
+    .pl-side .dx-cap:first-of-type { margin-top: 14px; }
+    .pl-dock { display: none; }
+  }
+</style>
+{% endblock %}
+{# a refusal's sentence stands under the exercise's name (below), not over the page #}
+{% block error_alert %}{% endblock %}
+{% block content %}
+{% set last = n_items %}
+<div class="pl">
+  <div class="pl-top">
+    <div class="pl-segs" aria-hidden="true">
+      {%- for x in items %}<span{% if loop.index == k %} class="cur"{% elif x.id in done %} class="done"{% endif %}></span>{% endfor -%}
+    </div>
+    <div class="pl-line">
+      <a class="act act-quiet" href="{{ base }}">← Natrag</a>
+      <span class="pl-timer" hidden data-started="{{ log.started_at.isoformat(timespec='seconds') }}" title="Vrijeme treninga">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+        <span class="pl-clock">0:00</span>
+      </span>
+      <a class="act pl-end" href="{{ base }}/kraj">Završi trening</a>
+    </div>
+  </div>
+
+  <div class="pl-grid">
+    <div class="pl-main">
+      <div class="pl-stage{% if ex.video %} ex-video{% else %} empty{% endif %}" id="plStage">
+        {% if ex.video %}<video src="/media/{{ ex.video }}" playsinline loop muted autoplay controls preload="metadata"></video>
+        {% else %}<p>Vježba još nema videa.</p>{% endif %}
+        {% if k > 1 %}<a class="pl-nav prev" href="{{ base }}/vjezba/{{ k - 1 }}" rel="prev" aria-label="Prethodna vježba">‹</a>{% endif %}
+        {% if k < last %}<a class="pl-nav next" href="{{ base }}/vjezba/{{ k + 1 }}" rel="next" aria-label="Sljedeća vježba">›</a>{% endif %}
+      </div>
+
+      <section class="card pl-card" id="plCard" aria-labelledby="pl-name">
+        <p class="pl-eyebrow"><span>Trenutna vježba</span> <span class="pl-chip">{{ k }}/{{ last }}</span>
+          {%- if saved %} <span class="pl-saved">✓ Spremljeno</span>{% endif %}</p>
+        <h1 class="pl-name" id="pl-name">{{ ex.name }}</h1>
+        {% if swapped %}<p class="pl-for">Zamjena za: {{ planned.name }}</p>{% endif %}
+        {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
+        {% if it.dose %}<p class="pl-dose">{{ it.dose }}</p>{% endif %}
+        {% if it.rest_text %}<p class="pl-sub">Odmor između serija: {{ it.rest_text }}</p>{% endif %}
+        {% if it.note %}<p class="pl-sub">{{ it.note }}</p>{% endif %}
+        {% if ex.rep_note or ex.instructions %}
+        <details class="pl-how">
+          <summary>Kako se izvodi</summary>
+          {% if ex.rep_note %}<p><strong>Jedno ponavljanje:</strong> {{ ex.rep_note }}</p>{% endif %}
+          {% if ex.instructions %}<p>{{ ex.instructions }}</p>{% endif %}
+        </details>
+        {% endif %}
+
+        {# the set log: one form, a row per planned set (the plan's reps and
+           seconds, the last saved weights), one row more; a row past the
+           plan's says so. "+" (the script) adds rows and counts them in rows #}
+        <form class="pl-log" id="plLog" method="post" action="{{ base }}/vjezba/{{ k }}" data-max="{{ max_sets }}">
+          <input type="hidden" name="rows" value="{{ rows|length }}">
+          <table class="pl-sets">
+            <thead><tr><th scope="col">Set</th>{% if timed %}<th scope="col">Sek.</th>{% else %}<th scope="col">Pon.</th><th scope="col">Kg</th>{% endif %}</tr></thead>
+            <tbody>
+              {% for r in rows %}{% set n = loop.index %}
+              <tr{% if r.extra %} class="extra"{% endif %}>
+                <th scope="row">{{ n }}{% if r.extra %}<span class="pl-x">dodatna serija</span>{% endif %}</th>
+                {% if timed %}
+                <td><input type="number" name="sec_{{ n }}" value="{{ r.sec }}" inputmode="numeric" min="0" max="3600" step="1" aria-label="Serija {{ n }}: sekunde"></td>
+                {% else %}
+                <td><input type="number" name="reps_{{ n }}" value="{{ r.reps }}" inputmode="numeric" min="0" max="999" step="1" aria-label="Serija {{ n }}: ponavljanja"></td>
+                <td><input type="number" name="kg_{{ n }}" value="{{ r.kg }}" inputmode="decimal" min="0" max="500" step="0.5" aria-label="Serija {{ n }}: kilogrami"></td>
+                {% endif %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="pl-foot">
+            <button type="button" class="btn-ghost pl-add" id="plAdd" aria-label="Dodaj seriju" hidden>+</button>
+            <button type="submit" class="btn pl-save">{{ "Spremi i završi" if k == last else "Spremi" }}</button>
+          </div>
+        </form>
+
+        <div class="pl-more">
+          {% if k < last %}<a class="act act-quiet" href="{{ base }}/vjezba/{{ k + 1 }}">Preskoči →</a>
+          {% else %}<a class="act act-quiet" href="{{ base }}/kraj">Preskoči i završi</a>{% endif %}
+          {% if planned.alternatives %}
+          <details class="swap" id="zamjena">
+            <summary>⇄ Zamijeni vježbu</summary>
+            <p class="swap-h">Slične vježbe</p>
+            <ul class="swap-list">
+              {% if swapped %}
+              <li class="swap-back">
+                <form method="post" action="{{ base }}/vjezba/{{ k }}/zamjena">
+                  <input type="hidden" name="vrati" value="1">
+                  <button type="submit" class="act">Vrati {{ planned.name }}</button>
+                </form>
+              </li>
+              {% endif %}
+              {% for a in alternatives %}
+              <li class="swap-row">
+                <span class="swap-name">{{ a.name }}{% if a.tags %}<span class="swap-tags">{{ a.tags }}</span>{% endif %}</span>
+                <form method="post" action="{{ base }}/vjezba/{{ k }}/zamjena">
+                  <input type="hidden" name="exercise_id" value="{{ a.id }}">
+                  <button type="submit" class="act" aria-label="Zamijeni s: {{ a.name }}">⇄</button>
+                </form>
+              </li>
+              {% endfor %}
+            </ul>
+          </details>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    {# the day's whole list, each row a link to its exercise #}
+    <aside class="pl-side" id="popis" aria-labelledby="popis-h">
+      <h2 class="pl-side-h" id="popis-h">Vježbe</h2>
+      {% set ns = namespace(n=0) %}
+      {% for key, label in SECTIONS.items() %}{% set section_items = day.by_section[key] %}
+      {% if section_items %}
+      <h3 class="dx-cap">{{ label }}</h3>
+      <ol class="dx-list pl-rows">
+        {% for x in section_items %}{% set ns.n = ns.n + 1 %}
+        <li><a class="card pl-row{% if ns.n == k %} is-cur{% endif %}" href="{{ base }}/vjezba/{{ ns.n }}"{% if ns.n == k %} aria-current="step"{% endif %}>
+          <span class="dx-n">Vježba {{ ns.n }}</span>
+          <span class="dx-line"><span class="dx-name">{{ swap_names.get(x.id, x.exercise.name) }}{% if x.id in swap_names %} <span class="pl-swapped">(zamjena)</span>{% endif %}</span>
+            {%- if x.id in done %}<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span>{% if x.dose %} {{ x.dose }}{% endif %}</span>{% elif x.dose %}<span class="dx-dose">{{ x.dose }}</span>{% endif %}</span>
+          {% if x.rest_text or x.note %}<span class="dx-sub">{% if x.rest_text %}Odmor između serija: {{ x.rest_text }}{% endif %}{% if x.rest_text and x.note %} · {% endif %}{{ x.note }}</span>{% endif %}
+        </a></li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+      {% endfor %}
+    </aside>
+  </div>
+</div>
+<a class="pl-dock" href="#popis">Vježbe · {{ done_n }}/{{ last }} ✓</a>
+{% endblock %}
+{% block scripts %}
+<script>
+  // The player's script (without it every part still works): the training's
+  // timer, counted from when the pass started; "+", one more row of the set
+  // log (up to the form's data-max, counted in its rows field); and a
+  // sideways swipe of 60px or more on the clip or the card, which goes to the
+  // previous / next exercise as ‹ › do (not from inside the set log or the
+  // swap list, where a finger is typing or choosing).
+  (function () {
+    var timer = document.querySelector(".pl-timer");
+    if (timer) {
+      var start = Date.parse(timer.getAttribute("data-started")), clock = timer.querySelector(".pl-clock");
+      var two = function (n) { return (n < 10 ? "0" : "") + n; };
+      var tick = function () {
+        var s = Math.max(0, Math.floor((Date.now() - start) / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+        clock.textContent = (h ? h + ":" + two(m) : m) + ":" + two(s % 60);
+      };
+      if (!isNaN(start)) { tick(); timer.hidden = false; setInterval(tick, 1000); }
+    }
+
+    var form = document.getElementById("plLog"), add = document.getElementById("plAdd");
+    if (form && add) {
+      var body = form.querySelector("tbody"), count = form.querySelector("input[name=rows]");
+      var max = parseInt(form.getAttribute("data-max"), 10) || 12;
+      var fit = function () { add.hidden = body.rows.length >= max; };
+      add.addEventListener("click", function () {
+        var last = body.rows[body.rows.length - 1];
+        if (!last || body.rows.length >= max) return;
+        var row = last.cloneNode(true), n = body.rows.length + 1;
+        row.className = "extra";
+        row.querySelector("th").innerHTML = n + '<span class="pl-x">dodatna serija</span>';
+        [].forEach.call(row.querySelectorAll("input"), function (i) {
+          i.value = "";
+          i.name = i.name.replace(/_\d+$/, "_" + n);
+          i.setAttribute("aria-label", i.getAttribute("aria-label").replace(/^Serija \d+/, "Serija " + n));
+        });
+        body.appendChild(row);
+        count.value = String(body.rows.length);
+        fit();
+        row.querySelector("input").focus();
+      });
+      fit();
+    }
+
+    var prev = document.querySelector(".pl-nav.prev"), next = document.querySelector(".pl-nav.next");
+    [document.getElementById("plStage"), document.getElementById("plCard")].forEach(function (el) {
+      if (!el) return;
+      var x0 = null, y0 = 0;
+      el.addEventListener("touchstart", function (e) {
+        x0 = e.touches.length === 1 && !e.target.closest("form, .swap, .pl-how, input") ? e.touches[0].clientX : null;
+        y0 = e.touches.length === 1 ? e.touches[0].clientY : 0;
+      }, {passive: true});
+      el.addEventListener("touchend", function (e) {
+        if (x0 === null) return;
+        var t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+        x0 = null;
+        if (Math.abs(dx) < 60 || Math.abs(dx) <= 2 * Math.abs(dy)) return;
+        var to = dx < 0 ? next : prev;
+        if (to) location.href = to.href;
+      }, {passive: true});
+    });
+  })();
+</script>
+{% endblock %}

@@ -3,19 +3,29 @@
 {% block head %}
 <style>
   /* A day of a programme (30.10.2026, stage 2 of the online treninzi spec):
-     the client's page, the trainer's too. The normal layout (the player's
-     one-task layout is stage 3), the content in a 640px column: the intro,
-     the intro video ("always watch the intro video first", the guide), then
-     the whole list, Shape's Gym Program list in QMT's tokens. */
+     the client's page, the trainer's too. The normal layout (the player,
+     trening_player.html, has the one-task layout), the content in a 640px
+     column: the intro, the intro video ("always watch the intro video
+     first", the guide), then the whole list, Shape's Gym Program list in
+     QMT's tokens. */
+  /* The way into the player (30.10.2026, stage 3): the viewer's state on
+     the day in one muted line under the lead (600; pulled up to it, as the
+     lead keeps the page header's room under it), then "Kreni" / "Nastavi",
+     the page's one primary (the column's width on a phone), and while a
+     pass is open "Odbaci započeti trening" beside it, quiet (it asks
+     first). */
+  .dx-state { margin: -12px 0 14px; color: var(--muted); font-weight: 600; font-size: .92rem;
+              overflow-wrap: anywhere; }
+  .dx-start { max-width: 640px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+              margin-bottom: 24px; }
+  .dx-start form { margin: 0; }
+  @media (max-width: 599px) { .dx-start .go, .dx-start .go .btn { width: 100%; } }
   .day-body { max-width: 640px; }
   .day-intro { margin-bottom: 10px; white-space: pre-line; overflow-wrap: anywhere; }
   .day-video { margin-top: 18px; }
   .day-video .hint { margin-bottom: 8px; }
-  /* a section's caption, Shape's eyebrow: display, uppercase, letter-spaced,
-     muted ("ZAGRIJAVANJE"); a section with no item is not on the page */
-  .dx-cap { font: 700 .78rem var(--font-display); text-transform: uppercase; letter-spacing: .14em;
-            color: var(--muted); margin: 26px 0 10px; }
-  .dx-list { display: grid; gap: 10px; }
+  /* a section's caption (.dx-cap) and the list (.dx-list): base.html's since
+     30.10.2026, the player's list (trening_player.html) is the same */
   /* An exercise: a native <details>, so it opens without JS. Its <summary>
      is the row, the whole row the tap target (56px at least, the native
      marker hidden): "Vježba n" (counted across the day) over the name and,
@@ -31,12 +41,7 @@
   details.ex > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
                                        border-radius: var(--r-lg); }
   .dx-main { flex: 1; min-width: 0; }
-  .dx-n { display: block; color: var(--muted); font: 600 .72rem var(--font-body);
-          text-transform: uppercase; letter-spacing: .1em; }
-  .dx-line { display: flex; align-items: baseline; gap: 2px 12px; }
-  .dx-name { flex: 1; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
-  .dx-dose { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .dx-sub { display: block; margin-top: 2px; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+  /* .dx-n, .dx-line, .dx-name, .dx-dose, .dx-sub: base.html's (the player's list too) */
   .dx-go { flex: none; width: 32px; height: 32px; border-radius: 50%; display: inline-flex;
            align-items: center; justify-content: center; background: var(--surface-2); color: var(--text);
            font-size: .78rem; transition: transform .2s; }
@@ -45,6 +50,18 @@
   .dx-body p { overflow-wrap: anywhere; }
   .dx-body p + p { margin-top: 8px; }
   .dx-body .pre { white-space: pre-line; }
+  /* an exercise the pass in progress has saved: a green ✓ before its dose */
+  .dx-ok { color: var(--good); }
+  /* Povijest (30.10.2026): the viewer's last five passes of the day, newest
+     first, a card each: one line of facts (the day, how many of its
+     exercises, how long, napor, osjećaj; tabular), the comment under it,
+     muted, and the sets folded under "Serije" (base.html's details.sets,
+     the karton's too). */
+  .dx-hist { margin-top: 34px; }
+  .hist { list-style: none; padding: 0; display: grid; gap: 10px; }
+  .hist-row { padding: 12px 16px; }
+  .hist-line { font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .hist-note { margin-top: 4px; color: var(--muted); font-size: .9rem; white-space: pre-line; overflow-wrap: anywhere; }
 </style>
 {% endblock %}
 {% block content %}
@@ -52,6 +69,25 @@
 <h1>{{ day.label }}</h1>
 {% set k = day.items|length %}
 <p class="hint">{% if day.weekday is not none %}Preporučeno: {{ WEEKDAYS[day.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}</p>
+{# the viewer's state on the day, and the way into the player (30.10.2026):
+   "Kreni" opens a pass, "Nastavi" goes on with the one in progress (the
+   same form: the route lands on the first exercise it has not saved) #}
+{% if k or state.count %}<p class="dx-state">{{ state_line }}</p>{% endif %}
+{% if k %}
+<div class="dx-start">
+  <form class="go" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/kreni">
+    <button type="submit" class="btn">{{ "Nastavi" if state.open else "Kreni" }}</button>
+  </form>
+  {% if state.open %}
+  <form method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/odustani"
+        data-confirm-title="Odbaciti započeti trening?"
+        data-confirm="Spremljene serije ovog pokušaja se brišu. Dan možeš započeti ponovno."
+        data-confirm-cta="Odbaci">
+    <button type="submit" class="act act-quiet">Odbaci započeti trening</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
 <div class="day-body">
   {% if day.intro %}<p class="day-intro">{{ day.intro }}</p>{% endif %}
   {% if user.is_trainer %}
@@ -75,7 +111,7 @@
         <summary>
           <span class="dx-main">
             <span class="dx-n">Vježba {{ ns.n }}</span>
-            <span class="dx-line"><span class="dx-name">{{ ex.name }}</span>{% if it.dose %}<span class="dx-dose">{{ it.dose }}</span>{% endif %}</span>
+            <span class="dx-line"><span class="dx-name">{{ ex.name }}</span>{% if it.id in done %}<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span>{% if it.dose %} {{ it.dose }}{% endif %}</span>{% elif it.dose %}<span class="dx-dose">{{ it.dose }}</span>{% endif %}</span>
             {% if it.rest_text or it.note %}<span class="dx-sub">{% if it.rest_text %}Odmor između serija: {{ it.rest_text }}{% endif %}{% if it.rest_text and it.note %} · {% endif %}{{ it.note }}</span>{% endif %}
           </span>
           <span class="dx-go" aria-hidden="true">▷</span>
@@ -94,6 +130,29 @@
   {% endfor %}
   {% if not k %}
   <p class="hint" style="margin-top:22px;">{% if user.is_trainer %}Dan još nema vježbi — dodaj ih u uređivanju.{% else %}Dan još nema vježbi.{% endif %}</p>
+  {% endif %}
+
+  {% if history %}
+  {# the viewer's last five passes of this day (db.passes), newest first #}
+  <section class="dx-hist" aria-labelledby="povijest">
+    <h2 class="dx-cap" id="povijest">Povijest</h2>
+    <ol class="hist">
+      {% for w in history %}
+      <li class="card hist-row">
+        <p class="hist-line">{{ pass_date(w.date) }} · {{ w.done_count }}/{{ k }} {{ plural(k, "vježbe", "vježbe", "vježbi") }} · {{ w.elapsed_text }}
+          {%- if w.effort %} · napor {{ w.effort }}{% endif %}{% if w.feeling in feelings %} · {{ feelings[w.feeling]|lower }}{% endif %}</p>
+        {% if w.note %}<p class="hist-note">{{ w.note }}</p>{% endif %}
+        {% set lines = w.lines(order) %}
+        {% if lines %}
+        <details class="sets">
+          <summary>Serije</summary>
+          <ul>{% for name, sets in lines %}<li><strong>{{ name }}:</strong> {% for s in sets %}<span class="set">{{ s }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</li>{% endfor %}</ul>
+        </details>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
   {% endif %}
 </div>
 {% endblock %}

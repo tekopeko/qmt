@@ -8,7 +8,8 @@ Idempotent — safe to re-run. Passwords are for LOCAL DEV ONLY.
     # ana@qmt.local   / lozinka123
 
 Also the upitnik's questions (the gym owner's fifteen, ids 1–15, and the two
-asked after the safety questions, 16 and 17) and ivan's answers to them.
+asked after the safety questions, 16 and 17) and ivan's answers to them, and
+(30.10.2026, the player) ivan's two finished passes of his Dan 1.
 """
 
 from __future__ import annotations
@@ -89,7 +90,7 @@ def main() -> None:
     print("timetable (dev RESET — replaces all templates/sessions/bookings):")
     from sqlalchemy import delete
     from qmt.models import (Booking, Membership, OnboardingResponse, Payment,
-                            TrainingLog, TrainingSession)
+                            TrainingLog, TrainingSession, WorkoutLog)
     with db.session_scope() as s:
         s.execute(delete(Booking))
         s.execute(delete(TrainingSession))
@@ -98,6 +99,7 @@ def main() -> None:
         s.execute(delete(Payment))
         s.execute(delete(OnboardingResponse))
         s.execute(delete(TrainingLog))
+        s.execute(delete(WorkoutLog))       # the online passes: seed_passes makes ivan's
         for title, wd, hhmm, dur, cap, note, kind in TIMETABLE:
             h, m = map(int, hhmm.split(":"))
             s.add(SessionTemplate(title=title, kind=kind, weekday=wd, start_min=h * 60 + m,
@@ -374,6 +376,64 @@ def seed_karton() -> None:
     print(f"  Ivan: upitnik ({level}, {upitnik.score_text(result.score)}), 2 zapisa, 1 osvrt na čekanju")
 
 
+# Ivan's history in the player (30.10.2026, stage 3): two finished passes of
+# his Dan 1 (srednja × cijelo, "Cijelo tijelo"), days ago, each pass's sets
+# per exercise of the day by name: (reps or None, kg, seconds or None) per set,
+# the first pass's then the second's. Goblet čučanj went from 16 to 20 kg, so
+# the next pass prefills 20.
+PASSES = [
+    # (days ago, start "HH:MM", minutes, napor, osjećaj, comment)
+    (7, "18:00", 41, 6, "dobro", ""),
+    (3, "18:30", 38, 7, "odlicno", "Goblet s 20 kg ide lakše nego što sam mislio."),
+]
+PASS_SETS = {
+    "Čučanj s vlastitom težinom": ([(15, 0, None)] * 2, [(15, 0, None)] * 2),
+    "Goblet čučanj": ([(10, 16, None)] * 4, [(10, 20, None)] * 3 + [(8, 20, None)]),
+    "Sklekovi": ([(10, 0, None), (10, 0, None), (8, 0, None)], [(10, 0, None)] * 3),
+    "Veslanje u pretklonu": ([(12, 10, None)] * 3, [(12, 10, None)] * 3),
+    "Plank": ([(None, 0, 40)] * 3, [(None, 0, 40)] * 3),
+    "Istezanje stražnje lože": ([(None, 0, 30)] * 2, [(None, 0, 30)] * 2),
+}
+
+
+def seed_passes() -> None:
+    """Ivan's two finished passes of his Dan 1 (PASSES, PASS_SETS): every
+    exercise of the day saved, a minute or so apart, the osvrt at the end;
+    no pass in progress, so the day says "Odrađen 2× · zadnji put …" and
+    offers "Kreni", and the karton lists both beside the termini."""
+    import json
+    from datetime import datetime, time, timedelta
+
+    from sqlalchemy import select
+
+    from qmt.models import Program, WorkoutLog
+
+    ivan = db.get_user_by_email("ivan@qmt.local")
+    with db.session_scope() as s:
+        pid = s.scalar(select(Program.id).where(Program.level == "srednja", Program.goal == "cijelo"))
+    p = db.get_program(pid)
+    day = p.days[0]
+    items = [it for rows in day.by_section.values() for it in rows]
+    today = db.config.today()
+    with db.session_scope() as s:
+        for n, (ago, hhmm, minutes, effort, feeling, note) in enumerate(PASSES):
+            h, m = map(int, hhmm.split(":"))
+            started = datetime.combine(today - timedelta(days=ago), time(h, m), tzinfo=db.config.TZ)
+            done = {}
+            for i, it in enumerate(items):
+                sets = [{"seconds": sec} if sec is not None else {"reps": reps, "kg": float(kg)}
+                        for reps, kg, sec in PASS_SETS[it.exercise.name][n]]
+                done[str(it.id)] = {"exercise_id": it.exercise_id, "name": it.exercise.name, "section": it.section,
+                                    "sets": sets,
+                                    "at": (started + timedelta(minutes=5 + i * 6)).isoformat(timespec="seconds")}
+            s.add(WorkoutLog(user_id=ivan.id, program_id=p.id, day_id=day.id, program_title=p.title,
+                             day_label=day.label, started_at=started,
+                             finished_at=started + timedelta(minutes=minutes), elapsed_seconds=minutes * 60,
+                             done=json.dumps(done, ensure_ascii=False), swaps="{}", effort=effort, feeling=feeling,
+                             note=note))
+    print(f"  Ivan: {len(PASSES)} odrađena prolaska kroz „{day.label}” ({p.title}), nijedan u tijeku")
+
+
 if __name__ == "__main__":
     main()
     print("bookings:")
@@ -384,6 +444,8 @@ if __name__ == "__main__":
     seed_upitnik()
     print("karton:")
     seed_karton()
+    print("online treninzi (povijest):")
+    seed_passes()
     print("aktualno:")
     seed_announcements()
     print("dvorana:")

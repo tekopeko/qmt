@@ -1,7 +1,8 @@
 # Online treninzi: a library of exercises, programmes made of days, a player — spec (29.10.2026)
 
 Status: **spec; stage 1 (the library) built 30.10.2026, reviewed and live the same day; stage 2
-(days) built 30.10.2026, reviewed and live the same day.** Written by
+(days) built 30.10.2026, reviewed and live the same day; stage 3 (the player and the history)
+built 30.10.2026, reviewed and live the same day.** Written by
 Fable from the owner's answers of 29.10.2026 (settled 30.10.2026, below). Builds in three
 stages (below), each shippable.
 
@@ -66,14 +67,26 @@ of a termin in the gym).
   seconds 1–3600, rest 0–3600, a note up to 500. Replaced `ProgramItem` (migration
   `7c3bf996c983`: each programme's flat items its Dan 1 in section trening, each note's
   dose parsed into sets and reps or seconds, the rest of it the note).
-- **`WorkoutLog`** — the client's record of one pass through a day: `user_id`,
-  `program_id`, `day_id` (SET NULL on delete: the row keeps `day_title` and `program_title`
-  snapshots), `started_at`, `finished_at` (NULL while in progress), `done` (JSON: the
-  items ticked, `[{"item": id, "name": "Čučanj", "at": iso}]`, snapshots so a later edit of
-  the day never garbles the history, the upitnik's rule), then the osvrt at the end:
-  `effort` (RPE 1–10), `feeling`, `note` (the termin osvrt's shape, `FEELING_LABELS`). A day
-  can be repeated: every pass is a new row. One row in progress per (user, day) at a time;
-  a pass left open can be resumed or dropped.
+- **`WorkoutLog`** (built 30.10.2026, `workout_logs`, migration `3890252ee50f`) — the
+  client's record of one pass through a day: `user_id` (CASCADE), `program_id` and `day_id`
+  (SET NULL on delete: the row keeps `program_title` String(160) and `day_label`
+  String(200), snapshots taken at the start, "Dan 1 · Cijelo tijelo"), `started_at` (now()
+  by default), `finished_at` (NULL while in progress), `elapsed_seconds` (set at the
+  finish from the server's clock: finished − started, whole seconds; never posted), `done`
+  (a JSON object, one entry per exercise saved in the pass, keyed by the day's item id:
+  `{"<item id>": {"exercise_id": 12, "name": "Goblet čučanj", "section": "trening",
+  "sets": [{"reps": 10, "kg": 20.0}, …] or [{"seconds": 30}, …], "at": iso}}`, snapshots so
+  a later edit of the day or the library never garbles the history, the upitnik's rule; a
+  re-save replaces the entry; the exercise is the swapped one when the client swapped
+  it), `swaps` (a JSON object `{"<item id>": <exercise id>}`, the similar exercise swapped
+  in for this pass; absent: the plan's), then the osvrt at the end: `effort` (RPE 1–10),
+  `feeling` (a `FEELING_LABELS` key or NULL), `note` (the termin osvrt's shape). A day can be
+  repeated: every pass is a new row. One row in progress per (user, day) at a time: the
+  partial unique index `uq_workout_logs_open` (user_id, day_id) WHERE finished_at IS NULL;
+  an index on (user_id, started_at) serves the history. A pass left open is continued
+  ("Nastavi") or dropped ("Odbaci"). A set: reps 0–999, kg 0–500 in steps of 0.5 ("2,5"
+  or "2.5"; 0 is no weight), a timed exercise's seconds 0–3600; at most 12 sets; a row
+  with every field empty dropped.
 - **Migration:** each existing `Program` gets one day ("Dan 1", no weekday) holding its
   items in order; each item's `title` becomes an `Exercise` (one per distinct name; `body`
   → `instructions`, a video media → `video`, an image media is dropped with a note in the
@@ -102,18 +115,31 @@ of a termin in the gym).
   ("još nije odrađen" / "odrađen 2× · zadnji put 12.11." / "u tijeku — nastavi"), any day
   openable any time.
 - `/treninzi/{id}/dan/{n}`: the intro, the intro video first (the guide: "always watch the
-  intro video first"), the full training video, the list of exercises (name, sets × reps),
-  "Kreni" (starts a `WorkoutLog`; "Nastavi" when one is open).
-- **The player** `/treninzi/{id}/dan/{n}/vjezba/{k}` — one exercise per screen, the
-  questionnaire's one-task layout (the small pill, the brand alone, a 640px column, the
-  upitnik's progress bar "3 / 8"): the rep video (`<video playsinline muted loop
-  preload="metadata">`, a poster from the first frame), the name, sets × reps or seconds,
-  rest, the note, the instructions folded under "Kako se izvodi", then ONE primary
-  "Odrađeno" (ticks it in the log, goes on), a quiet "Preskoči", "Nazad". Works without JS
-  (each tick a plain POST). The last screen: "Trening odrađen" + the osvrt (RPE, feeling,
-  note, the karton's prompt reused) → `finished_at`.
-- **The karton** shows online trainings in the diary beside the termini ("Dan 2 ·
-  Cijelo tijelo · 6/6 vježbi · 12.11.", the osvrt), and Amir's read-only view the same.
+  intro video first"; the full training video waits, see "Later"), the state in words
+  ("Još nije odrađen." / "Odrađen 2× · zadnji put 12.11." / "U tijeku — nastavi gdje si
+  stao/la."), "Kreni" (starts a `WorkoutLog`; "Nastavi" when one is open, with "Odbaci
+  započeti trening" beside it), the list of exercises (name, sets × reps, a ✓ on the ones
+  the open pass saved), and at the bottom "Povijest": the last five passes, each with its
+  sets folded under "Serije" (as built 30.10.2026).
+- **The player** `/treninzi/{id}/dan/{n}/vjezba/{k}` (as built 30.10.2026) — one exercise
+  per screen, the questionnaire's one-task layout (the small pill, the brand alone, a
+  640px column; from 1000px the day's list beside it): a segmented bar (a segment per
+  exercise, the saved ones in the accent), "← Natrag", the timer, "Završi trening"; the rep
+  video (`<video playsinline loop muted autoplay controls preload="metadata">`) with ‹ ›
+  at its edges and a swipe; the name, sets × reps or seconds, rest, the note, the
+  instructions folded under "Kako se izvodi"; **the set log** (SET · PON. · KG, or SEK.:
+  a row per planned set, the reps from the plan, the kg from the last saved log of that
+  exercise, one extra row, "+" for more up to 12) with ONE primary "Spremi" (saves the
+  sets into the log, goes on; "Spremi i završi" on the last), a quiet "Preskoči →", and
+  "⇄ Zamijeni vježbu" (the plan exercise's similar exercises; "Vrati …" when swapped);
+  under it the whole list, the current exercise ringed, the saved ones ✓ (on a phone a
+  fixed dark pill "Vježbe · 3/8 ✓" leads to it). Works without JS (every save a plain
+  POST; ‹ › and the list are links). The last screen `…/kraj`: "Trening odrađen", "6 od
+  8 vježbi · 38 min", the osvrt (napor 1–10, osjećaj, komentar, the karton's three) →
+  `finished_at`; "Odbaci trening" drops the pass.
+- **The karton** shows online trainings in the diary beside the termini ("Online
+  trening", "Dan 1 · Cijelo tijelo — Cijelo tijelo — srednja razina", "6 od 8 vježbi ·
+  38 min", the osvrt), and Amir's read-only view the same, with the sets under "Serije".
 
 ## Videos
 
@@ -154,7 +180,17 @@ of a termin in the gym).
    segmented bar, the training's timer, ‹ › and a swipe between exercises, the
    list beside the player (a bottom sheet on a phone), the swap ("Zamijeni
    vježbu" from the exercise's alternatives, the log staying with the day), the
-   osvrt at the end, the karton's rows, "u tijeku" / "odrađen N×".
+   osvrt at the end, the karton's rows, "u tijeku" / "odrađen N×". **Built
+   30.10.2026, reviewed and live the same day** (an Opus draft, reviewed by Fable;
+   `roadmap/STATUS.md`'s entry of that day; migration `3890252ee50f`). As built: "Kreni" / "Nastavi" on the day's
+   page (`…/kreni`), the player at `/treninzi/{id}/dan/{day id}/vjezba/{k}` (the
+   one-task layout, 640px; from 1000px the list beside it; on a phone the list
+   under it and a fixed dark pill "Vježbe · 3/8 ✓" leading to it, no bottom sheet),
+   the finish screen at `…/kraj` (the osvrt in the questionnaire's clothes),
+   "Odbaci" (`…/odustani`), the day's "Povijest" (the last five passes, their
+   sets folded), the karton's online rows (the trainer's with the sets); the
+   weights prefilled from the client's newest saved entry of the exercise, any
+   day; a swapped exercise's clip is the client's to watch (/media).
 4. **Later, if asked** — a first-open tour of the player.
 
 ## What Shape Club's Gym Program adds (captured 30.10.2026, `data/design-reference/shape-club/app/app-27…33`)

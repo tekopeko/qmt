@@ -45,8 +45,10 @@
 <p class="hint">Upute, jedno ponavljanje, oznake i slične vježbe; video joj dodaješ kad je spremiš.</p>
 {% elif programs %}
 {# where it is, said, in the lead's muted words: the names, not six accent
-   links (the one loud colour is the actions'); deleting it names them too #}
-<p class="hint">U {{ programs|length }} {{ "programu" if programs|length % 10 == 1 and programs|length % 100 != 11 else "programa" }}: {{ programs|map(attribute="title")|join(", ") }}.</p>
+   links (the one loud colour is the actions'); deleting it names them too.
+   A programme is its title and its razina (30.10.2026: three share "Booty
+   build", one per razina): "Booty build (napredna razina)" #}
+<p class="hint">U {{ programs|length }} {{ "programu" if programs|length % 10 == 1 and programs|length % 100 != 11 else "programa" }}: {{ programs|map("program_name")|join(", ") }}.</p>
 {% else %}
 <p class="hint">Još nije ni u jednom programu.</p>
 {% endif %}

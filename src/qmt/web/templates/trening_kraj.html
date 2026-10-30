@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{# The finish screen of a pass (30.10.2026, stage 3 of the online treninzi
+   spec): the player's one-task layout (the small pill for a member, staff
+   keep their bar), its 640px column. The day, how many of its exercises the
+   pass saved and how long it has run, then the osvrt: the karton's three
+   fields after a termin (the owner: "the same three for online, yes") in
+   the questionnaire's clothes, napor as its scale's ten round buttons
+   (required), osjećaj as its choice rows (optional), a comment (optional),
+   and "Spremi trening". Under it, quiet: back to the exercises, and "Odbaci
+   trening" (asks first). A refused osvrt comes back as this page, its
+   sentence under the title and what was chosen kept. #}
+{% set solo_page = not user.is_trainer %}
+{% block title %}Trening odrađen — {{ day.label }} — QMT{% endblock %}
+{% block head %}
+<style>
+  .kr { max-width: 640px; margin: clamp(0px, 3vh, 32px) auto 0; }
+  .kr-eyebrow { font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .kr h1 { font-size: clamp(1.45rem, 5vw, 2rem); line-height: 1.15; margin: 8px 0 6px; overflow-wrap: anywhere; }
+  .kr-sum { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .kr .alert { margin: 14px 0 0; }
+  .kr .alert > span { min-width: 0; overflow-wrap: anywhere; }
+  .kr-form { margin-top: 8px; }
+  .kr-field { margin-top: 26px; }
+  .kr-field .dx-cap { margin: 0 0 12px; }
+  .kr-field .dx-cap label { display: inline; margin: 0; font: inherit; letter-spacing: inherit; text-transform: inherit;
+                            color: inherit; cursor: inherit; }
+  .kr-opt { text-transform: none; letter-spacing: 0; font: 500 .8rem var(--font-body); }
+  .kr-field textarea { min-height: 96px; resize: vertical; font-size: 1rem; line-height: 1.5; }
+  .kr-go { margin-top: 26px; }
+  @media (max-width: 599px) { .kr-go .btn { width: 100%; } }
+  .kr-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 18px; }
+  .kr-more form { margin: 0; }
+  /* "Odbaci trening": quiet, in the accent: it deletes what the pass saved */
+  .kr-more .kr-drop { color: var(--accent); }
+  .kr-more .kr-drop:hover { color: var(--accent-strong); }
+</style>
+{% endblock %}
+{# a refused osvrt's sentence stands under the title (below) #}
+{% block error_alert %}{% endblock %}
+{% block content %}
+<div class="kr">
+  <p class="kr-eyebrow">Trening odrađen</p>
+  <h1>{{ day.label }}</h1>
+  <p class="kr-sum">{{ done_n }} od {{ n_items }} {{ plural(n_items, "vježbe", "vježbe", "vježbi") }} · {{ elapsed }}</p>
+  {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
+
+  <form class="kr-form" method="post" action="{{ base }}/kraj">
+    <section class="kr-field" aria-labelledby="kr-napor">
+      <h2 class="dx-cap" id="kr-napor">Napor</h2>
+      <div class="scale-box">
+        <div class="scale" role="radiogroup" aria-labelledby="kr-napor">
+          {% for n in range(1, 11) %}
+          <label class="sc"><input type="radio" name="effort" value="{{ n }}" required{% if v.effort == n %} checked{% endif %}><span>{{ n }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+      <p class="scale-ends"><span>1 = lagano</span><span>10 = maksimalno</span></p>
+    </section>
+    <section class="kr-field" aria-labelledby="kr-osjecaj">
+      <h2 class="dx-cap" id="kr-osjecaj">Osjećaj <span class="kr-opt">(neobavezno)</span></h2>
+      <div class="opts" role="radiogroup" aria-labelledby="kr-osjecaj">
+        {% for key, label in feelings.items() %}
+        <label class="opt"><input type="radio" name="feeling" value="{{ key }}"{% if v.feeling == key %} checked{% endif %}><span class="t">{{ label }}</span></label>
+        {% endfor %}
+      </div>
+    </section>
+    <section class="kr-field">
+      <h2 class="dx-cap"><label for="kr-note">Komentar</label> <span class="kr-opt">(neobavezno)</span></h2>
+      <textarea id="kr-note" name="note" rows="3" placeholder="npr. kilaže, što je išlo dobro/loše">{{ v.note }}</textarea>
+    </section>
+    <div class="kr-go"><button type="submit" class="btn">Spremi trening</button></div>
+  </form>
+
+  <div class="kr-more">
+    <a class="act act-quiet" href="{{ base }}{% if n_items %}/vjezba/{{ n_items }}{% endif %}">Natrag na vježbe</a>
+    <form method="post" action="{{ base }}/odustani"
+          data-confirm-title="Odbaciti započeti trening?"
+          data-confirm="Spremljene serije ovog pokušaja se brišu. Dan možeš započeti ponovno."
+          data-confirm-cta="Odbaci">
+      <button type="submit" class="act act-quiet kr-drop">Odbaci trening</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
