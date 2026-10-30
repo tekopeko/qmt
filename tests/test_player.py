@@ -18,6 +18,13 @@ passes with their sets, the programme's day cards say it too, and the karton
 lists the passes beside the termini (the trainer's view with their sets).
 Migration 3890252ee50f runs for real on qmt_test, there and back. The browser
 half walks ivan through a day on a phone.
+
+The rest timers (30.10.2026; the owner: "a timer which he can skip, in
+between sets as well as between exercises, which Shape Club also has"): a ✓
+per set in the set log starts the rest between sets (the item's
+rest_seconds) in a bar at the bottom; the rest after an exercise (the item's
+rest_after_seconds) rides on the save's redirect (?odmor=) and starts on the
+next exercise's screen. Both count down, skippable; nothing is stored.
 """
 
 from __future__ import annotations
@@ -125,7 +132,7 @@ def build_day(title: str = "Cijelo tijelo — početna", level: str | None = "po
     ids = {}
     for name, (section, sets, reps, seconds, rest, note) in plan.items():
         ids[name] = db.add_day_item(did, ex[name], section)
-        db.update_day_item(ids[name], section, sets, reps, seconds, rest, note)
+        db.update_day_item(ids[name], section, sets, reps, seconds, rest, None, note)
     items = [ids[n] for n in names[:4]]
     return SimpleNamespace(pid=pid, did=did, items=items, ex=ex, base=f"/treninzi/{pid}/dan/{did}")
 
@@ -371,7 +378,8 @@ def test_the_set_log_is_prefilled_from_the_plan_and_the_last_log():
     assert '<input type="hidden" name="rows" value="3">' in page
     assert re.findall(r'<th scope="row">(\d+)(<span class="pl-x">dodatna serija</span>)?</th>', page) == [
         ("1", ""), ("2", ""), ("3", '<span class="pl-x">dodatna serija</span>')]
-    assert re.search(r'<thead><tr><th scope="col">Set</th><th scope="col">Pon.</th><th scope="col">Kg</th></tr></thead>', page)
+    assert re.search(r'<thead><tr><th scope="col">Set</th><th scope="col">Pon.</th><th scope="col">Kg</th>'
+                     r'<th scope="col" class="pl-tick" hidden>.*?</th></tr></thead>', page)
     page = ci.get(f"{d.base}/vjezba/3").text                               # Plank: 3 × 40 s
     assert inputs(page) == [("sec", "1", "40"), ("sec", "2", "40"), ("sec", "3", "40"), ("sec", "4", "")]
     assert '<th scope="col">Sek.</th>' in page and 'name="reps_1"' not in page
@@ -383,7 +391,7 @@ def test_the_set_log_is_prefilled_from_the_plan_and_the_last_log():
     # Goblet logged on ANOTHER day (Dan 2): its weights fill Dan 1's rows
     d2 = db.add_day(d.pid)
     goblet2 = db.add_day_item(d2, d.ex["Goblet čučanj"], "trening")
-    db.update_day_item(goblet2, "trening", 2, 8, None, None, "")
+    db.update_day_item(goblet2, "trening", 2, 8, None, None, None, "")
     other = db.start_pass(ivan, db.get_program(d.pid), db.get_day(d2))
     db.save_sets(other.id, ivan, db.get_day_item(goblet2), [{"reps": 8, "kg": 22.5}, {"reps": 8, "kg": 25.0}],
                  db.exercise(d.ex["Goblet čučanj"]))
@@ -783,6 +791,90 @@ def test_the_karton_lists_the_passes_among_the_termini():
     assert db.get_pass(a, ivan).day_id is None
 
 
+# ---------- the rest timers (30.10.2026) ----------
+
+def form_tag(page: str) -> str:
+    """The set log's <form> tag, its attributes."""
+    return re.search(r'<form class="pl-log" id="plLog"[^>]*>', page).group(0)
+
+
+def test_the_rest_after_an_exercise_comes_with_the_next_one():
+    """Spremi on exercise k < last goes on to k + 1 with ?odmor=<seconds>
+    when the plan's item has a rest after it (a swapped exercise's save
+    too: the plan's item says it), plainly when it has none or 0; the
+    last's goes to /kraj without it. The player's GET puts an odmor of 1–
+    3600 on the form as data-odmor and ignores anything else; a refused
+    save (400) carries none. The form carries the rest between sets
+    (data-rest) when the plan has one, not for none or 0. The card's line
+    prints both rests, the list's both and the note."""
+    trainer, ivan, ana = people()
+    d = build_day()
+    db.update_day_item(d.items[0], "zagrijavanje", 2, 15, None, 30, 0, "")          # 0 after it: none
+    db.update_day_item(d.items[1], "trening", 3, 10, None, 60, 90, "16 kg")
+    db.update_day_item(d.items[2], "trening", 3, None, 40, 0, None, "")              # 0 between sets: none
+    db.update_day_item(d.items[3], "istezanje", None, None, None, None, 120, "")     # the last: never carried
+    ci = client_for("ivan@test.local")
+    ci.post(f"{d.base}/kreni")
+    log_id = stored()[0][0]
+    steps = ((1, {"reps_1": "15"}, f"{d.base}/vjezba/2"), (2, {"reps_1": "10", "kg_1": "16"}, f"{d.base}/vjezba/3?odmor=90"),
+             (3, {"sec_1": "40"}, f"{d.base}/vjezba/4"), (4, {"reps_1": "1"}, f"{d.base}/kraj"))
+    for k, sets, to in steps:
+        r = ci.post(f"{d.base}/vjezba/{k}", data={"rows": "1", **sets}, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == to, k
+    assert db.get_pass(log_id, ivan).done_count == 4
+    ci.post(f"{d.base}/vjezba/2/zamjena", data={"exercise_id": str(d.ex["Iskorak unatrag"])})
+    r = ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "reps_1": "10", "kg_1": "8"}, follow_redirects=False)
+    assert r.headers["location"] == f"{d.base}/vjezba/3?odmor=90"          # swapped: the plan's item's rest
+    r = ci.post(f"{d.base}/vjezba/3?odmor=90", data={"rows": "1", "sec_1": "x"})
+    assert r.status_code == 400 and "data-odmor" not in form_tag(r.text)     # refused: the screen, no rest
+
+    for q in ("abc", "0", "5000", "3601", "-5", "1.5", "", "90s", "²"):
+        assert "data-odmor" not in form_tag(ci.get(f"{d.base}/vjezba/3", params={"odmor": q}).text), q
+    for q in ("90", "1", "3600"):
+        assert f'data-odmor="{q}"' in form_tag(ci.get(f"{d.base}/vjezba/3?odmor={q}").text), q
+    assert "data-odmor" not in form_tag(ci.get(f"{d.base}/vjezba/3").text)
+
+    def rest_between(k: int) -> str | None:
+        m = re.search(r'data-rest="(\d+)"', form_tag(ci.get(f"{d.base}/vjezba/{k}").text))
+        return m and m.group(1)
+
+    assert [rest_between(k) for k in (1, 2, 3, 4)] == ["30", "60", None, None]
+
+    page = ci.get(f"{d.base}/vjezba/2").text
+    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', page) == ["Odmor između serija: 60 s · Odmor nakon vježbe: 90 s", "16 kg"]
+    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', ci.get(f"{d.base}/vjezba/4").text) == ["Odmor nakon vježbe: 120 s"]
+    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', ci.get(f"{d.base}/vjezba/3").text) == [
+        "Odmor između serija: 0 s"]                                         # worded as set; its timer: none
+    subs = re.findall(r'<span class="dx-sub">([^<]*)</span>', page)
+    assert subs == ["Odmor između serija: 30 s · Odmor nakon vježbe: 0 s",   # a 0 is worded, as rest_text words one
+                    "Odmor između serija: 60 s · Odmor nakon vježbe: 90 s · 16 kg",
+                    "Odmor između serija: 0 s", "Odmor nakon vježbe: 120 s"]
+
+
+def test_the_set_log_has_a_tick_per_set_and_the_page_a_rest_bar():
+    """The ✓ column, the script's: its header "✓" (for a screen reader
+    "Odrađena serija") and a round button per row, "Serija n odrađena",
+    not pressed, all rendered hidden (without the script the log is as it
+    was): SET · PON. · KG · ✓, a timed exercise's SET · SEK. · ✓. The rest
+    bar is on the page, hidden: "Odmor", the countdown, the track,
+    "Preskoči odmor"."""
+    trainer, ivan, ana = people()
+    d = build_day()
+    ci = client_for("ivan@test.local")
+    ci.post(f"{d.base}/kreni")
+    page = ci.get(f"{d.base}/vjezba/2").text                               # Goblet: 3 sets and the extra one
+    head = ('<th scope="col" class="pl-tick" hidden><span aria-hidden="true">✓</span>'
+            '<span class="pl-sr">Odrađena serija</span></th></tr></thead>')
+    assert f'<th scope="col">Pon.</th><th scope="col">Kg</th>{head}' in page
+    assert re.findall(r'<td class="pl-tick" hidden><button type="button" class="pl-done" aria-pressed="false" '
+                      r'aria-label="Serija (\d+) odrađena">✓</button></td>\s*</tr>', page) == ["1", "2", "3", "4"]
+    assert f'<th scope="col">Set</th><th scope="col">Sek.</th>{head}' in ci.get(f"{d.base}/vjezba/3").text
+    assert re.search(r'<div class="pl-rest" id="plRest" role="timer" hidden>\s*<span class="pl-rest-n">'
+                     r'<span class="pl-rest-h">Odmor</span><span class="pl-rest-t">0:00</span></span>\s*'
+                     r'<span class="pl-rest-track" aria-hidden="true"><span class="pl-rest-fill"></span></span>\s*'
+                     r'<button type="button" class="pl-rest-skip">Preskoči odmor</button>', page)
+
+
 # ---------- the migration ----------
 
 def _migration(file: str):
@@ -892,7 +984,7 @@ def test_a_client_walks_a_day_on_a_phone(server):
     db.update_day(did, "Cijelo tijelo", 0, "")
     for name, sets, reps, seconds in (("Goblet čučanj", 3, 10, None), ("Sklekovi", 3, 10, None), ("Plank", 3, None, 40)):
         iid = db.add_day_item(did, ex[name], "trening")
-        db.update_day_item(iid, "trening", sets, reps, seconds, 60, "")
+        db.update_day_item(iid, "trening", sets, reps, seconds, 60, None, "")
     d = SimpleNamespace(pid=pid, did=did, items=[it.id for it in db.get_day(did).items], ex=ex, base=f"/treninzi/{pid}/dan/{did}")
     ivan = db.get_user_by_email("ivan@test.local").id
     finished(ivan, d, {1: [{"reps": 10, "kg": 16.0}] * 3}, effort=6, days_ago=7, minutes=41)
@@ -963,6 +1055,94 @@ def test_a_client_walks_a_day_on_a_phone(server):
         done = db.passes(ivan, did)
         check(len(done) == 3 and done[0].effort == 7 and done[0].swap_items == {d.items[1]: ex["Sklekovi s koljena"]},
               "the pass was not stored as walked")
+        problems += errors
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+def test_the_rest_timers_on_a_phone(server):
+    """At 390px, touch: ivan on an exercise with 60 s of rest between sets
+    (and 90 s after it) presses ✓ on set 1: the row is done and the rest
+    bar shows "1:00" with the dock hidden, the page never wider than the
+    screen; "Preskoči odmor" hides the bar and the dock is back; a second ✓
+    unmarks the row and starts nothing. Spremi goes on to the next
+    exercise with ?odmor=90, whose screen opens with the bar at "1:30"; a
+    ✓ there restarts it with that exercise's rest between sets (1 s),
+    which runs out: "Kreni" and "0:00", then the bar goes and the dock is
+    back. No page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("ivan@test.local")
+    pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    goblet = db.add_day_item(did, db.create_exercise("Goblet čučanj"), "trening")
+    db.update_day_item(goblet, "trening", 3, 10, None, 60, 90, "")
+    plank = db.add_day_item(did, db.create_exercise("Plank"), "trening")
+    db.update_day_item(plank, "trening", 3, None, 40, 1, None, "")
+    base = f"/treninzi/{pid}/dan/{did}"
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    def bar(pg) -> tuple:
+        """(the bar shown, its eyebrow, its countdown, the dock shown)."""
+        return (pg.is_visible("#plRest"), pg.text_content(".pl-rest-h"), pg.text_content(".pl-rest-t"),
+                pg.is_visible(".pl-dock"))
+
+    def tick(pg) -> tuple:
+        """Set 1's ✓: (pressed, its row's class)."""
+        return (pg.get_attribute(".pl-done >> nth=0", "aria-pressed"),
+                pg.evaluate("() => document.querySelector('.pl-sets tbody tr').className"))
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        pg = ctx.new_page(); errors: list[str] = []
+        pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
+        pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
+        pg.goto(server + "/login")
+        pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        pg.goto(server + base); pg.wait_for_load_state("networkidle")
+        with pg.expect_navigation():
+            pg.tap(".dx-start .go button")
+        pg.wait_for_load_state("networkidle")
+        check(pg.url == f"{server}{base}/vjezba/1", f"Kreni led to {pg.url}")
+        check(pg.is_visible("thead th.pl-tick") and pg.locator("td.pl-tick:visible").count() == 4,
+              "the ✓ column is not shown on every row")
+        check(bar(pg)[0] is False and bar(pg)[3] is True, f"before a ✓: {bar(pg)}")
+        pg.locator(".pl-done").first.tap()
+        pg.wait_for_timeout(100)
+        check(tick(pg) == ("true", "is-done"), f"the ✓ pressed: {tick(pg)}")
+        check(bar(pg) == (True, "Odmor", "1:00", False), f"the rest between sets: {bar(pg)}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the player with the bar overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.tap(".pl-rest-skip")
+        pg.wait_for_timeout(100)
+        check(bar(pg)[0] is False and bar(pg)[3] is True, f"after Preskoči: {bar(pg)}")
+        pg.locator(".pl-done").first.tap()
+        pg.wait_for_timeout(100)
+        check(tick(pg) == ("false", "") and bar(pg)[0] is False, f"the second ✓: {tick(pg)}, {bar(pg)}")
+        with pg.expect_navigation():
+            pg.tap(".pl-save")
+        pg.wait_for_load_state("networkidle")
+        check(pg.url == f"{server}{base}/vjezba/2?odmor=90", f"Spremi led to {pg.url}")
+        check(bar(pg) == (True, "Odmor", "1:30", False), f"the rest between exercises: {bar(pg)}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the next exercise with the bar overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.locator(".pl-done").first.tap()
+        pg.wait_for_timeout(100)
+        check(bar(pg)[:3] == (True, "Odmor", "0:01"), f"a ✓ while a rest runs: {bar(pg)}")
+        try:
+            pg.wait_for_function("() => document.querySelector('.pl-rest-h').textContent === 'Kreni'", timeout=5000)
+            check(bar(pg)[:3] == (True, "Kreni", "0:00"), f"at zero: {bar(pg)}")
+            pg.wait_for_function("() => document.getElementById('plRest').hidden", timeout=5000)
+            check(bar(pg)[3] is True, "the dock is not back after the rest")
+        except Exception as e:                                              # reported below
+            problems.append(f"the rest did not run out: {bar(pg)} ({type(e).__name__})")
         problems += errors
         ctx.close()
         browser.close()

@@ -14,15 +14,20 @@
   .st-rows { display: flex; flex-direction: column; gap: 10px; }
   .st-none { padding: 2px 0 4px; }
   /* A row's form, line 2: a compact grid of labelled fields, two columns on
-     a phone (Dio, the note and Spremi across both), four from 600px (Dio and
-     the dose, then the rest, the note and Spremi). Every control one height,
-     44px on a coarse pointer, so the row is one footprint. */
+     a phone (Dio and the sets, the reps and the seconds, the two rests,
+     then the note and Spremi across both), four from 600px (Dio and the
+     dose, then the two rests and the note, then Spremi). Every control one
+     height, 44px on a coarse pointer, so the row is one footprint. A label
+     its column cannot hold on one line ("Nakon vježbe (s)" between 600 and
+     ~610px) wraps, and each field keeps its control at its bottom, so the
+     controls of a line stay level. */
   .st-form { flex: 1 0 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
              gap: 8px 10px; margin: 2px 0 4px; }
-  .st-form label { margin-bottom: 3px; white-space: nowrap; }
+  .st-form > div { display: flex; flex-direction: column; justify-content: flex-end; }
+  .st-form label { margin-bottom: 3px; }
   .st-form :is(input, select) { height: 40px; padding: 0 10px; }
   .st-form .st-go .btn { width: 100%; height: 40px; }
-  .st-form :is(.st-dio, .st-note, .st-go) { grid-column: 1 / -1; }
+  .st-form :is(.st-note, .st-go) { grid-column: 1 / -1; }
   /* a row's own word after its save ("Spremljeno.", a refusal): the page's
      alert, inside the row (the page comes back scrolled to the row, and the
      top is out of view on a phone), the row's width, above its form */
@@ -32,9 +37,8 @@
   }
   @media (min-width: 600px) {
     .st-form { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .st-form :is(.st-dio, .st-go) { grid-column: auto; }
     .st-form .st-note { grid-column: span 2; }
-    .st-form .st-go { align-self: end; }
+    .st-form .st-go { grid-column: auto; align-self: end; }
   }
   /* "Dodaj vježbu": the library as a select (name · tags, the alphabet's
      order) and the section to put it in, then Dodaj and "Nova vježba →" */
@@ -58,6 +62,7 @@
 <h1>Dan {{ day.position }}</h1>
 <p class="hint">
   Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja ili sekunde, odmor i napomena.
+  „Odmor (s)” je odmor između serija, a „Nakon vježbe (s)” odmor prije sljedeće vježbe: polaznik za oba dobiva odbrojavanje koje može preskočiti.
   <a class="act act-quiet" href="/treninzi/{{ p.id }}/dan/{{ day.id }}">pogledaj kako polaznik vidi →</a>
 </p>
 
@@ -142,6 +147,9 @@
         <div><label for="st-{{ it.id }}-rest">Odmor (s)</label>
           <input id="st-{{ it.id }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600"
                  value="{{ it.rest_seconds if it.rest_seconds is not none else '' }}"></div>
+        <div><label for="st-{{ it.id }}-after">Nakon vježbe (s)</label>
+          <input id="st-{{ it.id }}-after" type="number" name="rest_after" inputmode="numeric" min="0" max="3600"
+                 value="{{ it.rest_after_seconds if it.rest_after_seconds is not none else '' }}"></div>
         <div class="st-note"><label for="st-{{ it.id }}-note">Napomena</label>
           <input id="st-{{ it.id }}-note" type="text" name="note" maxlength="500" value="{{ it.note }}"
                  placeholder="npr. 8 kg, po nozi"></div>

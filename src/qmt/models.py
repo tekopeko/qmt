@@ -791,8 +791,10 @@ class ProgramDayItem(Base):
     display order, ProgramDay.by_section); a gap a deleted item left does
     not matter, and an item moved to another section goes last in it
     (db.update_day_item). The constraint is deferred so ↑ / ↓ swap two in
-    one commit. `sets`, `reps` or `seconds` (one of the two: the CHECK) and
-    `rest_seconds` are NULL when not set, `note` "" for none ("8 kg", "po
+    one commit. `sets`, `reps` or `seconds` (one of the two: the CHECK),
+    `rest_seconds` (the rest between sets) and `rest_after_seconds` (the
+    rest after the exercise, before the next one; 30.10.2026, the player's
+    rest timers) are NULL when not set, `note` "" for none ("8 kg", "po
     nozi"). Migration 7c3bf996c983 parsed each old item's note, its razina's
     dose ("3 × 8 · 8 kg"), into these.
 
@@ -810,6 +812,8 @@ class ProgramDayItem(Base):
     reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # the rest before the next exercise (migration 4f9d6f7103ad)
+    rest_after_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
 
     __table_args__ = (
@@ -846,6 +850,12 @@ class ProgramDayItem(Base):
     def rest_text(self) -> str:
         """The rest between sets, "60 s" (always seconds), "" when not set."""
         return "" if self.rest_seconds is None else f"{self.rest_seconds} s"
+
+    @property
+    def rest_after_text(self) -> str:
+        """The rest after the exercise, before the next one, "90 s" (always
+        seconds), "" when not set."""
+        return "" if self.rest_after_seconds is None else f"{self.rest_after_seconds} s"
 
 
 def kg_text(kg: float | int | None) -> str:

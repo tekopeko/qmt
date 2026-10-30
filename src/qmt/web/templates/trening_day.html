@@ -30,9 +30,10 @@
      is the row, the whole row the tap target (56px at least, the native
      marker hidden): "Vježba n" (counted across the day) over the name and,
      at the right, the dose (700, tabular), under them one muted line, the
-     rest and the note; at the far right ▷, which turns to point down when
-     the row is open. Open, the clip (preload none: twenty rows never fetch
-     twenty clips), what one rep is and how it is done. */
+     two rests (between sets, after the exercise) and the note, each only
+     when set, " · " between them; at the far right ▷, which turns to point
+     down when the row is open. Open, the clip (preload none: twenty rows
+     never fetch twenty clips), what one rep is and how it is done. */
   details.ex { overflow: hidden; }
   details.ex > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px;
                          min-height: 56px; padding: 12px 14px 12px 18px; transition: background .15s; }
@@ -112,7 +113,8 @@
           <span class="dx-main">
             <span class="dx-n">Vježba {{ ns.n }}</span>
             <span class="dx-line"><span class="dx-name">{{ ex.name }}</span>{% if it.id in done %}<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span>{% if it.dose %} {{ it.dose }}{% endif %}</span>{% elif it.dose %}<span class="dx-dose">{{ it.dose }}</span>{% endif %}</span>
-            {% if it.rest_text or it.note %}<span class="dx-sub">{% if it.rest_text %}Odmor između serija: {{ it.rest_text }}{% endif %}{% if it.rest_text and it.note %} · {% endif %}{{ it.note }}</span>{% endif %}
+            {% set sub = [it.rest_text and "Odmor između serija: " ~ it.rest_text, it.rest_after_text and "Odmor nakon vježbe: " ~ it.rest_after_text, it.note]|select|list %}
+            {% if sub %}<span class="dx-sub">{{ sub|join(" · ") }}</span>{% endif %}
           </span>
           <span class="dx-go" aria-hidden="true">▷</span>
         </summary>

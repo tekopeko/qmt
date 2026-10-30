@@ -572,7 +572,17 @@ muted) with `.pl-chip` "3/8" (`--surface-2`) and `.pl-saved` "✓ Spremljeno"
 `tr.extra`'s muted with `.pl-x` "dodatna serija" under it; inputs 44px,
 centred, 600 tabular), then `.pl-foot`: "+" (`.btn-ghost.pl-add`, 40px round, at
 the right; rendered `hidden`, the script's) over "Spremi" (`.btn.pl-save`, the
-card's width on a phone, 200px from 600px). `.pl-more`: "Preskoči →"
+card's width on a phone, 200px from 600px). **The ✓ column** (30.10.2026): the
+log's last, SET · PON. · KG · ✓ (SET · SEK. · ✓), its `.pl-tick` cells rendered
+`hidden` (the script's, as "+"), as narrow as their button: `button.pl-done`, a
+44px circle (`--surface`, a 1px `--line` hairline, a muted ✓, 700 1.05rem),
+`aria-pressed`, "Serija n odrađena"; hover `--surface-2`; pressed `--good-fill`
+under `--good-ink` (hover `--good-strong`), its row `tr.is-done`, the set's number
+`--good`, the inputs as they were. The header's ✓ is `aria-hidden` beside
+`.pl-sr` "Odrađena serija", screen-reader text that is NOT the usual 1px box (its
+text overflows that box, which the audit's element-overflow check fails): the
+text at its own width, `clip-path: inset(50%)`, set against its cell's right edge
+(the `th` is `position: relative`). `.pl-more`: "Preskoči →"
 (`.act.act-quiet`) and `details.swap` (its summary the same quiet pill "⇄
 Zamijeni vježbu"; open, it takes the line: `.swap-h` "Slične vježbe", `.swap-row`s
 (a hairline row, the name 600 and `.swap-tags` muted, an `.act` ⇄), "Vrati …"
@@ -583,7 +593,21 @@ swapped one's name with `.pl-swapped` "(zamjena)" muted; a saved one `.dx-ok`).
 `.pl-dock` (phones): a fixed dark pill, the topbar's glass (theme-free), 48px,
 700 .9rem tabular "Vježbe · 3/8 ✓" → `#popis`, centred 12px over
 `env(safe-area-inset-bottom)`, 70px when staff's ✎ pill is on the page; `.pl`
-keeps 56px under it. **The finish screen** `.kr` (640px, centred):
+keeps 56px under it. **`.pl-rest`, the rest bar** (30.10.2026; the rest between
+sets after a ✓, the rest between exercises on the next screen): `role="timer"`,
+rendered `hidden`, shown by the script for a rest; fixed at the bottom at every
+width in the dock's place and glass (theme-free: `rgba(22, 22, 24, .86)`, the
+hairline, the shadow, the 14px blur; 12px over `env(safe-area-inset-bottom)`,
+70px with staff's ✎ pill), 16px from the screen's edges, at most 640px, centred,
+64px, `--r-lg`; inside, 14px apart: `.pl-rest-n` (`.pl-rest-h` "ODMOR", at zero
+"KRENI": the set log's header words, 700 .72rem .12em uppercase, white at 62%;
+over `.pl-rest-t`, the countdown "0:45": Inter 800 1.4rem, tabular, white), the
+track `.pl-rest-track` (4px, white at 18%, its `.pl-rest-fill` `--accent`, scaled
+to the rest left) and "Preskoči odmor" (`.pl-rest-skip`; not "Preskoči", which
+under Spremi skips the exercise: a white pill, `rgb(22, 22,
+24)` text, 700 .88rem, 40px, 44px on a coarse pointer; hover white at 86%). While
+it shows the dock is hidden and `.pl.has-rest` keeps 92px under the column (150px
+with the ✎ pill). **The finish screen** `.kr` (640px, centred):
 `.kr-eyebrow` "TRENING ODRAĐEN", the day's label as the h1, `.kr-sum` (muted 600
 tabular "6 od 8 vježbi · 38 min"), the alert, then the osvrt: three `.kr-field`s
 26px apart, each under an `h2.dx-cap` (Napor: the upitnik's `.scale-box` /

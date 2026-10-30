@@ -2539,13 +2539,16 @@ def _log_rows(it, entry: dict | None, last: list[dict] | None) -> list[dict]:
 
 
 def _player(request: Request, user, p, day, items: list, k: int, log, error: str | None = None,
-            posted: list[dict] | None = None, status_code: int = 200):
+            posted: list[dict] | None = None, status_code: int = 200, odmor: int | None = None):
     """Exercise k's screen in the pass `log`: the segmented bar (one segment
     per exercise), the clip with ‹ ›, the exercise's card (the swapped one's
     name, clip and cues when the pass swapped it, "Zamjena za: …" naming the
     plan's), its set log (_log_rows; `posted`, what a refused save sent, kept
     under `error`), the swap list (the plan's exercise's similar exercises,
-    "Vrati …" first when swapped) and the day's whole list."""
+    "Vrati …" first when swapped) and the day's whole list. `odmor` is the
+    rest the client takes before this exercise (seconds, from the previous
+    one's save: the form's data-odmor, which the script counts down at
+    load); None for none."""
     it = items[k - 1]
     done, swaps = log.done_items, log.swap_items
     by_id = db.exercises_by_id({it.exercise_id, *swaps.values()})
@@ -2559,7 +2562,7 @@ def _player(request: Request, user, p, day, items: list, k: int, log, error: str
         swapped=swapped, alternatives=[a for a in planned.alternatives if swapped is None or a.id != swapped.id],
         log=log, done=done, done_n=sum(1 for x in items if x.id in done), saved=entry is not None,
         swap_names={x.id: by_id[swaps[x.id]].name for x in items if x.id in swaps and swaps[x.id] in by_id},
-        rows=rows, timed=it.seconds is not None, max_sets=db.MAX_SETS,
+        rows=rows, timed=it.seconds is not None, max_sets=db.MAX_SETS, odmor=odmor,
         error=error or request.query_params.get("error"), base=_day_base(p.id, day.id)), status_code=status_code)
 
 
@@ -2590,10 +2593,12 @@ def pass_start(request: Request, program_id: int, day_id: int):
 
 
 @app.get("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}", response_class=HTMLResponse)
-def pass_exercise(request: Request, program_id: int, day_id: int, k: int):
+def pass_exercise(request: Request, program_id: int, day_id: int, k: int, odmor: str = ""):
     """Exercise k of the day (1-based, its display order) in the viewer's
     pass in progress; k that is no exercise of it is 404, and without a pass
-    in progress the day's page (where "Kreni" is)."""
+    in progress the day's page (where "Kreni" is). `odmor` (the previous
+    exercise's save: its rest after it, in seconds) starts the rest bar at
+    load: an int 1–3600, anything else is ignored."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2602,7 +2607,8 @@ def pass_exercise(request: Request, program_id: int, day_id: int, k: int):
     log = db.open_pass(user.id, day_id)
     if log is None:
         return RedirectResponse(_day_base(program_id, day_id), status_code=303)
-    return _player(request, user, p, day, items, k, log)
+    rest = _id(odmor)
+    return _player(request, user, p, day, items, k, log, odmor=rest if rest is not None and 1 <= rest <= 3600 else None)
 
 
 @app.post("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}")
@@ -2610,9 +2616,11 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
     """Exercise k's "Spremi": its set log, `rows` rows of reps_n and kg_n (a
     timed exercise's sec_n), read by db.read_sets and saved into the pass
     (db.save_sets: the exercise done, the swapped one when swapped); then
-    the next exercise, or the finish screen after the last. A refusal comes
-    back as the screen, its sentence under the name and what was typed
-    kept."""
+    the next exercise, or the finish screen after the last. When the day's
+    item (the plan's, swapped or not) has a rest after it, the next
+    exercise comes with it (?odmor=<seconds>: its screen counts it down);
+    the finish screen never does. A refusal comes back as the screen, its
+    sentence under the name and what was typed kept."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2645,7 +2653,10 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
         return _player(request, user, p, day, items, k, log, error=str(err), posted=kept, status_code=400)
     if not saved:
         return RedirectResponse(base, status_code=303)
-    return RedirectResponse(f"{base}/vjezba/{k + 1}" if k < len(items) else f"{base}/kraj", status_code=303)
+    if k == len(items):
+        return RedirectResponse(f"{base}/kraj", status_code=303)
+    rest = f"?odmor={it.rest_after_seconds}" if it.rest_after_seconds else ""
+    return RedirectResponse(f"{base}/vjezba/{k + 1}{rest}", status_code=303)
 
 
 @app.post("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}/zamjena")
@@ -2948,9 +2959,10 @@ def day_item_add(request: Request, program_id: int, day_id: int, exercise_id: st
 @app.post("/treninzi/{program_id}/dan/{day_id}/stavke/{item_id}")
 def day_item_save(request: Request, program_id: int, day_id: int, item_id: int, section: str = Form("trening"),
                   sets: str = Form(""), reps: str = Form(""), seconds: str = Form(""), rest: str = Form(""),
-                  note: str = Form("")):
-    """A row's form: its section, sets, reps or seconds, rest and note; an
-    empty number is none. Back at the row, which carries the word
+                  rest_after: str = Form(""), note: str = Form("")):
+    """A row's form: its section, sets, reps or seconds, rest (between
+    sets), rest after it (before the next exercise) and note; an empty
+    number is none. Back at the row, which carries the word
     ("Spremljeno." or the sentence of a refusal): `stavka` names it, so the
     page prints the alert in that row, not at its top, out of view on a
     phone scrolled to the row."""
@@ -2961,7 +2973,8 @@ def day_item_save(request: Request, program_id: int, day_id: int, item_id: int, 
     _day_item(program_id, day_id, item_id)
     back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
     try:
-        saved = db.update_day_item(item_id, section, _count(sets), _count(reps), _count(seconds), _count(rest), note)
+        saved = db.update_day_item(item_id, section, _count(sets), _count(reps), _count(seconds), _count(rest),
+                                   _count(rest_after), note)
     except ValueError as err:
         return RedirectResponse(f"{back}?error={quote(str(err))}&stavka={item_id}#stavka-{item_id}", status_code=303)
     if not saved:

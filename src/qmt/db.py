@@ -1855,7 +1855,8 @@ def delete_program(program_id: int) -> list[str] | None:
 DAY_TITLE_MAX = 160              # the column's length
 ITEM_NOTE_MAX = 500
 # what an item's numbers may be, (least, most); else BAD_NUMBER
-ITEM_LIMITS = {"sets": (1, 99), "reps": (1, 999), "seconds": (1, 3600), "rest_seconds": (0, 3600)}
+ITEM_LIMITS = {"sets": (1, 99), "reps": (1, 999), "seconds": (1, 3600), "rest_seconds": (0, 3600),
+               "rest_after_seconds": (0, 3600)}
 BAD_NUMBER = "Neispravan broj."
 REPS_OR_SECONDS = "Upiši ponavljanja ili sekunde, ne oboje."
 
@@ -2020,17 +2021,19 @@ def get_day_item(item_id: int) -> ProgramDayItem | None:
 
 
 def update_day_item(item_id: int, section: str, sets: int | None, reps: int | None, seconds: int | None,
-                    rest_seconds: int | None, note: str) -> bool:
+                    rest_seconds: int | None, rest_after_seconds: int | None, note: str) -> bool:
     """Save what a day asks of an exercise: its section, sets, reps or
-    seconds (one of the two), the rest between sets and a note (stripped);
-    None for a number not set. An item moved to another section goes last
-    in it. False for an item that is gone. ValueError with the sentence to
-    show: a number out of ITEM_LIMITS ("Neispravan broj."), reps and seconds
-    both ("Upiši ponavljanja ili sekunde, ne oboje."), a note past
-    ITEM_NOTE_MAX, a section that is none."""
+    seconds (one of the two), the rest between sets, the rest after it
+    (before the next exercise) and a note (stripped); None for a number not
+    set. An item moved to another section goes last in it. False for an
+    item that is gone. ValueError with the sentence to show: a number out
+    of ITEM_LIMITS ("Neispravan broj."), reps and seconds both ("Upiši
+    ponavljanja ili sekunde, ne oboje."), a note past ITEM_NOTE_MAX, a
+    section that is none."""
     if section not in SECTIONS:
         raise ValueError("Odaberi dio dana.")
-    for field, value in (("sets", sets), ("reps", reps), ("seconds", seconds), ("rest_seconds", rest_seconds)):
+    for field, value in (("sets", sets), ("reps", reps), ("seconds", seconds), ("rest_seconds", rest_seconds),
+                         ("rest_after_seconds", rest_after_seconds)):
         least, most = ITEM_LIMITS[field]
         if value is not None and not least <= value <= most:
             raise ValueError(BAD_NUMBER)
@@ -2049,6 +2052,7 @@ def update_day_item(item_id: int, section: str, sets: int | None, reps: int | No
             it.position = s.scalar(select(func.max(ProgramDayItem.position))
                                    .where(ProgramDayItem.day_id == day.id)) + 1
         it.sets, it.reps, it.seconds, it.rest_seconds, it.note = sets, reps, seconds, rest_seconds, note
+        it.rest_after_seconds = rest_after_seconds
         p.updated_at = func.now()
         return True
 

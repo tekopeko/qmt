@@ -63,8 +63,10 @@ of a termin in the gym).
   istezanje, a CHECK; the day reads section by section, each in position order; a row moved
   to another section goes last in it), `exercise_id` (FK, RESTRICT), `sets` (int, NULL),
   `reps` (int, NULL) or `seconds` (int, NULL): one of the two (a CHECK), `rest_seconds`
-  (int, NULL), `note` (Text, "" for none). The editor's limits: sets 1–99, reps 1–999,
-  seconds 1–3600, rest 0–3600, a note up to 500. Replaced `ProgramItem` (migration
+  (int, NULL: between sets), `rest_after_seconds` (int, NULL: after the exercise, before
+  the next one; 30.10.2026, migration `4f9d6f7103ad`, the player's rest timers), `note`
+  (Text, "" for none). The editor's limits: sets 1–99, reps 1–999, seconds 1–3600, either
+  rest 0–3600, a note up to 500. Replaced `ProgramItem` (migration
   `7c3bf996c983`: each programme's flat items its Dan 1 in section trening, each note's
   dose parsed into sets and reps or seconds, the rest of it the note).
 - **`WorkoutLog`** (built 30.10.2026, `workout_logs`, migration `3890252ee50f`) — the
@@ -134,9 +136,21 @@ of a termin in the gym).
   "⇄ Zamijeni vježbu" (the plan exercise's similar exercises; "Vrati …" when swapped);
   under it the whole list, the current exercise ringed, the saved ones ✓ (on a phone a
   fixed dark pill "Vježbe · 3/8 ✓" leads to it). Works without JS (every save a plain
-  POST; ‹ › and the list are links). The last screen `…/kraj`: "Trening odrađen", "6 od
-  8 vježbi · 38 min", the osvrt (napor 1–10, osjećaj, komentar, the karton's three) →
-  `finished_at`; "Odbaci trening" drops the pass.
+  POST; ‹ › and the list are links). **The rest timers (30.10.2026**; the owner: "Can
+  someone click anything after finishing a set of exercises? We would like to add a timer
+  which he can skip, in between sets as well as between exercises, which Shape Club also
+  has."): **a ✓ per set** at the set log's right (SET · PON. · KG · ✓, a round button per
+  row, the script's) marks the set done on the page only (nothing is stored; "Spremi"
+  saves the sets as before; a second press unmarks it) and starts the rest between sets
+  (`rest_seconds`); **the rest after an exercise** (`rest_after_seconds`, the day
+  editor's "Nakon vježbe (s)") comes with the next exercise's screen after "Spremi"
+  (`…/vjezba/{k+1}?odmor=<s>`; never on "Preskoči", ‹ ›, the swipe, the list, nor before
+  the finish screen). Both run in one bar at the bottom, in the dock's place and glass:
+  "ODMOR" over the countdown, a track that drains, "Preskoči odmor"; at zero "KRENI" for about
+  1.5 s, the phone vibrating and two short beeps where the browser allows it (a rest that
+  starts with the screen may end silent: no tap has happened on it yet). The last screen
+  `…/kraj`: "Trening odrađen", "6 od 8 vježbi · 38 min", the osvrt (napor 1–10, osjećaj,
+  komentar, the karton's three) → `finished_at`; "Odbaci trening" drops the pass.
 - **The karton** shows online trainings in the diary beside the termini ("Online
   trening", "Dan 1 · Cijelo tijelo — Cijelo tijelo — srednja razina", "6 od 8 vježbi ·
   38 min", the osvrt), and Amir's read-only view the same, with the sets under "Serije".

@@ -13,7 +13,9 @@
    phone a fixed dark pill at the bottom leads to the list (#popis). Every
    part works without the script: ‹ › and every row are links, the set log
    one form with one extra row, the swap list a <details>; the script adds
-   the timer, "+" (another row) and the swipe between exercises. #}
+   the timer, "+" (another row), the swipe between exercises, the ✓ per set
+   and the rest bar (30.10.2026: the rest between sets after a ✓, the rest
+   between exercises on the next exercise's screen, each skippable). #}
 {% set solo_page = not user.is_trainer %}
 {% block title %}{{ ex.name }} — {{ day.label }} — QMT{% endblock %}
 {% block head %}
@@ -90,6 +92,27 @@
   .pl-sets input { height: 44px; padding: 0 10px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
   .pl-sets tr.extra > th { color: var(--muted); }
   .pl-x { display: block; font: 500 .7rem var(--font-body); color: var(--muted); }
+  /* the ✓ per set (30.10.2026): a column at the right, as narrow as its
+     button; a round 44px button per row (aria-pressed), a hairline circle
+     with a muted ✓, pressed the green fill; its row then .is-done, the
+     set's number in --good (the inputs as they were, still editable).
+     Rendered hidden, the script's, as "+" is: without it the log is what
+     it was */
+  .pl-sets .pl-tick { width: 1%; }
+  .pl-done { width: 44px; height: 44px; padding: 0; border-radius: 50%; box-shadow: none;
+             background: var(--surface); color: var(--muted); border: 1px solid var(--line);
+             font: 700 1.05rem/1 var(--font-body); }
+  .pl-done:hover { background: var(--surface-2); color: var(--text); transform: none; }
+  .pl-done[aria-pressed="true"] { background: var(--good-fill); color: var(--good-ink); border-color: transparent; }
+  .pl-done[aria-pressed="true"]:hover { background: var(--good-strong); color: var(--good-ink); }
+  .pl-sets tr.is-done > th { color: var(--good); }
+  /* the ✓ column's words for a screen reader ("Odrađena serija"), never
+     shown. Not the usual 1px box: its text overflows that box, which the
+     audit's element-overflow check refuses. The text at its own width,
+     wholly clipped away (clip-path clips its hit area too), set against
+     its cell's right edge, so it reaches no further right than the cell */
+  .pl-sets thead th.pl-tick { position: relative; }
+  .pl-sr { position: absolute; top: 0; right: 0; white-space: nowrap; clip-path: inset(50%); pointer-events: none; }
   .pl-foot { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; margin-top: 4px; }
   .pl-add { width: 40px; height: 40px; padding: 0; font: 600 1.3rem/1 var(--font-body); }
   .pl-save { align-self: stretch; }
@@ -137,6 +160,39 @@
   body:has(#copyToggle) .pl-dock { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
   .pl { padding-bottom: 56px; }
 
+  /* ===== the rest bar (30.10.2026; the owner: "a timer which he can skip,
+     in between sets as well as between exercises, which Shape Club also
+     has"): fixed at the bottom at every width, in the dock's place and its
+     glass (dark in both themes, theme-free as the dock), the column's
+     width (16px from the screen's edges, 640px at most, centred), 64px,
+     clear of staff's ✎ pill as the dock is. Left to right: "ODMOR" (the
+     set log's header words, muted on the dark) over the countdown (Inter
+     800, tabular, white), a 4px track whose accent fill drains as the rest
+     runs, and "Preskoči odmor", a white pill (not "Preskoči": the
+     quiet "Preskoči →" under Spremi skips the exercise). At zero the eyebrow says "KRENI"
+     for about 1.5 s, then the bar goes. While it shows the dock is hidden
+     and .pl gets room under it (.has-rest), so nothing stays under the
+     bar. Rendered hidden, the script's ===== */
+  .pl-rest { position: fixed; left: 16px; right: 16px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 45;
+             max-width: 640px; height: 64px; margin: 0 auto; display: flex; align-items: center; gap: 14px;
+             padding: 0 12px 0 18px; border-radius: var(--r-lg); background: rgba(22, 22, 24, .86); color: #fff;
+             border: 1px solid rgba(255, 255, 255, .09); box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+             backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  body:has(#copyToggle) .pl-rest { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
+  .pl-rest-n { flex: none; min-width: 4.4rem; display: flex; flex-direction: column; gap: 1px; }
+  .pl-rest-h { font: 700 .72rem/1.2 var(--font-body); letter-spacing: .12em; text-transform: uppercase;
+               color: rgba(255, 255, 255, .62); }
+  .pl-rest-t { font: 800 1.4rem/1.1 var(--font-body); font-variant-numeric: tabular-nums; color: #fff; }
+  .pl-rest-track { flex: 1; min-width: 0; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .18);
+                   overflow: hidden; }
+  .pl-rest-fill { display: block; height: 100%; background: var(--accent); transform-origin: left; }  /* scaleX: the rest left */
+  .pl-rest-skip { flex: none; height: 40px; padding: 0 18px; border: none; border-radius: 999px; box-shadow: none;
+                  background: #fff; color: rgb(22, 22, 24); font: 700 .88rem var(--font-body); }
+  .pl-rest-skip:hover { background: rgba(255, 255, 255, .86); color: rgb(22, 22, 24); transform: none; }
+  @media (pointer: coarse) { .pl-rest-skip { height: 44px; } }
+  .pl.has-rest { padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+  body:has(#copyToggle) .pl.has-rest { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+
   @media (min-width: 1000px) {
     .pl { max-width: 1044px; padding-bottom: 0; }
     .pl-grid { display: grid; grid-template-columns: minmax(0, 640px) minmax(0, 380px); gap: 24px;
@@ -182,7 +238,8 @@
         {% if swapped %}<p class="pl-for">Zamjena za: {{ planned.name }}</p>{% endif %}
         {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
         {% if it.dose %}<p class="pl-dose">{{ it.dose }}</p>{% endif %}
-        {% if it.rest_text %}<p class="pl-sub">Odmor između serija: {{ it.rest_text }}</p>{% endif %}
+        {% set rests = [it.rest_text and "Odmor između serija: " ~ it.rest_text, it.rest_after_text and "Odmor nakon vježbe: " ~ it.rest_after_text]|select|list %}
+        {% if rests %}<p class="pl-sub">{{ rests|join(" · ") }}</p>{% endif %}
         {% if it.note %}<p class="pl-sub">{{ it.note }}</p>{% endif %}
         {% if ex.rep_note or ex.instructions %}
         <details class="pl-how">
@@ -194,11 +251,16 @@
 
         {# the set log: one form, a row per planned set (the plan's reps and
            seconds, the last saved weights), one row more; a row past the
-           plan's says so. "+" (the script) adds rows and counts them in rows #}
-        <form class="pl-log" id="plLog" method="post" action="{{ base }}/vjezba/{{ k }}" data-max="{{ max_sets }}">
+           plan's says so. "+" (the script) adds rows and counts them in rows.
+           The ✓ column (the script's) marks a set done and starts the rest
+           between sets, data-rest (the plan's, none when it has none or 0);
+           data-odmor is the rest before this exercise, which the script
+           counts down at load (the previous exercise's save: ?odmor=) #}
+        <form class="pl-log" id="plLog" method="post" action="{{ base }}/vjezba/{{ k }}" data-max="{{ max_sets }}"
+              {%- if it.rest_seconds %} data-rest="{{ it.rest_seconds }}"{% endif %}{% if odmor %} data-odmor="{{ odmor }}"{% endif %}>
           <input type="hidden" name="rows" value="{{ rows|length }}">
           <table class="pl-sets">
-            <thead><tr><th scope="col">Set</th>{% if timed %}<th scope="col">Sek.</th>{% else %}<th scope="col">Pon.</th><th scope="col">Kg</th>{% endif %}</tr></thead>
+            <thead><tr><th scope="col">Set</th>{% if timed %}<th scope="col">Sek.</th>{% else %}<th scope="col">Pon.</th><th scope="col">Kg</th>{% endif %}<th scope="col" class="pl-tick" hidden><span aria-hidden="true">✓</span><span class="pl-sr">Odrađena serija</span></th></tr></thead>
             <tbody>
               {% for r in rows %}{% set n = loop.index %}
               <tr{% if r.extra %} class="extra"{% endif %}>
@@ -209,6 +271,7 @@
                 <td><input type="number" name="reps_{{ n }}" value="{{ r.reps }}" inputmode="numeric" min="0" max="999" step="1" aria-label="Serija {{ n }}: ponavljanja"></td>
                 <td><input type="number" name="kg_{{ n }}" value="{{ r.kg }}" inputmode="decimal" min="0" max="500" step="0.5" aria-label="Serija {{ n }}: kilogrami"></td>
                 {% endif %}
+                <td class="pl-tick" hidden><button type="button" class="pl-done" aria-pressed="false" aria-label="Serija {{ n }} odrađena">✓</button></td>
               </tr>
               {% endfor %}
             </tbody>
@@ -264,7 +327,8 @@
           <span class="dx-n">Vježba {{ ns.n }}</span>
           <span class="dx-line"><span class="dx-name">{{ swap_names.get(x.id, x.exercise.name) }}{% if x.id in swap_names %} <span class="pl-swapped">(zamjena)</span>{% endif %}</span>
             {%- if x.id in done %}<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span>{% if x.dose %} {{ x.dose }}{% endif %}</span>{% elif x.dose %}<span class="dx-dose">{{ x.dose }}</span>{% endif %}</span>
-          {% if x.rest_text or x.note %}<span class="dx-sub">{% if x.rest_text %}Odmor između serija: {{ x.rest_text }}{% endif %}{% if x.rest_text and x.note %} · {% endif %}{{ x.note }}</span>{% endif %}
+          {% set sub = [x.rest_text and "Odmor između serija: " ~ x.rest_text, x.rest_after_text and "Odmor nakon vježbe: " ~ x.rest_after_text, x.note]|select|list %}
+          {% if sub %}<span class="dx-sub">{{ sub|join(" · ") }}</span>{% endif %}
         </a></li>
         {% endfor %}
       </ol>
@@ -274,15 +338,23 @@
   </div>
 </div>
 <a class="pl-dock" href="#popis">Vježbe · {{ done_n }}/{{ last }} ✓</a>
+{# the rest bar: shown by the script for a rest (a ✓ with data-rest, or
+   data-odmor at load), counted down, skippable #}
+<div class="pl-rest" id="plRest" role="timer" hidden>
+  <span class="pl-rest-n"><span class="pl-rest-h">Odmor</span><span class="pl-rest-t">0:00</span></span>
+  <span class="pl-rest-track" aria-hidden="true"><span class="pl-rest-fill"></span></span>
+  <button type="button" class="pl-rest-skip">Preskoči odmor</button>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
   // The player's script (without it every part still works): the training's
   // timer, counted from when the pass started; "+", one more row of the set
-  // log (up to the form's data-max, counted in its rows field); and a
-  // sideways swipe of 60px or more on the clip or the card, which goes to the
+  // log (up to the form's data-max, counted in its rows field); a sideways
+  // swipe of 60px or more on the clip or the card, which goes to the
   // previous / next exercise as ‹ › do (not from inside the set log or the
-  // swap list, where a finger is typing or choosing).
+  // swap list, where a finger is typing or choosing); and the ✓ per set with
+  // the rest bar (below).
   (function () {
     var timer = document.querySelector(".pl-timer");
     if (timer) {
@@ -311,12 +383,131 @@
           i.name = i.name.replace(/_\d+$/, "_" + n);
           i.setAttribute("aria-label", i.getAttribute("aria-label").replace(/^Serija \d+/, "Serija " + n));
         });
+        var mark = row.querySelector(".pl-done");          // its ✓: the new set is not done
+        if (mark) {
+          mark.setAttribute("aria-pressed", "false");
+          mark.setAttribute("aria-label", "Serija " + n + " odrađena");
+        }
         body.appendChild(row);
         count.value = String(body.rows.length);
         fit();
         row.querySelector("input").focus();
       });
       fit();
+    }
+
+    // The ✓ per set and the rest bar (30.10.2026; the owner: "a timer which
+    // he can skip, in between sets as well as between exercises"). A ✓ marks
+    // its row done (aria-pressed, tr.is-done) and, when the exercise has a
+    // rest between sets (the form's data-rest), starts the rest bar with it,
+    // afresh when a rest is running; a second press unmarks the row and
+    // starts nothing. The ticks live on the page: nothing is posted, a reload
+    // loses them, "Spremi" saves the sets as before. The rest between
+    // exercises comes with the screen (the form's data-odmor, set by the
+    // previous exercise's save) and starts at load. The countdown runs from
+    // an end time, redrawn every 250 ms, so a tab woken from the background
+    // shows what is really left; "Preskoči odmor" ends it at once, silently. At
+    // zero the bar says "Kreni" for about 1.5 s, then goes; the phone
+    // vibrates and two short beeps play where the browser allows it. Leaving
+    // the page ends it; nothing is kept.
+    var rest = document.getElementById("plRest");
+    if (form && rest) {
+      var dock = document.querySelector(".pl-dock"), pl = document.querySelector(".pl");
+      var restH = rest.querySelector(".pl-rest-h"), restT = rest.querySelector(".pl-rest-t");
+      var fill = rest.querySelector(".pl-rest-fill");
+      var end = 0, span = 1, every = null, after = null, audio = null;
+      var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+      var clockOf = function (s) {
+        var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+        return (h ? h + ":" + pad(m) : m) + ":" + pad(s % 60);
+      };
+      var show = function (on) {
+        rest.hidden = !on;
+        if (dock) dock.hidden = on;
+        if (pl) pl.classList.toggle("has-rest", on);
+      };
+      var stop = function () {
+        clearInterval(every); clearTimeout(after);
+        every = after = null;
+        show(false);
+      };
+      // The tone's AudioContext is made and resumed at the first ✓, a tap:
+      // that is what lets iOS sound it later. Where it cannot be made or
+      // resumed, no tone, and never an error.
+      var unlock = function () {
+        if (audio !== null) return;
+        audio = false;
+        try {
+          var AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          audio = new AC();
+          var resumed = audio.resume && audio.resume();
+          if (resumed && resumed.catch) resumed.catch(function () {});
+        } catch (e) { audio = false; }
+      };
+      // two 880 Hz beeps of 120 ms, 100 ms apart, quiet
+      var beep = function () {
+        if (!audio || audio.state !== "running") return;
+        try {
+          var t0 = audio.currentTime + .02;
+          [0, .22].forEach(function (d) {
+            var o = audio.createOscillator(), g = audio.createGain(), t = t0 + d;
+            o.frequency.value = 880;
+            g.gain.setValueAtTime(0, t);
+            g.gain.linearRampToValueAtTime(.08, t + .01);
+            g.gain.setValueAtTime(.08, t + .11);
+            g.gain.linearRampToValueAtTime(0, t + .12);
+            o.connect(g); g.connect(audio.destination);
+            o.start(t); o.stop(t + .13);
+          });
+        } catch (e) {}
+      };
+      // a phone vibrates only after a tap on the page (Chrome refuses it,
+      // with a console line, before one): asked only then
+      var buzz = function () {
+        try {
+          var ua = navigator.userActivation;
+          if (navigator.vibrate && (!ua || ua.hasBeenActive)) navigator.vibrate([150, 80, 150]);
+        } catch (e) {}
+      };
+      var draw = function () {
+        var left = end - Date.now();
+        if (left > 0) {
+          restT.textContent = clockOf(Math.ceil(left / 1000));
+          fill.style.transform = "scaleX(" + (left / span).toFixed(4) + ")";
+          return;
+        }
+        clearInterval(every); every = null;
+        restH.textContent = "Kreni"; restT.textContent = "0:00"; fill.style.transform = "scaleX(0)";
+        buzz(); beep();
+        after = setTimeout(stop, 1500);
+      };
+      var begin = function (s) {                         // not "start": the timer's above is a var of this scope
+        clearInterval(every); clearTimeout(after); after = null;
+        span = s * 1000; end = Date.now() + span;
+        restH.textContent = "Odmor";
+        show(true); draw();
+        every = setInterval(draw, 250);
+      };
+      rest.querySelector(".pl-rest-skip").addEventListener("click", stop);
+      window.addEventListener("pagehide", stop);
+      [].forEach.call(form.querySelectorAll(".pl-tick"), function (c) { c.hidden = false; });
+      var between = parseInt(form.getAttribute("data-rest"), 10) || 0;
+      form.addEventListener("click", function (e) {
+        var b = e.target.closest(".pl-done");
+        if (!b) return;
+        unlock();
+        var on = b.getAttribute("aria-pressed") !== "true";
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+        b.closest("tr").classList.toggle("is-done", on);
+        if (on && between > 0) begin(between);
+      });
+      // The rest between exercises starts at load, when no tap has happened
+      // on this page yet: no AudioContext exists and the browser may refuse
+      // to vibrate, so this rest may end silent and still. The bar's "Kreni"
+      // is the signal then (a ✓ pressed meanwhile makes the tone possible).
+      var odmor = parseInt(form.getAttribute("data-odmor"), 10) || 0;
+      if (odmor > 0) begin(odmor);
     }
 
     var prev = document.querySelector(".pl-nav.prev"), next = document.querySelector(".pl-nav.next");

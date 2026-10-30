@@ -990,14 +990,16 @@ def test_the_day_editor_shows_each_row_and_its_form():
     goblet, plank = db.create_exercise("Goblet čučanj"), db.create_exercise("Plank")
     upload(ct, plank, "p.mp4", MP4)
     ig, ip = hold(pid, goblet), hold(pid, plank)
-    db.update_day_item(ig, "trening", 4, 10, None, 60, "16 kg")
-    db.update_day_item(ip, "trening", 3, None, 40, None, "")
+    db.update_day_item(ig, "trening", 4, 10, None, 60, 90, "16 kg")
+    db.update_day_item(ip, "trening", 3, None, 40, None, None, "")
     page = ct.get(f"/treninzi/{pid}/dan/{did}/uredi").text
     assert (f'<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span>'
             f'<a href="/treninzi/{pid}/uredi">Cijelo tijelo — početna</a><span class="sep">/</span>'
             '<span class="here">Dan 1</span></nav>\n<h1>Dan 1</h1>') in page
     assert ("Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja ili "
             "sekunde, odmor i napomena.") in page
+    assert ("„Odmor (s)” je odmor između serija, a „Nakon vježbe (s)” odmor prije sljedeće vježbe: polaznik za oba "
+            "dobiva odbrojavanje koje može preskočiti.") in page
     assert f'<a class="act act-quiet" href="/treninzi/{pid}/dan/{did}">pogledaj kako polaznik vidi →</a>' in page
     assert 'placeholder="npr. Cijelo tijelo"' in page and "Kratko objašnjenje treninga — polaznik ga gleda prije prve vježbe." in page
     assert re.findall(r'<h3 class="st-cap" id="dio-(\w+)">([^<]*)</h3>', page) == [
@@ -1015,11 +1017,14 @@ def test_the_day_editor_shows_each_row_and_its_form():
     assert f'action="/treninzi/{pid}/dan/{did}/stavke/{ig}"' in form
     assert '<option value="trening" selected>Trening</option>' in form and '<option value="zagrijavanje">Zagrijavanje</option>' in form
     values = dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', form))
-    assert values == {"sets": "4", "reps": "10", "seconds": "", "rest": "60", "note": "16 kg"}
+    assert values == {"sets": "4", "reps": "10", "seconds": "", "rest": "60", "rest_after": "90", "note": "16 kg"}
     assert 'name="sets" inputmode="numeric" min="1" max="99"' in form and 'name="reps" inputmode="numeric" min="1" max="999"' in form
     assert 'name="seconds" inputmode="numeric" min="1" max="3600"' in form and 'name="rest" inputmode="numeric" min="0" max="3600"' in form
+    assert 'name="rest_after" inputmode="numeric" min="0" max="3600"' in form
     assert [lab for lab in re.findall(r'<label for="st-\d+-\w+">([^<]*)</label>', form)] == [
-        "Dio", "Serije", "Ponavljanja", "Sekunde", "Odmor (s)", "Napomena"]
+        "Dio", "Serije", "Ponavljanja", "Sekunde", "Odmor (s)", "Nakon vježbe (s)", "Napomena"]
+    second = rows[1].split('<form class="st-form"')[1].split("</form>")[0]          # none set: an empty field
+    assert dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', second))["rest_after"] == ""
     after = page.split('<h2 style="font-size:1.05rem; margin:30px 0 12px;">Dodaj vježbu</h2>')[0].split("</section>")[-1]
     assert (f'<form id="st-x-{ig}" method="post" action="/treninzi/{pid}/dan/{did}/stavke/{ig}/obrisi"\n'
             '      data-confirm-title="Maknuti vježbu iz dana?"\n'
@@ -1148,11 +1153,11 @@ def test_the_day_page_prints_the_whole_list():
     did = db.add_day(pid)
     db.update_day(did, "Cijelo tijelo", 0, "Lagano.\nBez žurbe.")
     i1 = hold(pid, plank)
-    db.update_day_item(i1, "trening", 3, None, 40, 45, "")
+    db.update_day_item(i1, "trening", 3, None, 40, 45, None, "")
     i2 = hold(pid, goblet, "zagrijavanje")
-    db.update_day_item(i2, "zagrijavanje", 2, 15, None, 30, "8 kg")
+    db.update_day_item(i2, "zagrijavanje", 2, 15, None, 30, None, "8 kg")
     i3 = hold(pid, stretch, "istezanje")
-    db.update_day_item(i3, "istezanje", None, None, 30, None, "po nozi")
+    db.update_day_item(i3, "istezanje", None, None, 30, None, None, "po nozi")
     ci = client_for("ivan@test.local")
     page = ci.get(f"/treninzi/{pid}/dan/{did}").text
     assert (f'<a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{pid}">Tjedan 1</a>'
@@ -1179,7 +1184,7 @@ def test_the_day_page_prints_the_whole_list():
             in ct.get(f"/treninzi/{pid}/dan/{did}").text)
 
     db.delete_day_item(i3)                                                  # a section with none is not on the page
-    db.update_day_item(i2, "zagrijavanje", None, None, None, None, "")     # nothing set: no dose, no line
+    db.update_day_item(i2, "zagrijavanje", None, None, None, None, None, "")   # nothing set: no dose, no line
     page = ci.get(f"/treninzi/{pid}/dan/{did}").text
     assert [k for k, _ in re.findall(r'<h2 class="dx-cap" id="dio-(\w+)">([^<]*)</h2>', page)] == ["zagrijavanje", "trening"]
     first = page.split('<details class="card ex">')[1].split("</summary>")[0]
@@ -1192,6 +1197,52 @@ def test_the_day_page_prints_the_whole_list():
     page = ci.get(f"/treninzi/{pid}/dan/{empty}").text
     assert '<p class="hint">0 vježbi</p>' in page and "Dan još nema vježbi." in page and '<h2 class="dx-cap"' not in page
     assert "Dan još nema vježbi — dodaj ih u uređivanju." in ct.get(f"/treninzi/{pid}/dan/{empty}").text
+
+
+def test_the_rest_after_an_exercise_is_saved_refused_and_shown():
+    """30.10.2026, the player's rest timers: a row's "Nakon vježbe (s)"
+    (rest_after, 0–3600, empty is none) is the rest after the exercise,
+    before the next one. Saved as the others; refused out of range or not
+    a number ("Neispravan broj.", the row unchanged). The item words it as
+    it words the rest between sets ("90 s"), and the day page's muted line
+    prints it after that one: "Odmor između serija: 60 s · Odmor nakon
+    vježbe: 90 s · 8 kg", each part only when set; with none, nothing of
+    it."""
+    assert [ProgramDayItem(rest_after_seconds=r).rest_after_text for r in (90, 0, None)] == ["90 s", "0 s", ""]
+    ct, *_ = trainer_with_clients()
+    pid = db.create_program("T", None, "pocetna", "cijelo")
+    ig, ip = hold(pid, db.create_exercise("Goblet čučanj")), hold(pid, db.create_exercise("Plank"))
+    base = f"/treninzi/{pid}/dan/{db.get_program(pid).days[0].id}"
+
+    def save(item_id, **fields):
+        data = {"section": "trening", "sets": "3", "reps": "10", "seconds": "", "rest": "60", "rest_after": "",
+                "note": "8 kg"} | fields
+        return ct.post(f"{base}/stavke/{item_id}", data=data, follow_redirects=False)
+
+    def rests(item_id):
+        it = db.get_day_item(item_id)
+        return it.rest_seconds, it.rest_after_seconds
+
+    def lines() -> list[str]:
+        return re.findall(r'<span class="dx-sub">([^<]*)</span>', client_for("ivan@test.local").get(base).text)
+
+    assert location(save(ig, rest_after="90")) == f"{base}/uredi?ok=Spremljeno.&stavka={ig}#stavka-{ig}"
+    assert rests(ig) == (60, 90)
+    for bad in ("3601", "-1", "abc", "1.5", "²", "90 s"):
+        r = save(ig, rest_after=bad)
+        assert location(r) == f"{base}/uredi?error=Neispravan broj.&stavka={ig}#stavka-{ig}", bad
+    assert rests(ig) == (60, 90)
+    with pytest.raises(ValueError, match="Neispravan broj."):
+        db.update_day_item(ig, "trening", 3, 10, None, 60, 3601, "")
+    for value, kept in (("0", 0), ("3600", 3600), ("", None)):
+        save(ip, reps="", seconds="40", rest="", rest_after=value, note="")
+        assert rests(ip) == (None, kept), value
+    assert lines() == ["Odmor između serija: 60 s · Odmor nakon vježbe: 90 s · 8 kg"]   # Plank: nothing set, no line
+    save(ig, rest="", note="", rest_after="90")
+    save(ip, reps="", seconds="40", rest="45", note="po strani", rest_after="")
+    assert lines() == ["Odmor nakon vježbe: 90 s", "Odmor između serija: 45 s · po strani"]
+    save(ig)                                                                # emptied: none, nothing of it
+    assert lines() == ["Odmor između serija: 60 s · 8 kg", "Odmor između serija: 45 s · po strani"]
 
 
 def test_a_days_intro_video_is_stored_replaced_removed_and_watched(monkeypatch):
@@ -1294,6 +1345,9 @@ def _schema_diffs(tables: set[str]) -> list:
 
 
 TRENINZI = {"programs", "program_days", "program_day_items", "program_items", "exercises", "exercise_alternatives"}
+# 4f9d6f7103ad, the rest after an exercise: a test that builds program_day_items
+# with 7c3bf996c983 runs it on top, so the table is the model's again
+REST_AFTER = "4f9d6f7103ad_program_day_items_rest_after.py"
 
 
 def _old_items() -> list[tuple]:
@@ -1361,7 +1415,8 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     columns back (the body the note and the instructions, a line between
     them) and drops the tables; a second upgrade folds them again into the
     same library and the same notes, printing nothing. Then 7c3bf996c983 on
-    top makes the items days, and every table is the models'."""
+    top makes the items days (and 4f9d6f7103ad gives them the rest after an
+    exercise), and every table is the models'."""
     mig = _migration("4c2e8a6f1d39_exercise_library.py")
     assert (mig.revision, mig.down_revision) == ("4c2e8a6f1d39", "b18ebed39701")
     with db.engine.begin() as conn:                                         # the tables as before the revision
@@ -1419,6 +1474,7 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     assert _flat_library() == library and _flat_notes(p1, p2, p3) == notes
 
     _run(_migration("7c3bf996c983_program_days.py").upgrade)                 # and on to the days
+    _run(_migration(REST_AFTER).upgrade)                                     # and their rest after an exercise
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI) == []
     assert _library() == library
     assert [[(i.exercise.name, i.sets, i.reps, i.seconds, i.note) for i in items_of(p)] for p in (p1, p2, p3)] == [
@@ -1460,8 +1516,10 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     the models'. Downgrade puts program_items back, a programme's items
     counting on across its days in each day's display order, each note its
     dose and its note joined by " · ", and drops the days; a second upgrade
-    folds them again."""
+    folds them again. (4f9d6f7103ad follows each upgrade: the items' rest
+    after an exercise, a later column the models have.)"""
     mig = _migration("7c3bf996c983_program_days.py")
+    rest_after = _migration(REST_AFTER)
     assert (mig.revision, mig.down_revision) == ("7c3bf996c983", "4c2e8a6f1d39")
     with db.engine.begin() as conn:                                         # the tables as before the revision
         # (workout_logs, 3890252ee50f's, points at program_days: it goes first)
@@ -1481,6 +1539,7 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
             conn.execute(sa_text("INSERT INTO program_items (program_id, position, exercise_id, note) VALUES (:p, :n, :e, :t)"),
                          {"p": p1, "n": n, "e": eid, "t": note})
     _run(mig.upgrade)
+    _run(rest_after.upgrade)
     assert capsys.readouterr().out == f"[7c3bf996c983] programs {p1} ('Cijelo tijelo — srednja'): Dan 1 with 7 exercises\n"
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI) == []
     days = db.get_program(p1).days
@@ -1493,11 +1552,11 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     # a second day, and sections: the way back counts on across the days, each in its display order
     first, second = days[0].id, db.add_day(p1)
     warm = db.add_day_item(first, ids[0], "zagrijavanje")
-    db.update_day_item(warm, "zagrijavanje", 2, None, None, None, "")
+    db.update_day_item(warm, "zagrijavanje", 2, None, None, None, None, "")
     stretch = db.add_day_item(second, ids[1], "istezanje")
-    db.update_day_item(stretch, "istezanje", 2, None, 30, None, "po nozi")
+    db.update_day_item(stretch, "istezanje", 2, None, 30, None, None, "po nozi")
     reps = db.add_day_item(second, ids[2], "zagrijavanje")
-    db.update_day_item(reps, "zagrijavanje", None, 10, None, 30, "")
+    db.update_day_item(reps, "zagrijavanje", None, 10, None, 30, None, "")
     _run(mig.downgrade)
     assert not {"program_days", "program_day_items"} & _tables()
     back = ["2 serije", "3 × 8 · 8 kg", "3 × 20 s", "3 × 5 · s koljena", "3 × 6 · po nozi", "3 × 10 · 2 × 6 kg", "",
@@ -1505,11 +1564,41 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     exercises = [ids[0], *ids, ids[2], ids[1]]
     assert _flat_items() == [(p1, n, eid, note) for n, (eid, note) in enumerate(zip(exercises, back), start=1)]
     _run(mig.upgrade)
+    _run(rest_after.upgrade)
     assert capsys.readouterr().out.endswith("Dan 1 with 10 exercises\n")
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI) == []
     assert [(i.exercise_id, i.section, i.sets, i.reps, i.seconds, i.note) for i in items_of(p1)][:3] == [
         (ids[0], "trening", None, None, None, "2 serije"), (ids[0], "trening", 3, 8, None, "8 kg"),
         (ids[1], "trening", 3, None, 20, "")]
+
+
+def test_the_rest_after_migration_adds_the_column_and_takes_it_away():
+    """4f9d6f7103ad, run on qmt_test as before it (program_day_items without
+    rest_after_seconds, an item in it with its rest between sets): the
+    column as the model has it, the item already there with none (no rest
+    after it until Amir types one), the rest of the row as it was;
+    downgrade drops the column, the item staying, and a second upgrade adds
+    it again."""
+    mig = _migration(REST_AFTER)
+    assert (mig.revision, mig.down_revision) == ("4f9d6f7103ad", "3890252ee50f")
+    pid = db.create_program("T", None, "pocetna", "cijelo")
+    iid = hold(pid, db.create_exercise("Plank"))
+    db.update_day_item(iid, "trening", 3, None, 40, 60, 90, "po strani")
+    with db.engine.begin() as conn:                                         # the table as before the revision
+        conn.execute(sa_text("ALTER TABLE program_day_items DROP COLUMN rest_after_seconds"))
+    _run(mig.upgrade)
+    assert _schema_diffs(TRENINZI) == []
+    it = db.get_day_item(iid)
+    assert (it.sets, it.seconds, it.rest_seconds, it.rest_after_seconds, it.note) == (3, 40, 60, None, "po strani")
+    db.update_day_item(iid, "trening", 3, None, 40, 60, 90, "po strani")
+    assert db.get_day_item(iid).rest_after_seconds == 90
+    _run(mig.downgrade)
+    assert "rest_after_seconds" not in {c["name"] for c in sa_inspect(db.engine).get_columns("program_day_items")}
+    with db.engine.connect() as conn:
+        assert conn.execute(sa_text("SELECT sets, seconds, rest_seconds, note FROM program_day_items WHERE id = :i"),
+                            {"i": iid}).one() == (3, 40, 60, "po strani")
+    _run(mig.upgrade)
+    assert _schema_diffs(TRENINZI) == [] and db.get_day_item(iid).rest_after_seconds is None
 
 
 def test_nutricionizam_links_to_mojimakrosi():

@@ -175,9 +175,10 @@ DEMO_EXERCISES = {
 }
 # Each programme's Dan 1 (no title, no weekday, no intro): per cilj, its
 # exercises in their order, in section trening, each with its dose per
-# razina, (sets, reps, seconds, note), and DEMO_REST seconds of rest between
-# sets. Each programme is titled by its cilj and razina ("Cijelo tijelo —
-# srednja razina") and has DEMO_INTRO for an intro.
+# razina, (sets, reps, seconds, note), DEMO_REST seconds of rest between
+# sets and DEMO_REST_AFTER after the exercise. Each programme is titled by
+# its cilj and razina ("Cijelo tijelo — srednja razina") and has DEMO_INTRO
+# for an intro.
 DEMO_PROGRAMS = {
     "cijelo": [
         ("Goblet čučanj", {"pocetna": (3, 8, None, "8 kg"), "srednja": (4, 10, None, "16 kg"),
@@ -210,6 +211,7 @@ DEMO_PROGRAMS = {
     ],
 }
 DEMO_REST = 60                   # seconds between sets, every DEMO_PROGRAMS item's
+DEMO_REST_AFTER = 90             # seconds after the exercise, before the next one: every demo item's (DAYS' too)
 DEMO_INTRO = "Odmor 60–90 s između serija. Tempo kontroliran."
 
 # The library's demo (30.10.2026): tags on some of DEMO_EXERCISES, a few
@@ -235,7 +237,8 @@ LIBRARY = {
 # DEMO_PROGRAMS exercises, and a Dan 2, so the demo shows two days and all
 # three sections.
 # (day title, weekday, [(exercise, section, sets, reps, seconds, rest, note)]):
-# Dan 1's items are added to DEMO_PROGRAMS', Dan 2's make a new day.
+# Dan 1's items are added to DEMO_PROGRAMS', Dan 2's make a new day; every
+# item gets DEMO_REST_AFTER seconds of rest after it.
 DAYS = [
     ("Cijelo tijelo", 0, [("Čučanj s vlastitom težinom", "zagrijavanje", 2, 15, None, 30, ""),
                           ("Istezanje stražnje lože", "istezanje", 2, None, 30, None, "po nozi")]),
@@ -248,10 +251,11 @@ DAYS = [
 def seed_program() -> None:
     """The 9 combo programmes (DEMO_PROGRAMS), each with its Dan 1 of the
     demo exercises in section trening (library rows, DEMO_EXERCISES: the
-    cues; each item its razina's dose and DEMO_REST seconds of rest), then
-    the library's demo (LIBRARY) and the days' demo (DAYS, ivan's
-    programme). A dev RESET: the library goes with the programmes (their
-    clips' files are left alone: the dev .env may point storage at R2)."""
+    cues; each item its razina's dose, DEMO_REST seconds of rest between its
+    sets and DEMO_REST_AFTER after it), then the library's demo (LIBRARY)
+    and the days' demo (DAYS, ivan's programme). A dev RESET: the library
+    goes with the programmes (their clips' files are left alone: the dev
+    .env may point storage at R2)."""
     from sqlalchemy import delete, select
 
     from qmt.models import Exercise, Program
@@ -269,7 +273,7 @@ def seed_program() -> None:
             for name, doses in DEMO_PROGRAMS[goal]:
                 sets, reps, seconds, note = doses[level]
                 item_id = db.add_day_item(day_id, ids[name], "trening")
-                db.update_day_item(item_id, "trening", sets, reps, seconds, DEMO_REST, note)
+                db.update_day_item(item_id, "trening", sets, reps, seconds, DEMO_REST, DEMO_REST_AFTER, note)
                 made_items += 1
             made += 1
     for name, (tags, instructions, rep_note, _) in LIBRARY.items():
@@ -286,7 +290,7 @@ def seed_program() -> None:
         db.update_day(day_id, title, weekday, "")
         for name, section, sets, reps, seconds, rest, note in items:
             item_id = db.add_day_item(day_id, ids[name], section)
-            db.update_day_item(item_id, section, sets, reps, seconds, rest, note)
+            db.update_day_item(item_id, section, sets, reps, seconds, rest, DEMO_REST_AFTER, note)
     print(f"  {made} demo programa (razina × cilj), svaki s Danom 1 ({made_items} stavki u svima); "
           f"{len(ids)} vježbi u bazi; srednja × cijelo: {len(DAYS)} dana, sva tri dijela")
 
