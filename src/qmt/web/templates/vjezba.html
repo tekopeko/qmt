@@ -3,15 +3,10 @@
 {% block head %}
 <style>
   /* An exercise of the library (30.10.2026): the /admin pages' look,
-     labelled fields in cards. Two forms, each its own card: the texts with
-     the similar exercises (one POST), and the clip (a POST of its own,
-     multipart, for an exercise that exists). */
-  .ex-card { max-width: 640px; padding: 18px 20px; margin-bottom: 22px; }
-  .ex-card h2 { font-size: 1.05rem; margin-bottom: 12px; }
-  .ex-card textarea { resize: vertical; }
-  /* a field's hint, under its input */
-  .ex-hint { margin: -6px 0 14px; overflow-wrap: anywhere; }
-  .ex-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+     labelled fields in cards (.ex-card, .ex-hint, .ex-actions: base.html's
+     since the day editor's cards are the same). Two forms, each its own
+     card: the texts with the similar exercises (one POST), and the clip (a
+     POST of its own, multipart, for an exercise that exists). */
   /* Slične vježbe: every other exercise as a checkbox row, in a box that
      scrolls past seven rows or so; the filter above it is shown by the
      script (without it the box is the whole list). A row is a label, not
@@ -33,12 +28,8 @@
   .alt-list input { flex: none; width: 18px; height: 18px; padding: 0; accent-color: var(--accent); }
   .alt-list .tags { color: var(--muted); font-size: .8rem; }
   .alt-none { color: var(--muted); font-size: .9rem; }
-  /* the clip as it plays: a portrait clip letterboxed in a dark box the
-     card's width, as Shape's player holds it */
-  .ex-video video { display: block; width: 100%; max-height: 440px; margin-bottom: 14px;
-                    background: #000; border-radius: var(--r-md); }
-  .ex-delete { margin-top: 8px; }
-  .ex-delete button { color: var(--accent); border-color: var(--accent); }
+  /* the clip as it plays (.ex-video) and "Obriši vježbu" (.ex-delete):
+     base.html's, shared with the day editor and the client's day page */
 </style>
 {% endblock %}
 {# a refused save comes back as this page (what was typed kept), its

@@ -20,7 +20,8 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .. import auth, config, copy, db, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, ONLINE_TIER_SLOTS, ONLINE_TIERS, PAYMENT_METHODS, PLAN_ABBR,
-                      PLAN_LABELS, PLAN_TYPES, SESSION_KINDS, add_month, sub_month)
+                      PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, WEEKDAYS as DAY_WEEKDAYS, add_month,
+                      plural, sub_month)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -61,6 +62,11 @@ templates.env.globals["QUESTION"] = copy.UPITNIK_QUESTION_SLOTS   # a question's
 templates.env.globals["VODIC_SECTIONS"] = range(1, len(copy.VODIC_SECTIONS) + 1)
 # an online tier's QMove card, whose title slot is the tier's name (moja_clanarina.html, Paket)
 templates.env.globals["ONLINE_TIER_SLOTS"] = ONLINE_TIER_SLOTS
+# an online programme's day (30.10.2026): its sections in their order, the
+# weekday it suggests ("ponedjeljak"), and a noun after its count, "7 vježbi"
+templates.env.globals["SECTIONS"] = SECTIONS
+templates.env.globals["WEEKDAYS"] = DAY_WEEKDAYS
+templates.env.globals["plural"] = plural
 # a price slot's text as the page prints it, and whether it is a number at
 # all: "€" follows "50" and "od 30", not "na upit" (landing.html,
 # _plan_price.html), nor an amount that carries its own (21.10.2026: a gym
@@ -2100,9 +2106,11 @@ _VIDEO_SIGNATURES = {".mp4": (4, b"ftyp"), ".mov": (4, b"ftyp"), ".webm": (0, b"
 _VIDEO_UNSUPPORTED = "Nepodržan format — dozvoljeno: mp4, mov, webm."
 
 
-def _save_video(upload: UploadFile | None, exercise_id: int) -> str | None:
-    """Store an uploaded exercise clip; its new file name
-    (vjezba-<id>-<hex>.<ext>), or None when no file came (or an empty one).
+def _save_video(upload: UploadFile | None, prefix: str) -> str | None:
+    """Store an uploaded clip, an exercise's or a day's intro video; its new
+    file name, the prefix the caller names it by and a random part
+    (vjezba-<id>-<hex>.<ext>, dan-<id>-<hex>.<ext>), or None when no file
+    came (or an empty one).
 
     Spooled to a temp file in 1 MB chunks to a size cap, config.VIDEO_MAX_MB:
     a phone video can be huge and must fail cleanly, not fill the disk, and
@@ -2134,16 +2142,16 @@ def _save_video(upload: UploadFile | None, exercise_id: int) -> str | None:
         at, magic = _VIDEO_SIGNATURES[suffix]
         if head[at:at + len(magic)] != magic:
             raise ValueError(_VIDEO_UNSUPPORTED)
-        name = f"vjezba-{exercise_id}-{secrets.token_hex(8)}{suffix}"
+        name = f"{prefix}-{secrets.token_hex(8)}{suffix}"
         storage.save(name, tmp, _VIDEO_TYPES[suffix])
         return name
     finally:
         tmp.unlink(missing_ok=True)          # a refusal's bytes; a stored file has moved on already
 
 
-# Where "Nova vježba →" in the programme editor comes back to once the
-# exercise is made: a path of the treninzi pages, nothing else (no other
-# site, no other page of the app, no query).
+# Where "Nova vježba →" in the day editor comes back to once the exercise
+# is made: a path of the treninzi pages, nothing else (no other site, no
+# other page of the app, no query).
 _NATRAG = re.compile(r"/treninzi/[0-9A-Za-z/_-]*")
 
 
@@ -2283,8 +2291,8 @@ def vjezba_nova(request: Request, name: str = Form(""), instructions: str = Form
                 rep_note: str = Form(""), tags: str = Form(""), alternative: list[str] = Form([]),
                 natrag: str = Form("")):
     """Make the exercise, then its page (to add the clip), or back where
-    "Nova vježba →" came from (`natrag`, the programme editor), the new
-    exercise chosen in its picker."""
+    "Nova vježba →" came from (`natrag`, a day's editor), the new exercise
+    chosen in its picker."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -2347,7 +2355,7 @@ def vjezba_video(request: Request, exercise_id: int, video: UploadFile | None = 
     if db.exercise(exercise_id) is None:
         raise HTTPException(status_code=404)
     try:
-        name = _save_video(video, exercise_id)
+        name = _save_video(video, f"vjezba-{exercise_id}")
     except ValueError as err:
         return RedirectResponse(f"{back}?error={quote(str(err))}", status_code=303)
     if name is None:
@@ -2395,6 +2403,8 @@ def vjezba_obrisi(request: Request, exercise_id: int):
 
 @app.get("/treninzi/{program_id}", response_class=HTMLResponse)
 def program_view(request: Request, program_id: int):
+    """A programme: its intro, then its days as cards, each a link to its
+    page."""
     user, p = _program_or_403(request, program_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2402,10 +2412,25 @@ def program_view(request: Request, program_id: int):
         request, user, p=p))
 
 
+@app.get("/treninzi/{program_id}/dan/{day_id}", response_class=HTMLResponse)
+def program_day_view(request: Request, program_id: int, day_id: int):
+    """A day of a programme, the client's page (the trainer's too): its
+    intro and intro video, then the whole list of its exercises in their
+    sections, each with its dose, rest and note, its clip opened in place."""
+    user, p = _program_or_403(request, program_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    day = db.get_day(day_id)
+    if day is None or day.program_id != program_id:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(request, "trening_day.html", _ctx(
+        request, user, p=p, day=day))
+
+
 @app.get("/treninzi/{program_id}/uredi", response_class=HTMLResponse)
-def program_edit_page(request: Request, program_id: int, vjezba: str = ""):
-    """The programme's editor; its picker offers the whole library, the
-    exercise `vjezba` chosen (one just made through "Nova vježba →")."""
+def program_edit_page(request: Request, program_id: int):
+    """The programme's editor: its form, then its days (each opens the day
+    editor, moves with ↑ / ↓ or goes with ✕) and "+ Dodaj dan"."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -2413,8 +2438,7 @@ def program_edit_page(request: Request, program_id: int, vjezba: str = ""):
     if p is None:
         raise HTTPException(status_code=404)
     return templates.TemplateResponse(request, "trening_edit.html", _ctx(
-        request, user, p=p, levels=upitnik.LEVELS, goals=upitnik.GOALS,
-        choices=[e for e, _ in db.exercises()], chosen=_id(vjezba)))
+        request, user, p=p, levels=upitnik.LEVELS, goals=upitnik.GOALS))
 
 
 @app.post("/treninzi/{program_id}/edit")
@@ -2433,56 +2457,235 @@ def program_edit(request: Request, program_id: int, title: str = Form(...),
 
 @app.post("/treninzi/{program_id}/delete")
 def program_delete(request: Request, program_id: int):
-    """The programme and its items go; the exercises and their clips stay in
-    the library."""
+    """The programme, its days and their items go, then the days' intro
+    videos' files; the exercises and their clips stay in the library."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    db.delete_program(program_id)
+    for name in db.delete_program(program_id) or ():
+        storage.delete(name)
     return RedirectResponse("/treninzi?ok=Trening+je+obrisan.", status_code=303)
 
 
-@app.post("/treninzi/{program_id}/items")
-def item_add(request: Request, program_id: int, exercise_id: str = Form("")):
-    """"+ Dodaj vježbu": an exercise of the library, last in the programme.
-    An item has nothing of its own to edit since 30.10.2026 (the exercise
-    holds the texts and the clip), so no item edit route: another exercise
-    is ✕ and this, then ↑ / ↓."""
-    user, redirect = _require_trainer(request)
-    if redirect:
-        return redirect
-    if db.get_program(program_id) is None:
+# ---------- a programme's days (30.10.2026, stage 2 of the online treninzi spec) ----------
+# Amir's: each route through _require_trainer; a day that is not the
+# programme's, and an item that is not the day's, is 404.
+
+def _program_day(program_id: int, day_id: int):
+    """(programme, day) for the editors, both loaded; 404 when either is gone
+    or the day is another programme's."""
+    p = db.get_program(program_id)
+    day = db.get_day(day_id)
+    if p is None or day is None or day.program_id != program_id:
         raise HTTPException(status_code=404)
-    back = f"/treninzi/{program_id}/uredi"
+    return p, day
+
+
+def _day_item(program_id: int, day_id: int, item_id: int):
+    """An item of this programme's day, or 404."""
+    it = db.get_day_item(item_id)
+    if it is None or it.day_id != day_id or it.day.program_id != program_id:
+        raise HTTPException(status_code=404)
+    return it
+
+
+def _count(value: str | None) -> int | None:
+    """A posted number of the day editor's row: "" (or spaces) is none;
+    ASCII digits, nine at most, a number; anything else ValueError with
+    db.BAD_NUMBER, the row's sentence."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    if not re.fullmatch(r"[0-9]{1,9}", value):
+        raise ValueError(db.BAD_NUMBER)
+    return int(value)
+
+
+@app.post("/treninzi/{program_id}/dani")
+def day_add(request: Request, program_id: int):
+    """"+ Dodaj dan": a day after the last, then its editor."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    day_id = db.add_day(program_id)
+    if day_id is None:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"/treninzi/{program_id}/dan/{day_id}/uredi", status_code=303)
+
+
+@app.get("/treninzi/{program_id}/dan/{day_id}/uredi", response_class=HTMLResponse)
+def day_edit_page(request: Request, program_id: int, day_id: int, vjezba: str = ""):
+    """A day's editor: its title, weekday and intro, its intro video, then
+    its exercises per section, each with its own form, and the picker, which
+    offers the whole library, the exercise `vjezba` chosen (one just made
+    through "Nova vježba →")."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    p, day = _program_day(program_id, day_id)
+    return templates.TemplateResponse(request, "trening_day_edit.html", _ctx(
+        request, user, p=p, day=day, choices=[e for e, _ in db.exercises()], chosen=_id(vjezba),
+        video_max_mb=config.VIDEO_MAX_MB))
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}")
+def day_save(request: Request, program_id: int, day_id: int, title: str = Form(""), weekday: str = Form(""),
+             intro: str = Form("")):
+    """The day's form: title, suggested weekday ("" none, "0"–"6") and
+    intro."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    from urllib.parse import quote
+    _program_day(program_id, day_id)
+    back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
+    try:
+        if weekday not in ("", "0", "1", "2", "3", "4", "5", "6"):
+            raise ValueError("Odaberi dan u tjednu.")
+        saved = db.update_day(day_id, title, int(weekday) if weekday else None, intro)
+    except ValueError as err:
+        return RedirectResponse(f"{back}?error={quote(str(err))}", status_code=303)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"{back}?ok=Spremljeno.", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/video")
+def day_video(request: Request, program_id: int, day_id: int, video: UploadFile | None = File(None)):
+    """The day's intro video, as an exercise's clip: stored, put on the day,
+    the one it had deleted once the row names the new one."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    from urllib.parse import quote
+    _program_day(program_id, day_id)
+    back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
+    try:
+        name = _save_video(video, f"dan-{day_id}")
+    except ValueError as err:
+        return RedirectResponse(f"{back}?error={quote(str(err))}", status_code=303)
+    if name is None:
+        return RedirectResponse(f"{back}?error={quote('Odaberi video.')}", status_code=303)
+    try:
+        old = db.set_day_video(day_id, name)
+    except LookupError:                          # the day deleted while its video went up
+        storage.delete(name)
+        raise HTTPException(status_code=404)
+    if old:
+        storage.delete(old)
+    return RedirectResponse(f"{back}?ok={quote('Video je spremljen.')}", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/video/ukloni")
+def day_video_ukloni(request: Request, program_id: int, day_id: int):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    _program_day(program_id, day_id)
+    try:
+        old = db.set_day_video(day_id, None)
+    except LookupError:
+        raise HTTPException(status_code=404)
+    if old:
+        storage.delete(old)
+    return RedirectResponse(f"/treninzi/{program_id}/dan/{day_id}/uredi?ok=Video+je+uklonjen.", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/pomak")
+def day_move(request: Request, program_id: int, day_id: int, smjer: str = Form("")):
+    """↑ / ↓ in the programme's editor: the day trades places (and numbers)
+    with its neighbour; back at its row."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    _program_day(program_id, day_id)
+    db.move_day(day_id, smjer)
+    return RedirectResponse(f"/treninzi/{program_id}/uredi#dan-{day_id}", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/obrisi")
+def day_delete(request: Request, program_id: int, day_id: int):
+    """The day and its items go, then its intro video's file; the later days
+    move up. Its exercises stay in the library."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    _program_day(program_id, day_id)
+    video = db.delete_day(day_id)
+    if video:
+        storage.delete(video)
+    return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Dan+je+obrisan.", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/stavke")
+def day_item_add(request: Request, program_id: int, day_id: int, exercise_id: str = Form(""),
+                 section: str = Form("trening")):
+    """"Dodaj vježbu": an exercise of the library, last in the chosen
+    section; back at its row, to fill in what the day asks of it."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    _program_day(program_id, day_id)
+    back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
     chosen = _id(exercise_id)
-    if chosen is None or db.add_item(program_id, chosen) is None:
+    item_id = db.add_day_item(day_id, chosen, section) if chosen is not None else None
+    if item_id is None:
         return RedirectResponse(f"{back}?error=Odaberi+vje%C5%BEbu+iz+baze.", status_code=303)
-    return RedirectResponse(f"{back}#dodaj", status_code=303)
+    return RedirectResponse(f"{back}#stavka-{item_id}", status_code=303)
 
 
-@app.post("/treninzi/{program_id}/items/{item_id}/delete")
-def item_delete(request: Request, program_id: int, item_id: int):
+@app.post("/treninzi/{program_id}/dan/{day_id}/stavke/{item_id}")
+def day_item_save(request: Request, program_id: int, day_id: int, item_id: int, section: str = Form("trening"),
+                  sets: str = Form(""), reps: str = Form(""), seconds: str = Form(""), rest: str = Form(""),
+                  note: str = Form("")):
+    """A row's form: its section, sets, reps or seconds, rest and note; an
+    empty number is none. Back at the row, which carries the word
+    ("Spremljeno." or the sentence of a refusal): `stavka` names it, so the
+    page prints the alert in that row, not at its top, out of view on a
+    phone scrolled to the row."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    db.delete_item(item_id)
-    return RedirectResponse(f"/treninzi/{program_id}/uredi", status_code=303)
+    from urllib.parse import quote
+    _day_item(program_id, day_id, item_id)
+    back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
+    try:
+        saved = db.update_day_item(item_id, section, _count(sets), _count(reps), _count(seconds), _count(rest), note)
+    except ValueError as err:
+        return RedirectResponse(f"{back}?error={quote(str(err))}&stavka={item_id}#stavka-{item_id}", status_code=303)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"{back}?ok=Spremljeno.&stavka={item_id}#stavka-{item_id}", status_code=303)
 
 
-@app.post("/treninzi/{program_id}/items/{item_id}/move")
-def item_move(request: Request, program_id: int, item_id: int, dir: str = Form(...)):
+@app.post("/treninzi/{program_id}/dan/{day_id}/stavke/{item_id}/pomak")
+def day_item_move(request: Request, program_id: int, day_id: int, item_id: int, smjer: str = Form("")):
+    """↑ / ↓ on a row: it trades places with its neighbour in its section."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    db.move_item(item_id, "up" if dir == "up" else "down")
-    return RedirectResponse(f"/treninzi/{program_id}/uredi", status_code=303)
+    _day_item(program_id, day_id, item_id)
+    db.move_day_item(item_id, smjer)
+    return RedirectResponse(f"/treninzi/{program_id}/dan/{day_id}/uredi#stavka-{item_id}", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/stavke/{item_id}/obrisi")
+def day_item_delete(request: Request, program_id: int, day_id: int, item_id: int):
+    """✕ on a row: the exercise leaves the day; the library keeps it."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    _day_item(program_id, day_id, item_id)
+    db.delete_day_item(item_id)
+    return RedirectResponse(f"/treninzi/{program_id}/dan/{day_id}/uredi", status_code=303)
 
 
 @app.get("/media/{name}")
 def media(request: Request, name: str):
-    """An exercise's clip — auth-gated, never a public static mount: staff
-    (the trainer, the owner) watch any, a client one whose exercise is in a
-    programme he is matched to, while his online plan runs."""
+    """An exercise's clip or a day's intro video — auth-gated, never a
+    public static mount: staff (the trainer, the owner) watch any, a client
+    one whose exercise is in a programme he is matched to, or whose day is
+    one of its days, while his online plan runs."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)

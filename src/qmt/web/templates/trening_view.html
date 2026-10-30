@@ -1,38 +1,41 @@
 {% extends "base.html" %}
 {% block title %}{{ p.title }} — QMT{% endblock %}
+{% block head %}
+<style>
+  /* A programme's days (30.10.2026): one card each, the client's /treninzi
+     cards' look, the whole card one link (52px at least), the → at the
+     right; its label in 700, under it what the day is in muted words (the
+     weekday it suggests, how many exercises). Any day opens any time: the
+     weekday is a suggestion. */
+  .days { display: flex; flex-direction: column; gap: 12px; margin-top: 26px; max-width: 640px; }
+  .day-card { min-height: 52px; padding: 16px 20px; display: flex; gap: 16px; align-items: center;
+              color: var(--text); text-decoration: none; }
+  .day-card .dc-main { flex: 1; min-width: 0; }
+  .day-card strong, .day-card .hint { display: block; overflow-wrap: anywhere; }
+  .day-card .dc-go { color: var(--accent); font-weight: 700; }
+</style>
+{% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><span class="here">{{ p.title }}</span></nav>
 <h1>{{ p.title }}</h1>
-<p class="hint" style="margin-bottom:6px;">
-  {{ p.items|length }} {{ "vježba" if p.items|length % 10 == 1 and p.items|length % 100 != 11 else "vježbi" }}
-</p>
+{% set n = p.days|length %}
+<p class="hint" style="margin-bottom:6px;">{{ n }} {{ plural(n, "dan", "dana", "dana") }}</p>
 {% if p.intro %}<p style="max-width:64ch; margin-bottom:10px; white-space:pre-line;">{{ p.intro }}</p>{% endif %}
 {% if user.is_trainer %}
   <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/uredi">Uredi trening</a>
 {% endif %}
 
-<div style="display:flex; flex-direction:column; gap:18px; margin-top:26px; max-width:760px;">
-  {# each exercise from the library (30.10.2026): its clip, its name, the
-     item's own note (its razina's dose, bold, as the body's first line read
-     before), what one rep is and how it is done #}
-  {% for it in p.items %}{% set ex = it.exercise %}
-  <div class="card" style="padding:0; overflow:hidden;">
-    {% if ex.video %}
-      <video controls playsinline preload="metadata" style="width:100%; display:block; background:#000; max-height:460px;"
-             src="/media/{{ ex.video }}"></video>
-    {% endif %}
-    <div style="padding:18px 22px;">
-      <div style="display:flex; align-items:baseline; gap:10px;">
-        <span style="font:700 .8rem var(--font-body); color:var(--accent);">{{ loop.index }}</span>
-        <h3 style="font-size:1.05rem; overflow-wrap:anywhere;">{{ ex.name }}</h3>
-      </div>
-      {% if it.note %}<p style="margin-top:8px; font-weight:700; white-space:pre-line; overflow-wrap:anywhere;">{{ it.note }}</p>{% endif %}
-      {% if ex.rep_note %}<p style="margin-top:8px; white-space:pre-line; overflow-wrap:anywhere;"><strong>Jedno ponavljanje:</strong> {{ ex.rep_note }}</p>{% endif %}
-      {% if ex.instructions %}<p style="margin-top:8px; white-space:pre-line; overflow-wrap:anywhere;">{{ ex.instructions }}</p>{% endif %}
-    </div>
-  </div>
+<div class="days">
+  {% for d in p.days %}{% set k = d.items|length %}
+  <a class="card day-card" href="/treninzi/{{ p.id }}/dan/{{ d.id }}">
+    <span class="dc-main">
+      <strong>{{ d.label }}</strong>
+      <span class="hint">{% if d.weekday is not none %}Preporučeno: {{ WEEKDAYS[d.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}</span>
+    </span>
+    <span class="dc-go" aria-hidden="true">→</span>
+  </a>
   {% else %}
-  <p class="hint">Trening još nema vježbi.</p>
+  <p class="hint">{% if user.is_trainer %}Trening još nema dana — dodaj prvi u uređivanju.{% else %}Trening još nema dana.{% endif %}</p>
   {% endfor %}
 </div>
 {% endblock %}

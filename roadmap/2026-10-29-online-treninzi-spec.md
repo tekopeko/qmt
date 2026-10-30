@@ -1,6 +1,7 @@
 # Online treninzi: a library of exercises, programmes made of days, a player — spec (29.10.2026)
 
-Status: **spec; stage 1 (the library) built 30.10.2026, reviewed and live the same day.** Written by
+Status: **spec; stage 1 (the library) built 30.10.2026, reviewed and live the same day; stage 2
+(days) built 30.10.2026, awaiting review.** Written by
 Fable from the owner's answers of 29.10.2026 (settled 30.10.2026, below). Builds in three
 stages (below), each shippable.
 
@@ -43,15 +44,24 @@ of a termin in the gym).
   the programmes named); an unused one can. Nothing else is soft: a renamed exercise is
   renamed everywhere, which is the point of a library.
 - **`Program`** stays as it is (the nine matched slots + whatever Amir adds).
-- **`ProgramDay`** — `program_id`, `position` (Dan 1 … Dan N, the editor's ↑ / ↓),
-  `title` (160, optional: "Cijelo tijelo"), `weekday` (0–6 or NULL: "preporučeno:
-  ponedjeljak"; a suggestion only, never a gate), `intro` (Text), `intro_video`,
-  `training_video` (stored media names, the guide's two videos, optional). Positions unique
-  per programme, deferred (the announcements' / questions' pattern, so ↑ / ↓ swap in one
-  commit).
-- **`ProgramDayItem`** — `day_id`, `position`, `exercise_id` (FK, RESTRICT), `sets` (int),
-  `reps` (int, NULL) or `seconds` (int, NULL): one of the two, `rest_seconds` (int, NULL),
-  `note` (Text). Replaces `ProgramItem`.
+- **`ProgramDay`** (built 30.10.2026, `program_days`) — `program_id` (CASCADE),
+  `position` (Dan 1 … Dan N, the editor's ↑ / ↓; dense: a day deleted, the later ones move
+  up), `title` (160, "" for none: "Cijelo tijelo"; the label "Dan 1 · Cijelo tijelo"),
+  `weekday` (0–6 or NULL: "Preporučeno: ponedjeljak"; a suggestion only, never a gate),
+  `intro` (Text), `intro_video` (a stored media name, optional, as an exercise's clip;
+  `dan-<id>-<hex>.<ext>`). Positions unique per programme, deferred (the announcements' /
+  questions' pattern, so ↑ / ↓ swap in one commit). No `training_video`: the full training
+  video is left out: a file over `VIDEO_MAX_MB` cannot pass Cloudflare, so it waits for a
+  direct-to-R2 upload or a link, the owner's call.
+- **`ProgramDayItem`** (built 30.10.2026, `program_day_items`) — `day_id` (CASCADE),
+  `position` (unique across the day, deferred), `section` (zagrijavanje / trening /
+  istezanje, a CHECK; the day reads section by section, each in position order; a row moved
+  to another section goes last in it), `exercise_id` (FK, RESTRICT), `sets` (int, NULL),
+  `reps` (int, NULL) or `seconds` (int, NULL): one of the two (a CHECK), `rest_seconds`
+  (int, NULL), `note` (Text, "" for none). The editor's limits: sets 1–99, reps 1–999,
+  seconds 1–3600, rest 0–3600, a note up to 500. Replaced `ProgramItem` (migration
+  `7c3bf996c983`: each programme's flat items its Dan 1 in section trening, each note's
+  dose parsed into sets and reps or seconds, the rest of it the note).
 - **`WorkoutLog`** — the client's record of one pass through a day: `user_id`,
   `program_id`, `day_id` (SET NULL on delete: the row keeps `day_title` and `program_title`
   snapshots), `started_at`, `finished_at` (NULL while in progress), `done` (JSON: the
@@ -126,9 +136,14 @@ of a termin in the gym).
    note beside sets, reps or seconds and rest.
 2. **Days** — `ProgramDay` / `ProgramDayItem` with `section` (zagrijavanje /
    trening / istezanje), sets, reps or seconds, rest, note; the day editor; the
-   client's programme page with day cards and the day page: the two videos, then
-   the whole list in its sections with each exercise's dose, rest and note (no
-   player yet: ▷ opens the exercise's clip in place).
+   client's programme page with day cards and the day page: the intro video,
+   then the whole list in its sections with each exercise's dose, rest and note
+   (no player yet: ▷ opens the exercise's clip in place). **Built 30.10.2026,
+   awaiting review** (an Opus draft; `roadmap/STATUS.md`'s entry of that day;
+   migration `7c3bf996c983`). As built: the client's day page is
+   `/treninzi/{id}/dan/{day id}`, the day editor `/treninzi/{id}/dan/{day id}/uredi`
+   (the programme's editor lists the days); one video per day, the intro (the
+   full training video waits, above).
 3. **The player and the history** — `WorkoutLog` with a set log per exercise
    (`[{"reps": 10, "kg": 20}, …]`, or seconds; prefilled from the plan and the
    last saved log; "Spremi" marks the exercise done, green in the list), the

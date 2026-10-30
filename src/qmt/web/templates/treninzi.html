@@ -32,7 +32,8 @@
      style="padding:16px 20px; text-decoration:none; display:flex; gap:16px; align-items:center;">
     <div style="flex:1; min-width:0;">
       <strong>{{ p.title }}</strong>
-      <div class="hint">{{ p.items|length }} {{ "vježba" if p.items|length % 10 == 1 and p.items|length % 100 != 11 else "vježbi" }}{% if p.intro %} · {{ p.intro | truncate(60) }}{% endif %}</div>
+      {% set n = p.days|length %}
+      <div class="hint">{{ n }} {{ plural(n, "dan", "dana", "dana") }}{% if p.intro %} · {{ p.intro | truncate(60) }}{% endif %}</div>
     </div>
     <span style="color:var(--accent); font-weight:700;">→</span>
   </a>

@@ -40,6 +40,24 @@ ONLINE_TIER_SLOTS = {"start": "offer.online", "pro": "offer.online2", "elite": "
 # Post-training feedback (the Strava pattern): RPE number + how it felt.
 FEELING_LABELS = {"slabo": "Slabo", "dobro": "Dobro", "odlicno": "Odlično"}
 
+# An online programme's day (30.10.2026, ProgramDay): its three sections, in
+# the day's order (the dict's order), each item in one of them; and the
+# weekday a day suggests, 0 = ponedjeljak (a suggestion, never a gate).
+SECTIONS = {"zagrijavanje": "Zagrijavanje", "trening": "Trening", "istezanje": "Istezanje"}
+WEEKDAYS = ("ponedjeljak", "utorak", "srijeda", "četvrtak", "petak", "subota", "nedjelja")
+
+
+def plural(n: int, one: str, few: str, many: str) -> str:
+    """The noun after a count, as Croatian says it: `one` after 1, 21, 31 …
+    (not 11), `few` after 2–4, 22–24 … (not 12–14), `many` after the rest
+    ("1 dan", "3 dana", "5 dana"; "1 vježba", "2 vježbe", "7 vježbi")."""
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
 # Two-letter badges for tight tables (korisnici); legend renders from this.
 PLAN_ABBR = {
     "grupni": "GT",
@@ -612,12 +630,12 @@ class Exercise(Base):
     "We should have a database of exercises which he can choose from and add
     them to different training programmes that will be modular. Each exercise
     will have a video connected to it which will show the exercise and show
-    what one rep means."). A programme's items point at these rows
-    (ProgramItem.exercise_id), so an exercise renamed or given a new clip is
-    renamed and re-shown in every programme that holds it, and one that a
-    programme holds cannot be deleted (db.delete_exercise; the foreign key is
-    RESTRICT). Migration 4c2e8a6f1d39 made the items typed by hand until then
-    into these rows.
+    what one rep means."). A programme's items point at these rows (since
+    30.10.2026 its days' items, ProgramDayItem.exercise_id), so an exercise
+    renamed or given a new clip is renamed and re-shown in every programme
+    that holds it, and one that a programme holds cannot be deleted
+    (db.delete_exercise; the foreign key is RESTRICT). Migration 4c2e8a6f1d39
+    made the items typed by hand until then into these rows.
 
     `name` is unique whatever its case: db.create_exercise / update_exercise
     compare the names casefolded under the table's lock (the rule, with the
@@ -678,7 +696,9 @@ class Program(Base):
     The online side is AUTOMATED — the upitnik routes a client into a razina
     and a cilj, and they see exactly the programmes tagged with that combo.
     The trainer edits the content of the nine skeleton slots (created by
-    `db.ensure_online_skeletons`); no per-client hand-outs anywhere.
+    `db.ensure_online_skeletons`); no per-client hand-outs anywhere. Since
+    30.10.2026 a programme is a list of days (ProgramDay), each day its
+    exercises in three sections (ProgramDayItem).
     """
 
     __tablename__ = "programs"
@@ -693,38 +713,135 @@ class Program(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    items: Mapped[list["ProgramItem"]] = relationship(
-        back_populates="program", cascade="all, delete-orphan", order_by="ProgramItem.position"
+    days: Mapped[list["ProgramDay"]] = relationship(
+        back_populates="program", cascade="all, delete-orphan", order_by="ProgramDay.position"
     )
 
 
-class ProgramItem(Base):
-    """One exercise of a programme, in its place: since 30.10.2026 a library
-    row (Exercise), which holds the name, the instructions, what one rep is
-    and the clip, and the item's own `note`, what it says beside its exercise:
-    for now the dose of its programme's razina ("3 × 8 · 8 kg"), which a
-    client reads above the exercise's texts. Until then an item was typed by
-    hand (a title, a body and one media file, an image or a video), which
-    migration 4c2e8a6f1d39 turned into library rows, each body's dose line
-    the item's note. Nothing edits a note yet: it comes from the migration
-    and the nine slots' defaults (db.ensure_online_skeletons), an item added
-    from the picker has none. The days, sets × reps or seconds and rest are
-    the spec's stage 2 (roadmap/2026-10-29-online-treninzi-spec.md), which
-    keeps `note` as the item's note beside them.
+class ProgramDay(Base):
+    """One day of a programme (30.10.2026, stage 2 of
+    roadmap/2026-10-29-online-treninzi-spec.md; the owner: "Dan 1, … Dan N
+    with suggested days in the week but the user can do them whenever he
+    wants"). Until then a programme was a flat list of items, which
+    migration 7c3bf996c983 made its Dan 1.
 
-    The exercise's foreign key is RESTRICT: an exercise a programme holds
-    cannot be deleted (db.delete_exercise says where it is first)."""
+    `position` is its number, 1-based and dense ("Dan 2": db.delete_day
+    closes the gap), unique per programme; Amir's ↑ / ↓ swap two days'
+    positions in one flush (db.move_day), which is why the constraint is
+    deferred, as the announcements' is: a swap is checked when it commits,
+    whole. `title` is optional ("Cijelo tijelo"), "" for none; `weekday` the
+    day of the week it suggests, 0 = ponedjeljak … 6 = nedjelja (WEEKDAYS),
+    NULL for none: a suggestion, never a gate. `intro` is Amir's words for
+    the day (its line breaks kept), `intro_video` a stored clip's file name
+    (storage.py, served only by the auth-gated /media, as an exercise's),
+    NULL for none: "always watch the intro video first", the guide says.
+    The spec's full training video is left out (a file over VIDEO_MAX_MB
+    cannot pass Cloudflare)."""
 
-    __tablename__ = "program_items"
+    __tablename__ = "program_days"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    program_id: Mapped[int] = mapped_column(
-        ForeignKey("programs.id", ondelete="CASCADE"), index=True
-    )
+    program_id: Mapped[int] = mapped_column(ForeignKey("programs.id", ondelete="CASCADE"), index=True)
     position: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(160), server_default=text("''"), default="")
+    weekday: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    intro: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    intro_video: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                 onupdate=func.now())
+
+    # deferred: ↑ / ↓ swap two positions, checked when the swap commits
+    __table_args__ = (UniqueConstraint("program_id", "position", name="uq_program_days_position",
+                                       deferrable=True, initially="DEFERRED"),)
+
+    program: Mapped[Program] = relationship(back_populates="days")
+    items: Mapped[list["ProgramDayItem"]] = relationship(
+        back_populates="day", cascade="all, delete-orphan", order_by="ProgramDayItem.position"
+    )
+
+    @property
+    def label(self) -> str:
+        """"Dan 1", or "Dan 1 · Cijelo tijelo" with a title."""
+        return f"Dan {self.position}" + (f" · {self.title}" if self.title else "")
+
+    @property
+    def by_section(self) -> dict[str, list["ProgramDayItem"]]:
+        """The items per section, in SECTIONS' order, each section's in
+        position order: the day's display order. A section with none holds
+        an empty list."""
+        out: dict[str, list[ProgramDayItem]] = {key: [] for key in SECTIONS}
+        for it in self.items:                          # in position order
+            if it.section in out:
+                out[it.section].append(it)
+        return out
+
+
+class ProgramDayItem(Base):
+    """One exercise of a day, in its place (30.10.2026; the owner: per
+    exercise "sets × reps, or seconds, rest between sets, a note. That is it
+    for now"): a library row (Exercise: the name, the instructions, what one
+    rep is, the clip) and what the day asks of it.
+
+    `section` is one of SECTIONS (zagrijavanje, trening, istezanje; the
+    owner: "warm up and main", Shape's third allowed and may stay empty).
+    `position` is unique across the day, and the day reads its items section
+    by section in SECTIONS' order, each section in position order (the
+    display order, ProgramDay.by_section); a gap a deleted item left does
+    not matter, and an item moved to another section goes last in it
+    (db.update_day_item). The constraint is deferred so ↑ / ↓ swap two in
+    one commit. `sets`, `reps` or `seconds` (one of the two: the CHECK) and
+    `rest_seconds` are NULL when not set, `note` "" for none ("8 kg", "po
+    nozi"). Migration 7c3bf996c983 parsed each old item's note, its razina's
+    dose ("3 × 8 · 8 kg"), into these.
+
+    The exercise's foreign key is RESTRICT: an exercise a day holds cannot be
+    deleted (db.delete_exercise says where it is first)."""
+
+    __tablename__ = "program_day_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day_id: Mapped[int] = mapped_column(ForeignKey("program_days.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    section: Mapped[str] = mapped_column(String(12), server_default=text("'trening'"), default="trening")
     exercise_id: Mapped[int] = mapped_column(ForeignKey("exercises.id", ondelete="RESTRICT"), index=True)
+    sets: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
 
-    program: Mapped[Program] = relationship(back_populates="items")
+    __table_args__ = (
+        # deferred: ↑ / ↓ swap two positions, checked when the swap commits
+        UniqueConstraint("day_id", "position", name="uq_program_day_items_position",
+                         deferrable=True, initially="DEFERRED"),
+        CheckConstraint("section IN ('zagrijavanje', 'trening', 'istezanje')", name="ck_program_day_items_section"),
+        CheckConstraint("reps IS NULL OR seconds IS NULL", name="ck_program_day_items_reps_or_seconds"),
+    )
+
+    day: Mapped[ProgramDay] = relationship(back_populates="items")
     # every page that shows an item shows its exercise: loaded with it
     exercise: Mapped[Exercise] = relationship(lazy="joined", innerjoin=True)
+
+    @property
+    def dose(self) -> str:
+        """What the day asks, in the list's words: "3 × 10" (sets and
+        reps), "3 × 30 s" (sets and seconds), "10 ponavljanja" (reps alone),
+        "30 s" (seconds alone), "3 serije" (sets alone), "" (none)."""
+        sets, reps, seconds = self.sets, self.reps, self.seconds
+        if sets is not None and reps is not None:
+            return f"{sets} × {reps}"
+        if sets is not None and seconds is not None:
+            return f"{sets} × {seconds} s"
+        if reps is not None:
+            return f"{reps} {plural(reps, 'ponavljanje', 'ponavljanja', 'ponavljanja')}"
+        if seconds is not None:
+            return f"{seconds} s"
+        if sets is not None:
+            return f"{sets} {plural(sets, 'serija', 'serije', 'serija')}"
+        return ""
+
+    @property
+    def rest_text(self) -> str:
+        """The rest between sets, "60 s" (always seconds), "" when not set."""
+        return "" if self.rest_seconds is None else f"{self.rest_seconds} s"

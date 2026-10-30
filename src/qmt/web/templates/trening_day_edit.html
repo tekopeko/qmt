@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Uredi: Dan {{ day.position }} — {{ p.title }} — QMT{% endblock %}
+{% block head %}
+<style>
+  /* A day's editor (30.10.2026, stage 2 of the online treninzi spec): the
+     /admin pages' look. The day's form and its intro video are base.html's
+     .ex-card (an exercise's page's cards); then the exercises, section by
+     section, each section its caption (a section with none says so: Amir
+     sees where things go), each exercise a base.html .it-row whose second
+     line is its own form. */
+  .st-sec { max-width: 760px; }
+  .st-cap { font: 700 .78rem var(--font-display); text-transform: uppercase; letter-spacing: .14em;
+            color: var(--muted); margin: 20px 0 10px; }
+  .st-rows { display: flex; flex-direction: column; gap: 10px; }
+  .st-none { padding: 2px 0 4px; }
+  /* A row's form, line 2: a compact grid of labelled fields, two columns on
+     a phone (Dio, the note and Spremi across both), four from 600px (Dio and
+     the dose, then the rest, the note and Spremi). Every control one height,
+     44px on a coarse pointer, so the row is one footprint. */
+  .st-form { flex: 1 0 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+             gap: 8px 10px; margin: 2px 0 4px; }
+  .st-form label { margin-bottom: 3px; white-space: nowrap; }
+  .st-form :is(input, select) { height: 40px; padding: 0 10px; }
+  .st-form .st-go .btn { width: 100%; height: 40px; }
+  .st-form :is(.st-dio, .st-note, .st-go) { grid-column: 1 / -1; }
+  /* a row's own word after its save ("Spremljeno.", a refusal): the page's
+     alert, inside the row (the page comes back scrolled to the row, and the
+     top is out of view on a phone), the row's width, above its form */
+  .it-row .st-alert { flex: 1 0 100%; margin: 4px 0 2px; }
+  @media (pointer: coarse) {
+    .st-form :is(input, select), .st-form .st-go .btn { height: 44px; }
+  }
+  @media (min-width: 600px) {
+    .st-form { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .st-form :is(.st-dio, .st-go) { grid-column: auto; }
+    .st-form .st-note { grid-column: span 2; }
+    .st-form .st-go { align-self: end; }
+  }
+  /* "Dodaj vježbu": the library as a select (name · tags, the alphabet's
+     order) and the section to put it in, then Dodaj and "Nova vježba →" */
+  .add-ex { max-width: 640px; padding: 18px 20px; scroll-margin-top: 90px; }
+  .add-fields { display: grid; gap: 0 12px; }
+  @media (min-width: 600px) { .add-fields { grid-template-columns: minmax(0, 1fr) 180px; } }
+  .add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+  .add-row .btn-sm { white-space: nowrap; }
+</style>
+{% endblock %}
+{# A row's save comes back with ?stavka=<id> (the row's id) beside ?ok= or
+   ?error=: that row prints the alert, and the page's top prints none. A
+   stavka that names no row of the day (deleted meanwhile): the top, as
+   usual. #}
+{% set focus = request.query_params.get("stavka") %}
+{% set in_row = focus in day.items|map(attribute="id")|map("string")|list %}
+{% block error_alert %}{% if not in_row %}{{ super() }}{% endif %}{% endblock %}
+{% block ok_alert %}{% if not in_row %}{{ super() }}{% endif %}{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}/uredi">{{ p.title }}</a><span class="sep">/</span><span class="here">Dan {{ day.position }}</span></nav>
+<h1>Dan {{ day.position }}</h1>
+<p class="hint">
+  Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja ili sekunde, odmor i napomena.
+  <a class="act act-quiet" href="/treninzi/{{ p.id }}/dan/{{ day.id }}">pogledaj kako polaznik vidi →</a>
+</p>
+
+<form method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}" class="card ex-card">
+  <div class="field"><label for="d-title">Naslov</label>
+    <input id="d-title" type="text" name="title" value="{{ day.title }}" maxlength="160" placeholder="npr. Cijelo tijelo"></div>
+  <div class="field"><label for="d-weekday">Preporučeni dan</label>
+    <select id="d-weekday" name="weekday">
+      <option value=""{% if day.weekday is none %} selected{% endif %}>Bez preporuke</option>
+      {% for w in WEEKDAYS %}<option value="{{ loop.index0 }}"{% if day.weekday == loop.index0 %} selected{% endif %}>{{ w|capitalize }}</option>{% endfor %}
+    </select></div>
+  <div class="field"><label for="d-intro">Uvod</label>
+    <textarea id="d-intro" name="intro" rows="3" placeholder="Kratko o treningu: fokus, tempo, na što paziti.">{{ day.intro }}</textarea></div>
+  <button type="submit" class="btn btn-sm">Spremi</button>
+</form>
+
+<section class="card ex-card ex-video" id="video" aria-labelledby="dan-video-h">
+  <h2 id="dan-video-h">Uvodni video</h2>
+  <p class="hint ex-hint">Kratko objašnjenje treninga — polaznik ga gleda prije prve vježbe.</p>
+  {% if day.intro_video %}
+  <video src="/media/{{ day.intro_video }}" controls playsinline preload="metadata"></video>
+  {% endif %}
+  <form method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/video" enctype="multipart/form-data">
+    <div class="field"><label for="dan-file">{{ "Zamijeni video" if day.intro_video else "Video" }} (mp4, mov ili webm, do {{ video_max_mb }} MB)</label>
+      <input id="dan-file" type="file" name="video" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" required></div>
+    <p class="hint ex-hint">iPhone: Postavke → Kamera → Formati → „Najkompatibilnije”, inače Chrome na Androidu i Windowsu ne može reproducirati snimku.</p>
+    <div class="ex-actions">
+      <button type="submit" class="btn btn-sm">{{ "Zamijeni video" if day.intro_video else "Dodaj video" }}</button>
+      {% if day.intro_video %}<button type="submit" form="dan-video-x" class="btn-ghost btn-sm">Ukloni video</button>{% endif %}
+    </div>
+  </form>
+  {% if day.intro_video %}
+  {# its button sits beside "Zamijeni video" (form=), a form holds no form #}
+  <form id="dan-video-x" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/video/ukloni"
+        data-confirm-title="Ukloniti video?"
+        data-confirm="Uvodni video dana „{{ day.label }}” bit će obrisan. Naslov, uvod i vježbe ostaju."
+        data-confirm-cta="Ukloni video"></form>
+  {% endif %}
+</section>
+
+<h2 style="font-size:1.05rem; margin-top:30px;">Vježbe</h2>
+{# The day's exercises, section by section. A row: the exercise's name (a
+   link to it in the library), whether it has a clip, ↑ / ↓ (within its
+   section) and ✕ (out of the day, it stays in the library); under them the
+   row's own form, what the day asks of it. Its ↑ / ↓ / ✕ name forms that
+   stand after the list (form=): a form holds no form. #}
+{% for key, label in SECTIONS.items() %}{% set rows = day.by_section[key] %}
+<section class="st-sec" aria-labelledby="dio-{{ key }}">
+  <h3 class="st-cap" id="dio-{{ key }}">{{ label }}</h3>
+  <div class="st-rows">
+    {% for it in rows %}{% set ex = it.exercise %}
+    <div class="card it-row" id="stavka-{{ it.id }}">
+      <a class="it-name" href="/treninzi/vjezbe/{{ ex.id }}">{{ ex.name }}</a>
+      <span class="it-end">
+        {% if ex.video %}<span class="it-video has">video ✓</span>{% else %}<span class="it-video">bez videa</span>{% endif %}
+        <span class="it-acts">
+          <button type="submit" form="st-gore-{{ it.id }}" class="btn-ghost btn-sm"
+                  {% if loop.first %}disabled style="opacity:.35;"{% endif %} aria-label="Pomakni gore: {{ ex.name }}">↑</button>
+          <button type="submit" form="st-dolje-{{ it.id }}" class="btn-ghost btn-sm"
+                  {% if loop.last %}disabled style="opacity:.35;"{% endif %} aria-label="Pomakni dolje: {{ ex.name }}">↓</button>
+          <button type="submit" form="st-x-{{ it.id }}" class="btn-ghost btn-sm" aria-label="Makni iz dana: {{ ex.name }}">✕</button>
+        </span>
+      </span>
+      {% if in_row and focus == it.id|string %}
+        {% if request.query_params.get("error") %}<div class="alert st-alert" role="alert"><span>{{ request.query_params.get("error") }}</span></div>
+        {% elif request.query_params.get("ok") %}<div class="alert ok st-alert" role="status">{{ request.query_params.get("ok") }}</div>{% endif %}
+      {% endif %}
+      <form class="st-form" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}">
+        <div class="st-dio"><label for="st-{{ it.id }}-dio">Dio</label>
+          <select id="st-{{ it.id }}-dio" name="section">
+            {% for k, l in SECTIONS.items() %}<option value="{{ k }}"{% if k == it.section %} selected{% endif %}>{{ l }}</option>{% endfor %}
+          </select></div>
+        <div><label for="st-{{ it.id }}-sets">Serije</label>
+          <input id="st-{{ it.id }}-sets" type="number" name="sets" inputmode="numeric" min="1" max="99"
+                 value="{{ it.sets if it.sets is not none else '' }}"></div>
+        <div><label for="st-{{ it.id }}-reps">Ponavljanja</label>
+          <input id="st-{{ it.id }}-reps" type="number" name="reps" inputmode="numeric" min="1" max="999"
+                 value="{{ it.reps if it.reps is not none else '' }}"></div>
+        <div><label for="st-{{ it.id }}-secs">Sekunde</label>
+          <input id="st-{{ it.id }}-secs" type="number" name="seconds" inputmode="numeric" min="1" max="3600"
+                 value="{{ it.seconds if it.seconds is not none else '' }}"></div>
+        <div><label for="st-{{ it.id }}-rest">Odmor (s)</label>
+          <input id="st-{{ it.id }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600"
+                 value="{{ it.rest_seconds if it.rest_seconds is not none else '' }}"></div>
+        <div class="st-note"><label for="st-{{ it.id }}-note">Napomena</label>
+          <input id="st-{{ it.id }}-note" type="text" name="note" maxlength="500" value="{{ it.note }}"
+                 placeholder="npr. 8 kg, po nozi"></div>
+        <div class="st-go"><button type="submit" class="btn btn-sm">Spremi</button></div>
+      </form>
+    </div>
+    {% else %}
+    <p class="hint st-none">Nema vježbi.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% for it in day.items %}
+<form id="st-gore-{{ it.id }}" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/pomak"><input type="hidden" name="smjer" value="gore"></form>
+<form id="st-dolje-{{ it.id }}" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/pomak"><input type="hidden" name="smjer" value="dolje"></form>
+<form id="st-x-{{ it.id }}" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/obrisi"
+      data-confirm-title="Maknuti vježbu iz dana?"
+      data-confirm="„{{ it.exercise.name }}” izlazi iz ovog dana; u bazi vježbi ostaje."
+      data-confirm-cta="Makni"></form>
+{% endfor %}
+
+<h2 style="font-size:1.05rem; margin:30px 0 12px;">Dodaj vježbu</h2>
+{% set natrag = "/treninzi/" ~ p.id ~ "/dan/" ~ day.id ~ "/uredi" %}
+<form id="dodaj" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke" class="card add-ex">
+  {% if choices %}
+  <div class="add-fields">
+    <div class="field"><label for="add-ex">Vježba iz baze</label>
+      <select id="add-ex" name="exercise_id" required>
+        <option value="" disabled{% if chosen not in choices|map(attribute="id")|list %} selected{% endif %}>Odaberi vježbu…</option>
+        {% for ex in choices %}<option value="{{ ex.id }}"{% if ex.id == chosen %} selected{% endif %}>{{ ex.name }}{% if ex.tags %} · {{ ex.tags }}{% endif %}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="add-dio">Dio</label>
+      <select id="add-dio" name="section">
+        {% for k, l in SECTIONS.items() %}<option value="{{ k }}"{% if k == "trening" %} selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select></div>
+  </div>
+  <div class="add-row">
+    <button type="submit" class="btn btn-sm">Dodaj</button>
+    <a class="btn-ghost btn-sm" href="/treninzi/vjezbe/nova?natrag={{ natrag }}">Nova vježba →</a>
+  </div>
+  {% else %}
+  <div class="add-row">
+    <p class="hint" style="flex:1 1 220px;">Baza vježbi je prazna — prvo dodaj vježbu.</p>
+    <a class="btn-ghost btn-sm" href="/treninzi/vjezbe/nova?natrag={{ natrag }}">Nova vježba →</a>
+  </div>
+  {% endif %}
+</form>
+
+<form method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/obrisi" class="ex-delete" style="margin-top:34px;"
+      data-confirm-title="Obrisati dan?"
+      data-confirm="„{{ day.label }}” se briše s popisom vježbi; same vježbe ostaju u bazi vježbi."
+      data-confirm-cta="Obriši dan">
+  <button type="submit" class="btn-ghost">Obriši dan</button>
+</form>
+{% endblock %}

@@ -16,12 +16,12 @@ from typing import Iterator
 from sqlalchemy import create_engine, delete as sa_delete, func, or_, select, text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload, sessionmaker
+from sqlalchemy.orm import Session, joinedload, selectinload, sessionmaker
 
 from . import config, copy, upitnik
-from .models import (ONLINE_TIERS, PLAN_LABELS, SESSION_KINDS, Announcement, Base, Booking, Exercise, GymCard,
-                     Membership, OnboardingResponse, Payment, Program, ProgramItem, ReminderLog,
-                     SessionTemplate, SiteCopy, TrainingLog, TrainingSession, UpitnikQuestion, User,
+from .models import (ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, Announcement, Base, Booking, Exercise,
+                     GymCard, Membership, OnboardingResponse, Payment, Program, ProgramDay, ProgramDayItem,
+                     ReminderLog, SessionTemplate, SiteCopy, TrainingLog, TrainingSession, UpitnikQuestion, User,
                      alpha_key, exercise_alternatives)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
@@ -1540,13 +1540,12 @@ def booking_history(user_id: int, limit: int = 20) -> list[TrainingSession]:
 
 def programs_for_combo(level: str, goal: str) -> list[Program]:
     """The client's automatic programme(s): whatever is tagged with their
-    upitnik combo. No hand-outs — matching IS the access."""
-    from sqlalchemy.orm import selectinload
-
+    upitnik combo. No hand-outs — matching IS the access. Each with its days
+    and their items loaded (the list says how many days)."""
     with session_scope() as s:
         return list(s.scalars(
             select(Program).where(Program.level == level, Program.goal == goal)
-            .options(selectinload(Program.items))
+            .options(selectinload(Program.days).selectinload(ProgramDay.items))
             .order_by(Program.title)))
 
 
@@ -1679,13 +1678,22 @@ def exercise(exercise_id: int) -> Exercise | None:
                         .options(selectinload(Exercise.alternatives_to), selectinload(Exercise.alternatives_from)))
 
 
+def _holding(exercise_ids):
+    """The ids of the programmes whose days hold any of these exercises (a
+    select of exercise ids, or a list): a subquery."""
+    return (select(ProgramDay.program_id).join(ProgramDayItem, ProgramDayItem.day_id == ProgramDay.id)
+            .where(ProgramDayItem.exercise_id.in_(exercise_ids)))
+
+
 def exercises(q: str = "") -> list[tuple[Exercise, int]]:
     """The library in the alphabet's order (alpha_key), each exercise with the
-    number of programmes that hold it. With q, only those whose name or tags
-    hold it, whatever its case (the list's search); every one without."""
+    number of programmes that hold it (in any of their days). With q, only
+    those whose name or tags hold it, whatever its case (the list's search);
+    every one without."""
     with session_scope() as s:
-        used = dict(s.execute(select(ProgramItem.exercise_id, func.count(func.distinct(ProgramItem.program_id)))
-                              .group_by(ProgramItem.exercise_id)).all())
+        used = dict(s.execute(select(ProgramDayItem.exercise_id, func.count(func.distinct(ProgramDay.program_id)))
+                              .join(ProgramDay, ProgramDay.id == ProgramDayItem.day_id)
+                              .group_by(ProgramDayItem.exercise_id)).all())
         rows = list(s.scalars(select(Exercise)))
     needle = " ".join((q or "").split()).casefold()
     if needle:
@@ -1694,10 +1702,10 @@ def exercises(q: str = "") -> list[tuple[Exercise, int]]:
 
 
 def exercise_programs(exercise_id: int) -> list[Program]:
-    """The programmes that hold an exercise, in the alphabet's order."""
+    """The programmes that hold an exercise in any of their days, in the
+    alphabet's order."""
     with session_scope() as s:
-        rows = list(s.scalars(select(Program).where(Program.id.in_(
-            select(ProgramItem.program_id).where(ProgramItem.exercise_id == exercise_id)))))
+        rows = list(s.scalars(select(Program).where(Program.id.in_(_holding([exercise_id])))))
     return sorted(rows, key=lambda p: alpha_key(p.title))
 
 
@@ -1720,8 +1728,8 @@ def delete_exercise(exercise_id: int) -> str | None:
         e = s.get(Exercise, exercise_id, with_for_update=True)
         if e is None:
             return None
-        holders = select(ProgramItem.program_id).where(ProgramItem.exercise_id == exercise_id)
-        titles = sorted(s.scalars(select(Program.title).where(Program.id.in_(holders))), key=alpha_key)
+        titles = sorted(s.scalars(select(Program.title).where(Program.id.in_(_holding([exercise_id])))),
+                        key=alpha_key)
         if titles:
             raise ValueError(in_programs(titles))
         video = e.video
@@ -1744,24 +1752,25 @@ def set_exercise_video(exercise_id: int, name: str | None, user_id: int | None =
 
 
 def video_programs(name: str) -> list[Program] | None:
-    """Who may watch a stored clip (/media): None when no exercise holds it,
-    else the programmes that hold its exercise (a client watches it through
-    one of his matched programmes; staff watch any)."""
+    """Who may watch a stored clip (/media): None when neither an exercise
+    nor a day holds it (an exercise's clip, a day's intro video), else the
+    programmes that hold its exercise in a day, or whose day it introduces (a
+    client watches it through one of his matched programmes; staff watch
+    any)."""
     with session_scope() as s:
         ids = select(Exercise.id).where(Exercise.video == name)
-        if s.scalar(select(func.count()).select_from(ids.subquery())) == 0:
+        intro = select(ProgramDay.program_id).where(ProgramDay.intro_video == name)
+        if not (s.scalar(select(func.count()).select_from(ids.subquery()))
+                or s.scalar(select(func.count()).select_from(intro.subquery()))):
             return None
-        return list(s.scalars(select(Program).where(Program.id.in_(
-            select(ProgramItem.program_id).where(ProgramItem.exercise_id.in_(ids))))))
+        return list(s.scalars(select(Program).where(or_(Program.id.in_(_holding(ids)), Program.id.in_(intro)))))
 
 
 # The nine combo slots start with these: library rows, one per name, made
 # the first time a slot needs one and found by name after that, whatever its
 # case (Amir's own row of the name, if he made it first). Their instructions
 # are the technique cues only, never a dose: one row serves every razina.
-# The dose is the slot's item's note (_DEFAULT_ITEMS, per razina), as it was
-# the first line of the item's body until 30.10.2026; the days' sets and
-# reps (the spec's stage 2) are to take it over.
+# The dose is the slot's Dan 1 item's (_DEFAULT_ITEMS, per razina).
 _DEFAULT_EXERCISES = {
     "Goblet čučanj": "Pete cijelo vrijeme na podu, trup uspravan, koljena prate smjer stopala.",
     "Sklekovi": "Tijelo u ravnoj liniji, bez propadanja kuka.",
@@ -1774,47 +1783,57 @@ _DEFAULT_EXERCISES = {
     "Rumunjsko mrtvo dizanje": "Neutralna kralježnica, kukovi idu unatrag.",
     "Glute most": "Stisni gluteuse gore i zadrži sekundu.",
 }
-# a slot's exercises in their order, per cilj, each with its dose per
-# razina (the item's note): the same structure per cilj, the dose scaling
-# with the razina
+# a slot's Dan 1 exercises in their order (section trening), per cilj, each
+# with its dose per razina, (sets, reps, seconds, note): the same structure
+# per cilj, the dose scaling with the razina; the doses the items' notes
+# said until 30.10.2026 ("3 × 8 · 8 kg"), as migration 7c3bf996c983 parses
+# them. Every default item rests DEFAULT_REST seconds between sets.
 _DEFAULT_ITEMS = {
     "cijelo": [
-        ("Goblet čučanj", {"pocetna": "3 × 8 · 8 kg", "srednja": "4 × 10 · 16 kg", "napredna": "4 × 12 · 24 kg"}),
-        ("Sklekovi", {"pocetna": "3 × 5 (s koljena)", "srednja": "3 × 10", "napredna": "4 × 15"}),
-        ("Veslanje u pretklonu",
-         {"pocetna": "3 × 10 · 2 × 6 kg", "srednja": "3 × 12 · 2 × 10 kg", "napredna": "4 × 12 · 2 × 14 kg"}),
-        ("Plank", {"pocetna": "3 × 20 s", "srednja": "3 × 40 s", "napredna": "3 × 60 s"}),
+        ("Goblet čučanj", {"pocetna": (3, 8, None, "8 kg"), "srednja": (4, 10, None, "16 kg"),
+                           "napredna": (4, 12, None, "24 kg")}),
+        ("Sklekovi", {"pocetna": (3, 5, None, "s koljena"), "srednja": (3, 10, None, ""),
+                      "napredna": (4, 15, None, "")}),
+        ("Veslanje u pretklonu", {"pocetna": (3, 10, None, "2 × 6 kg"), "srednja": (3, 12, None, "2 × 10 kg"),
+                                  "napredna": (4, 12, None, "2 × 14 kg")}),
+        ("Plank", {"pocetna": (3, None, 20, ""), "srednja": (3, None, 40, ""), "napredna": (3, None, 60, "")}),
     ],
     "gornji": [
-        ("Potisak s bučicama na klupi",
-         {"pocetna": "3 × 8 · 2 × 6 kg", "srednja": "4 × 10 · 2 × 12 kg", "napredna": "4 × 12 · 2 × 18 kg"}),
-        ("Veslanje u pretklonu",
-         {"pocetna": "3 × 10 · 2 × 6 kg", "srednja": "4 × 10 · 2 × 12 kg", "napredna": "4 × 12 · 2 × 16 kg"}),
-        ("Potisak iznad glave",
-         {"pocetna": "3 × 8 · 2 × 4 kg", "srednja": "3 × 10 · 2 × 8 kg", "napredna": "4 × 10 · 2 × 12 kg"}),
-        ("Biceps pregib",
-         {"pocetna": "2 × 10 · 2 × 4 kg", "srednja": "3 × 12 · 2 × 8 kg", "napredna": "3 × 15 · 2 × 10 kg"}),
+        ("Potisak s bučicama na klupi", {"pocetna": (3, 8, None, "2 × 6 kg"), "srednja": (4, 10, None, "2 × 12 kg"),
+                                         "napredna": (4, 12, None, "2 × 18 kg")}),
+        ("Veslanje u pretklonu", {"pocetna": (3, 10, None, "2 × 6 kg"), "srednja": (4, 10, None, "2 × 12 kg"),
+                                  "napredna": (4, 12, None, "2 × 16 kg")}),
+        ("Potisak iznad glave", {"pocetna": (3, 8, None, "2 × 4 kg"), "srednja": (3, 10, None, "2 × 8 kg"),
+                                 "napredna": (4, 10, None, "2 × 12 kg")}),
+        ("Biceps pregib", {"pocetna": (2, 10, None, "2 × 4 kg"), "srednja": (3, 12, None, "2 × 8 kg"),
+                           "napredna": (3, 15, None, "2 × 10 kg")}),
     ],
     "donji": [
-        ("Goblet čučanj", {"pocetna": "3 × 8 · 8 kg", "srednja": "4 × 10 · 20 kg", "napredna": "4 × 12 · 28 kg"}),
-        ("Iskorak unatrag",
-         {"pocetna": "3 × 6 po nozi", "srednja": "3 × 10 po nozi · 2 × 8 kg", "napredna": "4 × 10 po nozi · 2 × 12 kg"}),
-        ("Rumunjsko mrtvo dizanje", {"pocetna": "3 × 8 · 12 kg", "srednja": "4 × 10 · 24 kg", "napredna": "4 × 10 · 32 kg"}),
-        ("Glute most", {"pocetna": "3 × 12", "srednja": "3 × 15 · 10 kg", "napredna": "4 × 15 · 20 kg"}),
+        ("Goblet čučanj", {"pocetna": (3, 8, None, "8 kg"), "srednja": (4, 10, None, "20 kg"),
+                           "napredna": (4, 12, None, "28 kg")}),
+        ("Iskorak unatrag", {"pocetna": (3, 6, None, "po nozi"), "srednja": (3, 10, None, "po nozi · 2 × 8 kg"),
+                             "napredna": (4, 10, None, "po nozi · 2 × 12 kg")}),
+        ("Rumunjsko mrtvo dizanje", {"pocetna": (3, 8, None, "12 kg"), "srednja": (4, 10, None, "24 kg"),
+                                     "napredna": (4, 10, None, "32 kg")}),
+        ("Glute most", {"pocetna": (3, 12, None, ""), "srednja": (3, 15, None, "10 kg"),
+                        "napredna": (4, 15, None, "20 kg")}),
     ],
 }
+DEFAULT_REST = 60                # seconds between sets, every default item's
 
 
 def ensure_online_skeletons() -> int:
-    """Create any missing (razina × cilj) slot and fill EMPTY ones with the
-    default exercises, library rows (_DEFAULT_EXERCISES) the items point at,
-    each item noting its razina's dose (_DEFAULT_ITEMS).
+    """Create any missing (razina × cilj) slot and fill EMPTY ones: a slot
+    with no day gets Dan 1 (no title, no weekday, no intro) holding the
+    default exercises in section trening, library rows (_DEFAULT_EXERCISES)
+    the items point at, each with its razina's dose (_DEFAULT_ITEMS) and
+    DEFAULT_REST.
 
     Runs when the trainer opens Online treninzi — a fresh deploy heals itself,
-    no seed run needed. A slot the trainer already put ANY item into is never
-    touched. Returns how many programmes were created. The work is done under
-    the library's lock, so two openings at once neither make a slot twice nor
-    fill one twice.
+    no seed run needed. A slot with ANY day, even an empty one, is Amir's
+    work and never touched. Returns how many programmes were created. The
+    work is done under the library's lock, so two openings at once neither
+    make a slot twice nor fill one twice.
     """
     from .upitnik import GOALS, LEVELS
 
@@ -1824,9 +1843,9 @@ def ensure_online_skeletons() -> int:
         have = {(p.level, p.goal) for p in s.scalars(select(Program).where(Program.level.is_not(None)))}
         empty = s.execute(
             select(Program.id, Program.level, Program.goal)
-            .outerjoin(ProgramItem, ProgramItem.program_id == Program.id)
+            .outerjoin(ProgramDay, ProgramDay.program_id == Program.id)
             .where(Program.level.is_not(None))
-            .group_by(Program.id).having(func.count(ProgramItem.id) == 0)
+            .group_by(Program.id).having(func.count(ProgramDay.id) == 0)
             .order_by(Program.id)).all()
         return combos - have, empty
 
@@ -1849,6 +1868,9 @@ def ensure_online_skeletons() -> int:
         _, empty = todo(s)
         ids: dict[str, int] = {}
         for pid, level, goal in empty:
+            day = ProgramDay(program_id=pid, position=1, title="", weekday=None, intro="")
+            s.add(day)
+            s.flush()
             for position, (name, doses) in enumerate(_DEFAULT_ITEMS.get(goal, ()), start=1):
                 if name not in ids:
                     found = _named(s, name)
@@ -1858,22 +1880,28 @@ def ensure_online_skeletons() -> int:
                         s.flush()
                         found = e.id
                     ids[name] = found
-                s.add(ProgramItem(program_id=pid, position=position, exercise_id=ids[name],
-                                  note=doses.get(level, "")))
+                sets, reps, seconds, note = doses.get(level, (None, None, None, ""))
+                s.add(ProgramDayItem(day_id=day.id, position=position, section="trening", exercise_id=ids[name],
+                                     sets=sets, reps=reps, seconds=seconds, rest_seconds=DEFAULT_REST, note=note))
     return made
 
 
-def all_programs() -> list[tuple[Program, int]]:
-    """Trainer library: every programme + item count, combos first."""
+def all_programs() -> list[tuple[Program, int, int]]:
+    """Trainer library: every programme with its number of days and of
+    exercises across them, combos first."""
     with session_scope() as s:
-        items = (select(ProgramItem.program_id, func.count().label("n"))
-                 .group_by(ProgramItem.program_id).subquery())
+        days = (select(ProgramDay.program_id, func.count().label("n"))
+                .group_by(ProgramDay.program_id).subquery())
+        items = (select(ProgramDay.program_id, func.count(ProgramDayItem.id).label("n"))
+                 .join(ProgramDayItem, ProgramDayItem.day_id == ProgramDay.id)
+                 .group_by(ProgramDay.program_id).subquery())
         rows = s.execute(
-            select(Program, func.coalesce(items.c.n, 0))
+            select(Program, func.coalesce(days.c.n, 0), func.coalesce(items.c.n, 0))
+            .join(days, days.c.program_id == Program.id, isouter=True)
             .join(items, items.c.program_id == Program.id, isouter=True)
             .order_by(Program.level.desc(), Program.goal, Program.title)
         ).all()
-        return [(p, ni) for p, ni in rows]
+        return [(p, nd, ni) for p, nd, ni in rows]
 
 
 def create_program(title: str, intro: str | None,
@@ -1886,11 +1914,11 @@ def create_program(title: str, intro: str | None,
 
 
 def get_program(program_id: int) -> Program | None:
-    """A programme with its items, each with its exercise (ProgramItem's
-    joined load)."""
+    """A programme with its days and their items, each item with its
+    exercise (ProgramDayItem's joined load)."""
     with session_scope() as s:
         return s.scalar(select(Program).where(Program.id == program_id)
-                        .options(selectinload(Program.items)))
+                        .options(selectinload(Program.days).selectinload(ProgramDay.items)))
 
 
 def update_program(program_id: int, title: str, intro: str | None,
@@ -1901,30 +1929,180 @@ def update_program(program_id: int, title: str, intro: str | None,
             p.title, p.intro, p.level, p.goal = title, intro, level, goal
 
 
-def delete_program(program_id: int) -> bool:
-    """Delete a programme and its items. The exercises they pointed at, and
-    their clips, stay in the library."""
+def delete_program(program_id: int) -> list[str] | None:
+    """Delete a programme, its days and their items. The exercises they
+    pointed at, and their clips, stay in the library; the days' intro videos
+    go with the days: their file names are returned for the caller to delete
+    from storage (the rows first, so no page names a file that is gone).
+    None for a programme already gone."""
     with session_scope() as s:
-        p = s.get(Program, program_id)
+        p = s.get(Program, program_id, with_for_update=True)
         if p is None:
-            return False
+            return None
+        videos = list(s.scalars(select(ProgramDay.intro_video)
+                                .where(ProgramDay.program_id == program_id, ProgramDay.intro_video.is_not(None))))
         s.delete(p)
+        return videos
+
+
+# ---------- a programme's days and their exercises (30.10.2026, stage 2) ----------
+# Every write to a programme's days or their items takes the programme's row
+# first, then the day's (_day_locked): one lock, one order, so two editors at
+# once never read the order half changed nor take one position twice (the
+# positions are unique, deferred to the commit for ↑ / ↓).
+
+DAY_TITLE_MAX = 160              # the column's length
+ITEM_NOTE_MAX = 500
+# what an item's numbers may be, (least, most); else BAD_NUMBER
+ITEM_LIMITS = {"sets": (1, 99), "reps": (1, 999), "seconds": (1, 3600), "rest_seconds": (0, 3600)}
+BAD_NUMBER = "Neispravan broj."
+REPS_OR_SECONDS = "Upiši ponavljanja ili sekunde, ne oboje."
+
+
+def _day_locked(s: Session, day_id: int) -> tuple[Program, ProgramDay] | None:
+    """(programme, day), the programme's row locked, then the day's; None
+    when the day is gone (or went while the lock was awaited)."""
+    pid = s.scalar(select(ProgramDay.program_id).where(ProgramDay.id == day_id))
+    if pid is None:
+        return None
+    p = s.get(Program, pid, with_for_update=True)
+    day = s.get(ProgramDay, day_id, with_for_update=True, populate_existing=True) if p is not None else None
+    if day is None or day.program_id != pid:
+        return None
+    return p, day
+
+
+def _item_locked(s: Session, item_id: int) -> tuple[Program, ProgramDay, ProgramDayItem] | None:
+    """(programme, day, item) under _day_locked's locks; None when the item
+    is gone."""
+    day_id = s.scalar(select(ProgramDayItem.day_id).where(ProgramDayItem.id == item_id))
+    found = _day_locked(s, day_id) if day_id is not None else None
+    it = s.get(ProgramDayItem, item_id, populate_existing=True) if found else None
+    if it is None or it.day_id != day_id:
+        return None
+    return (*found, it)
+
+
+def add_day(program_id: int) -> int | None:
+    """A new day after the last ("Dan N+1": no title, no weekday, no intro);
+    its id. None when the programme is gone."""
+    with session_scope() as s:
+        p = s.get(Program, program_id, with_for_update=True)
+        if p is None:
+            return None
+        last = s.scalar(select(func.coalesce(func.max(ProgramDay.position), 0))
+                        .where(ProgramDay.program_id == program_id))
+        day = ProgramDay(program_id=program_id, position=last + 1, title="", weekday=None, intro="")
+        s.add(day)
+        p.updated_at = func.now()
+        s.flush()
+        return day.id
+
+
+def get_day(day_id: int) -> ProgramDay | None:
+    """A day with its programme and its items, each with its exercise,
+    loaded (usable once the session is closed)."""
+    with session_scope() as s:
+        return s.scalar(select(ProgramDay).where(ProgramDay.id == day_id)
+                        .options(selectinload(ProgramDay.items), joinedload(ProgramDay.program)))
+
+
+def update_day(day_id: int, title: str, weekday: int | None, intro: str) -> bool:
+    """Save a day's title (one line, its spaces single), suggested weekday
+    (0–6, None for none) and intro (cleaned as copy is: its line breaks
+    kept); False for a day that is gone. ValueError with the sentence to show
+    for a title past DAY_TITLE_MAX or a weekday that is none."""
+    title = clean_name(title)
+    if len(title) > DAY_TITLE_MAX:
+        raise ValueError(f"Naslov može imati najviše {DAY_TITLE_MAX} znakova.")
+    if weekday is not None and not 0 <= weekday <= 6:
+        raise ValueError("Odaberi dan u tjednu.")
+    with session_scope() as s:
+        found = _day_locked(s, day_id)
+        if found is None:
+            return False
+        p, day = found
+        day.title, day.weekday, day.intro = title, weekday, copy.clean(intro or "")
+        p.updated_at = func.now()
         return True
 
 
-def add_item(program_id: int, exercise_id: int, note: str = "") -> int | None:
-    """Put a library exercise last in a programme; the new item's id. None
-    when the programme or the exercise is gone (deleted while it was added
-    too: the foreign key). The editor's picker adds none with a note (nothing
-    edits a note in this stage)."""
+def delete_day(day_id: int) -> str | None:
+    """Delete a day and its items (their exercises stay in the library); the
+    later days move up, so the days stay Dan 1 … Dan N. Returns its intro
+    video's file name for the caller to delete from storage, None without
+    one or for a day already gone."""
+    with session_scope() as s:
+        found = _day_locked(s, day_id)
+        if found is None:
+            return None
+        p, day = found
+        video = day.intro_video
+        s.delete(day)
+        s.flush()
+        for n, d in enumerate(s.scalars(select(ProgramDay).where(ProgramDay.program_id == p.id)
+                                        .order_by(ProgramDay.position)), start=1):
+            d.position = n
+        p.updated_at = func.now()
+        return video
+
+
+def move_day(day_id: int, direction: str) -> bool:
+    """Swap a day with its neighbour: "gore" the one before it, "dolje" the
+    one after (their numbers trade: Dan 2 becomes Dan 1). False: no such
+    day, a direction that is neither, or none beyond it that way. The two
+    positions trade in one flush; the unique constraint is deferred to the
+    commit, which sees the swap whole."""
+    if direction not in ("gore", "dolje"):
+        return False
+    with session_scope() as s:
+        found = _day_locked(s, day_id)
+        if found is None:
+            return False
+        p, day = found
+        rows = list(s.scalars(select(ProgramDay).where(ProgramDay.program_id == p.id)
+                              .order_by(ProgramDay.position)))
+        i = next(k for k, d in enumerate(rows) if d.id == day_id)
+        j = i - 1 if direction == "gore" else i + 1
+        if not 0 <= j < len(rows):
+            return False
+        rows[i].position, rows[j].position = rows[j].position, rows[i].position
+        p.updated_at = func.now()
+        return True
+
+
+def set_day_video(day_id: int, name: str | None) -> str | None:
+    """Give a day a stored intro video (None: no video) and return the one
+    it had, which the caller deletes from storage once no row names it (an
+    exercise's clip's order). LookupError for a day that is gone: the caller
+    deletes the file it stored for it."""
+    with session_scope() as s:
+        found = _day_locked(s, day_id)
+        if found is None:
+            raise LookupError(day_id)
+        p, day = found
+        old = day.intro_video
+        day.intro_video = name
+        p.updated_at = func.now()
+        return old
+
+
+def add_day_item(day_id: int, exercise_id: int, section: str) -> int | None:
+    """Put a library exercise last in a day, in a section (SECTIONS), nothing
+    asked of it yet; the new item's id. None when the section is not one,
+    or the day or the exercise is gone (deleted while it was added too: the
+    foreign key)."""
+    if section not in SECTIONS:
+        return None
     try:
         with session_scope() as s:
-            p = s.get(Program, program_id)
-            if p is None or s.get(Exercise, exercise_id) is None:
+            found = _day_locked(s, day_id)
+            if found is None or s.get(Exercise, exercise_id) is None:
                 return None
-            last = s.scalar(select(func.coalesce(func.max(ProgramItem.position), 0))
-                            .where(ProgramItem.program_id == program_id))
-            it = ProgramItem(program_id=program_id, position=last + 1, exercise_id=exercise_id, note=note)
+            p, day = found
+            last = s.scalar(select(func.coalesce(func.max(ProgramDayItem.position), 0))
+                            .where(ProgramDayItem.day_id == day_id))
+            it = ProgramDayItem(day_id=day_id, position=last + 1, section=section, exercise_id=exercise_id, note="")
             s.add(it)
             p.updated_at = func.now()
             s.flush()
@@ -1933,39 +2111,79 @@ def add_item(program_id: int, exercise_id: int, note: str = "") -> int | None:
         return None
 
 
-def get_item(item_id: int) -> ProgramItem | None:
+def get_day_item(item_id: int) -> ProgramDayItem | None:
+    """An item with its exercise and its day loaded."""
     with session_scope() as s:
-        return s.get(ProgramItem, item_id)
+        return s.scalar(select(ProgramDayItem).where(ProgramDayItem.id == item_id)
+                        .options(joinedload(ProgramDayItem.day)))
 
 
-def delete_item(item_id: int) -> bool:
-    """Take an item out of its programme (its exercise stays in the library);
-    the positions close up. False for an item already gone."""
+def update_day_item(item_id: int, section: str, sets: int | None, reps: int | None, seconds: int | None,
+                    rest_seconds: int | None, note: str) -> bool:
+    """Save what a day asks of an exercise: its section, sets, reps or
+    seconds (one of the two), the rest between sets and a note (stripped);
+    None for a number not set. An item moved to another section goes last
+    in it. False for an item that is gone. ValueError with the sentence to
+    show: a number out of ITEM_LIMITS ("Neispravan broj."), reps and seconds
+    both ("Upiši ponavljanja ili sekunde, ne oboje."), a note past
+    ITEM_NOTE_MAX, a section that is none."""
+    if section not in SECTIONS:
+        raise ValueError("Odaberi dio dana.")
+    for field, value in (("sets", sets), ("reps", reps), ("seconds", seconds), ("rest_seconds", rest_seconds)):
+        least, most = ITEM_LIMITS[field]
+        if value is not None and not least <= value <= most:
+            raise ValueError(BAD_NUMBER)
+    if reps is not None and seconds is not None:
+        raise ValueError(REPS_OR_SECONDS)
+    note = (note or "").strip()
+    if len(note) > ITEM_NOTE_MAX:
+        raise ValueError(f"Napomena može imati najviše {ITEM_NOTE_MAX} znakova.")
     with session_scope() as s:
-        it = s.get(ProgramItem, item_id)
-        if it is None:
+        found = _item_locked(s, item_id)
+        if found is None:
             return False
-        pid = it.program_id
-        s.delete(it)
-        s.flush()
-        # close the gap so positions stay 1..n and moves keep working
-        for i, row in enumerate(s.scalars(
-                select(ProgramItem).where(ProgramItem.program_id == pid)
-                .order_by(ProgramItem.position)), start=1):
-            row.position = i
+        p, day, it = found
+        if section != it.section:
+            it.section = section
+            it.position = s.scalar(select(func.max(ProgramDayItem.position))
+                                   .where(ProgramDayItem.day_id == day.id)) + 1
+        it.sets, it.reps, it.seconds, it.rest_seconds, it.note = sets, reps, seconds, rest_seconds, note
+        p.updated_at = func.now()
         return True
 
 
-def move_item(item_id: int, direction: str) -> None:
-    """Swap an item with its neighbour ("up" | "down")."""
+def delete_day_item(item_id: int) -> bool:
+    """Take an exercise out of its day (it stays in the library). False for
+    an item already gone."""
     with session_scope() as s:
-        it = s.get(ProgramItem, item_id)
-        if it is None:
-            return
-        rows = list(s.scalars(select(ProgramItem)
-                              .where(ProgramItem.program_id == it.program_id)
-                              .order_by(ProgramItem.position)))
-        idx = next(i for i, r in enumerate(rows) if r.id == item_id)
-        j = idx - 1 if direction == "up" else idx + 1
-        if 0 <= j < len(rows):
-            rows[idx].position, rows[j].position = rows[j].position, rows[idx].position
+        found = _item_locked(s, item_id)
+        if found is None:
+            return False
+        p, _, it = found
+        s.delete(it)
+        p.updated_at = func.now()
+        return True
+
+
+def move_day_item(item_id: int, direction: str) -> bool:
+    """Swap an item with its neighbour in the SAME section, by the day's
+    display order: "gore" the one before it, "dolje" the one after. False:
+    no such item, a direction that is neither, or none beyond it that way
+    in its section (an item changes section through its form, not here)."""
+    if direction not in ("gore", "dolje"):
+        return False
+    with session_scope() as s:
+        found = _item_locked(s, item_id)
+        if found is None:
+            return False
+        p, day, it = found
+        rows = list(s.scalars(select(ProgramDayItem)
+                              .where(ProgramDayItem.day_id == day.id, ProgramDayItem.section == it.section)
+                              .order_by(ProgramDayItem.position)))
+        i = next(k for k, r in enumerate(rows) if r.id == item_id)
+        j = i - 1 if direction == "gore" else i + 1
+        if not 0 <= j < len(rows):
+            return False
+        rows[i].position, rows[j].position = rows[j].position, rows[i].position
+        p.updated_at = func.now()
+        return True

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}{{ day.label }} — {{ p.title }} — QMT{% endblock %}
+{% block head %}
+<style>
+  /* A day of a programme (30.10.2026, stage 2 of the online treninzi spec):
+     the client's page, the trainer's too. The normal layout (the player's
+     one-task layout is stage 3), the content in a 640px column: the intro,
+     the intro video ("always watch the intro video first", the guide), then
+     the whole list, Shape's Gym Program list in QMT's tokens. */
+  .day-body { max-width: 640px; }
+  .day-intro { margin-bottom: 10px; white-space: pre-line; overflow-wrap: anywhere; }
+  .day-video { margin-top: 18px; }
+  .day-video .hint { margin-bottom: 8px; }
+  /* a section's caption, Shape's eyebrow: display, uppercase, letter-spaced,
+     muted ("ZAGRIJAVANJE"); a section with no item is not on the page */
+  .dx-cap { font: 700 .78rem var(--font-display); text-transform: uppercase; letter-spacing: .14em;
+            color: var(--muted); margin: 26px 0 10px; }
+  .dx-list { display: grid; gap: 10px; }
+  /* An exercise: a native <details>, so it opens without JS. Its <summary>
+     is the row, the whole row the tap target (56px at least, the native
+     marker hidden): "Vježba n" (counted across the day) over the name and,
+     at the right, the dose (700, tabular), under them one muted line, the
+     rest and the note; at the far right ▷, which turns to point down when
+     the row is open. Open, the clip (preload none: twenty rows never fetch
+     twenty clips), what one rep is and how it is done. */
+  details.ex { overflow: hidden; }
+  details.ex > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px;
+                         min-height: 56px; padding: 12px 14px 12px 18px; transition: background .15s; }
+  details.ex > summary::-webkit-details-marker { display: none; }
+  details.ex > summary:hover { background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
+  details.ex > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
+                                       border-radius: var(--r-lg); }
+  .dx-main { flex: 1; min-width: 0; }
+  .dx-n { display: block; color: var(--muted); font: 600 .72rem var(--font-body);
+          text-transform: uppercase; letter-spacing: .1em; }
+  .dx-line { display: flex; align-items: baseline; gap: 2px 12px; }
+  .dx-name { flex: 1; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
+  .dx-dose { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .dx-sub { display: block; margin-top: 2px; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+  .dx-go { flex: none; width: 32px; height: 32px; border-radius: 50%; display: inline-flex;
+           align-items: center; justify-content: center; background: var(--surface-2); color: var(--text);
+           font-size: .78rem; transition: transform .2s; }
+  details.ex[open] .dx-go { transform: rotate(90deg); }
+  .dx-body { padding: 2px 18px 16px; }
+  .dx-body p { overflow-wrap: anywhere; }
+  .dx-body p + p { margin-top: 8px; }
+  .dx-body .pre { white-space: pre-line; }
+</style>
+{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Dan {{ day.position }}</span></nav>
+<h1>{{ day.label }}</h1>
+{% set k = day.items|length %}
+<p class="hint">{% if day.weekday is not none %}Preporučeno: {{ WEEKDAYS[day.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}</p>
+<div class="day-body">
+  {% if day.intro %}<p class="day-intro">{{ day.intro }}</p>{% endif %}
+  {% if user.is_trainer %}
+  <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/uredi">Uredi dan</a>
+  {% endif %}
+  {% if day.intro_video %}
+  <section class="day-video ex-video" aria-label="Uvodni video">
+    <p class="hint">Uvodni video — pogledaj ga prije treninga.</p>
+    <video src="/media/{{ day.intro_video }}" controls playsinline preload="metadata"></video>
+  </section>
+  {% endif %}
+
+  {% set ns = namespace(n=0) %}
+  {% for key, label in SECTIONS.items() %}{% set rows = day.by_section[key] %}
+  {% if rows %}
+  <section aria-labelledby="dio-{{ key }}">
+    <h2 class="dx-cap" id="dio-{{ key }}">{{ label }}</h2>
+    <div class="dx-list">
+      {% for it in rows %}{% set ns.n = ns.n + 1 %}{% set ex = it.exercise %}
+      <details class="card ex">
+        <summary>
+          <span class="dx-main">
+            <span class="dx-n">Vježba {{ ns.n }}</span>
+            <span class="dx-line"><span class="dx-name">{{ ex.name }}</span>{% if it.dose %}<span class="dx-dose">{{ it.dose }}</span>{% endif %}</span>
+            {% if it.rest_text or it.note %}<span class="dx-sub">{% if it.rest_text %}Odmor između serija: {{ it.rest_text }}{% endif %}{% if it.rest_text and it.note %} · {% endif %}{{ it.note }}</span>{% endif %}
+          </span>
+          <span class="dx-go" aria-hidden="true">▷</span>
+        </summary>
+        <div class="dx-body ex-video">
+          {% if ex.video %}<video src="/media/{{ ex.video }}" controls playsinline preload="none"></video>
+          {% else %}<p class="hint">Vježba još nema videa.</p>{% endif %}
+          {% if ex.rep_note %}<p class="pre"><strong>Jedno ponavljanje:</strong> {{ ex.rep_note }}</p>{% endif %}
+          {% if ex.instructions %}<p class="pre">{{ ex.instructions }}</p>{% endif %}
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+  {% endfor %}
+  {% if not k %}
+  <p class="hint" style="margin-top:22px;">{% if user.is_trainer %}Dan još nema vježbi — dodaj ih u uređivanju.{% else %}Dan još nema vježbi.{% endif %}</p>
+  {% endif %}
+</div>
+{% endblock %}

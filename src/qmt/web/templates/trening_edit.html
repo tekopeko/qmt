@@ -2,39 +2,17 @@
 {% block title %}Uredi: {{ p.title }} — QMT{% endblock %}
 {% block head %}
 <style>
-  /* an item's row (30.10.2026): its place, the exercise's name (a link to
-     it in the library, a 32px target), the item's note muted right after
-     it (its razina's dose, not edited in this stage), then at the right end
-     one group, .it-end: whether it has a clip, said in words, and ↑ / ↓ / ✕;
-     on a phone the group wraps under the name whole, still at the right */
-  .it-row { padding: 10px 14px 10px 18px; display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; }
-  .it-n { font: 700 .85rem var(--font-body); color: var(--accent); min-width: 1.4em; }
-  .it-name { min-width: 0; min-height: 32px; display: flex; align-items: center;
-             font-weight: 700; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
-  .it-name:hover { color: var(--accent); }
-  .it-note { min-width: 0; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
-  .it-end { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
-  .it-video { color: var(--muted); font-size: .82rem; white-space: nowrap; }
-  .it-video.has { color: var(--good); font-weight: 600; }
-  .it-acts { display: inline-flex; gap: 6px; }
-  .it-hint { margin: -6px 0 12px; max-width: 760px; }
-  /* "+ Dodaj vježbu": the library as a select (name · tags, the alphabet's
-     order), Dodaj and "Nova vježba →" on one line, one footprint (the
-     buttons stretch to the select's height); on a phone the two buttons
-     wrap under the select */
-  .add-ex { max-width: 640px; padding: 18px 20px; scroll-margin-top: 90px; }
-  .add-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px 10px; }
-  .add-row select { flex: 1 1 220px; min-width: 0; width: auto; }
-  .add-row .btn-sm { white-space: nowrap; }
-  .add-row .hint { align-self: center; }
+  /* the days (30.10.2026): base.html's .it-row, one per day, its label a
+     link to the day's editor; "+ Dodaj dan" under them */
+  .days-edit { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+  .days-add { margin-top: 14px; }
 </style>
 {% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Uređivanje</span></nav>
 <h1>Uredi trening</h1>
 <p class="hint" style="margin-bottom:20px;">
-  Ovaj trening automatski vide polaznici kojima je upitnik odredio njegovu razinu i cilj.
-  Vježbe biraš iz <a class="tlink" href="/treninzi/vjezbe">baze vježbi</a>, a novu dodaješ gumbom „Nova vježba →” ispod.
+  Trening ima dane; svaki dan ima zagrijavanje, trening i istezanje, a vježbe biraš iz <a class="tlink" href="/treninzi/vjezbe">baze vježbi</a>.
   <a class="act act-quiet" href="/treninzi/{{ p.id }}">pogledaj kako polaznik vidi →</a>
 </p>
 
@@ -56,71 +34,48 @@
   <button type="submit" class="btn-sm">Spremi</button>
 </form>
 
-<h2 style="font-size:1.05rem; margin-bottom:12px;">Vježbe</h2>
-{# Since 30.10.2026 an item is an exercise of the library (/treninzi/vjezbe),
-   which holds its name, instructions and clip: a row says which, links to
-   it, moves (↑ / ↓) and leaves the programme (✕); the exercise stays in the
-   library. Another exercise in its place is ✕, Dodaj and ↑ / ↓. An item's
-   note (its razina's dose) is shown, never edited here: the hint says so
-   once, above the rows that carry one. #}
-{% set noted = p.items|selectattr("note")|list %}
-{% if noted %}<p class="hint it-hint">Doza uz naziv (npr. {{ noted[0].note }}) zasad se ne uređuje: serije, ponavljanja i odmor dolaze s danima treninga.</p>{% endif %}
-<div style="display:flex; flex-direction:column; gap:10px; max-width:760px;">
-  {% for it in p.items %}{% set ex = it.exercise %}
-  <div class="card it-row">
-    <span class="it-n">{{ loop.index }}</span>
-    <a class="it-name" href="/treninzi/vjezbe/{{ ex.id }}">{{ ex.name }}</a>
-    {% if it.note %}<span class="it-note">{{ it.note }}</span>{% endif %}
+<h2 style="font-size:1.05rem; margin-bottom:12px;">Dani</h2>
+{# A row per day: its label (a link to its editor), what it holds in muted
+   words, then Uredi, ↑ / ↓ (its number moves with it: Dan 2 above Dan 1
+   becomes Dan 1) and ✕, which asks first. #}
+<div class="days-edit">
+  {% for d in p.days %}{% set k = d.items|length %}
+  <div class="card it-row" id="dan-{{ d.id }}">
+    <a class="it-name" href="/treninzi/{{ p.id }}/dan/{{ d.id }}/uredi">{{ d.label }}</a>
+    <span class="it-note">{% if d.weekday is not none %}{{ WEEKDAYS[d.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}</span>
     <span class="it-end">
-    {% if ex.video %}<span class="it-video has">video ✓</span>{% else %}<span class="it-video">bez videa</span>{% endif %}
-    <span class="it-acts">
-      <form method="post" action="/treninzi/{{ p.id }}/items/{{ it.id }}/move" style="margin:0; display:inline;">
-        <input type="hidden" name="dir" value="up">
-        <button class="btn-ghost btn-sm" {% if loop.first %}disabled style="opacity:.35;"{% endif %}
-                aria-label="Pomakni gore">↑</button>
-      </form>
-      <form method="post" action="/treninzi/{{ p.id }}/items/{{ it.id }}/move" style="margin:0; display:inline;">
-        <input type="hidden" name="dir" value="down">
-        <button class="btn-ghost btn-sm" {% if loop.last %}disabled style="opacity:.35;"{% endif %}
-                aria-label="Pomakni dolje">↓</button>
-      </form>
-      <form method="post" action="/treninzi/{{ p.id }}/items/{{ it.id }}/delete" style="margin:0; display:inline;"
-            data-confirm-title="Maknuti vježbu iz treninga?"
-            data-confirm="&quot;{{ ex.name }}&quot; izlazi iz ovog treninga; u bazi vježbi ostaje, s uputama i videom."
-            data-confirm-cta="Makni iz treninga">
-        <button class="btn-ghost btn-sm" aria-label="Makni iz treninga: {{ ex.name }}">✕</button>
-      </form>
-    </span>
+      <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/dan/{{ d.id }}/uredi">Uredi</a>
+      <span class="it-acts">
+        <form method="post" action="/treninzi/{{ p.id }}/dan/{{ d.id }}/pomak" style="margin:0; display:inline;">
+          <input type="hidden" name="smjer" value="gore">
+          <button class="btn-ghost btn-sm" {% if loop.first %}disabled style="opacity:.35;"{% endif %}
+                  aria-label="Pomakni gore: {{ d.label }}">↑</button>
+        </form>
+        <form method="post" action="/treninzi/{{ p.id }}/dan/{{ d.id }}/pomak" style="margin:0; display:inline;">
+          <input type="hidden" name="smjer" value="dolje">
+          <button class="btn-ghost btn-sm" {% if loop.last %}disabled style="opacity:.35;"{% endif %}
+                  aria-label="Pomakni dolje: {{ d.label }}">↓</button>
+        </form>
+        <form method="post" action="/treninzi/{{ p.id }}/dan/{{ d.id }}/obrisi" style="margin:0; display:inline;"
+              data-confirm-title="Obrisati dan?"
+              data-confirm="„{{ d.label }}” se briše s popisom vježbi; same vježbe ostaju u bazi vježbi."
+              data-confirm-cta="Obriši dan">
+          <button class="btn-ghost btn-sm" aria-label="Obriši dan: {{ d.label }}">✕</button>
+        </form>
+      </span>
     </span>
   </div>
   {% else %}
-  <p class="hint">Još nema vježbi — dodaj prvu ispod.</p>
+  <p class="hint">Trening još nema dana — dodaj prvi.</p>
   {% endfor %}
 </div>
-
-<h2 style="font-size:1.05rem; margin:30px 0 12px;">Dodaj vježbu</h2>
-<form id="dodaj" method="post" action="/treninzi/{{ p.id }}/items" class="card add-ex">
-  {% if choices %}
-  <label for="add-ex">Vježba iz baze</label>
-  <div class="add-row">
-    <select id="add-ex" name="exercise_id" required>
-      <option value="" disabled{% if chosen not in choices|map(attribute="id")|list %} selected{% endif %}>Odaberi vježbu…</option>
-      {% for ex in choices %}<option value="{{ ex.id }}"{% if ex.id == chosen %} selected{% endif %}>{{ ex.name }}{% if ex.tags %} · {{ ex.tags }}{% endif %}</option>{% endfor %}
-    </select>
-    <button type="submit" class="btn btn-sm">Dodaj</button>
-    <a class="btn-ghost btn-sm" href="/treninzi/vjezbe/nova?natrag=/treninzi/{{ p.id }}/uredi">Nova vježba →</a>
-  </div>
-  {% else %}
-  <div class="add-row">
-    <p class="hint" style="flex:1 1 220px;">Baza vježbi je prazna — prvo dodaj vježbu.</p>
-    <a class="btn-ghost btn-sm" href="/treninzi/vjezbe/nova?natrag=/treninzi/{{ p.id }}/uredi">Nova vježba →</a>
-  </div>
-  {% endif %}
+<form method="post" action="/treninzi/{{ p.id }}/dani" class="days-add">
+  <button type="submit" class="btn btn-sm">+ Dodaj dan</button>
 </form>
 
 <form method="post" action="/treninzi/{{ p.id }}/delete" style="margin-top:34px;"
       data-confirm-title="Obrisati cijeli trening?"
-      data-confirm="&quot;{{ p.title }}&quot; — briše se trening i njegov popis vježbi; same vježbe i njihovi videi ostaju u bazi vježbi. Prazan slot se pri sljedećem otvaranju popuni osnovnim vježbama."
+      data-confirm="&quot;{{ p.title }}&quot; — briše se trening s danima i vježbama; same vježbe i njihovi videi ostaju u bazi vježbi. Prazan slot se pri sljedećem otvaranju popuni osnovnim vježbama."
       data-confirm-cta="Obriši trening">
   <button class="btn-ghost" style="color:var(--accent); border-color:var(--accent);">Obriši cijeli trening</button>
 </form>

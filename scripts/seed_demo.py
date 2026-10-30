@@ -167,21 +167,36 @@ LIBRARY = {
                                    "", ()),
     "Sklekovi s koljena": ("prsa, kod kuće", "Koljena na podu, tijelo od koljena do glave u ravnoj liniji.", "", ()),
     "Veslanje jednom rukom": ("leđa, bučice", "Slobodna ruka i koljeno na klupi, povuci bučicu prema kuku.", "", ()),
+    "Istezanje stražnje lože": ("istezanje, kod kuće", "Sjedni ispružene noge, nagni se naprijed ravnih leđa.", "", ()),
 }
+
+# The days' demo (30.10.2026, stage 2): ivan's programme (srednja × cijelo)
+# gets a title and a weekday on its Dan 1, a warm-up and a stretch around the
+# defaults, and a Dan 2, so the demo shows two days and all three sections.
+# (day title, weekday, [(exercise, section, sets, reps, seconds, rest, note)]):
+# Dan 1's items are added to the defaults, Dan 2's make a new day.
+DAYS = [
+    ("Cijelo tijelo", 0, [("Čučanj s vlastitom težinom", "zagrijavanje", 2, 15, None, 30, ""),
+                          ("Istezanje stražnje lože", "istezanje", 2, None, 30, None, "po nozi")]),
+    ("Gornji dio", 3, [("Sklekovi", "trening", 3, 10, None, 60, ""),
+                       ("Veslanje u pretklonu", "trening", 3, 12, None, 60, "2 × 10 kg"),
+                       ("Plank", "trening", 3, None, 40, 45, "")]),
+]
 
 
 def seed_program() -> None:
-    """The 9 combo programmes, each pre-filled with the default exercises
-    (library rows, the cues; each item noting its razina's dose,
-    db._DEFAULT_ITEMS), then the library's demo (LIBRARY). A dev RESET: the
-    library goes with the programmes (their clips' files are left alone:
-    the dev .env may point storage at R2)."""
+    """The 9 combo programmes, each with its Dan 1 of the default exercises
+    (library rows, the cues; each item its razina's dose and 60 s of rest,
+    db._DEFAULT_ITEMS), then the library's demo (LIBRARY) and the days' demo
+    (DAYS, ivan's programme). A dev RESET: the library goes with the
+    programmes (their clips' files are left alone: the dev .env may point
+    storage at R2)."""
     from sqlalchemy import delete, select
 
     from qmt.models import Exercise, Program
 
     with db.session_scope() as s:
-        s.execute(delete(Program))          # their items with them
+        s.execute(delete(Program))          # their days and items with them
         s.execute(delete(Exercise))         # and the pairs of similar exercises
     made = db.ensure_online_skeletons()
     with db.session_scope() as s:
@@ -193,7 +208,16 @@ def seed_program() -> None:
         e = db.exercise(ids[name])
         db.update_exercise(e.id, e.name, e.instructions, rep_note or e.rep_note, tags,
                            {ids[x] for x in similar} | {a.id for a in e.alternatives})
-    print(f"  {made} programa (razina × cilj), svi s osnovnim vježbama; {len(ids)} vježbi u bazi")
+    with db.session_scope() as s:
+        pid = s.scalar(select(Program.id).where(Program.level == "srednja", Program.goal == "cijelo"))
+    for n, (title, weekday, items) in enumerate(DAYS, start=1):
+        day_id = db.get_program(pid).days[0].id if n == 1 else db.add_day(pid)
+        db.update_day(day_id, title, weekday, "")
+        for name, section, sets, reps, seconds, rest, note in items:
+            item_id = db.add_day_item(day_id, ids[name], section)
+            db.update_day_item(item_id, section, sets, reps, seconds, rest, note)
+    print(f"  {made} programa (razina × cilj), svi s osnovnim vježbama (Dan 1); {len(ids)} vježbi u bazi; "
+          f"srednja × cijelo: {len(DAYS)} dana, sva tri dijela")
 
 
 def seed_announcements() -> None:

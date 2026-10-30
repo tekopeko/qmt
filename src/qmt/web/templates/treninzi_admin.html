@@ -13,20 +13,21 @@
 <table style="width:100%; border-collapse:collapse; font-size:.92rem;">
   <thead>
     <tr style="border-bottom:2px solid var(--line); text-align:left;">
-      <th style="padding:8px 6px;">Cilj</th><th>Trening</th><th>Vježbe</th><th>Zadnja izmjena</th><th></th>
+      <th style="padding:8px 6px;">Cilj</th><th>Trening</th><th>Dani</th><th>Vježbe</th><th>Zadnja izmjena</th><th></th>
     </tr>
   </thead>
   <tbody>
     {% for g in groups %}
     <tr>
-      <td colspan="5" style="padding:14px 6px 7px; background:var(--surface-2);
+      <td colspan="6" style="padding:14px 6px 7px; background:var(--surface-2);
           font:700 .76rem var(--font-display); text-transform:uppercase; letter-spacing:.08em;
           color:var(--text); border-bottom:1px solid var(--line);">{{ g.label }}</td>
     </tr>
-    {% for p, ni in g.rows %}
+    {% for p, nd, ni in g.rows %}
     <tr style="border-bottom:1px solid var(--line);">
       <td style="padding:9px 6px; white-space:nowrap;">{{ goals.get(p.goal, p.goal) }}</td>
       <td><strong>{{ p.title }}</strong></td>
+      <td>{{ nd }}</td>
       <td>{{ ni }}{% if ni == 0 %} <span style="color:var(--danger); font-weight:700; font-size:.76rem;">prazno!</span>{% endif %}</td>
       <td class="hint">{{ p.updated_at.strftime("%-d.%-m.%Y.") }}</td>
       <td style="white-space:nowrap; text-align:right;">
@@ -35,19 +36,20 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="5" class="hint" style="padding:9px 6px;">Nema programa za ovu razinu.</td></tr>
+    <tr><td colspan="6" class="hint" style="padding:9px 6px;">Nema programa za ovu razinu.</td></tr>
     {% endfor %}
     {% endfor %}
     {% if untagged %}
     <tr>
-      <td colspan="5" style="padding:14px 6px 7px; background:var(--surface-2);
+      <td colspan="6" style="padding:14px 6px 7px; background:var(--surface-2);
           font:700 .76rem var(--font-display); text-transform:uppercase; letter-spacing:.08em;
           color:var(--muted); border-bottom:1px solid var(--line);">Bez kombinacije — nevidljivo polaznicima</td>
     </tr>
-    {% for p, ni in untagged %}
+    {% for p, nd, ni in untagged %}
     <tr style="border-bottom:1px solid var(--line); opacity:.6;">
       <td style="padding:9px 6px;" class="hint">—</td>
       <td><strong>{{ p.title }}</strong></td>
+      <td>{{ nd }}</td>
       <td>{{ ni }}</td>
       <td class="hint">{{ p.updated_at.strftime("%-d.%-m.%Y.") }}</td>
       <td style="white-space:nowrap; text-align:right;">

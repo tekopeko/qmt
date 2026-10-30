@@ -51,18 +51,26 @@ BASELINE = pathlib.Path(__file__).resolve().parent.parent / "references" / "audi
 # ?ok= / ?error= pages: the flash alerts are text nobody audits otherwise
 ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana",
         "/login?ok=Lozinka+je+promijenjena", "/login?error=Pogre%C5%A1an+email+ili+lozinka."]
-# /upitnik opens on the guide through the training (29.10.2026), ?od=1 on its first question; /vodic is the guide alone
-CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "/moja-clanarina", "/prehrana", "/profil", "/treninzi", "/upitnik",
-          "/upitnik?od=1", "/vodic"]
+# /upitnik opens on the guide through the training (29.10.2026), ?od=1 on its first question; /vodic is the guide alone.
+# The programmes' days (30.10.2026): "trening:1" is the first programme on
+# the client's /treninzi, "dan:1" its first day's page (the demo seed: ivan's
+# Dan 1, all three sections), both found by their links (a reseed gives new ids).
+CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "/moja-clanarina", "/prehrana", "/profil", "/treninzi",
+          "trening:1", "dan:1", "/upitnik", "/upitnik?od=1", "/vodic"]
 # the library of exercises (30.10.2026): its list, and one exercise's page,
 # "vjezba:<name>", found on the list by the seed's name (scripts/seed_demo.py:
 # a reseed gives the exercises new ids). Goblet čučanj has tags, similar
-# exercises and a rep note there.
+# exercises and a rep note there. "dan:1:uredi" is the editor of the day the
+# client's walk found as "dan:1" (staff's /treninzi is the table of every
+# programme, so the owner's walk takes the path the client's found).
 OWNER = ["/", "/raspored", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi",
-         "/treninzi/vjezbe", "vjezba:Goblet čučanj", "/profil"]
+         "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi", "/profil"]
 
 FIND_EXERCISE = """n => { const row = [...document.querySelectorAll('a.ex-row')]
   .find(a => (a.querySelector('.ex-name') || {}).textContent === n); return row ? row.getAttribute('href') : null; }"""
+# the n-th link of a kind on a page: a programme's card on /treninzi, a day's on its programme's page
+NTH_LINK = """([sel, n]) => { const a = document.querySelectorAll(sel)[n - 1]; return a ? a.getAttribute('href') : null; }"""
+FOUND: dict[str, str] = {}               # "trening:1" / "dan:1" -> the path the client's walk found
 
 CHECKS = r"""
 () => {
@@ -167,6 +175,27 @@ CHECKS = r"""
 """
 
 
+def resolve(pg, r: str) -> str | None:
+    """A programme's or a day's path, by its link: "trening:N" the N-th
+    programme on /treninzi, "dan:N" the N-th day of "trening:1" (both kept
+    in FOUND for the owner's walk), "dan:N:uredi" the editor of that day."""
+    kind, n, *rest = r.split(":")
+    if rest == ["uredi"]:
+        return FOUND[f"{kind}:{n}"] + "/uredi" if f"{kind}:{n}" in FOUND else None
+    if kind == "trening":
+        page, link = "/treninzi", 'main a.card[href^="/treninzi/"]'
+    else:
+        page, link = resolve(pg, "trening:1"), "main a.day-card"
+        if page is None:
+            return None
+    pg.goto(BASE + page)
+    pg.wait_for_load_state("networkidle")
+    path = pg.evaluate(NTH_LINK, [link, int(n)])
+    if path:
+        FOUND[r] = path
+    return path
+
+
 def run(pg, routes, who, theme, width, findings):
     for r in routes:
         key = f"{who}/{theme}/{width}px{r}"
@@ -177,6 +206,11 @@ def run(pg, routes, who, theme, width, findings):
             path = pg.evaluate(FIND_EXERCISE, r.split(":", 1)[1])
             if not path:
                 findings["head"].append((key, f"no exercise {r.split(':', 1)[1]!r} on /treninzi/vjezbe (the demo seed?)"))
+                continue
+        elif r.startswith(("trening:", "dan:")):       # a programme or a day of ivan's, by its link
+            path = resolve(pg, r)
+            if not path:
+                findings["head"].append((key, f"nothing found for {r!r} (the demo seed? the client's walk first?)"))
                 continue
         pg.goto(BASE + path)
         pg.wait_for_load_state("networkidle")
