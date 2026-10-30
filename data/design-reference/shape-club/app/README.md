@@ -146,10 +146,46 @@ page holds (`app-27`, desktop 2880×1742 retina, the first open):
   for the first time, it has a guide here". So progress is SAVED per
   exercise ("spremiš progres": presumably sets / reps / weight), and the
   saved item turns green in the list.
-- Still to capture: the other five tour steps, the page without the tour
-  (the exercise list under the video, the progress form), an exercise saved
-  (green), the ‹ › states and the bar's filled segments, and "Završi
-  Trening"'s end screen.
+- `app-28…32`: the tour's steps 2–6 (the owner, 30.10.2026), which show the
+  whole page under them. **The page, top to bottom:**
+  1. The segmented bar, then the line "← Povratak · Rumunjsko mrtvo dizanje
+     bučicama … Završi Trening".
+  2. The video box with ‹ › (tour 2: "Povuci lijevo/desno za promjenu vježbe
+     bez izlaska iz videa.": a swipe on a phone).
+  3. Under it two columns. **Left, the current exercise's card**: the eyebrow
+     "TRENUTNA VJEŽBA" with a chip "5/11" (this is exercise 5 of 11), a ⇄
+     button at the card's right (tour 5: "Ne odgovara ti vježba? Ovdje otvaraš
+     zamjene."), the name as the h1, the target "10 REP", then **the set log**,
+     a table SET · REP · KG · AKCIJE with a row per planned set (1, 2, 3), REP
+     prefilled with the plan (10) and KG with the last weight (20) or 0, a round
+     "+" under it to add a set, and a wide dark pill "Spremi" (tour 3: "Upiši
+     ponavljanja i kilažu za svaki set. Možeš brzo uređivati polja."; tour 4:
+     "Spremi unos kako bi set bio označen i progres zapisan."). So progress is a
+     LOG of reps × kg per set, saved per exercise, and the saved exercise turns
+     green in the list (tour 1).
+     **Right, two cards**: "MUZIKA UZ TRENING" (Spotify · "Otvori u Spotifyju",
+     three buttons Spotify / YouTube / YouTube Music: links out, nothing more) and
+     **"VJEŽBE", the day's whole list** in sections with letter-spaced eyebrows,
+     "ZAGRIJAVANJE" (Vježba 1 Bodyweight RDL · 1 X 15 REP · "Odmor između
+     serija: —"; Vježba 2 Rock back · 1 X 15 REP; Vježba 3 Čučanj izdržaj uz zid ·
+     2 X 30 SEK · "30–45 sec") and "TRENING" (Vježba 4 Leg press · 3 X 10 REP;
+     "TRENUTNA VJEŽBA" Rumunjsko mrtvo dizanje bučicama · 3 X 10 REP, its card
+     outlined). Each item: a thumbnail at the left, the eyebrow "VJEŽBA n", the
+     name in bold, the dose (sets × reps, or sets × seconds), the rest line, a
+     note line when there is one; at the right a round ▷ (jump to it) and a
+     round ⇄ (swap it).
+  4. **The swap modal** (tour 6: "Odaberi zamjensku vježbu. Tvoj log ostaje
+     povezan s treningom."): "Zamijeni vježbu", ✕, "Slične vježbe", a list of
+     alternatives from the library, each "ZAMJENA" + the name ("Rumunjsko mrtvo
+     dizanje šipkom", "Jednonožni RDL") with ⇄ at the right; the page blurred
+     behind. The log stays with the training whichever exercise is done.
+- Measured in words (desktop, dark, a faint purple tint): cards 24px radius on
+  `#141414`-ish with a 1px lighter hairline, eyebrows letter-spaced uppercase in
+  muted grey, the h1 Inter 700 ≈36px, inputs dark rounded 12px boxes, the
+  primary "Spremi" a black pill, the tour card a near-black 24px card with a
+  blue countdown ring. The video clips are PORTRAIT, ~20 s, looped.
+- Still to capture: the page after "Spremi" (a green item, a filled segment)
+  and what "Završi Trening" opens.
 
 ## Moj napredak — the calendar (`app-08`; top part from the page text)
 
