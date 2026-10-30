@@ -167,8 +167,18 @@ page explain the player); 6 no. The stages below carry them.
    text instead.
 6. **Music links** (Spotify / YouTube). Not for QMT.
 
-## Open, to settle with Amir through the owner
+## Settled (30.10.2026, the owner)
 
-- Tags: free words are enough for now, or a fixed list (mišićna skupina, oprema)?
-- A cap on days per programme (none planned; 1–7 expected).
-- The osvrt at the end of an online day: the termin's three fields, or fewer?
+- **One model for every online programme: Shape's Gym Program player.** The owner:
+  "shape club has home workout and gym workouts, but we will design our online
+  trainings like the gym workouts of shape club and then Amir will change the
+  training outline himself depending on the equipment the user has … it makes
+  the code less complicated and we keep everything modular." So no second,
+  one-video kind of programme: a home programme is a programme whose exercises
+  need no gym, built from the same library; the later routing by equipment
+  (q1–q4 of the upitnik) picks between programmes, never between models.
+- **The osvrt after an online day asks the same three fields** as after a termin:
+  napor 1–10, osjećaj, a comment.
+- **No first-open tour** (the guide and a short line on the day page explain the
+  player).
+- Tags: free words (a fixed list if Amir asks). Days per programme: no cap.
