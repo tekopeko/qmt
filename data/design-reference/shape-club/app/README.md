@@ -190,8 +190,33 @@ page holds (`app-27`, desktop 2880×1742 retina, the first open):
   0:21 at rest in the player; the set log and the list are below the fold. Next
   to the name a small dark chip with a clock, "0:18": a timer running since the
   training was opened (the training's elapsed time, not the clip's).
-- Still to capture: the page after "Spremi" (a green item, a filled segment)
-  and what "Završi Trening" opens.
+- **The phone** (the owner's own phone, 30.10.2026, Android Chrome, 945px-wide
+  captures): `phone/phone-20-gym-program-training-top-2026-10-30.png`, the first
+  screen, and `phone/phone-19-gym-program-training-full-page-2026-10-30.png`,
+  the whole page scrolled into one tall image. "Very similar just made to
+  fit" (the owner). What changes from the desktop:
+  - The header stacks: the segmented bar, then "← Povratak · 🕐 5:02 · Završi
+    Trening" on one line, then the exercise's name letter-spaced uppercase
+    ("B O D Y W E I G H T  R D L") with "1 × 15 REP" under it and two round
+    buttons at the right (a picture-in-picture icon and ⇄ swap), all laid over
+    the top of the video.
+  - The video fills the width (portrait, so it fills the screen), and the
+    player's controls are CUSTOM, a row of round buttons under it: ↺ restart,
+    ⏮ previous exercise, a big ▷ play, ⏭ next exercise, 🔊 sound. No native
+    controls, no scrubber.
+  - Under the video a bottom sheet with a grab handle: the current exercise's
+    row (thumbnail, "TRENUTNA VJEŽBA", a chip "1/11", the name, a button
+    "Otvori…"), which pulls up into the full page.
+  - The full page under it is the desktop's right column made one column: the
+    music card, then "VJEŽBE" in THREE sections, ZAGRIJAVANJE (1–3), TRENING
+    (4–8) and ISTEZANJE (9–11), with "ODMOR —" separators between the items
+    (the rest between exercises, here unset). The current exercise's card is
+    expanded in place with its set log ("SET 1 · REP 15 · KG 0" and "+"): on
+    the phone the log lives inside the list, not in a card of its own. Items
+    carry notes under the rest line: "10 repeticija po strani", "30 sec po
+    strani", "(ležeća varijanta)".
+- Not captured, optional: the page after "Spremi" (a green item, a filled
+  segment), what "Završi Trening" opens, and "Moj napredak" after a training.
 
 ## Moj napredak — the calendar (`app-08`; top part from the page text)
 
