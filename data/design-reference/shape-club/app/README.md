@@ -47,6 +47,19 @@ and the Social Club feed.
 - Then a purple gradient banner "STAY CONSISTENT!", the FAQ in two columns,
   "Rezultati govore sami za sebe" (before/after photo carousel), footer.
 - Pages load slowly (3–30 s) behind a skeleton (`app-18`) and fade in.
+- `app-21-dashboard-after-payment-2026-10-30.png` (the owner's capture, a
+  fresh account right after paying, desktop 2876×1688 retina): the page the
+  payment lands on is this dashboard in Home Challenge mode, and it is LIGHT
+  here (a pale grey-blue page, white cards), where the 17.10. trial captures
+  were dark. The header pill "Home Challenge | Gym Program" with the bell and
+  ☰ as white circles; left, the hero photo card "BOK TANA!" (italic uppercase),
+  "Nastavi gdje si stala:", "Summer Quick Workouts", "Napredak … 0%", the
+  thin bar, "0/12 treninga odrađeno", two dark pills "Kreni na trening" and
+  "Završi challenge", ‹ › arrows above the card; right, a white card
+  "TJEDAN 1 ˅" holding the training photo cards one under another, each
+  with a dark chip "1. TRENING" top-left, the name bottom-left ("Gluteus i
+  noge") and a white-outlined pill "Pokreni trening" bottom-right. Saved on
+  the way to the Gym Program's training page (the exercise list with checkmarks).
 
 ## Moj napredak — the calendar (`app-08`; top part from the page text)
 
