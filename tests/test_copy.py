@@ -20,13 +20,15 @@ migration that gave a gym card its own), and one number one slot on both
 pages (21.10.2026: /moja-clanarina's "Dodaj plan" cards print the landing's
 prices, a gym plan's yearly price is a slot of its own, and the migration
 that made each card one text and carried the gym cards' typed yearly
-prices).
+prices), and the guide through the training (29.10.2026: its slots, an
+emptied one, /vodic; its place on /upitnik is tests/test_upitnik.py's).
 
 The browser half is the net under the texts. Their design limits were lifted
 on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
-slot with a long text — once with words, once with one unbreakable word —
-gives the first announcement's text three lines and a photo behind it, and
-measures the pages at four widths.
+slot with a long text — once with words, once with one unbreakable word (the
+guide's in three lines) — gives the first announcement's text three lines
+and a photo behind it, and measures the pages at four widths (the guide's
+two among them: /upitnik opens on it, and /vodic).
 Nothing may overflow or be cut, and the cards' prices stay level. It proves
 no design; that pass comes once the copy is final. On the way it walks the
 landing's rows of cards, the announcements' among them (one card per view;
@@ -72,7 +74,7 @@ from qmt import auth, config, copy, db, storage
 from qmt.models import PLAN_TYPES, Base, SiteCopy, User
 from qmt.web.app import addon_amounts, app, reference_prices
 
-PAGES = ("/", "/moja-clanarina", "/prehrana", "/upitnik")  # every page that has editable text
+PAGES = ("/", "/moja-clanarina", "/prehrana", "/upitnik", "/vodic")  # every page that has editable text
 
 
 @pytest.fixture(autouse=True)
@@ -1277,6 +1279,8 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
     editor opens with no online plan of his own (tests/test_upitnik.py),
     around its questions (rows since 26.10.2026, seeded here as the
     migration leaves them: a part's heading prints on its questions' steps).
+    The guide's (vodic.*, 29.10.2026) are on /upitnik, its first screen,
+    and on /vodic, both: one partial (_vodic.html), one slot per text.
     A list, a switch and a photo keep their shape on each page they are
     on; a visitor and a client get no editor markup, the announcements'
     and the gym's cards' (rows, not slots) included."""
@@ -1908,6 +1912,121 @@ def test_the_migration_makes_each_plan_card_one_text_and_carries_the_yearly_pric
     assert years() == [("1.200 €", "/ godišnje"), ("900", "/ god.")]        # what the site showed
 
 
+# ---------- the guide through the training (29.10.2026) ----------
+
+VODIC_PARTS = {"h": "naslov", "text": "tekst", "points": "stavka", "after": "tekst ispod popisa"}
+
+
+def guide_of(page: str) -> tuple[str, str]:
+    """The guide on a page (_vodic.html): its title and sections' markup,
+    and its button's."""
+    sections, rest = page.split('<div class="vodic">')[1].split('<div class="q-nav v-nav">')
+    return sections, rest.split("</div>")[0].strip()
+
+
+def test_the_guide_is_eleven_sections_of_four_slots_its_title_and_its_button():
+    """The gym owner's guide (copy.VODIC_SECTIONS), registered by a loop:
+    its title, eleven sections of the same four slots (a heading, its
+    lines, a list of up to 12, the lines under the list), its button: 46
+    slots, every one free text (none required: an emptied one stays
+    empty), labelled by its section ("Vodič 5: naslov"). His words, but
+    not one emoji (his bullet marks neither: the list's dots replace them),
+    each as clean() would store it, and no consent line (the
+    questionnaire's last screen asks for it)."""
+    keys = [key for key in copy.SLOTS if key.startswith("vodic.")]
+    assert keys == ["vodic.title", *(f"vodic.{n}.{part}" for n in range(1, 12) for part in VODIC_PARTS), "vodic.cta"]
+    for n in range(1, 12):
+        for part, word in VODIC_PARTS.items():
+            slot = copy.SLOTS[f"vodic.{n}.{part}"]
+            if part == "points":
+                assert isinstance(slot, copy.ListSlot) and (slot.max_items, slot.max_chars) == (12, 2000)
+            else:
+                assert isinstance(slot, copy.Slot) and slot.max == 2000 and not slot.required
+            assert slot.label == f"Vodič {n}: {word}"
+    assert [(copy.SLOTS[key].default, copy.SLOTS[key].label) for key in ("vodic.title", "vodic.cta")] == [
+        ("Dobrodošao/la u vodič kroz trening", "Vodič: naslov"), ("Idemo na upitnik!", "Vodič: gumb")]
+    assert [copy.SLOTS[f"vodic.{n}.h"].default for n in (1, 2, 11)] == ["", "Tko sam ja?", "Ispuni anketni upitnik"]
+    assert [len(copy.SLOTS[f"vodic.{n}.points"].default) for n in range(1, 12)] == [0, 4, 4, 0, 4, 3, 3, 2, 0, 2, 0]
+    assert copy.SLOTS["vodic.5.points"].default[3] == "Hladan znoj, vrtoglavicu, mučninu ili zujanje u ušima"
+    assert copy.SLOTS["vodic.7.text"].default == "" and copy.SLOTS["vodic.7.after"].default.endswith("QMove 2x60.")
+    texts = [text for key in keys for text in (copy.SLOTS[key].default if key.endswith(".points")
+                                                else (copy.SLOTS[key].default,))]
+    emoji = re.compile("[\U0001F300-\U0001FAFF☀-➿⬀-⯿️]")
+    assert not [t for t in texts if emoji.search(t)] and all(copy.clean(t) == t for t in texts)
+    assert not [t for t in texts if "Pristajem" in t]
+
+
+def test_an_emptied_guide_text_is_nothing_for_a_client_and_a_box_for_the_editor():
+    """The guide's texts are slots like any (20.10.2026): POST /copy/{key}
+    stores an emptied one as "" and Zadano brings its default back. A
+    reader then gets nothing for it, nor what held it: an emptied heading
+    no h2, an emptied text or the lines under a list no p, a list emptied
+    item by item no ul, a section with all four empty no box; on /vodic
+    and on /upitnik alike (one partial). The editor keeps each as an empty
+    box (an .ed span; the list's empty <ul> and its "+ Dodaj stavku"),
+    which base.html shows in edit mode only."""
+    make_user("ivan@test.local", plans=("online",)); make_user("trener@test.local", is_trainer=True)
+    upitnik_examples()
+    t = client_for("trener@test.local")
+    assert t.post("/copy/vodic.2.h", data={"text": "  "}).json() == {"ok": True, "text": "", "default": False}
+    for key in ("vodic.3.text", "vodic.5.after", "vodic.9.h", "vodic.9.text"):     # section 9: all four empty now
+        assert t.post(f"/copy/{key}", data={"text": ""}).json()["text"] == "", key
+    for _ in range(4):                                                              # section 5's list, item by item
+        assert t.post("/copy/vodic.5.points", data={"text": "", "index": "0"}).json()["ok"]
+    assert db.copy_texts()["vodic.2.h"] == "" and db.copy_texts()["vodic.5.points"] == "[]"
+    c = client_for("ivan@test.local")
+    for path in ("/vodic", "/upitnik"):
+        sections, _ = guide_of(c.get(path).text)
+        box = sections.split('<div class="v-sec">')[1:]
+        assert len(box) == 10 and "Važna smjernica" not in sections, path                       # section 9: no box
+        assert "<h2>" not in box[1] and "Moje ime je Amir Šoša." in box[1], path                 # section 2: no heading
+        assert ("<h2><span class=\"t\">Zašto je ova aplikacija drugačija?</span></h2>" in box[2]
+                and "<p>" not in box[2] and "<ul>" in box[2]), path                              # section 3: no text
+        assert "<ul>" not in box[4] and box[4].count("<p>") == 1 and "Oštru bol" not in box[4], path   # 5: no list, no after
+    page = t.get("/vodic").text
+    for key, word in (("vodic.2.h", "naslov"), ("vodic.3.text", "tekst"), ("vodic.5.after", "tekst ispod popisa"),
+                      ("vodic.9.h", "naslov"), ("vodic.9.text", "tekst"), ("vodic.9.after", "tekst ispod popisa")):
+        n = key.split(".")[1]
+        assert f'<span class="ed t" data-copy="{key}" data-max="2000" data-label="Vodič {n}: {word}"></span>' in page, key
+    for n in (5, 9):                                                               # an empty list and its button
+        assert re.search(rf'<ul data-list="vodic.{n}.points" data-max="2000" data-max-items="12" '
+                         rf'data-label="Vodič {n}: stavka">\s*</ul>\s*<button type="button" class="act ed-add">'
+                         rf'\+ Dodaj stavku</button>', page), n
+    assert "body:not(.editing) .vodic :is(h1, h2, p):has(> .ed:empty)" in page       # no room outside edit mode
+    assert t.post("/copy/vodic.2.h", data={"reset": "1"}).json() == {"ok": True, "text": "Tko sam ja?", "default": True}
+    assert "<h2><span class=\"t\">Tko sam ja?</span></h2>" in client_for("ivan@test.local").get("/vodic").text
+
+
+def test_vodic_is_the_guide_for_members_and_staff_its_button_to_question_1():
+    """/vodic (29.10.2026): the guide on a page of its own, for a member
+    with a plan or without one and for the trainer and the owner; a guest
+    is sent to log in, to come back to it. A member's page is one task
+    (base.html's solo_page: the brand alone in the small pill), staff keep
+    their bar and get the editor. Its button is a link to /upitnik?od=1,
+    which opens on question 1 (the guide read). No page links to it yet."""
+    make_user("ivan@test.local", plans=("online",)); make_user("ana@test.local"); make_user("trener@test.local", is_trainer=True)
+    upitnik_examples()
+    r = TestClient(app).get("/vodic", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login?next=/vodic"
+    for email in ("ivan@test.local", "ana@test.local"):                             # an online plan, and none
+        r = client_for(email).get("/vodic", follow_redirects=False)
+        assert r.status_code == 200, email
+        page = r.text
+        assert "<title>Vodič kroz trening — QMT</title>" in page and 'class="topbar compact"' in page, email
+        assert 'class="avatar' not in page and 'id="mainNav"' not in page and "data-copy" not in page, email
+        sections, button = guide_of(page)
+        assert button == '<a class="btn" href="/upitnik?od=1"><span class="t">Idemo na upitnik!</span></a>', email
+        assert '<h1 class="q-h" tabindex="-1"><span class="t">Dobrodošao/la u vodič kroz trening</span></h1>' in sections
+        assert sections.count('<div class="v-sec">') == 11 and sections.count("<h2>") == 10, email
+    assert 'data-start="step-q1"' in client_for("ivan@test.local").get("/upitnik?od=1").text     # where the button leads
+    page = client_for("trener@test.local").get("/vodic").text
+    assert '<header class="topbar">' in page and 'class="avatar' in page and 'id="copyToggle"' in page
+    assert all(f'data-copy="{key}"' in page or f'data-list="{key}"' in page for key in copy.SLOTS if key.startswith("vodic."))
+    c = client_for("ivan@test.local")
+    for path in ("/", "/raspored", "/karton", "/moja-clanarina", "/prehrana", "/profil", "/treninzi", "/upitnik"):
+        assert 'href="/vodic' not in c.get(path).text, path
+
+
 # ---------- the layout, measured in a browser ----------
 #
 # No slot has a design limit since 16.10.2026 (src/qmt/copy.py): the copy
@@ -2372,6 +2491,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 db.set_copy(key, copy.dump_items([make(min(slot.max_chars, n))] * min(slot.max_items, ITEMS)), None)
             elif isinstance(slot, copy.RowsSlot):       # every table 12 rows long, each cell 300 characters
                 db.set_copy(key, copy.dump_rows([[make(min(slot.max_chars, LONG))] * 2] * min(slot.max_rows, ITEMS)), None)
+            elif key.startswith("vodic."):              # the guide's texts 300 characters in three lines
+                db.set_copy(key, "\n".join([make(LONG // 3)] * 3), None)   # (span.t: the breaks show)
             else:                                       # every text 300 characters
                 db.set_copy(key, make(min(slot.max, LONG)), None)
         for a in db.announcements(all=True):            # and every text of every announcement; they stay

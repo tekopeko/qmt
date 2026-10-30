@@ -57,6 +57,8 @@ templates.env.globals["CAP"] = copy.CAP                # a text's cap, where no 
 templates.env.globals["ANNOUNCEMENT"] = copy.ANNOUNCEMENT_SLOTS   # an announcement's fields (landing.html, #aktualno)
 templates.env.globals["GYM"] = copy.GYM_CARD_SLOTS     # a gym card's fields (landing.html, #dvorana)
 templates.env.globals["QUESTION"] = copy.UPITNIK_QUESTION_SLOTS   # a question's texts (upitnik.html)
+# the guide's sections by number, 1 … 11: its slots are vodic.<n>.* (_vodic.html)
+templates.env.globals["VODIC_SECTIONS"] = range(1, len(copy.VODIC_SECTIONS) + 1)
 # an online tier's QMove card, whose title slot is the tier's name (moja_clanarina.html, Paket)
 templates.env.globals["ONLINE_TIER_SLOTS"] = ONLINE_TIER_SLOTS
 # a price slot's text as the page prints it, and whether it is a number at
@@ -1811,8 +1813,26 @@ def karton_client(request: Request, user_id: int):
     return _render_karton(request, user, subject, own=False)
 
 
+@app.get("/vodic", response_class=HTMLResponse)
+def vodic_page(request: Request):
+    """The guide through the training (29.10.2026, the owner: "a guide
+    through the training", the gym owner's text, copy.VODIC_SECTIONS) on a
+    page of its own: the guide /upitnik opens on, the same partial
+    (_vodic.html), its button a link to /upitnik?od=1, which opens on the
+    first question (the guide read). For members, a plan or not, and for
+    the trainer and the owner, who retype its texts here or on /upitnik; a
+    guest is sent to log in. In no nav and linked from nowhere yet: the
+    first sign-up and the first payment are to lead here later (the
+    owner), one link each."""
+    user = current_user(request)
+    if user is None:
+        from urllib.parse import quote
+        return RedirectResponse(f"/login?next={quote('/vodic')}", status_code=303)
+    return templates.TemplateResponse(request, "vodic.html", _ctx(request, user))
+
+
 @app.get("/upitnik", response_class=HTMLResponse)
-def upitnik_page(request: Request):
+def upitnik_page(request: Request, od: str = ""):
     """The online-trening upitnik (qmt.upitnik, version 2 since 26.10.2026),
     one question per screen, its questions the rows of upitnik_questions in
     their order (qmt.upitnik.steps), a conditional one (27.10.2026) only
@@ -1829,7 +1849,11 @@ def upitnik_page(request: Request):
     "Obriši pitanje", its settings, "Pita se" among them), the lines under
     them that say what the settings do and when it is asked, the scoring's
     summary above the first question, and "+ Dodaj pitanje" under the last
-    while there is room for another."""
+    while there is room for another. Since 29.10.2026 it opens on the guide
+    through the training (_vodic.html: the gym owner's introduction, before
+    question 1), a refill too, the editor's preview too; with ?od=1 (the
+    guide read: /vodic's button, a refused submission) on the first
+    question. The form's data-start names that step."""
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
@@ -1843,11 +1867,13 @@ def upitnik_page(request: Request):
     # the questions others are asked after (shown ones that a deletion
     # would leave asked of everyone): their "Obriši pitanje" says so
     parents = {q.parent for q in steps if q.condition and q.shown and q.parent is not None} if editor else set()
+    # where it opens: the guide, or with ?od=1 the first question asked (an
+    # editor's first row may be hidden; with none at all, the last screen)
+    first = next((q.id for q in steps if q.shown and not q.muted), "end")
     return templates.TemplateResponse(request, "upitnik.html", _ctx(
         request, user, steps=steps, scale=upitnik.SCALE, yes=upitnik.YES, no=upitnik.NO,
         text_max=upitnik.TEXT_MAX, pain_high_at=upitnik.PAIN_HIGH,
-        # the first step asked: no "Nazad" on it (an editor's first row may be hidden)
-        first_step=next((q.id for q in steps if q.shown), None),
+        start=f"step-{first}" if od == "1" else "step-vodic",
         last_row=len(rows), summary=upitnik.scoring_summary(steps) if editor else None,
         lines={q.id: upitnik.setting_line(q) for q in steps} if editor else {},
         ifs={q.id: upitnik.condition_line(q) for q in steps} if editor else {},
@@ -1872,13 +1898,15 @@ async def upitnik_submit(request: Request):
     level, and for a client in pain adds the sentence that sends him to the
     trainer first (upitnik.pain_note). The trainer and the owner edit the
     questionnaire and never fill it (the page they get is the editor's: a
-    choice is his options list, no radio): refused."""
+    choice is his options list, no radio): refused. A refusal comes back
+    with ?od=1, on the first question (29.10.2026): whoever sends the form
+    has read the guide that stands before it."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if _can_edit_copy(user):
         return RedirectResponse(
-            "/upitnik?error=Upitnik+ispunjavaju+članovi+—+ovdje+se+uređuju+samo+tekstovi.", status_code=303)
+            "/upitnik?od=1&error=Upitnik+ispunjavaju+članovi+—+ovdje+se+uređuju+samo+tekstovi.", status_code=303)
     if not _has_online(user):
         return RedirectResponse(
             "/karton?error=Upitnik+je+dio+online+članarine+—+javi+se+treneru.", status_code=303)
@@ -1895,9 +1923,9 @@ async def upitnik_submit(request: Request):
     try:
         answers = upitnik.read(posted, asked)
     except ValueError:
-        return RedirectResponse("/upitnik?error=Odgovori+na+sva+pitanja.", status_code=303)
+        return RedirectResponse("/upitnik?od=1&error=Odgovori+na+sva+pitanja.", status_code=303)
     if not any(posted.get("consent", ())):
-        return RedirectResponse("/upitnik?error=" + quote("Potvrdi pristanak na obradu podataka o zdravlju."),
+        return RedirectResponse("/upitnik?od=1&error=" + quote("Potvrdi pristanak na obradu podataka o zdravlju."),
                                 status_code=303)
     result = upitnik.evaluate(answers, asked)
     db.save_onboarding(user.id, json.dumps(answers, ensure_ascii=False), result.score, result.level, upitnik.GOAL,

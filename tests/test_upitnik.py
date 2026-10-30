@@ -25,9 +25,11 @@ submission must hold, what is stored), the editor's routes (add, delete,
 move and its refusal, settings and their rules, Pita se's among them, a
 client's 403), a question's words as virtual keys on POST /copy/{key}, the
 editor's page (the lines that say what the settings do and when a question
-is asked, the summary, the Pita se controls), the karton's block for a new
-response, an old one, one whose questions changed since and a chain's
-indented answers, the migrations (the one that made the rows already there
+is asked, the summary, the Pita se controls), the guide through the
+training as the page's first screen (29.10.2026: ?od=1 opens on the first
+question, and a refused submission comes back there), the karton's block
+for a new response, an old one, one whose questions changed since and a
+chain's indented answers, the migrations (the one that made the rows already there
 version 1, the one that made the slots rows, the one that made the
 follow-ups questions, from a database shaped like prod's), and two editors
 at once. One question per screen, the editor's controls and the walk
@@ -620,7 +622,8 @@ def test_a_refill_replaces_the_row_an_old_one_included_and_pain_starts_at_pocetn
     assert unquote(r.headers["location"]).endswith("— Napredna razina.") and not db.get_onboarding(uid).pain_high
 
 
-ERROR = "/upitnik?error=Odgovori+na+sva+pitanja."
+# a refusal comes back on the first question (?od=1: the guide before it read, 29.10.2026)
+ERROR = "/upitnik?od=1&error=Odgovori+na+sva+pitanja."
 
 
 @pytest.mark.parametrize("what, sent, where", [
@@ -637,7 +640,7 @@ ERROR = "/upitnik?error=Odgovori+na+sva+pitanja."
     ("q17 missing when q15 is yes", {"q15": "da"}, ERROR),
     ("a free text past the cap", {"q15": "da", "q17": "x" * (upitnik.TEXT_MAX + 1)}, ERROR),
     ("the consent missing", {"consent": None},
-     "/upitnik?error=Potvrdi%20pristanak%20na%20obradu%20podataka%20o%20zdravlju."),
+     "/upitnik?od=1&error=Potvrdi%20pristanak%20na%20obradu%20podataka%20o%20zdravlju."),
 ])
 def test_an_incomplete_or_invalid_submission_stores_nothing(what, sent, where):
     uid = make_user("ivan@test.local")
@@ -716,7 +719,7 @@ def test_who_gets_the_page_and_who_may_send_it():
         page = c.get("/upitnik")
         assert page.status_code == 200 and 'id="copyToggle"' in page.text, email
         r = c.post("/upitnik", data=form(), follow_redirects=False)
-        assert unquote(r.headers["location"]) == "/upitnik?error=Upitnik+ispunjavaju+članovi+—+ovdje+se+uređuju+samo+tekstovi."
+        assert unquote(r.headers["location"]) == "/upitnik?od=1&error=Upitnik+ispunjavaju+članovi+—+ovdje+se+uređuju+samo+tekstovi."
         assert db.get_onboarding(uid) is None, email
 
     page = client_for("ivan@test.local").get("/upitnik").text      # a client: the form, no editor
@@ -736,14 +739,59 @@ def test_who_gets_the_page_and_who_may_send_it():
 def test_the_error_shows_under_the_title_and_the_form_starts_empty():
     """A refused submission comes back with why, under the questionnaire's
     title (not over it, base.html's place), and the form starts on the
-    first question again with nothing chosen: a refill starts fresh."""
+    first question again (?od=1, the guide read: the form's data-start)
+    with nothing chosen: a refill starts fresh."""
     make_user("ivan@test.local")
     c = client_for("ivan@test.local")
     c.post("/upitnik", data=form(), follow_redirects=False)        # a filled one exists
-    page = c.get("/upitnik?error=Odgovori+na+sva+pitanja.").text
+    page = c.get(ERROR).text
     title, alert = page.index('class="q-title"'), page.index('<div class="alert" role="alert">')
     assert title < alert < page.index('class="q-intro"') and page.count('class="alert"') == 1
     assert "checked" not in page.split('id="quiz"')[1].split("</form>")[0]
+    assert 'class="quiz" id="quiz" autocomplete="off" data-start="step-q1">' in page
+
+
+def steps_in(page: str) -> list[str]:
+    """The ids of the steps on a page, in their order."""
+    return re.findall(r'<section class="q-step[^"]*" id="step-([^"]+)"', page)
+
+
+def test_the_guide_is_the_first_screen_and_od_1_opens_on_the_first_question():
+    """The guide through the training (29.10.2026, _vodic.html) is the
+    questionnaire's first step, before question 1, for a client filling it
+    and for one filling it again, and on the editor's page (his preview
+    and edit mode): the form says it opens there (data-start). With ?od=1
+    (the guide read: /vodic's button) it opens on the first question
+    asked, an editor's first row hidden or not; any other od is the guide.
+    The guide's button is the questionnaire's forward one (the script goes
+    on to question 1), and every question has Nazad, the first one's back
+    to the guide. Without JS the guide stands above the questions in the
+    one form: it is markup, not script."""
+    uid = make_user("ivan@test.local")
+    c = client_for("ivan@test.local")
+    for filled in (False, True):
+        page = c.get("/upitnik").text
+        assert 'data-start="step-vodic"' in page, filled
+        assert steps_in(page) == ["vodic"] + [f"q{n}" for n in ORDER] + ["end"], filled
+        guide = page.split('<section class="q-step" id="step-vodic">')[1].split("</section>")[0]
+        assert '<h1 class="q-h" tabindex="-1"><span class="t">Dobrodošao/la u vodič kroz trening</span></h1>' in guide
+        assert guide.count('<div class="v-sec">') == 11 and guide.count("<h2>") == 10      # section 1 has no heading
+        assert '<button type="button" class="btn q-next"><span class="t">Idemo na upitnik!</span></button>' in guide
+        assert "required" not in guide and "<input" not in guide                     # no answer: nothing to send
+        quiz = page.split('id="quiz"')[1].split("</form>")[0]
+        assert quiz.count('class="act act-quiet q-back"') == len(ORDER) + 1           # every question, and the last screen
+        c.post("/upitnik", data=form(), follow_redirects=False)                       # a refill shows it too
+    assert db.get_onboarding(uid) is not None
+    assert 'data-start="step-q1"' in c.get("/upitnik?od=1").text
+    for od in ("0", "2", "da", ""):
+        assert 'data-start="step-vodic"' in c.get(f"/upitnik?od={od}").text, od
+    t = client_for_trainer()
+    page = t.get("/upitnik").text
+    assert 'data-start="step-vodic"' in page and steps_in(page)[0] == "vodic"
+    assert '<span class="ed t" data-copy="vodic.title" data-max="2000" data-label="Vodič: naslov">' in page
+    t.post("/upitnik/pitanje/1", data={"shown": "off"})                               # his first row hidden:
+    assert 'data-start="step-q2"' in t.get("/upitnik?od=1").text                      # od=1 opens on the first asked
+    assert 'data-start="step-q2"' in c.get("/upitnik?od=1").text                      # a client's too
 
 
 # ---------- the editor's routes: add, delete, move, settings ----------

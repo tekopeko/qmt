@@ -6,17 +6,21 @@ after q14 / q15 since 27.10.2026) are seeded before every test, as the
 migrations make them.
 
 A client goes through it on a phone (390px, touch) and on a desktop
-(1280px): a choice goes on by itself, so does a scale, Nazad goes back with
-the answer kept (and the same answer again goes on), q14 at 5 asks where it
-hurts (q16) and Dalje needs it written, q15 Da asks for a note (q17), the
-bar counts the questions asked, the consent is required, and the saved
-upitnik lands on /treninzi. On the desktop the keyboard too: the arrows
-only mark an answer, Enter goes on. The trainer's edit mode shows every
-step, stacked, his preview outside it one step at a time. With the gym
-owner's texts at their longest (300 characters, every choice 12 options of
-60), and once as one unbreakable word, no step widens the page, leaves the
-column or is cut, at 360, 390, 900 and 1280px, and the scale's ten buttons
-keep 40px each (5 × 2 until ten fit in a row). The editor builds a
+(1280px): the guide through the training first (29.10.2026, the gym
+owner's introduction: no bar, its button goes on to question 1, whose
+Nazad comes back to it), then a choice goes on by itself, so does a
+scale, Nazad goes back with the answer kept (and the same answer again
+goes on), q14 at 5 asks where it hurts (q16) and Dalje needs it written,
+q15 Da asks for a note (q17), the bar counts the questions asked, the
+consent is required, and the saved upitnik lands on /treninzi. On the
+desktop the keyboard too: the arrows only mark an answer, Enter goes on.
+The trainer's edit mode shows every step, stacked, the guide's boxes at
+the top, his preview outside it one step at a time. With the gym owner's
+texts at their longest (300 characters, every choice 12 options of 60;
+the guide's texts in three lines, its lists 12 items), and once as one
+unbreakable word, no step, the guide's among them, widens the page,
+leaves the column or is cut, at 360, 390, 900 and 1280px, and the scale's
+ten buttons keep 40px each (5 × 2 until ten fit in a row). The editor builds a
 question in edit mode, at 360, 390 and 1280px: adds it (the page comes back
 in edit mode, at it), retypes it, makes it a multi and a scale again that
 scores navike (the summary counts it), moves it up, hides it (a client is
@@ -27,8 +31,9 @@ trainer builds porod → zadnjih godinu dana → carski rez on a phone with
 Pita se, the chain indented in edit mode, which never overflows with it at
 360, 390 and 1280px; a client answering Da / Da / an option sees exactly
 those steps, Ne none of the children, the bar counting as it goes. An
-option asks its question too, a client's and the trainer's preview. No page
-errors, no console errors, anywhere.
+option asks its question too, a client's and the trainer's preview. The
+walks about the questions open on question 1 (?od=1, the guide read). No
+page errors, no console errors, anywhere.
 """
 
 from __future__ import annotations
@@ -99,10 +104,11 @@ def server():
     srv.should_exit = True; th.join(timeout=5)
 
 
-def open_page(browser, server: str, email: str, width: int, still: bool = False):
+def open_page(browser, server: str, email: str, width: int, still: bool = False, path: str = "/upitnik"):
     """A logged-in page at `width` (a phone below 600px: touch), and the
     list its page errors and console errors land in. `still`: under reduced
-    motion, so no step slides in (base.html), for a walk that measures."""
+    motion, so no step slides in (base.html), for a walk that measures.
+    `path`: /upitnik opens on the guide, /upitnik?od=1 on question 1."""
     phone = width < 600
     ctx = browser.new_context(viewport={"width": width, "height": 900}, has_touch=phone, is_mobile=phone,
                               reduced_motion="reduce" if still else "no-preference")
@@ -113,7 +119,7 @@ def open_page(browser, server: str, email: str, width: int, still: bool = False)
     pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")      # the install banner stays out of the way
     pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
     pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
-    pg.goto(server + "/upitnik"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+    pg.goto(server + path); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
     return ctx, pg, errors
 
 
@@ -157,12 +163,21 @@ def test_a_client_goes_through_the_questionnaire_one_screen_at_a_time(server):
                 if not ok:
                     problems.append(f"{where} {what}")
 
-            # the first screen: q1 alone under the title and the intro, its h1 the page's only one
-            check(shown(pg) == ["step-q1"], f"on load the steps shown are {shown(pg)}")
+            # the first screen: the guide through the training, its title the page's only h1, no bar, no intro
+            check(shown(pg) == ["step-vodic"], f"on load the steps shown are {shown(pg)}")
+            check(pg.evaluate("[...document.querySelectorAll('h1')].filter(h => h.offsetParent).map(h => h.textContent.trim())")
+                  == ["Dobrodošao/la u vodič kroz trening"], "not the guide's title, the one h1")
+            check(not pg.locator(".q-bar").is_visible() and not pg.locator(".q-intro").is_visible(), "a bar or the intro on the guide")
+            check(pg.locator(".avatar, .nav-burger, #mainNav").count() == 0, "the topbar carries more than the brand")
+            # its button goes on to q1, whose Nazad comes back to it; then q1 alone under the title and the intro
+            press(pg, phone, "#step-vodic .q-next"); wait_for(pg, "step-q1")
+            press(pg, phone, "#step-q1 .q-back"); wait_for(pg, "step-vodic")
+            check(not pg.locator(".q-bar").is_visible(), "the bar on the guide, back from q1")
+            press(pg, phone, "#step-vodic .q-next"); wait_for(pg, "step-q1")
+            check(shown(pg) == ["step-q1"], f"after the guide's button the steps shown are {shown(pg)}")
             check(pg.evaluate("[...document.querySelectorAll('h1')].filter(h => h.offsetParent).length") == 1, "not one h1")
             check(pg.locator(".q-intro").is_visible() and pg.locator(".q-bar").is_visible(), "no intro or no bar on q1")
             check(abs(bar(pg) - 1 / 16) < 0.01, f"the bar on q1 is {bar(pg):.3f}, not 1 of 16")
-            check(pg.locator(".avatar, .nav-burger, #mainNav").count() == 0, "the topbar carries more than the brand")
             # a choice goes on by itself; the row chosen stays chosen
             press(pg, phone, "#step-q1 .opt", 1); wait_for(pg, "step-q2")
             check(not pg.locator(".q-intro").is_visible(), "the intro stays after q1")
@@ -260,10 +275,13 @@ STACKED = r"""() => {
 
 def test_the_trainers_edit_mode_shows_every_step_stacked(server):
     """Outside edit mode the trainer sees what a client sees, one step at a
-    time (his choices are his options list: a row he clicks goes on as a
-    client's does); in edit mode every step shows, one under the other, the
-    follow-ups and the pain sentence too, each option with its ✕ and each
-    choice with "+ Dodaj odgovor"; out of it again, the step he was on."""
+    time, the guide first (his choices are his options list: a row he
+    clicks goes on as a client's does); in edit mode every step shows, one
+    under the other, the guide at the top with every text of it a box (an
+    empty one too: section 1's heading) and each list its "+ Dodaj
+    stavku", the follow-ups and the pain sentence too, each option with its
+    ✕ and each choice with "+ Dodaj odgovor"; out of it again, the step he
+    was on, and the guide's empty heading takes no room."""
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
     make_user("trener@test.local", is_trainer=True, plans=())
@@ -274,8 +292,9 @@ def test_the_trainers_edit_mode_shows_every_step_stacked(server):
             phone = w < 600
             ctx, pg, errors = open_page(browser, server, "trener@test.local", w)
             where = f"[trainer {w}px]"
-            if shown(pg) != ["step-q1"]:
+            if shown(pg) != ["step-vodic"]:
                 problems.append(f"{where} his preview shows {shown(pg)}")
+            press(pg, phone, "#step-vodic .q-next"); wait_for(pg, "step-q1")
             press(pg, phone, "#step-q1 .opts > li", 2); wait_for(pg, "step-q2")
             pg.click("#copyToggle")
             problems += [f"{where} {p}" for p in pg.evaluate(STACKED)]
@@ -285,8 +304,15 @@ def test_the_trainers_edit_mode_shows_every_step_stacked(server):
               document.documentElement.scrollWidth - document.documentElement.clientWidth]""")
             options = sum(len(o) for o in CHOICES.values())
             steps = len(upitnik.steps(db.upitnik_questions()))
-            if seen != [steps + 1, options, len(CHOICES), 0]:
-                problems.append(f"{where} edit mode (steps, ✕s, + Dodaj odgovor, overflow): {seen}")
+            # every step, the guide's and the last screen too; "+ Dodaj odgovor" per choice, "+ Dodaj stavku" per guide section
+            if seen != [steps + 2, options, len(CHOICES) + 11, 0]:
+                problems.append(f"{where} edit mode (steps, ✕s, + Dodaj odgovor / stavku, overflow): {seen}")
+            boxes = pg.evaluate("""() => [...document.querySelectorAll('#step-vodic [data-copy]')]
+              .filter(e => { const r = e.getBoundingClientRect(); return r.width >= 30 && r.height > 0; }).length""")
+            keys = [k for k, s in copy.SLOTS.items() if k.startswith("vodic.")]
+            items = sum(len(s.default) for k, s in copy.SLOTS.items() if k.startswith("vodic.") and k.endswith(".points"))
+            if boxes != len(keys) - 11 + items:                     # a box per text, one per item of every list
+                problems.append(f"{where} {boxes} of the guide's boxes show in edit mode")
             # a text opens in the bar; a click on a row's edge moves nothing
             pg.click("#step-q2 .q-h .ed")
             if pg.locator("#copyBar").is_hidden() or pg.text_content("#copyBar .cb-label") != "Pitanje 2: tekst":
@@ -295,6 +321,9 @@ def test_the_trainers_edit_mode_shows_every_step_stacked(server):
             pg.click("#copyToggle")
             if shown(pg) != ["step-q2"]:
                 problems.append(f"{where} out of edit mode the steps shown are {shown(pg)}")
+            empty = pg.evaluate("""getComputedStyle(document.querySelector('[data-copy="vodic.1.h"]').parentElement).display""")
+            if empty != "none":
+                problems.append(f"{where} out of edit mode the guide's empty heading is {empty}")
             problems += [f"{where} {e}" for e in errors]
             ctx.close()
         browser.close()
@@ -356,10 +385,15 @@ def words(n: int) -> str:
 def fill(make) -> None:
     """Every word of the questionnaire at its longest: a text 300
     characters (the slots around the questions, and each question's text,
-    a scale's ends, a follow-up's text), a choice 12 options of 60."""
+    a scale's ends, a follow-up's text), a choice 12 options of 60; and the
+    guide's (29.10.2026): each text 300 characters in three lines, each
+    list 12 items of 60."""
     for key, slot in copy.SLOTS.items():
         if key.startswith("upitnik."):
             db.set_copy(key, make(LONG), None)
+        elif key.startswith("vodic."):
+            db.set_copy(key, copy.dump_items([make(ITEM)] * ITEMS) if isinstance(slot, copy.ListSlot)
+                        else "\n".join([make(LONG // 3)] * 3), None)
     for q in db.upitnik_questions():
         for column in copy.UPITNIK_QUESTION_COLUMNS.values():
             db.set_upitnik_question_field(q.id, column, make(LONG), None)
@@ -369,16 +403,19 @@ def fill(make) -> None:
 
 def walk_all(pg, phone: bool) -> list[str]:
     """Every step a client can be shown, measured, answered on the way:
-    the first option, 10 on a scale (so q14 asks q16), Da (so q15 asks
-    q17), a few words in a free text; the last screen measured too."""
+    the guide (its button), the first option, 10 on a scale (so q14 asks
+    q16), Da (so q15 asks q17), a few words in a free text; the last
+    screen measured too."""
     out = []
     while True:
         step = pg.evaluate("document.querySelector('.q-step.on').id")
         out += [f"{step}: {p}" for p in pg.evaluate(MEASURE)]
         kind = pg.get_attribute(f"#{step}", "data-kind")
-        if kind is None:
+        if step == "step-vodic":
+            press(pg, phone, f"#{step} .q-next")
+        elif kind is None:
             return out
-        if kind in ("choice", "yesno"):
+        elif kind in ("choice", "yesno"):
             press(pg, phone, f"#{step} .opt", 0)
         elif kind == "scale":
             press(pg, phone, f"#{step} .sc", 9)
@@ -504,7 +541,7 @@ def test_the_trainer_builds_a_question_and_a_client_never_meets_it_once_deleted(
             # a client is not asked it
             cctx, cpg, cerrors = open_page(browser, server, "ivan@test.local", w)
             cids = cpg.evaluate(STEP_IDS)
-            check(step not in cids and len(cids) == 18, f"the client's steps with it hidden: {len(cids)}, {step in cids}")
+            check(step not in cids and len(cids) == 19, f"the client's steps with it hidden: {len(cids)}, {step in cids}")
             check(overflow(cpg) == 0, f"the client's page overflows by {overflow(cpg)}px")
             problems += [f"{where} client: {e}" for e in cerrors]
             cctx.close()
@@ -517,7 +554,7 @@ def test_the_trainer_builds_a_question_and_a_client_never_meets_it_once_deleted(
             check(pg.evaluate(EDITING), "the page came back from Obriši pitanje out of edit mode")
             check(overflow(pg) == 0, f"edit mode after the delete overflows by {overflow(pg)}px")
             cctx, cpg, cerrors = open_page(browser, server, "ivan@test.local", w)
-            check(cpg.evaluate(STEP_IDS) == [f"step-q{n}" for n in ORDER] + ["step-end"],
+            check(cpg.evaluate(STEP_IDS) == ["step-vodic"] + [f"step-q{n}" for n in ORDER] + ["step-end"],
                   f"the client's steps after the delete: {cpg.evaluate(STEP_IDS)}")
             check(overflow(cpg) == 0, f"the client's page overflows by {overflow(cpg)}px")
             problems += [f"{where} client: {e}" for e in cerrors]
@@ -554,7 +591,7 @@ def test_a_client_ticks_several_options_and_goes_on_with_dalje(server):
         browser = pw.chromium.launch()
         for w in (390, 1280):
             phone = w < 600
-            ctx, pg, errors = open_page(browser, server, "ivan@test.local", w)
+            ctx, pg, errors = open_page(browser, server, "ivan@test.local", w, path="/upitnik?od=1")
             where = f"[multi {w}px]"
 
             def check(ok: bool, what: str) -> None:
@@ -716,7 +753,7 @@ def test_the_trainer_chains_three_questions_and_a_client_walks_them(server):
         P, G, R = (f"step-q{q}" for q in (porod, godina, rez))
         for w in (390, 1280):
             phone = w < 600
-            ctx, pg, errors = open_page(browser, server, "ivan@test.local", w)
+            ctx, pg, errors = open_page(browser, server, "ivan@test.local", w, path="/upitnik?od=1")
             where = f"[chain client {w}px]"
             for q in (1, 2, 3, 4):
                 press(pg, phone, f"#step-q{q} .opt", 0); wait_for(pg, f"step-q{q + 1}")
@@ -783,7 +820,7 @@ def test_an_option_asks_its_question_for_a_client_and_in_the_trainers_preview(se
         browser = pw.chromium.launch()
         for email, w in (("ivan@test.local", 390), ("ivan@test.local", 1280), ("trener@test.local", 1280)):
             phone = w < 600
-            ctx, pg, errors = open_page(browser, server, email, w)
+            ctx, pg, errors = open_page(browser, server, email, w, path="/upitnik?od=1")
             where = f"[{email.split('@')[0]} {w}px]"
             row = "#step-q{} .opts > li" if email.startswith("trener") else "#step-q{} .opt"
             for q in (1, 2, 3):

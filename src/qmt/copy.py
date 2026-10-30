@@ -105,6 +105,14 @@ answer it is asked after) is no text: POST /upitnik/pitanje/{id}. The words
 around the questions stay slots (upitnik.*: the title, the parts'
 headings, yes / no, the consent, the buttons, the pain sentence).
 
+The guide through the training (29.10.2026, the owner: "a guide through
+the training" that a client reads before the questionnaire, "editable text
+which Amir can change as he likes") is slots too, vodic.*: the gym owner's
+text in eleven sections (VODIC_SECTIONS below), each the same four slots,
+a heading, its lines, a list and the lines under the list, any of them
+empty if he likes; then the guide's title and its button. _vodic.html
+prints it, on /upitnik's first screen and on /vodic.
+
 The price slots (18.10.2026) are plain Slots with one job: every price the
 site shows, whether or not Stripe is configured (app.py, reference_prices
 and _offer_prices). No Stripe Price overrides them (the owner's call, the
@@ -245,6 +253,98 @@ MOJIMAKROSI_ADDON = {"dvorana": "3", "online": "5"}
 # (models.UpitnikQuestion; UPITNIK_DEFAULT_QUESTIONS and the rest below).
 UPITNIK_PARTS = ("Dio 1: Tvoj cilj i raspored", "Dio 2: Tvoje iskustvo i navike (ocijeni od 1 do 10)",
                  "Dio 3: Dodatno o tebi", "Dio 4: Zdravlje i sigurnost")
+
+
+# The guide through the training (29.10.2026, the owner: "a guide through
+# the training", shown "without the emojis, designed with the same qmt
+# design skill … for now put it before the questionnaire. This should
+# again be editable text which Amir can change as he likes"): the gym
+# owner's (Amir Šoša's) introduction, /upitnik's first screen and /vodic
+# (_vodic.html prints it in both places; the first sign-up and the first
+# payment are to lead to it later). Eleven sections, each the same four
+# slots (VODIC_PARTS), so the editor finds one shape everywhere:
+# vodic.<n>.h, the heading; vodic.<n>.text, lines under it; vodic.<n>.points,
+# a list (a ListSlot, up to 12: the offer cards' bullets); vodic.<n>.after,
+# lines under the list. Any of them may be empty, and an empty one prints
+# nothing for a reader (no heading, no list). Then the guide's title and
+# its button (vodic.title, vodic.cta, in SLOTS below). His emoji are gone,
+# his bullet marks ("✅ 🔹 🔴") with them: the list's own dots replace them.
+# His consent line ("Pristajem …") is not here: the questionnaire asks it
+# at its end (upitnik.consent).
+def _section(h: str = "", text: str = "", points: tuple[str, ...] = (), after: str = "") -> dict:
+    """One section of the guide as it starts: its four slots' defaults."""
+    return {"h": h, "text": text, "points": points, "after": after}
+
+
+VODIC_SECTIONS = (
+    _section(text="Trening nije samo niz vježbi. To je proces razumijevanja vlastitog tijela, svojih navika i "
+                  "ciljeva.\n"
+                  "Ova aplikacija osmišljena je kako bi ti pružila jasnoću, strukturu i podršku, bez zbunjujućih "
+                  "mitova, bez pretjerivanja i bez ekstremnih pristupa.\n"
+                  "Sve što vidiš ovdje (treninzi, prehrana, izazovi, savjeti i edukacija) temelji se na godinama "
+                  "iskustva u radu s ljudima koji žele stvarnu, dugoročnu promjenu."),
+    _section("Tko sam ja?",
+             "Moje ime je Amir Šoša.\n"
+             "Po struci sam kineziolog, kineziterapeut i fitness trener.\n"
+             "U trenerskom poslu sam preko 20 godina, a u fitnessu i rehabilitaciji 15 godina. Radio sam s "
+             "rekreativcima, sportašima i osobama s posebnim potrebama pokreta.\n"
+             "Specijalizirao sam se za:",
+             ("Funkcionalni pokret", "Zdravlje kralježnice", "Individualizirani trening",
+              "Praktična rješenja za svakodnevni život, uključujući pomoć kod bolova u leđima")),
+    _section("Zašto je ova aplikacija drugačija?",
+             "Ovdje nećeš pronaći „instant” rješenja niti prazna obećanja.\n"
+             "Pronaći ćeš smislene treninge, konkretne upute, realan pristup i podršku na svakom koraku.\n"
+             "Ovo je tvoj vodič za:",
+             ("Kretanje bez boli", "Jače, funkcionalnije tijelo", "Dosljednost u vježbanju",
+              "Trening koji se uklapa u tvoj život, a ne obrnuto")),
+    _section("Spreman/spremna za početak?",
+             "Ako si tu, znači da želiš više od samog „vježbanja”. Želiš razumjeti svoje tijelo i naučiti "
+             "trenirati pametno, ne samo naporno. To je prvi i najvažniji korak.\n"
+             "Rezultati dolaze kad je sustav dobar, a ovaj je sustav stvoren upravo za to."),
+    _section("Prije nego što počneš vježbati",
+             "Tvoje zdravlje i sigurnost su nam na prvom mjestu. Prije početka preporučujemo sportsko-medicinski "
+             "pregled kako bi bio/bila sigurna da možeš trenirati bez ograničenja. Nije uvjet za korištenje "
+             "aplikacije, ali je preporuka za tvoje dobro.\n"
+             "Crvene zastave koje ne smiješ ignorirati. Odmah prekini trening ako osjetiš:",
+             ("Bol u zglobovima tijekom vježbanja", "Oštru bol u mišiću",
+              "Bol ili pritisak u prsima, ili nedostatak zraka",
+              "Hladan znoj, vrtoglavicu, mučninu ili zujanje u ušima"),
+             "Ako se bilo što od ovoga pojavi, nemoj ignorirati i obrati se liječniku ili stručnjaku. Ova "
+             "aplikacija ne zamjenjuje stručnu procjenu uživo, već ti pruža najbolje moguće smjernice."),
+    _section("Razine treninga i kako ih koristiti",
+             "Ovisno o rezultatima upitnika, bit ćeš usmjeren/a u jedan od tri programa:",
+             ("Početni: za one koji tek počinju ili se vraćaju nakon duže pauze",
+              "Srednji: za osobe s umjerenom razinom kondicije i iskustva",
+              "Napredni: za one koji već redovito treniraju i žele više izazova")),
+    _section("Okvirna preporuka učestalosti",
+             points=("Početni: 2-3 puta tjedno", "Srednji: 3-4 puta tjedno", "Napredni: 4-5 puta tjedno"),
+             after="Ovo su preporuke. Program se prilagođava tvom rasporedu, pa ako imaš manje vremena, svoje mjesto "
+                   "imaš i u programu QMove 2x60."),
+    _section("U svakom treningu pronaći ćeš 2 videa",
+             points=("Uvodni video: objašnjava kako se trening provodi, na što paziti i koje su sigurnosne "
+                     "smjernice.",
+                     "Trening video: prikazuje cijeli trening sa smanjenim brojem ponavljanja, uz detaljno "
+                     "objašnjenje svake vježbe."),
+             after="Prije svakog treninga uvijek prvo pogledaj uvodni video. Tako ćeš znati što te čeka i izbjeći "
+                   "nepotrebne greške."),
+    _section("Važna smjernica",
+             "Ako nisi siguran/a gdje pripadaš ili te aplikacija smjesti između razina, uvijek je bolje krenuti s "
+             "prethodnom razinom i napraviti kvalitetnu bazu.\n"
+             "Cilj nije brzina, već dosljednost i kontinuitet.\n"
+             "Polagani, pametni napredak donosi dugoročne rezultate."),
+    _section("Preporučeni vodiči",
+             "Prije prvog treninga pogledaj dva kratka vodiča:",
+             ("ABC of Fitness: osnove treninga (oko 10-15 minuta)", "ABC of Nutrition: osnove prehrane"),
+             "Nisu obavezni, ali će ti uštedjeti puno vremena i zbunjenosti."),
+    _section("Ispuni anketni upitnik",
+             "Upitnik će nam pomoći da te smjestimo u najprikladniji program: početni, srednji ili napredni.\n"
+             "Tvoji odgovori ostaju povjerljivi, a rezultat automatski otvara odgovarajuće treninge.\n"
+             "Kad završiš upitnik, aplikacija će te usmjeriti dalje."),
+)
+# a section's four slots, vodic.<n>.<part>, and each one's word in the
+# editor's bar after the section's number ("Vodič 5: naslov"; a list's
+# item gets its number after it, "Vodič 5: stavka 2")
+VODIC_PARTS = {"h": "naslov", "text": "tekst", "points": "stavka", "after": "tekst ispod popisa"}
 
 
 SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
@@ -407,6 +507,14 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # (the row whose role is "pain") is 7 or more
     "upitnik.pain_note": Slot("Zbog čestih bolova krećeš od početne razine — javi se treneru prije prvog treninga.",
                               CAP, "Upitnik: poruka uz česte bolove"),
+    # ---- the guide through the training (29.10.2026; VODIC_SECTIONS above):
+    # /upitnik's first screen and /vodic. Its title, each section's four
+    # slots, its button; none required (an emptied one stays empty) ----
+    "vodic.title": Slot("Dobrodošao/la u vodič kroz trening", CAP, "Vodič: naslov"),
+    **{f"vodic.{n}.{part}": (ListSlot(section[part], CAP_ITEMS, CAP, f"Vodič {n}: {word}") if part == "points"
+                             else Slot(section[part], CAP, f"Vodič {n}: {word}"))
+       for n, section in enumerate(VODIC_SECTIONS, start=1) for part, word in VODIC_PARTS.items()},
+    "vodic.cta": Slot("Idemo na upitnik!", CAP, "Vodič: gumb"),
 }
 
 # ---- the landing's announcements (#aktualno, in the hero) ----

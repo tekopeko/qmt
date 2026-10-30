@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_copy.html" as c with context %}
+{% import "_vodic.html" as v with context %}
 {# Shape's questionnaire in QMT's clothes (patterns.md §7, 26.10.2026): for
    a member the brand alone at the top (base.html, solo_page), one narrow
    column, a thin progress bar, the part as an eyebrow, the question as the
@@ -27,7 +28,14 @@
    do and, for a conditional one, when it is asked (in amber when that
    cannot work), the scoring's summary above the first question and "+
    Dodaj pitanje" under the last; a conditional question sits indented
-   under the one it is asked after (data-depth). #}
+   under the one it is asked after (data-depth).
+   Since 29.10.2026 the first screen is the guide through the training
+   (_vodic.html, the gym owner's introduction: a step with no answer, its
+   button going on as Dalje does, question 1's Nazad coming back to it,
+   the bar not counting it); with ?od=1 (the guide read: /vodic's button)
+   the page opens on the first question. The form's data-start names the
+   step it opens on. Without JS the guide stands above the questions; in
+   edit mode it is at the top, its texts boxes like the questions'. #}
 {% set solo_page = not can_edit_copy %}
 {% block title %}Upitnik — QMT{% endblock %}
 {% block head %}
@@ -43,6 +51,10 @@
   .q-bar { height: 4px; border-radius: 999px; background: var(--line); margin: 22px 0 28px; }
   .q-bar > span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent);
                   transition: width .25s ease; }
+  /* none on the guide's screen (_vodic.html, 29.10.2026): the bar counts
+     the questions, and the guide is none. Its room stays, so the guide's
+     title stands where a question's part does */
+  .quiz.at-guide .q-bar { visibility: hidden; }
   .q-part { font: 700 .72rem var(--font-display); text-transform: uppercase; letter-spacing: .1em;
             color: var(--muted); overflow-wrap: anywhere; }
   /* the question is the page's h1: big, bold, left. The free texts' carries
@@ -299,7 +311,7 @@
     </span>
   </div>
 {%- endmacro %}
-<form method="post" action="/upitnik" class="quiz" id="quiz" autocomplete="off">
+<form method="post" action="/upitnik" class="quiz" id="quiz" autocomplete="off" data-start="{{ start }}">
   <div class="q-head">
     <p class="q-title">{{ c.t("upitnik.title") }}</p>
     {% if request.query_params.get("error") %}
@@ -308,6 +320,11 @@
     <p class="q-intro">{{ c.t("upitnik.intro") }}</p>
   </div>
   <div class="q-bar" hidden aria-hidden="true"><span></span></div>
+  {# the guide through the training (29.10.2026): the first screen, a step
+     with no answer, its button the questionnaire's forward one #}
+  <section class="q-step" id="step-vodic">
+    {{ v.guide() }}
+  </section>
   {% if summary %}
   {# the editor's: what scores, and how (edit mode only) #}
   <div class="q-sum">
@@ -388,13 +405,11 @@
       {% endif %}
     {% endif %}
 
-    {% set goes_on = q.kind in ("text", "multi") %}
-    {% if q.id != first_step or goes_on %}
+    {# Nazad on every question, the first one's back to the guide #}
     <div class="q-nav">
-      {% if q.id != first_step %}<button type="button" class="act act-quiet q-back">{{ c.t("upitnik.back") }}</button>{% endif %}
-      {% if goes_on %}<button type="button" class="btn q-next">{{ c.t("upitnik.next") }}</button>{% endif %}
+      <button type="button" class="act act-quiet q-back">{{ c.t("upitnik.back") }}</button>
+      {% if q.kind in ("text", "multi") %}<button type="button" class="btn q-next">{{ c.t("upitnik.next") }}</button>{% endif %}
     </div>
-    {% endif %}
   </section>
   {% endfor %}
   {% if can_add_question %}
@@ -435,7 +450,13 @@
   // marked, and Enter goes on. A multi (several options) is ticked row by
   // row and goes on with Dalje, which waits for one tick at least
   // (aria-disabled until then); a free text goes on with Dalje, once it is
-  // written. Nazad goes back, the answer kept: the inputs hold it.
+  // written. Nazad goes back, the answer kept: the inputs hold it. The
+  // guide through the training (29.10.2026, #step-vodic) is the first step,
+  // a step with no answer: its button is a .q-next, question 1's Nazad
+  // comes back to it, and the bar, which counts the questions, does not
+  // count it (on its screen the bar is not shown: .at-guide). The page
+  // opens on the step its form names (data-start: the guide, or with
+  // ?od=1 the first question), or on the first one asked.
   // Submitting checks every step asked and the consent (the server checks
   // again). In edit mode (body.editing, the trainer) every step shows,
   // stacked, and nothing here moves; outside it his own choices are rows
@@ -445,6 +466,7 @@
     if (!form) return;
     var steps = [].slice.call(form.querySelectorAll(".q-step"));
     var bar = form.querySelector(".q-bar"), fill = bar ? bar.firstElementChild : null;
+    var guide = document.getElementById("step-vodic");
     var at = null, timer = null;
     form.classList.add("js");
     form.noValidate = true;                 // asked step by step here; the server asks again
@@ -498,9 +520,11 @@
       });
     }
     function draw() {
-      var list = shown(), i = list.indexOf(at);
+      // the questions asked (the guide is none): the bar counts them, the intro is the first one's
+      var list = shown().filter(function (s) { return s !== guide; }), i = list.indexOf(at);
       steps.forEach(function (s) { s.classList.toggle("on", s === at); });
       form.classList.toggle("at-start", i === 0);
+      form.classList.toggle("at-guide", !!guide && at === guide);
       if (fill) fill.style.width = ((i + 1) / list.length * 100) + "%";
       fit();
     }
@@ -560,7 +584,9 @@
       var consent = form.querySelector('input[name="consent"]');
       if (consent && !consent.checked) { e.preventDefault(); consent.reportValidity(); }
     });
-    at = shown()[0] || steps[0];              // the first question asked (an editor's first may be hidden)
+    // where it opens: the step the form names (the guide, or the first question), else the first asked
+    var start = document.getElementById(form.getAttribute("data-start") || "");
+    at = start && asked(start) ? start : shown()[0] || steps[0];
     sync(); draw();
     // A form that comes back in edit mode at a question (#step-q<id>: "+
     // Dodaj pitanje", ↑ / ↓, "Obriši pitanje") lands on it here, the page

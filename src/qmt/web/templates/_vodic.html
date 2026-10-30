@@ -1,0 +1,54 @@
+{# The guide through the training (29.10.2026, the owner: "a guide through
+   the training" that a client reads before the questionnaire): the gym
+   owner's introduction, every word a slot he retypes in place (vodic.*,
+   copy.VODIC_SECTIONS). ONE partial for every place it prints: /upitnik's
+   first screen (upitnik.html: a step of the questionnaire's form, before
+   question 1) and /vodic (vodic.html: a page of its own); the first
+   sign-up and the first payment are to lead to it later, one more call
+   each. `guide(href)`: with an href its button is a link there (/vodic's
+   to /upitnik?od=1, which opens on question 1); without one it is the
+   questionnaire's own forward button (.q-next: upitnik.html's script goes
+   on to question 1, as Dalje goes on).
+   Its title is the h1 (a question's look: .q-h; tabindex -1, so the
+   questionnaire's script can focus it as it focuses a question), then
+   eleven sections, each the same four slots: the heading (an h2), its
+   lines, its list (the offer cards' bullets: c.points) and the lines under
+   the list; then the button. An emptied text prints nothing for a reader,
+   nor what holds it (no h2, no p; an empty list no ul, a section of four
+   empty slots no box), and an empty box for the editor, which base.html
+   shows in edit mode only, so outside it his page is the reader's. Its
+   look is base.html's (.vodic): two pages print it.
+   Use: {% import "_vodic.html" as v with context %} … {{ v.guide("/upitnik?od=1") }} #}
+{% import "_copy.html" as c with context %}
+{% macro guide(href="") -%}
+<div class="vodic">
+  {%- if can_edit_copy or copy_text("vodic.title", copy_texts) %}
+  <h1 class="q-h" tabindex="-1">{{ c.t("vodic.title") }}</h1>
+  {%- endif %}
+  {%- for n in VODIC_SECTIONS %}
+  {%- set key = "vodic." ~ n %}
+  {%- set h, text, after = copy_text(key ~ ".h", copy_texts), copy_text(key ~ ".text", copy_texts), copy_text(key ~ ".after", copy_texts) %}
+  {%- if can_edit_copy or h or text or after or copy_items(key ~ ".points", copy_texts) %}
+  <div class="v-sec">
+    {%- if can_edit_copy or h %}
+    <h2>{{ c.t(key ~ ".h") }}</h2>
+    {%- endif %}
+    {%- if can_edit_copy or text %}
+    <p>{{ c.t(key ~ ".text") }}</p>
+    {%- endif %}
+    {{ c.points(key ~ ".points") }}
+    {%- if can_edit_copy or after %}
+    <p>{{ c.t(key ~ ".after") }}</p>
+    {%- endif %}
+  </div>
+  {%- endif %}
+  {%- endfor %}
+  <div class="q-nav v-nav">
+    {%- if href %}
+    <a class="btn" href="{{ href }}">{{ c.t("vodic.cta") }}</a>
+    {%- else %}
+    <button type="button" class="btn q-next">{{ c.t("vodic.cta") }}</button>
+    {%- endif %}
+  </div>
+</div>
+{%- endmacro %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% import "_vodic.html" as v with context %}
+{# /vodic (29.10.2026): the guide through the training on a page of its
+   own, the one /upitnik opens on (_vodic.html prints both), in the
+   questionnaire's clothes: one task, so for a member the brand alone at
+   the top (base.html, solo_page; the trainer and the owner, who edit its
+   texts here, keep their bar), the questionnaire's narrow column, the
+   guide, and its button to /upitnik?od=1, which opens on question 1 (the
+   guide read). Linked from nowhere yet: the first sign-up and the first
+   payment are to lead here later (the owner's word), one link each. #}
+{% set solo_page = not can_edit_copy %}
+{% block title %}Vodič kroz trening — QMT{% endblock %}
+{% block head %}
+<style>
+  /* the questionnaire's column (upitnik.html's .quiz): Shape's narrow centred one */
+  .vodic-page { max-width: 640px; margin: clamp(0px, 4vh, 44px) auto 0; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="vodic-page">
+  {{ v.guide("/upitnik?od=1") }}
+</div>
+{% endblock %}

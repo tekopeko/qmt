@@ -654,6 +654,42 @@
     .crumbs .here { color: var(--text); min-width: 0; white-space: nowrap;
                     overflow: hidden; text-overflow: ellipsis; }
 
+    /* ===== the guide through the training (_vodic.html, 29.10.2026): the
+       gym owner's introduction, /upitnik's first screen and /vodic, so its
+       look is here (two pages print it). The questionnaire's clothes: its
+       title the h1 in a question's look (upitnik.html's .q-h, the same
+       values: display, uppercase, 1.45–2rem), each section's heading an h2
+       at the section-title size, its lines at body size (span.t keeps their
+       breaks), its lists the offer cards' bullets (the landing's accent dot
+       in its tint) 8px apart, 22px between sections; one .btn at the bottom,
+       at the right as Dalje is, the column's width on a phone. An emptied
+       text is nothing for a reader (_vodic.html prints none of it); the
+       editor's empty box shows in edit mode only, and outside it a heading
+       or a paragraph whose box is empty, a list with no item and a section
+       with no text at all take no room, so his page is the reader's. ===== */
+    .vodic > h1 { font-size: clamp(1.45rem, 5vw, 2rem); line-height: 1.15; margin: 8px 0 22px; overflow-wrap: anywhere; }
+    .vodic > h1:focus { outline: none; }          /* focused by the questionnaire's script, for a screen reader */
+    .v-sec + .v-sec { margin-top: 22px; }
+    .v-sec > * + * { margin-top: 10px; }
+    .v-sec h2 { font-size: 1.05rem; overflow-wrap: anywhere; }
+    .v-sec p { overflow-wrap: anywhere; }
+    .v-sec ul { list-style: none; padding: 0; display: grid; gap: 8px; }
+    .v-sec li { display: flex; align-items: flex-start; gap: 12px; overflow-wrap: anywhere; }
+    .v-sec li > .t { min-width: 0; }
+    /* the dot on the first line's middle: body text, 1.55 high */
+    .v-sec li::before { content: ""; flex: none; width: 8px; height: 8px; margin: calc(.775em - 4px) 4px 0;
+                        border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px var(--accent-dim); }
+    /* an item's ✕ in edit mode stays in the column: its usual 6px past the
+       line (base's .ed-x) would leave it, as the landing's contact lines' */
+    body.editing .v-sec .ed-x { margin-right: 0; }
+    .vodic .v-nav { display: flex; margin-top: 26px; }
+    .vodic .v-nav .btn { margin-left: auto; min-width: 0; max-width: 100%; white-space: normal;
+                         overflow-wrap: anywhere; text-align: center; }
+    @media (max-width: 599px) { .vodic .v-nav .btn { width: 100%; } }
+    .v-sec ul:not(:has(> li)),
+    body:not(.editing) .vodic :is(h1, h2, p):has(> .ed:empty),
+    body:not(.editing) .v-sec:not(:has(span.t:not(:empty))) { display: none; }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition: none !important; animation: none !important; }
     }
