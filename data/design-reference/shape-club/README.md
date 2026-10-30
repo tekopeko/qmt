@@ -18,6 +18,16 @@ upitnik (`/upitnik`):
   at the left, a hairline border on a slightly lighter surface; the chosen
   row inverts to white with black text and a ✓ at the right end
 - a muted "Nazad" link under the rows, no "Dalje": choosing an answer advances
+
+`upitnik-6-razina-iskustva-desktop-2026-10-30.png`: the same questionnaire
+on 30.10.2026, a fresh account's first login (desktop, 2880×1762 retina):
+"Koja je tvoja razina iskustva?" with two rows, A Početnik / B Srednja/Napredna
+(two levels now, where the 17.10. capture had three), the bar at ≈40%, "Nazad"
+under the rows. Saved at the owner's word ("lets keep that in our data") while
+he walks the new account towards the Gym Program's training page, the one
+with an exercise video, the exercise list and a checkmark per exercise, which no
+capture here holds yet (the 17.10. training page, `app/app-19`, was a Home
+Challenge training on the trial: one video, no list).
 - the background a near-black with a faint purple tint
 
 ## Buying a subscription ("Potvrdi kupnju pretplate" → Stripe)
