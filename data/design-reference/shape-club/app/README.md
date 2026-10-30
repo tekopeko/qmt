@@ -91,6 +91,17 @@ and the Social Club feed.
   programmes the questionnaire's answers fit, as a catalogue to pick from:
   the shape for QMT's /treninzi list once a client has more than one
   programme (today's rows carry the same facts as text).
+- `app-25-home-challenge-training-page-paid-2026-10-30.png` (`/video/208?challenge=16`,
+  a paid account, desktop 2880×1738 retina): the Home Challenge training page
+  as `app-19` has it, now with the video playing (16:38 of 41:11, a PORTRAIT
+  video letterboxed in the full-width native player): one video per training,
+  "← Povratak na Challenge" and the dark pill "✓ Završi trening" on one line,
+  the pale note "Rekviziti: čvrsti naslon (za hip thrust), bučice ili girja, mini
+  elastična traka", the comments at the right. The owner (30.10.2026): "When
+  I enter a training in the home challenge tab it really is one video … It
+  only mentions which equipment is necessary there." Whether the Gym Program's
+  training page is the same, or the exercise list with a checkmark per
+  exercise he remembers, is the open capture.
 
 ## Moj napredak — the calendar (`app-08`; top part from the page text)
 
