@@ -1,7 +1,7 @@
 # Online treninzi: a library of exercises, programmes made of days, a player — spec (29.10.2026)
 
 Status: **spec; stage 1 (the library) built 30.10.2026, reviewed and live the same day; stage 2
-(days) built 30.10.2026, awaiting review.** Written by
+(days) built 30.10.2026, reviewed and live the same day.** Written by
 Fable from the owner's answers of 29.10.2026 (settled 30.10.2026, below). Builds in three
 stages (below), each shippable.
 
@@ -139,7 +139,7 @@ of a termin in the gym).
    client's programme page with day cards and the day page: the intro video,
    then the whole list in its sections with each exercise's dose, rest and note
    (no player yet: ▷ opens the exercise's clip in place). **Built 30.10.2026,
-   awaiting review** (an Opus draft; `roadmap/STATUS.md`'s entry of that day;
+   reviewed and live the same day** (an Opus draft; `roadmap/STATUS.md`'s entry of that day;
    migration `7c3bf996c983`). As built: the client's day page is
    `/treninzi/{id}/dan/{day id}`, the day editor `/treninzi/{id}/dan/{day id}/uredi`
    (the programme's editor lists the days); one video per day, the intro (the
