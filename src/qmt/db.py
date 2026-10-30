@@ -13,14 +13,16 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from typing import Iterator
 
-from sqlalchemy import create_engine, delete as sa_delete, func, select, text as sa_text
+from sqlalchemy import create_engine, delete as sa_delete, func, or_, select, text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from . import config, copy, upitnik
-from .models import (ONLINE_TIERS, PLAN_LABELS, SESSION_KINDS, Announcement, Base, Booking, GymCard,
+from .models import (ONLINE_TIERS, PLAN_LABELS, SESSION_KINDS, Announcement, Base, Booking, Exercise, GymCard,
                      Membership, OnboardingResponse, Payment, Program, ProgramItem, ReminderLog,
-                     SessionTemplate, SiteCopy, TrainingLog, TrainingSession, UpitnikQuestion, User)
+                     SessionTemplate, SiteCopy, TrainingLog, TrainingSession, UpitnikQuestion, User,
+                     alpha_key, exercise_alternatives)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -1555,76 +1557,309 @@ def client_can_view(program: Program, user_id: int) -> bool:
             and program.level == onb.level and program.goal == onb.goal)
 
 
-# Default content for the combo slots: the SAME structure per cilj, only the
-# prescription (serije × ponavljanja · kg) scales with the razina. Nothing
-# fancy — placeholders the trainer edits, so no slot ever renders empty.
-# (exercise, technique cue, {razina: prescription})
+# ---------- the library of exercises (/treninzi/vjezbe, 30.10.2026) ----------
+
+EXERCISE_NAME_MAX = 160          # the column's length
+EXERCISE_DUPLICATE = "Vježba s tim imenom već postoji."
+# Every write that may set a name (a new exercise, a save, the skeletons'
+# defaults) takes the table in this mode first: it conflicts with itself, so
+# two saves cannot both find a name free and both write it (tested: without
+# it the C locale's index lets "Čučanj" and "ČUČANJ" both in).
+_EXERCISES_LOCK = "LOCK TABLE exercises IN SHARE ROW EXCLUSIVE MODE"
+
+
+def clean_name(text: str) -> str:
+    """An exercise's name as stored: one line, trimmed, its spaces single."""
+    return " ".join((text or "").split())
+
+
+def clean_tags(text: str) -> str:
+    """Tags as stored: each between two commas trimmed, its spaces single,
+    the empty ones gone, joined by ", " ("  noge ,bučice,, kod   kuće " ->
+    "noge, bučice, kod kuće")."""
+    return ", ".join(t for t in (" ".join(x.split()) for x in (text or "").split(",")) if t)
+
+
+def _checked_name(name: str) -> str:
+    name = clean_name(name)
+    if not name:
+        raise ValueError("Naziv je obavezan.")
+    if len(name) > EXERCISE_NAME_MAX:
+        raise ValueError(f"Naziv može imati najviše {EXERCISE_NAME_MAX} znakova.")
+    return name
+
+
+def _named(s: Session, name: str, but: int | None = None) -> int | None:
+    """The id of the exercise with this name, whatever its case (other than
+    `but`), or None. Asked under _EXERCISES_LOCK. Casefolded here, not with
+    the database's lower(): under the C locale (the dev and test databases)
+    that folds ASCII only, so "Čučanj" and "čučanj" would pass as two."""
+    want = name.casefold()
+    return next((i for i, n in s.execute(select(Exercise.id, Exercise.name))
+                 if i != but and n.casefold() == want), None)
+
+
+def _duplicate(err: IntegrityError) -> bool:
+    """Was it uq_exercises_name (a name the database folds to one it has)?"""
+    return getattr(getattr(err.orig, "diag", None), "constraint_name", None) == "uq_exercises_name"
+
+
+def _set_alternatives(s: Session, exercise_id: int, wanted) -> None:
+    """Make an exercise's similar exercises exactly `wanted` (ids): a pair
+    ticked and not held is stored from this side, one held and not ticked
+    goes whichever side stored it. Ids that are no exercise, and its own, are
+    ignored."""
+    t = exercise_alternatives
+    wanted = {int(x) for x in wanted} - {exercise_id}
+    if wanted:
+        wanted &= set(s.scalars(select(Exercise.id).where(Exercise.id.in_(wanted))))
+    held = (set(s.scalars(select(t.c.alternative_id).where(t.c.exercise_id == exercise_id)))
+            | set(s.scalars(select(t.c.exercise_id).where(t.c.alternative_id == exercise_id))))
+    for other in sorted(wanted - held):
+        s.execute(pg_insert(t).values(exercise_id=exercise_id, alternative_id=other).on_conflict_do_nothing())
+    gone = held - wanted
+    if gone:
+        s.execute(sa_delete(t).where(or_((t.c.exercise_id == exercise_id) & t.c.alternative_id.in_(gone),
+                                         (t.c.alternative_id == exercise_id) & t.c.exercise_id.in_(gone))))
+
+
+def create_exercise(name: str, instructions: str = "", rep_note: str = "", tags: str = "",
+                    alternatives=(), user_id: int | None = None) -> int:
+    """A new library row with its similar exercises; its id. ValueError with
+    the sentence to show when the name is empty, too long or taken, whatever
+    its case ("Vježba s tim imenom već postoji."). The texts are cleaned as
+    copy is (copy.clean), the tags by clean_tags."""
+    name = _checked_name(name)
+    try:
+        with session_scope() as s:
+            s.execute(sa_text(_EXERCISES_LOCK))
+            if _named(s, name) is not None:
+                raise ValueError(EXERCISE_DUPLICATE)
+            e = Exercise(name=name, instructions=copy.clean(instructions or ""),
+                         rep_note=copy.clean(rep_note or ""), tags=clean_tags(tags), updated_by=user_id)
+            s.add(e)
+            s.flush()
+            _set_alternatives(s, e.id, alternatives)
+            return e.id
+    except IntegrityError as err:
+        if _duplicate(err):
+            raise ValueError(EXERCISE_DUPLICATE) from None
+        raise
+
+
+def update_exercise(exercise_id: int, name: str, instructions: str, rep_note: str, tags: str,
+                    alternatives=(), user_id: int | None = None) -> bool:
+    """Save an exercise's texts and its similar exercises in one go (the
+    form's one POST); False for an exercise that is gone. ValueError as
+    create_exercise's."""
+    name = _checked_name(name)
+    try:
+        with session_scope() as s:
+            s.execute(sa_text(_EXERCISES_LOCK))
+            e = s.get(Exercise, exercise_id)
+            if e is None:
+                return False
+            if _named(s, name, but=exercise_id) is not None:
+                raise ValueError(EXERCISE_DUPLICATE)
+            e.name, e.tags = name, clean_tags(tags)
+            e.instructions, e.rep_note = copy.clean(instructions or ""), copy.clean(rep_note or "")
+            e.updated_by = user_id
+            _set_alternatives(s, exercise_id, alternatives)
+            return True
+    except IntegrityError as err:
+        if _duplicate(err):
+            raise ValueError(EXERCISE_DUPLICATE) from None
+        raise
+
+
+def exercise(exercise_id: int) -> Exercise | None:
+    """One library row, its similar exercises loaded (both directions)."""
+    with session_scope() as s:
+        return s.scalar(select(Exercise).where(Exercise.id == exercise_id)
+                        .options(selectinload(Exercise.alternatives_to), selectinload(Exercise.alternatives_from)))
+
+
+def exercises(q: str = "") -> list[tuple[Exercise, int]]:
+    """The library in the alphabet's order (alpha_key), each exercise with the
+    number of programmes that hold it. With q, only those whose name or tags
+    hold it, whatever its case (the list's search); every one without."""
+    with session_scope() as s:
+        used = dict(s.execute(select(ProgramItem.exercise_id, func.count(func.distinct(ProgramItem.program_id)))
+                              .group_by(ProgramItem.exercise_id)).all())
+        rows = list(s.scalars(select(Exercise)))
+    needle = " ".join((q or "").split()).casefold()
+    if needle:
+        rows = [e for e in rows if needle in e.name.casefold() or needle in e.tags.casefold()]
+    return [(e, used.get(e.id, 0)) for e in sorted(rows, key=lambda e: alpha_key(e.name))]
+
+
+def exercise_programs(exercise_id: int) -> list[Program]:
+    """The programmes that hold an exercise, in the alphabet's order."""
+    with session_scope() as s:
+        rows = list(s.scalars(select(Program).where(Program.id.in_(
+            select(ProgramItem.program_id).where(ProgramItem.exercise_id == exercise_id)))))
+    return sorted(rows, key=lambda p: alpha_key(p.title))
+
+
+def in_programs(titles: list[str]) -> str:
+    """Why an exercise cannot be deleted: "Vježba je u 3 programa (Cijelo
+    tijelo — početna, Core control, Donji dio tijela — srednja) — prvo je
+    makni iz njih.", the titles up to three, then "…"."""
+    n = len(titles)
+    named = ", ".join(titles[:3]) + (" …" if n > 3 else "")
+    noun = "programu" if n % 10 == 1 and n % 100 != 11 else "programa"
+    return f"Vježba je u {n} {noun} ({named}) — prvo je makni iz {'njega' if n == 1 else 'njih'}."
+
+
+def delete_exercise(exercise_id: int) -> str | None:
+    """Delete a library row nothing holds (its pairs of similar exercises go
+    with it); returns its clip's file name for the caller to delete from
+    storage, None without one or for a row already gone. One a programme
+    holds is refused: ValueError with in_programs' sentence."""
+    with session_scope() as s:
+        e = s.get(Exercise, exercise_id, with_for_update=True)
+        if e is None:
+            return None
+        holders = select(ProgramItem.program_id).where(ProgramItem.exercise_id == exercise_id)
+        titles = sorted(s.scalars(select(Program.title).where(Program.id.in_(holders))), key=alpha_key)
+        if titles:
+            raise ValueError(in_programs(titles))
+        video = e.video
+        s.delete(e)
+        return video
+
+
+def set_exercise_video(exercise_id: int, name: str | None, user_id: int | None = None) -> str | None:
+    """Give an exercise a stored clip (None: no clip) and return the one it
+    had, which the caller deletes from storage once no row names it (the
+    announcements' photos' order). LookupError for an exercise that is gone:
+    the caller deletes the clip it stored for it."""
+    with session_scope() as s:
+        e = s.get(Exercise, exercise_id, with_for_update=True)
+        if e is None:
+            raise LookupError(exercise_id)
+        old = e.video
+        e.video, e.updated_by = name, user_id
+        return old
+
+
+def video_programs(name: str) -> list[Program] | None:
+    """Who may watch a stored clip (/media): None when no exercise holds it,
+    else the programmes that hold its exercise (a client watches it through
+    one of his matched programmes; staff watch any)."""
+    with session_scope() as s:
+        ids = select(Exercise.id).where(Exercise.video == name)
+        if s.scalar(select(func.count()).select_from(ids.subquery())) == 0:
+            return None
+        return list(s.scalars(select(Program).where(Program.id.in_(
+            select(ProgramItem.program_id).where(ProgramItem.exercise_id.in_(ids))))))
+
+
+# The nine combo slots start with these: library rows, one per name, made
+# the first time a slot needs one and found by name after that, whatever its
+# case (Amir's own row of the name, if he made it first). Their instructions
+# are the technique cues only, never a dose: one row serves every razina.
+# The dose is the slot's item's note (_DEFAULT_ITEMS, per razina), as it was
+# the first line of the item's body until 30.10.2026; the days' sets and
+# reps (the spec's stage 2) are to take it over.
+_DEFAULT_EXERCISES = {
+    "Goblet čučanj": "Pete cijelo vrijeme na podu, trup uspravan, koljena prate smjer stopala.",
+    "Sklekovi": "Tijelo u ravnoj liniji, bez propadanja kuka.",
+    "Veslanje u pretklonu": "Povuci prema pojasu, leđa ravna.",
+    "Plank": "Lopatice aktivne, gluteusi stisnuti.",
+    "Potisak s bučicama na klupi": "Lopatice skupljene, spusti kontrolirano.",
+    "Potisak iznad glave": "Trup čvrst, bez zaklona u leđima.",
+    "Biceps pregib": "Laktovi mirni uz tijelo, puni opseg pokreta.",
+    "Iskorak unatrag": "Koljeno prati smjer stopala, trup uspravan.",
+    "Rumunjsko mrtvo dizanje": "Neutralna kralježnica, kukovi idu unatrag.",
+    "Glute most": "Stisni gluteuse gore i zadrži sekundu.",
+}
+# a slot's exercises in their order, per cilj, each with its dose per
+# razina (the item's note): the same structure per cilj, the dose scaling
+# with the razina
 _DEFAULT_ITEMS = {
     "cijelo": [
-        ("Goblet čučanj", "Pete cijelo vrijeme na podu, trup uspravan.",
-         {"pocetna": "3 × 8 · 8 kg", "srednja": "4 × 10 · 16 kg", "napredna": "4 × 12 · 24 kg"}),
-        ("Sklekovi", "Tijelo u ravnoj liniji, bez propadanja kuka.",
-         {"pocetna": "3 × 5 (s koljena)", "srednja": "3 × 10", "napredna": "4 × 15"}),
-        ("Veslanje u pretklonu", "Povuci prema pojasu, leđa ravna.",
+        ("Goblet čučanj", {"pocetna": "3 × 8 · 8 kg", "srednja": "4 × 10 · 16 kg", "napredna": "4 × 12 · 24 kg"}),
+        ("Sklekovi", {"pocetna": "3 × 5 (s koljena)", "srednja": "3 × 10", "napredna": "4 × 15"}),
+        ("Veslanje u pretklonu",
          {"pocetna": "3 × 10 · 2 × 6 kg", "srednja": "3 × 12 · 2 × 10 kg", "napredna": "4 × 12 · 2 × 14 kg"}),
-        ("Plank", "Lopatice aktivne, gluteusi stisnuti.",
-         {"pocetna": "3 × 20 s", "srednja": "3 × 40 s", "napredna": "3 × 60 s"}),
+        ("Plank", {"pocetna": "3 × 20 s", "srednja": "3 × 40 s", "napredna": "3 × 60 s"}),
     ],
     "gornji": [
-        ("Potisak s bučicama na klupi", "Lopatice skupljene, spusti kontrolirano.",
+        ("Potisak s bučicama na klupi",
          {"pocetna": "3 × 8 · 2 × 6 kg", "srednja": "4 × 10 · 2 × 12 kg", "napredna": "4 × 12 · 2 × 18 kg"}),
-        ("Veslanje u pretklonu", "Povuci prema pojasu, leđa ravna.",
+        ("Veslanje u pretklonu",
          {"pocetna": "3 × 10 · 2 × 6 kg", "srednja": "4 × 10 · 2 × 12 kg", "napredna": "4 × 12 · 2 × 16 kg"}),
-        ("Potisak iznad glave", "Trup čvrst, bez zaklona u leđima.",
+        ("Potisak iznad glave",
          {"pocetna": "3 × 8 · 2 × 4 kg", "srednja": "3 × 10 · 2 × 8 kg", "napredna": "4 × 10 · 2 × 12 kg"}),
-        ("Biceps pregib", "Laktovi mirni uz tijelo, puni opseg pokreta.",
+        ("Biceps pregib",
          {"pocetna": "2 × 10 · 2 × 4 kg", "srednja": "3 × 12 · 2 × 8 kg", "napredna": "3 × 15 · 2 × 10 kg"}),
     ],
     "donji": [
-        ("Goblet čučanj", "Koljena prate smjer stopala.",
-         {"pocetna": "3 × 8 · 8 kg", "srednja": "4 × 10 · 20 kg", "napredna": "4 × 12 · 28 kg"}),
-        ("Iskorak unatrag", "Koljeno prati smjer stopala, trup uspravan.",
+        ("Goblet čučanj", {"pocetna": "3 × 8 · 8 kg", "srednja": "4 × 10 · 20 kg", "napredna": "4 × 12 · 28 kg"}),
+        ("Iskorak unatrag",
          {"pocetna": "3 × 6 po nozi", "srednja": "3 × 10 po nozi · 2 × 8 kg", "napredna": "4 × 10 po nozi · 2 × 12 kg"}),
-        ("Rumunjsko mrtvo dizanje", "Neutralna kralježnica, kukovi idu unatrag.",
-         {"pocetna": "3 × 8 · 12 kg", "srednja": "4 × 10 · 24 kg", "napredna": "4 × 10 · 32 kg"}),
-        ("Glute most", "Stisni gluteuse gore i zadrži sekundu.",
-         {"pocetna": "3 × 12", "srednja": "3 × 15 · 10 kg", "napredna": "4 × 15 · 20 kg"}),
+        ("Rumunjsko mrtvo dizanje", {"pocetna": "3 × 8 · 12 kg", "srednja": "4 × 10 · 24 kg", "napredna": "4 × 10 · 32 kg"}),
+        ("Glute most", {"pocetna": "3 × 12", "srednja": "3 × 15 · 10 kg", "napredna": "4 × 15 · 20 kg"}),
     ],
 }
 
 
 def ensure_online_skeletons() -> int:
     """Create any missing (razina × cilj) slot and fill EMPTY ones with the
-    default exercises.
+    default exercises, library rows (_DEFAULT_EXERCISES) the items point at,
+    each item noting its razina's dose (_DEFAULT_ITEMS).
 
     Runs when the trainer opens Online treninzi — a fresh deploy heals itself,
     no seed run needed. A slot the trainer already put ANY item into is never
-    touched. Returns how many programmes were created.
+    touched. Returns how many programmes were created. The work is done under
+    the library's lock, so two openings at once neither make a slot twice nor
+    fill one twice.
     """
     from .upitnik import GOALS, LEVELS
 
-    made = 0
-    with session_scope() as s:
-        have = {(p.level, p.goal) for p in s.scalars(
-            select(Program).where(Program.level.is_not(None)))}
-        for level, level_label in LEVELS.items():
-            for goal, goal_label in GOALS.items():
-                if (level, goal) in have:
-                    continue
-                s.add(Program(title=f"{goal_label} — {level_label.lower()}",
-                              level=level, goal=goal,
-                              intro="Odmor 60–90 s između serija. Tempo kontroliran."))
-                made += 1
-    with session_scope() as s:
+    combos = {(level, goal) for level in LEVELS for goal in GOALS}
+
+    def todo(s: Session) -> tuple[set, list]:
+        have = {(p.level, p.goal) for p in s.scalars(select(Program).where(Program.level.is_not(None)))}
         empty = s.execute(
             select(Program.id, Program.level, Program.goal)
             .outerjoin(ProgramItem, ProgramItem.program_id == Program.id)
             .where(Program.level.is_not(None))
-            .group_by(Program.id).having(func.count(ProgramItem.id) == 0)).all()
-    for pid, level, goal in empty:
-        for title, cue, by_level in _DEFAULT_ITEMS.get(goal, []):
-            if level in by_level:
-                add_item(pid, title, f"{by_level[level]}\n{cue}", None, None)
+            .group_by(Program.id).having(func.count(ProgramItem.id) == 0)
+            .order_by(Program.id)).all()
+        return combos - have, empty
+
+    with session_scope() as s:
+        missing, empty = todo(s)
+    if not missing and not empty:
+        return 0
+    made = 0
+    with session_scope() as s:
+        s.execute(sa_text(_EXERCISES_LOCK))
+        missing, _ = todo(s)                     # again, under the lock: another opening may have done it
+        for level, level_label in LEVELS.items():
+            for goal, goal_label in GOALS.items():
+                if (level, goal) in missing:
+                    s.add(Program(title=f"{goal_label} — {level_label.lower()}",
+                                  level=level, goal=goal,
+                                  intro="Odmor 60–90 s između serija. Tempo kontroliran."))
+                    made += 1
+        s.flush()
+        _, empty = todo(s)
+        ids: dict[str, int] = {}
+        for pid, level, goal in empty:
+            for position, (name, doses) in enumerate(_DEFAULT_ITEMS.get(goal, ()), start=1):
+                if name not in ids:
+                    found = _named(s, name)
+                    if found is None:
+                        e = Exercise(name=name, instructions=_DEFAULT_EXERCISES[name])
+                        s.add(e)
+                        s.flush()
+                        found = e.id
+                    ids[name] = found
+                s.add(ProgramItem(program_id=pid, position=position, exercise_id=ids[name],
+                                  note=doses.get(level, "")))
     return made
 
 
@@ -1651,8 +1886,8 @@ def create_program(title: str, intro: str | None,
 
 
 def get_program(program_id: int) -> Program | None:
-    from sqlalchemy.orm import selectinload
-
+    """A programme with its items, each with its exercise (ProgramItem's
+    joined load)."""
     with session_scope() as s:
         return s.scalar(select(Program).where(Program.id == program_id)
                         .options(selectinload(Program.items)))
@@ -1666,28 +1901,36 @@ def update_program(program_id: int, title: str, intro: str | None,
             p.title, p.intro, p.level, p.goal = title, intro, level, goal
 
 
-def delete_program(program_id: int) -> list[str]:
-    """Delete a programme; returns media filenames the caller should unlink."""
+def delete_program(program_id: int) -> bool:
+    """Delete a programme and its items. The exercises they pointed at, and
+    their clips, stay in the library."""
     with session_scope() as s:
         p = s.get(Program, program_id)
         if p is None:
-            return []
-        media = [i.media_name for i in p.items if i.media_name]
+            return False
         s.delete(p)
-        return media
+        return True
 
 
-def add_item(program_id: int, title: str, body: str | None,
-             media_name: str | None, media_kind: str | None) -> int:
-    with session_scope() as s:
-        last = s.scalar(select(func.coalesce(func.max(ProgramItem.position), 0))
-                        .where(ProgramItem.program_id == program_id))
-        it = ProgramItem(program_id=program_id, position=last + 1, title=title,
-                         body=body, media_name=media_name, media_kind=media_kind)
-        s.add(it)
-        s.get(Program, program_id).updated_at = func.now()
-        s.flush()
-        return it.id
+def add_item(program_id: int, exercise_id: int, note: str = "") -> int | None:
+    """Put a library exercise last in a programme; the new item's id. None
+    when the programme or the exercise is gone (deleted while it was added
+    too: the foreign key). The editor's picker adds none with a note (nothing
+    edits a note in this stage)."""
+    try:
+        with session_scope() as s:
+            p = s.get(Program, program_id)
+            if p is None or s.get(Exercise, exercise_id) is None:
+                return None
+            last = s.scalar(select(func.coalesce(func.max(ProgramItem.position), 0))
+                            .where(ProgramItem.program_id == program_id))
+            it = ProgramItem(program_id=program_id, position=last + 1, exercise_id=exercise_id, note=note)
+            s.add(it)
+            p.updated_at = func.now()
+            s.flush()
+            return it.id
+    except IntegrityError:
+        return None
 
 
 def get_item(item_id: int) -> ProgramItem | None:
@@ -1695,28 +1938,13 @@ def get_item(item_id: int) -> ProgramItem | None:
         return s.get(ProgramItem, item_id)
 
 
-def update_item(item_id: int, title: str, body: str | None,
-                media_name: str | None = None, media_kind: str | None = None) -> str | None:
-    """Update text; if new media given, swap it in and return the OLD filename."""
+def delete_item(item_id: int) -> bool:
+    """Take an item out of its programme (its exercise stays in the library);
+    the positions close up. False for an item already gone."""
     with session_scope() as s:
         it = s.get(ProgramItem, item_id)
         if it is None:
-            return None
-        old = None
-        it.title, it.body = title, body
-        if media_name:
-            old = it.media_name
-            it.media_name, it.media_kind = media_name, media_kind
-        return old
-
-
-def delete_item(item_id: int) -> str | None:
-    """Delete an item; returns its media filename for the caller to unlink."""
-    with session_scope() as s:
-        it = s.get(ProgramItem, item_id)
-        if it is None:
-            return None
-        media = it.media_name
+            return False
         pid = it.program_id
         s.delete(it)
         s.flush()
@@ -1725,7 +1953,7 @@ def delete_item(item_id: int) -> str | None:
                 select(ProgramItem).where(ProgramItem.program_id == pid)
                 .order_by(ProgramItem.position)), start=1):
             row.position = i
-        return media
+        return True
 
 
 def move_item(item_id: int, direction: str) -> None:
@@ -1741,10 +1969,3 @@ def move_item(item_id: int, direction: str) -> None:
         j = idx - 1 if direction == "up" else idx + 1
         if 0 <= j < len(rows):
             rows[idx].position, rows[j].position = rows[j].position, rows[idx].position
-
-
-def media_owner_program(media_name: str) -> Program | None:
-    """Which programme owns this media file? (for the auth-gated /media route)"""
-    with session_scope() as s:
-        it = s.scalar(select(ProgramItem).where(ProgramItem.media_name == media_name))
-        return s.get(Program, it.program_id) if it else None

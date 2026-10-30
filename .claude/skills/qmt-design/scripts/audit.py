@@ -54,7 +54,15 @@ ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana",
 # /upitnik opens on the guide through the training (29.10.2026), ?od=1 on its first question; /vodic is the guide alone
 CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "/moja-clanarina", "/prehrana", "/profil", "/treninzi", "/upitnik",
           "/upitnik?od=1", "/vodic"]
-OWNER = ["/", "/raspored", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi", "/profil"]
+# the library of exercises (30.10.2026): its list, and one exercise's page,
+# "vjezba:<name>", found on the list by the seed's name (scripts/seed_demo.py:
+# a reseed gives the exercises new ids). Goblet čučanj has tags, similar
+# exercises and a rep note there.
+OWNER = ["/", "/raspored", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi",
+         "/treninzi/vjezbe", "vjezba:Goblet čučanj", "/profil"]
+
+FIND_EXERCISE = """n => { const row = [...document.querySelectorAll('a.ex-row')]
+  .find(a => (a.querySelector('.ex-name') || {}).textContent === n); return row ? row.getAttribute('href') : null; }"""
 
 CHECKS = r"""
 () => {
@@ -161,12 +169,20 @@ CHECKS = r"""
 
 def run(pg, routes, who, theme, width, findings):
     for r in routes:
-        pg.goto(BASE + r)
+        key = f"{who}/{theme}/{width}px{r}"
+        path = r
+        if r.startswith("vjezba:"):                   # an exercise's page, by its name on the library's list
+            pg.goto(BASE + "/treninzi/vjezbe")
+            pg.wait_for_load_state("networkidle")
+            path = pg.evaluate(FIND_EXERCISE, r.split(":", 1)[1])
+            if not path:
+                findings["head"].append((key, f"no exercise {r.split(':', 1)[1]!r} on /treninzi/vjezbe (the demo seed?)"))
+                continue
+        pg.goto(BASE + path)
         pg.wait_for_load_state("networkidle")
         if pg.locator("#fbPrompt").count():
             pg.keyboard.press("Escape")
         res = pg.evaluate(CHECKS)
-        key = f"{who}/{theme}/{width}px{r}"
         findings["_onphoto"].append(res.get("onPhoto", 0))
         for k in ("overflow", "contrast", "tap", "alt", "label", "inner"):
             if k == "tap" and width >= 500:

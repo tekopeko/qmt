@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}{{ e.name if e else "Nova vježba" }} — QMT{% endblock %}
+{% block head %}
+<style>
+  /* An exercise of the library (30.10.2026): the /admin pages' look,
+     labelled fields in cards. Two forms, each its own card: the texts with
+     the similar exercises (one POST), and the clip (a POST of its own,
+     multipart, for an exercise that exists). */
+  .ex-card { max-width: 640px; padding: 18px 20px; margin-bottom: 22px; }
+  .ex-card h2 { font-size: 1.05rem; margin-bottom: 12px; }
+  .ex-card textarea { resize: vertical; }
+  /* a field's hint, under its input */
+  .ex-hint { margin: -6px 0 14px; overflow-wrap: anywhere; }
+  .ex-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  /* Slične vježbe: every other exercise as a checkbox row, in a box that
+     scrolls past seven rows or so; the filter above it is shown by the
+     script (without it the box is the whole list). A row is a label, not
+     the uppercase caption every label is (base.html), 40px tall: a finger's
+     target. A ticked row says so in the accent's tint. */
+  .ex-alts { border: 0; padding: 0; margin: 0 0 16px; min-width: 0; }
+  .ex-alts legend { font: 600 .76rem var(--font-body); text-transform: uppercase; letter-spacing: .06em;
+                    color: var(--muted); margin-bottom: 5px; padding: 0; }
+  .ex-alts .hint { margin-bottom: 8px; }
+  .alt-filter { margin-bottom: 8px; }
+  .alt-list { max-height: 300px; overflow-y: auto; border: 1.5px solid var(--line);
+              border-radius: var(--r-md); padding: 4px; }
+  .alt-list label { display: flex; align-items: center; gap: 10px; min-height: 40px; margin: 0;
+                    padding: 6px 10px; border-radius: 8px; cursor: pointer;
+                    font: 500 .92rem var(--font-body); text-transform: none; letter-spacing: 0;
+                    color: var(--text); overflow-wrap: anywhere; }
+  .alt-list label:hover { background: var(--surface-2); }
+  .alt-list label:has(input:checked) { background: var(--accent-dim); }
+  .alt-list input { flex: none; width: 18px; height: 18px; padding: 0; accent-color: var(--accent); }
+  .alt-list .tags { color: var(--muted); font-size: .8rem; }
+  .alt-none { color: var(--muted); font-size: .9rem; }
+  /* the clip as it plays: a portrait clip letterboxed in a dark box the
+     card's width, as Shape's player holds it */
+  .ex-video video { display: block; width: 100%; max-height: 440px; margin-bottom: 14px;
+                    background: #000; border-radius: var(--r-md); }
+  .ex-delete { margin-top: 8px; }
+  .ex-delete button { color: var(--accent); border-color: var(--accent); }
+</style>
+{% endblock %}
+{# a refused save comes back as this page (what was typed kept), its
+   sentence in `error`; the clip's and the delete's refusals as ?error= #}
+{% block error_alert %}
+{% set shown_error = error or request.query_params.get("error") %}
+{% if shown_error %}<div class="alert" role="alert"><span>{{ shown_error }}</span></div>{% endif %}
+{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Putanja"><a href="/treninzi/vjezbe">Vježbe</a><span class="sep">/</span><span class="here">{{ e.name if e else "Nova vježba" }}</span></nav>
+<h1>{{ e.name if e else "Nova vježba" }}</h1>
+{% if e is none %}
+<p class="hint">Upute, jedno ponavljanje, oznake i slične vježbe; video joj dodaješ kad je spremiš.</p>
+{% elif programs %}
+{# where it is, said, in the lead's muted words: the names, not six accent
+   links (the one loud colour is the actions'); deleting it names them too #}
+<p class="hint">U {{ programs|length }} {{ "programu" if programs|length % 10 == 1 and programs|length % 100 != 11 else "programa" }}: {{ programs|map(attribute="title")|join(", ") }}.</p>
+{% else %}
+<p class="hint">Još nije ni u jednom programu.</p>
+{% endif %}
+
+<form method="post" action="{% if e %}/treninzi/vjezbe/{{ e.id }}{% else %}/treninzi/vjezbe/nova{% endif %}" class="card ex-card">
+  {% if natrag %}<input type="hidden" name="natrag" value="{{ natrag }}">{% endif %}
+  <div class="field"><label for="ex-name">Naziv</label>
+    <input id="ex-name" type="text" name="name" value="{{ v.name }}" maxlength="160" required placeholder="npr. Goblet čučanj"></div>
+  <div class="field"><label for="ex-instr">Upute</label>
+    <textarea id="ex-instr" name="instructions" rows="4" placeholder="Kako se izvodi: položaj, pokret, na što paziti.">{{ v.instructions }}</textarea></div>
+  <div class="field"><label for="ex-rep">Što je jedno ponavljanje</label>
+    <textarea id="ex-rep" name="rep_note" rows="2" placeholder="npr. Spust do paralele i natrag do pune ekstenzije.">{{ v.rep_note }}</textarea></div>
+  <div class="field"><label for="ex-tags">Oznake (odvoji zarezom)</label>
+    <input id="ex-tags" type="text" name="tags" value="{{ v.tags }}" placeholder="npr. noge, bučice, kod kuće"></div>
+  <fieldset class="ex-alts">
+    <legend>Slične vježbe</legend>
+    <p class="hint">Vježbe kojima se ova može zamijeniti; vrijedi u oba smjera.</p>
+    {% if choices %}
+    <input type="search" class="alt-filter" id="altFilter" placeholder="Filtriraj po nazivu ili oznaci"
+           aria-label="Filtriraj slične vježbe" hidden>
+    <div class="alt-list" id="altList">
+      {% for x in choices %}
+      <label data-find="{{ (x.name ~ ' ' ~ x.tags)|lower }}"><input type="checkbox" name="alternative" value="{{ x.id }}"{% if x.id in v.alternatives %} checked{% endif %}>
+        <span>{{ x.name }}{% if x.tags %} <span class="tags">· {{ x.tags }}</span>{% endif %}</span></label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="alt-none">U bazi još nema drugih vježbi.</p>
+    {% endif %}
+  </fieldset>
+  <div class="ex-actions">
+    <button type="submit" class="btn btn-sm">Spremi</button>
+    {% if e is none %}<a class="btn-ghost btn-sm" href="{{ natrag or '/treninzi/vjezbe' }}">Odustani</a>{% endif %}
+  </div>
+</form>
+
+{% if e %}
+<section class="card ex-card ex-video" id="video" aria-labelledby="ex-video-h">
+  <h2 id="ex-video-h">Video</h2>
+  {% if e.video %}
+  <video src="/media/{{ e.video }}" controls playsinline muted loop preload="metadata"></video>
+  {% endif %}
+  <form method="post" action="/treninzi/vjezbe/{{ e.id }}/video" enctype="multipart/form-data">
+    <div class="field"><label for="ex-file">{{ "Zamijeni video" if e.video else "Video" }} (mp4, mov ili webm, do {{ video_max_mb }} MB)</label>
+      <input id="ex-file" type="file" name="video" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" required></div>
+    <p class="hint ex-hint">Snimi na mobitelu uspravno, 10–30 s, jedno ponavljanje jasno. iPhone: Postavke → Kamera → Formati → „Najkompatibilnije”, inače Chrome na Androidu i Windowsu ne može reproducirati snimku.</p>
+    <div class="ex-actions">
+      <button type="submit" class="btn btn-sm">{{ "Zamijeni video" if e.video else "Dodaj video" }}</button>
+      {% if e.video %}<button type="submit" form="ex-video-x" class="btn-ghost btn-sm">Ukloni video</button>{% endif %}
+    </div>
+  </form>
+  {% if e.video %}
+  {# its button sits beside "Zamijeni video" (form=), a form holds no form #}
+  <form id="ex-video-x" method="post" action="/treninzi/vjezbe/{{ e.id }}/video/ukloni"
+        data-confirm-title="Ukloniti video?"
+        data-confirm="Video vježbe „{{ e.name }}” bit će obrisan. Upute, oznake i slične vježbe ostaju."
+        data-confirm-cta="Ukloni video"></form>
+  {% endif %}
+</section>
+
+<form method="post" action="/treninzi/vjezbe/{{ e.id }}/obrisi" class="ex-delete"
+      data-confirm-title="Obrisati vježbu?"
+      data-confirm="„{{ e.name }}” se briše iz baze vježbi, s uputama i videom."
+      data-confirm-cta="Obriši vježbu">
+  <button type="submit" class="btn-ghost">Obriši vježbu</button>
+</form>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  // Slične vježbe's filter: shown once this runs (without it the box is the
+  // whole list). It keeps the rows whose name or tags hold what is typed,
+  // whatever its case; a row it hides keeps its tick, and the form posts it.
+  (function () {
+    var box = document.getElementById("altFilter"), list = document.getElementById("altList");
+    if (!box || !list) return;
+    box.hidden = false;
+    // it sits in the form: Enter (a phone keyboard's "Go") would send it and
+    // save the exercise half typed, so Enter here only filters
+    box.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });
+    box.addEventListener("input", function () {
+      var q = box.value.trim().toLocaleLowerCase("hr");
+      [].forEach.call(list.querySelectorAll("label[data-find]"), function (row) {
+        row.hidden = !!q && row.getAttribute("data-find").indexOf(q) === -1;
+      });
+    });
+  })();
+</script>
+{% endblock %}

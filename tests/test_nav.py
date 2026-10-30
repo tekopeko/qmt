@@ -6,7 +6,8 @@ A client's row: Početna · Raspored · Karton · Online treninzi (while an
 online plan runs) · Moja članarina · Prehrana. Staff's, the trainer's and the
 owner's: that row without Karton, then "Admin ▾", a menu in the account
 menu's component: Termini (/admin), Trenutne članarine (/clanarine), Upitnik
-(/upitnik) and, the owner's only, Korisnici and Statistika. The tab is .on
+(/upitnik), Vježbe (/treninzi/vjezbe, the library of exercises, 30.10.2026)
+and, the owner's only, Korisnici and Statistika. The tab is .on
 while one of its pages is open, that item aria-current="page". The account
 menu is Profil, the theme and Odjava for everyone. In the ☰ drawer (≤900px) a
 client has the one plain list, staff two sections under captions, "Kao član"
@@ -119,7 +120,8 @@ def account_menu(page: str) -> list[str]:
 
 MEMBER_ROW = [("/", "Početna"), ("/raspored", "Raspored"), ("/treninzi", "Online treninzi"),
               ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")]
-TRAINER_ITEMS = [("/admin", "Termini"), ("/clanarine", "Trenutne članarine"), ("/upitnik", "Upitnik")]
+TRAINER_ITEMS = [("/admin", "Termini"), ("/clanarine", "Trenutne članarine"), ("/upitnik", "Upitnik"),
+                 ("/treninzi/vjezbe", "Vježbe")]
 OWNER_ITEMS = TRAINER_ITEMS + [("/korisnici", "Korisnici"), ("/statistika", "Statistika")]
 ACCOUNT = ["Profil", "Tamna tema", "Odjava"]
 
@@ -141,7 +143,7 @@ def test_a_clients_row_is_the_members_tabs_and_nothing_of_admin():
 
 def test_staff_get_the_members_row_without_karton_and_admin_with_their_items():
     """The member's row less Karton (staff have none of their own), then
-    Admin ▾: three items for a trainer who is not the owner, five for the
+    Admin ▾: four items for a trainer who is not the owner, six for the
     owner. Two captions for the drawer, and the account menu without a
     Moja članarina item: the tab is in their row now."""
     make_user("trener@test.local", is_trainer=True)                     # the owner, who trains too (the demo's trener)
@@ -159,7 +161,7 @@ def test_staff_get_the_members_row_without_karton_and_admin_with_their_items():
 
 def test_an_owner_who_does_not_train_is_staff_too():
     """Staff is the trainer or the owner (the routes' _require_trainer): an
-    owner without is_trainer gets the same bar, Karton gone, all five items.
+    owner without is_trainer gets the same bar, Karton gone, all six items.
     Online treninzi follows his plans, as for anyone but a trainer
     (show_online, unchanged)."""
     make_user("trener@test.local", plans=("grupni",))                  # the owner, not a trainer, no online plan
@@ -170,16 +172,20 @@ def test_an_owner_who_does_not_train_is_staff_too():
 
 
 def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
-    """On Termini (its sub-pages too), Trenutne članarine, Upitnik,
-    Korisnici and Statistika the Admin tab is .on and that item, alone,
-    aria-current; no member tab is. Elsewhere the member's tab is .on and
-    Admin is not. The pages carry the items' names. Staff's /upitnik keeps
+    """On Termini (its sub-pages too), Trenutne članarine, Upitnik, Vježbe
+    (an exercise's page too: under /treninzi, yet Online treninzi is not
+    .on there), Korisnici and Statistika the Admin tab is .on and that item,
+    alone, aria-current; no member tab is. Elsewhere the member's tab is .on
+    and Admin is not. The pages carry the items' names. Staff's /upitnik keeps
     the whole bar: the brand-only pill is a member's (who fills it)."""
     make_user("trener@test.local", is_trainer=True)
     tid = db.add_template("Grupni trening", 0, 7 * 60, 60, 8, None)
+    eid = db.create_exercise("Plank")
     c = client_for("trener@test.local")
     for path, item in (("/admin", "Termini"), (f"/admin/templates/{tid}", "Termini"),
                        ("/clanarine", "Trenutne članarine"), ("/upitnik", "Upitnik"),
+                       ("/treninzi/vjezbe", "Vježbe"), ("/treninzi/vjezbe/nova", "Vježbe"),
+                       (f"/treninzi/vjezbe/{eid}", "Vježbe"),
                        ("/korisnici", "Korisnici"), ("/statistika", "Statistika")):
         page = c.get(path).text
         assert admin_tab(page) == ("Admin ▾", True), path
@@ -407,7 +413,7 @@ def test_staff_open_the_upitnik_in_normal_mode_with_the_pill(server):
     and a trainer who is not the owner land on /upitnik, and on
     /upitnik?uredi=1 (Admin ▾'s link until then, which meant edit mode), in
     normal mode with the ✎ pill shown to press, at 1280px and on a phone;
-    the trainer's Admin ▾ has his three items. No page errors."""
+    the trainer's Admin ▾ has his four items. No page errors."""
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
     make_user("trener@test.local", is_trainer=True)                   # the owner, a trainer too

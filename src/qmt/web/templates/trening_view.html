@@ -12,23 +12,23 @@
 {% endif %}
 
 <div style="display:flex; flex-direction:column; gap:18px; margin-top:26px; max-width:760px;">
-  {% for it in p.items %}
+  {# each exercise from the library (30.10.2026): its clip, its name, the
+     item's own note (its razina's dose, bold, as the body's first line read
+     before), what one rep is and how it is done #}
+  {% for it in p.items %}{% set ex = it.exercise %}
   <div class="card" style="padding:0; overflow:hidden;">
-    {% if it.media_name %}
-      {% if it.media_kind == "video" %}
-        <video controls preload="metadata" style="width:100%; display:block; background:#000; max-height:460px;"
-               src="/media/{{ it.media_name }}"></video>
-      {% else %}
-        <img src="/media/{{ it.media_name }}" alt="{{ it.title }}" loading="lazy"
-             style="width:100%; display:block; max-height:460px; object-fit:cover;">
-      {% endif %}
+    {% if ex.video %}
+      <video controls playsinline preload="metadata" style="width:100%; display:block; background:#000; max-height:460px;"
+             src="/media/{{ ex.video }}"></video>
     {% endif %}
     <div style="padding:18px 22px;">
       <div style="display:flex; align-items:baseline; gap:10px;">
         <span style="font:700 .8rem var(--font-body); color:var(--accent);">{{ loop.index }}</span>
-        <h3 style="font-size:1.05rem;">{{ it.title }}</h3>
+        <h3 style="font-size:1.05rem; overflow-wrap:anywhere;">{{ ex.name }}</h3>
       </div>
-      {% if it.body %}<p style="margin-top:8px; white-space:pre-line;">{{ it.body }}</p>{% endif %}
+      {% if it.note %}<p style="margin-top:8px; font-weight:700; white-space:pre-line; overflow-wrap:anywhere;">{{ it.note }}</p>{% endif %}
+      {% if ex.rep_note %}<p style="margin-top:8px; white-space:pre-line; overflow-wrap:anywhere;"><strong>Jedno ponavljanje:</strong> {{ ex.rep_note }}</p>{% endif %}
+      {% if ex.instructions %}<p style="margin-top:8px; white-space:pre-line; overflow-wrap:anywhere;">{{ ex.instructions }}</p>{% endif %}
     </div>
   </div>
   {% else %}

@@ -12,7 +12,7 @@ import json
 from datetime import date as SADate, datetime, timedelta
 
 from sqlalchemy import (
-    Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text,
+    Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Table, Text,
     UniqueConstraint, func, text, text as sql_text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -573,6 +573,104 @@ class TrainingLog(Base):
     session: Mapped[TrainingSession | None] = relationship()
 
 
+# Two exercises of the library a client may swap one for the other (the
+# spec's stage 3, "Zamijeni vježbu — Slične vježbe"; Amir ticks them on an
+# exercise's form, 30.10.2026). ONE row per pair, stored from the side whose
+# form ticked the other, read from both (Exercise.alternatives); unticked on
+# either form, the pair goes whichever way it was stored (db.update_exercise).
+# Either exercise deleted takes its pairs with it.
+exercise_alternatives = Table(
+    "exercise_alternatives", Base.metadata,
+    Column("exercise_id", ForeignKey("exercises.id", ondelete="CASCADE"), primary_key=True),
+    Column("alternative_id", ForeignKey("exercises.id", ondelete="CASCADE"), primary_key=True),
+    CheckConstraint("exercise_id <> alternative_id", name="ck_exercise_alternatives_other"),
+    Index("ix_exercise_alternatives_alternative_id", "alternative_id"),
+)
+
+# The Croatian alphabet's letters in their order (q, w, x and y in their
+# Latin places): č and ć come after c, đ after d, š after s, ž after z.
+_ALPHABET = "abcčćdđefghijklmnopqrsštuvwxyzž"
+
+
+def alpha_key(text: str) -> tuple[int, ...]:
+    """A sort key that puts names in the alphabet's order, whatever their
+    case: "Čučanj" after every "C…" and before "D…". The databases sort by
+    code point under the C locale (the dev and test ones), which puts every
+    Č, Š and Ž after Z. A letter with another mark (é, ü) sorts as its base
+    letter; a space, a digit or a sign before every letter."""
+    import unicodedata
+
+    key = []
+    for ch in text.casefold():
+        base = ch if ch in _ALPHABET else unicodedata.normalize("NFD", ch)[:1]
+        key.append(1000 + _ALPHABET.index(base) if base and base in _ALPHABET else ord(ch))
+    return tuple(key)
+
+
+class Exercise(Base):
+    """One exercise of the library (/treninzi/vjezbe, 30.10.2026; the owner:
+    "We should have a database of exercises which he can choose from and add
+    them to different training programmes that will be modular. Each exercise
+    will have a video connected to it which will show the exercise and show
+    what one rep means."). A programme's items point at these rows
+    (ProgramItem.exercise_id), so an exercise renamed or given a new clip is
+    renamed and re-shown in every programme that holds it, and one that a
+    programme holds cannot be deleted (db.delete_exercise; the foreign key is
+    RESTRICT). Migration 4c2e8a6f1d39 made the items typed by hand until then
+    into these rows.
+
+    `name` is unique whatever its case: db.create_exercise / update_exercise
+    compare the names casefolded under the table's lock (the rule, with the
+    Croatian sentence), and uq_exercises_name, on lower(name), backs them
+    wherever the database folds the letter (the C locale folds ASCII only).
+    `instructions` is how it is done and `rep_note` what one rep is, "" for
+    none. `video` is the stored clip's file name (storage.py), served only by
+    the auth-gated /media, NULL for none. `tags` are free words as Amir types
+    them, comma-separated, stored cleaned (db.clean_tags: "noge, bučice"), ""
+    for none; the later routing by equipment is to read them.
+    """
+
+    __tablename__ = "exercises"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160))
+    instructions: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    rep_note: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    video: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    tags: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                 onupdate=func.now())
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    # the pairs this side stored, and those the other side stored: read
+    # together as `alternatives`, loaded by the query that needs them
+    # (db.exercise), written only through the table (db.update_exercise)
+    alternatives_to: Mapped[list["Exercise"]] = relationship(
+        secondary=exercise_alternatives, viewonly=True,
+        primaryjoin=lambda: Exercise.id == exercise_alternatives.c.exercise_id,
+        secondaryjoin=lambda: Exercise.id == exercise_alternatives.c.alternative_id)
+    alternatives_from: Mapped[list["Exercise"]] = relationship(
+        secondary=exercise_alternatives, viewonly=True,
+        primaryjoin=lambda: Exercise.id == exercise_alternatives.c.alternative_id,
+        secondaryjoin=lambda: Exercise.id == exercise_alternatives.c.exercise_id)
+
+    @property
+    def alternatives(self) -> list["Exercise"]:
+        """The similar exercises, whichever side stored the pair: the union
+        of both directions, in the alphabet's order."""
+        both = {e.id: e for e in [*self.alternatives_to, *self.alternatives_from]}
+        return sorted(both.values(), key=lambda e: alpha_key(e.name))
+
+    @property
+    def tag_items(self) -> list[str]:
+        """The tags, one word or phrase each: the tags column read."""
+        return [t for t in (x.strip() for x in (self.tags or "").split(",")) if t]
+
+
+Index("uq_exercises_name", func.lower(Exercise.name), unique=True)
+
+
 class Program(Base):
     """An online course variant: fixed (razina × cilj) slots, matched, not
     assigned.
@@ -601,11 +699,21 @@ class Program(Base):
 
 
 class ProgramItem(Base):
-    """One exercise/step of a programme: title + instructions + optional media.
+    """One exercise of a programme, in its place: since 30.10.2026 a library
+    row (Exercise), which holds the name, the instructions, what one rep is
+    and the clip, and the item's own `note`, what it says beside its exercise:
+    for now the dose of its programme's razina ("3 × 8 · 8 kg"), which a
+    client reads above the exercise's texts. Until then an item was typed by
+    hand (a title, a body and one media file, an image or a video), which
+    migration 4c2e8a6f1d39 turned into library rows, each body's dose line
+    the item's note. Nothing edits a note yet: it comes from the migration
+    and the nine slots' defaults (db.ensure_online_skeletons), an item added
+    from the picker has none. The days, sets × reps or seconds and rest are
+    the spec's stage 2 (roadmap/2026-10-29-online-treninzi-spec.md), which
+    keeps `note` as the item's note beside them.
 
-    Media is an uploaded file (image or video) stored under data/uploads and
-    served only through the auth-gated /media route — programmes are personal.
-    """
+    The exercise's foreign key is RESTRICT: an exercise a programme holds
+    cannot be deleted (db.delete_exercise says where it is first)."""
 
     __tablename__ = "program_items"
 
@@ -614,9 +722,9 @@ class ProgramItem(Base):
         ForeignKey("programs.id", ondelete="CASCADE"), index=True
     )
     position: Mapped[int] = mapped_column(Integer)
-    title: Mapped[str] = mapped_column(String(160))
-    body: Mapped[str | None] = mapped_column(Text, nullable=True)
-    media_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    media_kind: Mapped[str | None] = mapped_column(String(8), nullable=True)  # "img" | "video"
+    exercise_id: Mapped[int] = mapped_column(ForeignKey("exercises.id", ondelete="RESTRICT"), index=True)
+    note: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
 
     program: Mapped[Program] = relationship(back_populates="items")
+    # every page that shows an item shows its exercise: loaded with it
+    exercise: Mapped[Exercise] = relationship(lazy="joined", innerjoin=True)

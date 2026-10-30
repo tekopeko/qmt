@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Vježbe — QMT{% endblock %}
+{% block head %}
+<style>
+  /* The library of exercises (30.10.2026, Admin ▾ → Vježbe). The tools row:
+     the search (?q=, the server's) and "+ Nova vježba", the page's one
+     primary, wrapping under the search on a phone. The button stretches to
+     the input's height, so the row is one footprint. */
+  .ex-tools { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px 12px; margin-bottom: 16px; max-width: 860px; }
+  .ex-search { display: flex; align-items: stretch; gap: 8px; flex: 1 1 260px; min-width: 0; margin: 0; }
+  .ex-search input { flex: 1 1 auto; min-width: 0; }
+  .ex-search button, .ex-tools > .btn { white-space: nowrap; }
+  .ex-found { margin: -6px 0 12px; }
+  /* ONE card of rows, a hairline between them. A row is a link to the
+     exercise's page, whole: the tap target is the row (52px at least, as the
+     client's /treninzi cards are links whole), not a short name. In it the
+     name, its tags as neutral chips (facts, not state: the karton's .u-fact
+     values) and at the right end whether it has a clip, said in words
+     ("video ✓" in --good, "bez videa" muted), and how many programmes hold
+     it. On a phone the right end wraps under the name. */
+  .ex-list { max-width: 860px; overflow: hidden; }
+  .ex-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 52px;
+            padding: 10px 18px; color: var(--text); text-decoration: none;
+            border-top: 1px solid var(--line); transition: background .15s; }
+  .ex-row:first-child { border-top: none; }
+  .ex-row:hover { background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
+  .ex-row:focus-visible { outline-offset: -2px; }
+  .ex-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  .ex-tags { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+  .ex-tag { padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--text);
+            font: 600 .74rem/1.5 var(--font-body); overflow-wrap: anywhere; }
+  .ex-meta { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted);
+             font-size: .82rem; white-space: nowrap; }
+  .ex-meta .has { color: var(--good); font-weight: 600; }
+  .ex-none { padding: 16px 18px; color: var(--muted); overflow-wrap: anywhere; }
+  .ex-empty { max-width: 860px; padding: 26px 22px; display: flex; flex-wrap: wrap; align-items: center;
+              justify-content: space-between; gap: 12px; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Vježbe</h1>
+<p class="hint">Baza vježbi: svaki trening slaže se od njih. Vježba ima upute, što je jedno ponavljanje, oznake i video.</p>
+
+{% if total %}
+<div class="ex-tools">
+  <form class="ex-search" method="get" action="/treninzi/vjezbe" role="search">
+    <input type="search" name="q" value="{{ q }}" placeholder="Naziv ili oznaka" aria-label="Traži vježbu po nazivu ili oznaci">
+    <button type="submit" class="btn-ghost btn-sm">Traži</button>
+  </form>
+  <a class="btn btn-sm" href="/treninzi/vjezbe/nova">+ Nova vježba</a>
+</div>
+{% if q %}<p class="hint ex-found">{{ rows|length }} od {{ total }} · <a class="tlink" href="/treninzi/vjezbe">prikaži sve</a></p>{% endif %}
+<div class="card ex-list">
+  {% for e, n in rows %}
+  <a class="ex-row" href="/treninzi/vjezbe/{{ e.id }}">
+    <span class="ex-name">{{ e.name }}</span>
+    {% if e.tag_items %}<span class="ex-tags">{% for t in e.tag_items %}<span class="ex-tag">{{ t }}</span>{% endfor %}</span>{% endif %}
+    <span class="ex-meta">
+      {% if e.video %}<span class="has">video ✓</span>{% else %}<span>bez videa</span>{% endif %}
+      <span>{% if n == 0 %}ni u jednom programu{% elif n % 10 == 1 and n % 100 != 11 %}u {{ n }} programu{% else %}u {{ n }} programa{% endif %}</span>
+    </span>
+  </a>
+  {% else %}
+  <p class="ex-none">Nijedna vježba ne odgovara traženju „{{ q }}”.</p>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card ex-empty">
+  <p>Još nema vježbi.</p>
+  <a class="btn btn-sm" href="/treninzi/vjezbe/nova">+ Nova vježba</a>
+</div>
+{% endif %}
+{% endblock %}

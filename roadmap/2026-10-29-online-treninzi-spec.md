@@ -1,7 +1,8 @@
 # Online treninzi: a library of exercises, programmes made of days, a player — spec (29.10.2026)
 
-Status: **spec, awaiting the owner's OK.** Written by Fable from the owner's answers of
-29.10.2026; nothing of it is built. Builds in three stages (below), each shippable.
+Status: **spec; stage 1 (the library) built 30.10.2026, reviewed and live the same day.** Written by
+Fable from the owner's answers of 29.10.2026 (settled 30.10.2026, below). Builds in three
+stages (below), each shippable.
 
 ## What the owner asked
 
@@ -118,7 +119,11 @@ of a termin in the gym).
    `alternatives`: the similar exercises a client may swap it for, a many-to-many
    Amir picks on the form), the two admin pages, the video upload, the migration
    of today's items into it (the client's pages unchanged: a programme still lists
-   its exercises, now from the library).
+   its exercises, now from the library). **Built 30.10.2026, awaiting review**
+   (an Opus draft; `roadmap/STATUS.md`'s entry of that day; migration
+   `4c2e8a6f1d39`). Each item keeps its razina's dose as `ProgramItem.note`
+   (the body's first line until then): stage 2 keeps the column as the item's
+   note beside sets, reps or seconds and rest.
 2. **Days** — `ProgramDay` / `ProgramDayItem` with `section` (zagrijavanje /
    trening / istezanje), sets, reps or seconds, rest, note; the day editor; the
    client's programme page with day cards and the day page: the two videos, then

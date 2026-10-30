@@ -120,11 +120,19 @@ def email_allowed(email: str) -> bool:
 # shared — no imports, no DB access.
 MOJIMAKROSI_URL = os.environ.get("MOJIMAKROSI_URL", "https://mojimakrosi.com").strip()
 
-# Uploaded programme media (exercise images/videos). Local disk for now — on
-# Railway this is EPHEMERAL and needs a volume or R2 before real use (a redeploy
-# would eat the trainer's videos). Deliberately outside static/: personal content.
+# Uploaded media: the exercises' clips (the library, /treninzi/vjezbe), served
+# only by the auth-gated /media, and the announcements' photos (/slika). Local
+# disk without R2 (the four R2_* vars below), and a container keeps nothing
+# across a deploy. Deliberately outside static/.
 MEDIA_DIR = PROJECT_ROOT / "data" / "uploads"
-MAX_MEDIA_MB = int(os.environ.get("MAX_MEDIA_MB", "60"))
+# The largest exercise clip, in MB (30.10.2026). The owner's number was 100 MB
+# a video ("we will change that when we get the actual videos"), but the box
+# sits behind Cloudflare, whose free plan refuses a request body over 100 MB
+# with its own 413 page before the app sees it: at 95 a refused clip meets the
+# app's own sentence, and an allowed one leaves room for the multipart
+# overhead. It replaces MAX_MEDIA_MB, the cap of the programme items' own
+# images and videos, which went with them.
+VIDEO_MAX_MB = int(os.environ.get("VIDEO_MAX_MB", "95"))
 
 # How many days before dospijeće the članarina reminder goes out.
 REMINDER_DAYS_BEFORE = int(os.environ.get("REMINDER_DAYS_BEFORE", "3"))

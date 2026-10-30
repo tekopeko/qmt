@@ -13,7 +13,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.topbar.compact` | base (guests) | Shape's small pill: `width: fit-content`, centred; the brand is content-sized (no slot query) and the wordmark shortens below 420px, where even the small pill cannot hold the name beside the ☰. Its drawer is a centred 300px card, not a sliver the pill's width |
 | `.menu-wrap` / `.menu` | base | the topbar's dropdown, one component for two menus (26.10.2026): a `.menu-wrap` (`position: relative`) holds a button (`aria-controls`, `aria-haspopup`, `aria-expanded`) and its `.menu` panel, `role="menu"`, `--surface`, hairline, 12px radius, `--shadow`, hung `calc(100% + 9px)` under the button; rows (`role="menuitem"`) full-bleed, 10px 16px, 500 .92rem, a 22px line icon (`.mi`, 24px viewBox, stroke 1.7) on one gutter, hover / focus `--surface-2`; `.sep` a hairline. One script in base.html: a click on the button opens it and the next shuts it, one menu open at a time (the account menu also shuts the ☰ drawer), a click outside or Escape shuts it (Escape gives the focus back to the button when it was in the menu); an open panel is moved in to stay 12px inside the window. Tab reaches its rows; no arrow keys |
 | `.avatar` / `.user-menu` | base | initials circle → the account menu (`.menu.user-menu`, 288px, right-aligned to the avatar) on the YouTube pattern: identity header (the email ellipsized on a desktop with the whole address in its `title`, wrapped ≤900px), icon gutter rows: Profil, theme, Odjava — for everyone since 26.10.2026 (the Moja članarina tab is everyone's way to that page) |
-| `.admin-menu` | base (trainer, owner) | Admin ▾'s menu (`.menu.admin-menu`, as wide as its longest row, left-aligned to its tab): Termini (calendar icon) → `/admin`, Trenutne članarine (card) → `/clanarine`, Upitnik (clipboard) → `/upitnik` (in normal mode, as every page opens: the ✎ pill turns edit mode on), and the owner's Korisnici (people) and Statistika (chart). The page that is open: `aria-current="page"`, an inset 3px `--accent` bar on the row's left edge and the label in 700. In the ☰ drawer it is static rows under the "Admin" caption |
+| `.admin-menu` | base (trainer, owner) | Admin ▾'s menu (`.menu.admin-menu`, as wide as its longest row, left-aligned to its tab): Termini (calendar icon) → `/admin`, Trenutne članarine (card) → `/clanarine`, Upitnik (clipboard) → `/upitnik` (in normal mode, as every page opens: the ✎ pill turns edit mode on), Vježbe (dumbbell) → `/treninzi/vjezbe` (30.10.2026: the library's pages are under /treninzi, yet they light Admin ▾ and this item, never the Online treninzi tab), and the owner's Korisnici (people) and Statistika (chart). The page that is open: `aria-current="page"`, an inset 3px `--accent` bar on the row's left edge and the label in 700. In the ☰ drawer it is static rows under the "Admin" caption |
 | `main` | base | max-width 1100px, `clamp(14px,4vw,40px)` side padding; `main.full` for the landing |
 | `main > h1`, `main > h1 + .hint` | base | the page header: title `clamp(1.6rem,3vw,2rem)` + one lead sentence, 70ch max — templates write bare `<h1>` / `<p class="hint">` with no inline style |
 | `.card` | base | `--surface`, hairline, `--r-lg` (20px), `--shadow`; hero-grade cards (`.svc`, `.plan`, `.upitnik`, `.termini`) take `--r-xl` (28px) with 26px padding |
@@ -389,6 +389,67 @@ row is ticked. The questions are rows the gym owner edits (26.10.2026): in edit
 mode each carries his controls (`.q-ed`, in the catalog above) and a hidden one
 is dimmed; outside edit mode a hidden one is no step, nor is one a hidden question mutes (`.is-muted`; a client never gets its markup). A question asked only after an answer (27.10.2026) is a step like any other, skipped while that answer is not given (the script reads its `data-parent` and condition), and not counted in `.q-bar` until it is asked; edit mode indents it (`data-depth`, in the catalog above). A step keeps 96px of
 `scroll-margin-top`, so a reload that lands on `#step-q<id>` clears the bar.
+
+**The library of exercises (`vjezbe.html`, `vjezba.html`, 30.10.2026; Admin ▾ →
+Vježbe).** The list: the page header, then `.ex-tools`, one wrapping row of the
+search (`form.ex-search`, `role="search"`: a `type=search` input and a
+`.btn-ghost.btn-sm` "Traži", `?q=`) and "+ Nova vježba" (`.btn.btn-sm`, the page's
+one primary), `align-items: stretch` so the buttons are the input's height (one
+footprint); with `q`, a muted "2 od 13 · prikaži sve" (`.tlink`). Then ONE
+`.card.ex-list` of rows, a hairline between them: each row an `a.ex-row`, the whole
+row the tap target (52px at least, as the client's /treninzi cards are links
+whole), in the Croatian alphabet's order (`models.alpha_key`): `.ex-name` (600), the
+tags as `.ex-tag` chips (facts, not state: `--surface-2` with `--text`, 600 .74rem,
+the karton's `.u-fact` values), and at the right end `.ex-meta` (muted .82rem):
+"video ✓" in `--good` 600 (`.has`) or "bez videa", and "u N programa" ("u 1
+programu", "ni u jednom programu"); on a phone it wraps under the name. Hover is a
+4% `--text` wash, never a flood. None matching: `.ex-none` "Nijedna vježba ne
+odgovara traženju „q”."; an empty library: `.card.ex-empty`, "Još nema vježbi." and
+the button. **An exercise's page**: crumbs (Vježbe / its name), the h1, the lead
+(where it is, "U 2 programa: A, B." in the hint's muted words, not links: the
+accent is the actions'; "Još nije ni u jednom programu."; a new one: what to fill),
+then `.card.ex-card` (640px) holding the one form: labelled fields (Naziv,
+Upute, Što je jedno ponavljanje, Oznake (odvoji zarezom)) and **Slične vježbe**, a
+`fieldset.ex-alts` (its legend in the label's look) with a muted hint, the
+`.alt-filter` search (rendered `hidden`, the script shows it and keeps the rows
+whose name or tags hold what is typed; a row it hides keeps its tick; Enter
+there only filters: in the form, a phone keyboard's "Go" would save it half
+typed) and
+`.alt-list`, a 300px box that scrolls, of `label` rows (40px, a checkbox, the name
+and its tags muted; the ticked ones first, each group in the alphabet's order; a
+ticked row in `--accent-dim`); then `.ex-actions`: "Spremi" (`.btn.btn-sm`; a new
+one's "Odustani" `.btn-ghost.btn-sm` beside it). A refused save comes back as the
+page, what was typed kept, its sentence in the page's own alert (the
+`error_alert` block). For an existing exercise a second card, **Video**
+(`section.ex-video`): the clip (`<video controls playsinline muted loop
+preload="metadata">`, the card's width, at most 440px tall, letterboxed on black,
+`--r-md`), the file input labelled "Video (mp4, mov ili webm, do 95 MB)" ("Zamijeni
+video …" with one) and the recording hint under it (`.ex-hint`), then "Dodaj video"
+/ "Zamijeni video" (`.btn.btn-sm`) and "Ukloni video" (`.btn-ghost.btn-sm`, its
+form named with `form=`, `data-confirm`) side by side, one footprint. Last
+"Obriši vježbu" (`.btn-ghost` in the accent, its border too, as "Obriši cijeli
+trening"; `data-confirm`), refused while a programme holds it, the sentence naming
+them in the alert.
+
+**The programme editor (`trening_edit.html`).** Its lead: who sees the
+programme (the razina and cilj the upitnik gives) and where its exercises come
+from (a `.tlink` to the library). Since 30.10.2026 an item is a
+library exercise: `.card.it-row` holds its place (`.it-n`, the accent's 700), the
+exercise's name as a link to it (`.it-name`, `--text` 700, 32px tall, the accent
+on hover), the item's note muted right after it (`.it-note`, .85rem: its razina's
+dose; not edited in this stage, which ONE `.hint.it-hint` over the rows says,
+"Doza uz naziv (npr. 3 × 8 · 8 kg) zasad se ne uređuje: …", only when a row has
+one: a `title` would never show on a phone), then at the right end ONE group,
+`.it-end` (`margin-left: auto`): "video ✓" (`.it-video.has`, `--good`) or "bez
+videa" (muted) and ↑ / ↓ / ✕ (`.btn-ghost.btn-sm`; ✕ asks first, "Makni iz
+treninga": the exercise stays in the library); on a phone the group wraps under
+the name whole, still at the right, so every row reads the same. The client's programme page prints the note in bold under the exercise's
+name, above its rep note and instructions. "Dodaj
+vježbu" (`form#dodaj.add-ex`): its label, then `.add-row`, the select (name ·
+tags, the alphabet's order, "Odaberi vježbu…" first; the exercise just made
+through "Nova vježba →" chosen), "Dodaj" (`.btn.btn-sm`) and "Nova vježba →"
+(`.btn-ghost.btn-sm`), stretched to the select's height; an add comes back at
+`#dodaj` (`scroll-margin-top: 90px`).
 
 **Calendar (`calendar.html`).** Seven `.day-col` on desktop → on phones one day
 at a time (17.10.2026): the `.day-strip` picks it, the grid gets `.one-day` and

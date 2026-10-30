@@ -727,18 +727,22 @@
          they edit in place: everyone has the tab, nobody an account-menu
          item for it. #}
       {% set staff = user.is_trainer or is_owner %}
+      {# the library of exercises is under /treninzi but Admin ▾'s (30.10.2026):
+         its pages light Vježbe there, not the Online treninzi tab #}
+      {% set at_vjezbe = staff and path.startswith('/treninzi/vjezbe') %}
       {% if staff %}<p class="nav-cap">Kao član</p>{% endif %}
       <a href="/" class="{% if path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if path.startswith('/raspored') %}on{% endif %}">Raspored</a>
       {% if not staff %}<a href="/karton" class="{% if path.startswith('/karton') or path.startswith('/upitnik') %}on{% endif %}">Karton</a>{% endif %}
       {# a paid product: without an active online plan the tab doesn't exist #}
-      {% if show_online %}<a href="/treninzi" class="{% if path.startswith('/treninzi') %}on{% endif %}">Online treninzi</a>{% endif %}
+      {% if show_online %}<a href="/treninzi" class="{% if path.startswith('/treninzi') and not at_vjezbe %}on{% endif %}">Online treninzi</a>{% endif %}
       <a href="/moja-clanarina" class="{% if path.startswith('/moja-clanarina') %}on{% endif %}">Moja članarina</a>
       <a href="/prehrana" class="{% if path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
       {% if staff %}
       {# Admin ▾, the account menu's component (.menu): Termini, Trenutne
          članarine, Upitnik (in normal mode, as every page opens: the ✎ pill
-         puts it in edit mode), and the owner's Korisnici and Statistika. The
+         puts it in edit mode), Vježbe (the library of exercises, 30.10.2026),
+         and the owner's Korisnici and Statistika. The
          tab is .on while one of its pages is open, that item aria-current.
          In the ☰ drawer its items are rows under the "Admin" caption, and
          the tab is no row. #}
@@ -749,7 +753,7 @@
       {% set at_statistika = is_owner and path.startswith('/statistika') %}
       <div class="menu-wrap nav-admin">
         <p class="nav-cap">Admin</p>
-        <button type="button" id="adminBtn" class="navbtn menu-btn{% if at_termini or at_clanarine or at_upitnik or at_korisnici or at_statistika %} on{% endif %}"
+        <button type="button" id="adminBtn" class="navbtn menu-btn{% if at_termini or at_clanarine or at_upitnik or at_vjezbe or at_korisnici or at_statistika %} on{% endif %}"
                 aria-haspopup="true" aria-expanded="false" aria-controls="adminMenu">Admin <span class="caret" aria-hidden="true">▾</span></button>
         <div class="menu admin-menu" id="adminMenu" role="menu" aria-labelledby="adminBtn">
           <a href="/admin" role="menuitem"{% if at_termini %} aria-current="page"{% endif %}>
@@ -766,6 +770,11 @@
             <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
               <rect x="5" y="4.5" width="14" height="17" rx="2.5"/><path d="M9.5 3h5v3h-5zM8.5 11h7M8.5 14.5h7M8.5 18h4"/>
             </svg><span>Upitnik</span>
+          </a>
+          <a href="/treninzi/vjezbe" role="menuitem"{% if at_vjezbe %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="7" width="3.5" height="10" rx="1.2"/><rect x="16.5" y="7" width="3.5" height="10" rx="1.2"/><path d="M7.5 12h9M2 12h2M20 12h2"/>
+            </svg><span>Vježbe</span>
           </a>
           {% if is_owner %}
           <a href="/korisnici" role="menuitem"{% if at_korisnici %} aria-current="page"{% endif %}>

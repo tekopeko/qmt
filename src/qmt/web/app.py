@@ -170,7 +170,6 @@ def _pop_feedback_prompt(request: Request, user):
 def _ctx(request: Request, user, copy_texts: dict[str, str] | None = None, **extra):
     return {"request": request, "user": user, "weekdays_short": WEEKDAYS_SHORT,
             "mojimakrosi_url": config.MOJIMAKROSI_URL,
-            "max_media_mb": config.MAX_MEDIA_MB,
             "show_online": _has_online(user),
             "plan_links": PLAN_LINKS,
             "signup_open": config.signup_open(),
@@ -670,7 +669,7 @@ def copy_image_upload(request: Request, key: str, slika: UploadFile | None = Fil
 
     with tempfile.TemporaryDirectory() as tmp:       # whatever is left in it goes, a refusal's bytes too
         raw, out = Path(tmp) / "upload", Path(tmp) / "slika.jpg"
-        # spooled first in 1 MB chunks, as _save_media does: the cap trips
+        # spooled first in 1 MB chunks, as _save_video does: the cap trips
         # before Pillow reads a byte, let alone storage
         total = 0
         with raw.open("wb") as f:
@@ -2091,55 +2090,76 @@ def karton_log_delete(request: Request, log_id: int):
 
 # ---------- treninzi (custom training programmes) ----------
 
-_MEDIA_KINDS = {
-    ".jpg": "img", ".jpeg": "img", ".png": "img", ".webp": "img", ".gif": "img",
-    ".mp4": "video", ".mov": "video", ".m4v": "video", ".webm": "video",
-}
-_MEDIA_TYPES = {
-    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
-    ".webp": "image/webp", ".gif": "image/gif", ".mp4": "video/mp4",
-    ".mov": "video/quicktime", ".m4v": "video/x-m4v", ".webm": "video/webm",
-}
+# The exercises' clips (the library, 30.10.2026): what a file may be by its
+# extension, the content type it is stored and served with, and the bytes it
+# must start with (sniffed, so a file of another kind renamed is refused
+# before it is stored). An MP4 or a QuickTime .mov is ISO base media, its
+# first box "ftyp" at byte 4; a WebM is EBML, 1A 45 DF A3 at byte 0.
+_VIDEO_TYPES = {".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm"}
+_VIDEO_SIGNATURES = {".mp4": (4, b"ftyp"), ".mov": (4, b"ftyp"), ".webm": (0, b"\x1a\x45\xdf\xa3")}
+_VIDEO_UNSUPPORTED = "Nepodržan format — dozvoljeno: mp4, mov, webm."
 
 
-def _save_media(upload: UploadFile | None) -> tuple[str | None, str | None]:
-    """Store an uploaded exercise image/video; returns (filename, kind).
+def _save_video(upload: UploadFile | None, exercise_id: int) -> str | None:
+    """Store an uploaded exercise clip; its new file name
+    (vjezba-<id>-<hex>.<ext>), or None when no file came (or an empty one).
 
-    Chunked to a size cap — a phone video can be huge and must fail cleanly,
-    not fill the disk. Raises ValueError with a Croatian message on refusal.
-    """
+    Spooled to a temp file in 1 MB chunks to a size cap, config.VIDEO_MAX_MB:
+    a phone video can be huge and must fail cleanly, not fill the disk, and
+    the cap trips BEFORE any byte reaches R2. Then its first bytes must be its
+    kind's (_VIDEO_SIGNATURES). Raises ValueError with the Croatian sentence
+    to show on a refusal. No transcoding (the spec): stored as it comes."""
     if upload is None or not (upload.filename or "").strip():
-        return None, None
+        return None
     import secrets
-
-    suffix = Path(upload.filename).suffix.lower()
-    if suffix not in _MEDIA_KINDS:
-        raise ValueError("Nepodržan format — dozvoljeno: jpg, png, webp, gif, mp4, mov, webm.")
     import tempfile
 
-    name = f"{secrets.token_hex(8)}{suffix}"
-    limit = config.MAX_MEDIA_MB * 1024 * 1024
-    total = 0
-    # spool locally first — the size cap must trip BEFORE any bytes reach R2
-    tmp = Path(tempfile.mkstemp(suffix=suffix)[1])
-    with open(tmp, "wb") as f:
-        while chunk := upload.file.read(1 << 20):
-            total += len(chunk)
-            if total > limit:
-                f.close()
-                tmp.unlink(missing_ok=True)
-                raise ValueError(f"Datoteka je veća od {config.MAX_MEDIA_MB} MB.")
-            f.write(chunk)
-    if total == 0:
-        tmp.unlink(missing_ok=True)
-        return None, None
-    storage.save(name, tmp, _MEDIA_TYPES.get(suffix))
-    return name, _MEDIA_KINDS[suffix]
+    suffix = Path(upload.filename).suffix.lower()
+    if suffix not in _VIDEO_TYPES:
+        raise ValueError(_VIDEO_UNSUPPORTED)
+    limit = config.VIDEO_MAX_MB * 1024 * 1024
+    total, head = 0, b""
+    fd, tmp_name = tempfile.mkstemp(suffix=suffix)
+    tmp = Path(tmp_name)
+    try:
+        with open(fd, "wb") as f:
+            while chunk := upload.file.read(1 << 20):
+                total += len(chunk)
+                if total > limit:
+                    raise ValueError(f"Video je prevelik — najviše {config.VIDEO_MAX_MB} MB.")
+                head += chunk[:max(0, 16 - len(head))]
+                f.write(chunk)
+        if total == 0:
+            return None
+        at, magic = _VIDEO_SIGNATURES[suffix]
+        if head[at:at + len(magic)] != magic:
+            raise ValueError(_VIDEO_UNSUPPORTED)
+        name = f"vjezba-{exercise_id}-{secrets.token_hex(8)}{suffix}"
+        storage.save(name, tmp, _VIDEO_TYPES[suffix])
+        return name
+    finally:
+        tmp.unlink(missing_ok=True)          # a refusal's bytes; a stored file has moved on already
 
 
-def _unlink_media(name: str | None) -> None:
-    if name:
-        storage.delete(name)
+# Where "Nova vježba →" in the programme editor comes back to once the
+# exercise is made: a path of the treninzi pages, nothing else (no other
+# site, no other page of the app, no query).
+_NATRAG = re.compile(r"/treninzi/[0-9A-Za-z/_-]*")
+
+
+def _natrag(path: str | None) -> str | None:
+    return path if path and _NATRAG.fullmatch(path) else None
+
+
+def _id(value: str | None) -> int | None:
+    """A posted or queried row id: ASCII digits, nine at most (an integer
+    column's), else None. str.isdigit() would let "²" through to int()."""
+    return int(value) if value and re.fullmatch(r"[0-9]{1,9}", value) else None
+
+
+def _ids(values: list[str]) -> set[int]:
+    """The ticked similar exercises, as posted (checkbox values): the ids."""
+    return {i for i in map(_id, values) if i is not None}
 
 
 def _program_or_403(request: Request, program_id: int):
@@ -2213,6 +2233,166 @@ def create_program(request: Request, title: str = Form(...), intro: str = Form("
     return RedirectResponse(f"/treninzi/{pid}/uredi", status_code=303)
 
 
+# ---------- the library of exercises (Amir's, 30.10.2026) ----------
+# Declared before /treninzi/{program_id}: that path would take "vjezbe" for a
+# programme's id.
+
+@app.get("/treninzi/vjezbe", response_class=HTMLResponse)
+def vjezbe(request: Request, q: str = ""):
+    """The library: every exercise in the alphabet's order, its tags, whether
+    it has a clip and how many programmes hold it; `q` keeps those whose name
+    or tags hold it, whatever its case."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    q = " ".join(q.split())
+    every = db.exercises()
+    rows = db.exercises(q) if q else every
+    return templates.TemplateResponse(request, "vjezbe.html", _ctx(
+        request, user, rows=rows, q=q, total=len(every)))
+
+
+def _exercise_page(request: Request, user, e, form: dict | None = None, error: str | None = None,
+                   natrag: str | None = None, status_code: int = 200):
+    """An exercise's form page: a new one (e None) or one of the library. With
+    `form`, what was posted and refused (a name taken, say), shown again under
+    the error. The similar exercises to tick are every other exercise, the
+    ticked ones first, each group in the alphabet's order."""
+    if form is None:
+        form = ({"name": e.name, "instructions": e.instructions, "rep_note": e.rep_note, "tags": e.tags,
+                 "alternatives": {a.id for a in e.alternatives}} if e is not None else
+                {"name": "", "instructions": "", "rep_note": "", "tags": "", "alternatives": set()})
+    choices = [x for x, _ in db.exercises() if e is None or x.id != e.id]
+    choices.sort(key=lambda x: x.id not in form["alternatives"])      # stable: the alphabet within each
+    return templates.TemplateResponse(request, "vjezba.html", _ctx(
+        request, user, e=e, v=form, choices=choices, error=error, natrag=natrag,
+        programs=db.exercise_programs(e.id) if e is not None else [],
+        video_max_mb=config.VIDEO_MAX_MB), status_code=status_code)
+
+
+@app.get("/treninzi/vjezbe/nova", response_class=HTMLResponse)
+def vjezba_nova_page(request: Request, natrag: str = ""):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    return _exercise_page(request, user, None, natrag=_natrag(natrag))
+
+
+@app.post("/treninzi/vjezbe/nova")
+def vjezba_nova(request: Request, name: str = Form(""), instructions: str = Form(""),
+                rep_note: str = Form(""), tags: str = Form(""), alternative: list[str] = Form([]),
+                natrag: str = Form("")):
+    """Make the exercise, then its page (to add the clip), or back where
+    "Nova vježba →" came from (`natrag`, the programme editor), the new
+    exercise chosen in its picker."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    from urllib.parse import quote
+    back, wanted = _natrag(natrag), _ids(alternative)
+    try:
+        eid = db.create_exercise(name, instructions, rep_note, tags, wanted, user.id)
+    except ValueError as err:
+        form = {"name": name, "instructions": instructions, "rep_note": rep_note, "tags": tags, "alternatives": wanted}
+        return _exercise_page(request, user, None, form=form, error=str(err), natrag=back, status_code=400)
+    if back:
+        return RedirectResponse(f"{back}?vjezba={eid}&ok={quote('Vježba je spremljena.')}#dodaj", status_code=303)
+    return RedirectResponse(f"/treninzi/vjezbe/{eid}?ok={quote('Vježba je spremljena — dodaj joj video.')}",
+                            status_code=303)
+
+
+@app.get("/treninzi/vjezbe/{exercise_id}", response_class=HTMLResponse)
+def vjezba_page(request: Request, exercise_id: int):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    e = db.exercise(exercise_id)
+    if e is None:
+        raise HTTPException(status_code=404)
+    return _exercise_page(request, user, e)
+
+
+@app.post("/treninzi/vjezbe/{exercise_id}")
+def vjezba_save(request: Request, exercise_id: int, name: str = Form(""), instructions: str = Form(""),
+                rep_note: str = Form(""), tags: str = Form(""), alternative: list[str] = Form([])):
+    """The form's one POST: the texts and the similar exercises together."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    wanted = _ids(alternative)
+    try:
+        saved = db.update_exercise(exercise_id, name, instructions, rep_note, tags, wanted, user.id)
+    except ValueError as err:
+        e = db.exercise(exercise_id)
+        if e is None:
+            raise HTTPException(status_code=404)
+        form = {"name": name, "instructions": instructions, "rep_note": rep_note, "tags": tags, "alternatives": wanted}
+        return _exercise_page(request, user, e, form=form, error=str(err), status_code=400)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"/treninzi/vjezbe/{exercise_id}?ok=Spremljeno.", status_code=303)
+
+
+@app.post("/treninzi/vjezbe/{exercise_id}/video")
+def vjezba_video(request: Request, exercise_id: int, video: UploadFile | None = File(None)):
+    """Store a clip and put it on the exercise; the one it had goes from
+    storage once the row names the new one. Sync on purpose: FastAPI runs it
+    in a thread, so storing 100 MB (to R2 on the box) never holds up the
+    event loop."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    from urllib.parse import quote
+    back = f"/treninzi/vjezbe/{exercise_id}"
+    if db.exercise(exercise_id) is None:
+        raise HTTPException(status_code=404)
+    try:
+        name = _save_video(video, exercise_id)
+    except ValueError as err:
+        return RedirectResponse(f"{back}?error={quote(str(err))}", status_code=303)
+    if name is None:
+        return RedirectResponse(f"{back}?error={quote('Odaberi video.')}", status_code=303)
+    try:
+        old = db.set_exercise_video(exercise_id, name, user.id)
+    except LookupError:                          # the exercise deleted while its clip went up
+        storage.delete(name)
+        raise HTTPException(status_code=404)
+    if old:
+        storage.delete(old)
+    return RedirectResponse(f"{back}?ok={quote('Video je spremljen.')}", status_code=303)
+
+
+@app.post("/treninzi/vjezbe/{exercise_id}/video/ukloni")
+def vjezba_video_ukloni(request: Request, exercise_id: int):
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    try:
+        old = db.set_exercise_video(exercise_id, None, user.id)
+    except LookupError:
+        raise HTTPException(status_code=404)
+    if old:
+        storage.delete(old)
+    return RedirectResponse(f"/treninzi/vjezbe/{exercise_id}?ok=Video+je+uklonjen.", status_code=303)
+
+
+@app.post("/treninzi/vjezbe/{exercise_id}/obrisi")
+def vjezba_obrisi(request: Request, exercise_id: int):
+    """Delete an exercise nothing holds, then its clip; one a programme holds
+    stays, its page saying where it is."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    from urllib.parse import quote
+    try:
+        video = db.delete_exercise(exercise_id)
+    except ValueError as err:
+        return RedirectResponse(f"/treninzi/vjezbe/{exercise_id}?error={quote(str(err))}", status_code=303)
+    if video:
+        storage.delete(video)
+    return RedirectResponse("/treninzi/vjezbe?ok=Vje%C5%BEba+je+obrisana.", status_code=303)
+
+
 @app.get("/treninzi/{program_id}", response_class=HTMLResponse)
 def program_view(request: Request, program_id: int):
     user, p = _program_or_403(request, program_id)
@@ -2223,7 +2403,9 @@ def program_view(request: Request, program_id: int):
 
 
 @app.get("/treninzi/{program_id}/uredi", response_class=HTMLResponse)
-def program_edit_page(request: Request, program_id: int):
+def program_edit_page(request: Request, program_id: int, vjezba: str = ""):
+    """The programme's editor; its picker offers the whole library, the
+    exercise `vjezba` chosen (one just made through "Nova vježba →")."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -2231,7 +2413,8 @@ def program_edit_page(request: Request, program_id: int):
     if p is None:
         raise HTTPException(status_code=404)
     return templates.TemplateResponse(request, "trening_edit.html", _ctx(
-        request, user, p=p, levels=upitnik.LEVELS, goals=upitnik.GOALS))
+        request, user, p=p, levels=upitnik.LEVELS, goals=upitnik.GOALS,
+        choices=[e for e, _ in db.exercises()], chosen=_id(vjezba)))
 
 
 @app.post("/treninzi/{program_id}/edit")
@@ -2250,51 +2433,31 @@ def program_edit(request: Request, program_id: int, title: str = Form(...),
 
 @app.post("/treninzi/{program_id}/delete")
 def program_delete(request: Request, program_id: int):
+    """The programme and its items go; the exercises and their clips stay in
+    the library."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    for name in db.delete_program(program_id):
-        _unlink_media(name)
+    db.delete_program(program_id)
     return RedirectResponse("/treninzi?ok=Trening+je+obrisan.", status_code=303)
 
 
 @app.post("/treninzi/{program_id}/items")
-async def item_add(request: Request, program_id: int, title: str = Form(...),
-                   body: str = Form(""), media: UploadFile | None = File(None)):
+def item_add(request: Request, program_id: int, exercise_id: str = Form("")):
+    """"+ Dodaj vježbu": an exercise of the library, last in the programme.
+    An item has nothing of its own to edit since 30.10.2026 (the exercise
+    holds the texts and the clip), so no item edit route: another exercise
+    is ✕ and this, then ↑ / ↓."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     if db.get_program(program_id) is None:
         raise HTTPException(status_code=404)
-    from urllib.parse import quote
-    try:
-        media_name, media_kind = _save_media(media)
-    except ValueError as e:
-        return RedirectResponse(f"/treninzi/{program_id}/uredi?error={quote(str(e))}",
-                                status_code=303)
-    db.add_item(program_id, title.strip() or "Vježba", body.strip() or None,
-                media_name, media_kind)
-    return RedirectResponse(f"/treninzi/{program_id}/uredi", status_code=303)
-
-
-@app.post("/treninzi/{program_id}/items/{item_id}/edit")
-async def item_edit(request: Request, program_id: int, item_id: int,
-                    title: str = Form(...), body: str = Form(""),
-                    media: UploadFile | None = File(None)):
-    user, redirect = _require_trainer(request)
-    if redirect:
-        return redirect
-    from urllib.parse import quote
-    try:
-        media_name, media_kind = _save_media(media)
-    except ValueError as e:
-        return RedirectResponse(f"/treninzi/{program_id}/uredi?error={quote(str(e))}",
-                                status_code=303)
-    old = db.update_item(item_id, title.strip() or "Vježba", body.strip() or None,
-                         media_name, media_kind)
-    if media_name:
-        _unlink_media(old)
-    return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Spremljeno.", status_code=303)
+    back = f"/treninzi/{program_id}/uredi"
+    chosen = _id(exercise_id)
+    if chosen is None or db.add_item(program_id, chosen) is None:
+        return RedirectResponse(f"{back}?error=Odaberi+vje%C5%BEbu+iz+baze.", status_code=303)
+    return RedirectResponse(f"{back}#dodaj", status_code=303)
 
 
 @app.post("/treninzi/{program_id}/items/{item_id}/delete")
@@ -2302,7 +2465,7 @@ def item_delete(request: Request, program_id: int, item_id: int):
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    _unlink_media(db.delete_item(item_id))
+    db.delete_item(item_id)
     return RedirectResponse(f"/treninzi/{program_id}/uredi", status_code=303)
 
 
@@ -2317,18 +2480,20 @@ def item_move(request: Request, program_id: int, item_id: int, dir: str = Form(.
 
 @app.get("/media/{name}")
 def media(request: Request, name: str):
-    """Programme media — auth-gated, never a public static mount: a custom
-    programme is personal content, visible to its client and the trainer only."""
+    """An exercise's clip — auth-gated, never a public static mount: staff
+    (the trainer, the owner) watch any, a client one whose exercise is in a
+    programme he is matched to, while his online plan runs."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if "/" in name or "\\" in name or ".." in name:
         raise HTTPException(status_code=404)
-    p = db.media_owner_program(name)
-    if p is None:
+    programs = db.video_programs(name)
+    if programs is None:
         raise HTTPException(status_code=404)
-    if not user.is_trainer and (not _has_online(user)
-                                or not db.client_can_view(p, user.id)):
+    staff = user.is_trainer or _is_owner(user)
+    if not staff and (not _has_online(user)
+                      or not any(db.client_can_view(p, user.id) for p in programs)):
         raise HTTPException(status_code=403, detail="Ovo nije tvoj sadržaj.")
     if storage.r2_enabled():
         # auth just passed — hand out a short-lived direct link; the bytes
@@ -2337,7 +2502,7 @@ def media(request: Request, name: str):
     path = storage.local_path(name)
     if not path.is_file():
         raise HTTPException(status_code=404)
-    return FileResponse(path, media_type=_MEDIA_TYPES.get(path.suffix.lower()))
+    return FileResponse(path, media_type=_VIDEO_TYPES.get(path.suffix.lower()))
 
 
 @app.get("/prehrana", response_class=HTMLResponse)

@@ -152,16 +152,48 @@ def fill_bookings() -> None:
     print(f"  {booked} rezervacija")
 
 
-def seed_program() -> None:
-    """The 9 combo programmes, each pre-filled with the default exercises."""
-    from sqlalchemy import delete
+# The library's demo (30.10.2026): tags on some of the default exercises,
+# a few exercises no programme holds yet, and the similar exercises a
+# client may swap one for (stored one way, read both: Exercise.alternatives).
+# name -> (tags, instructions for a new one, rep note, similar exercises)
+LIBRARY = {
+    "Goblet čučanj": ("noge, bučice", None, "Spust dok su bedra paralelna s podom, pa natrag do pune ekstenzije.",
+                      ("Čučanj s vlastitom težinom", "Iskorak unatrag")),
+    "Sklekovi": ("prsa, kod kuće", None, "Prsa do šake od poda, pa laktovi do kraja.", ("Sklekovi s koljena",)),
+    "Veslanje u pretklonu": ("leđa, bučice", None, "", ("Veslanje jednom rukom",)),
+    "Rumunjsko mrtvo dizanje": ("noge, stražnja loža, bučice", None, "", ("Glute most",)),
+    "Plank": ("core, kod kuće", None, "", ()),
+    "Čučanj s vlastitom težinom": ("noge, kod kuće", "Stopala u širini ramena, ruke ispred tijela, pete na podu.",
+                                   "", ()),
+    "Sklekovi s koljena": ("prsa, kod kuće", "Koljena na podu, tijelo od koljena do glave u ravnoj liniji.", "", ()),
+    "Veslanje jednom rukom": ("leđa, bučice", "Slobodna ruka i koljeno na klupi, povuci bučicu prema kuku.", "", ()),
+}
 
-    from qmt.models import Program
+
+def seed_program() -> None:
+    """The 9 combo programmes, each pre-filled with the default exercises
+    (library rows, the cues; each item noting its razina's dose,
+    db._DEFAULT_ITEMS), then the library's demo (LIBRARY). A dev RESET: the
+    library goes with the programmes (their clips' files are left alone:
+    the dev .env may point storage at R2)."""
+    from sqlalchemy import delete, select
+
+    from qmt.models import Exercise, Program
 
     with db.session_scope() as s:
-        s.execute(delete(Program))
+        s.execute(delete(Program))          # their items with them
+        s.execute(delete(Exercise))         # and the pairs of similar exercises
     made = db.ensure_online_skeletons()
-    print(f"  {made} programa (razina × cilj), svi s osnovnim vježbama")
+    with db.session_scope() as s:
+        ids = {e.name: e.id for e in s.scalars(select(Exercise))}
+    for name, (tags, instructions, rep_note, _) in LIBRARY.items():
+        if name not in ids:
+            ids[name] = db.create_exercise(name, instructions or "", rep_note, tags)
+    for name, (tags, _, rep_note, similar) in LIBRARY.items():
+        e = db.exercise(ids[name])
+        db.update_exercise(e.id, e.name, e.instructions, rep_note or e.rep_note, tags,
+                           {ids[x] for x in similar} | {a.id for a in e.alternatives})
+    print(f"  {made} programa (razina × cilj), svi s osnovnim vježbama; {len(ids)} vježbi u bazi")
 
 
 def seed_announcements() -> None:
