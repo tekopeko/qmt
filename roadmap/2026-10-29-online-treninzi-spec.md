@@ -114,19 +114,34 @@ of a termin in the gym).
 
 ## Stages
 
-1. **The library** — `Exercise`, the two admin pages, the video upload, the migration of
-   today's items into it (the client's pages unchanged: a programme still lists its
-   exercises, now from the library).
-2. **Days** — `ProgramDay` / `ProgramDayItem`, the day editor, the client's programme page
-   with day cards and the day page (no player yet: the day page lists the exercises with
-   their videos).
-3. **The player and the history** — `WorkoutLog`, the one-exercise screens, the osvrt at the
-   end, the karton's rows, "u tijeku" / "odrađen N×".
+1. **The library** — `Exercise` (name, instructions, rep note, video, tags, and
+   `alternatives`: the similar exercises a client may swap it for, a many-to-many
+   Amir picks on the form), the two admin pages, the video upload, the migration
+   of today's items into it (the client's pages unchanged: a programme still lists
+   its exercises, now from the library).
+2. **Days** — `ProgramDay` / `ProgramDayItem` with `section` (zagrijavanje /
+   trening / istezanje), sets, reps or seconds, rest, note; the day editor; the
+   client's programme page with day cards and the day page: the two videos, then
+   the whole list in its sections with each exercise's dose, rest and note (no
+   player yet: ▷ opens the exercise's clip in place).
+3. **The player and the history** — `WorkoutLog` with a set log per exercise
+   (`[{"reps": 10, "kg": 20}, …]`, or seconds; prefilled from the plan and the
+   last saved log; "Spremi" marks the exercise done, green in the list), the
+   segmented bar, the training's timer, ‹ › and a swipe between exercises, the
+   list beside the player (a bottom sheet on a phone), the swap ("Zamijeni
+   vježbu" from the exercise's alternatives, the log staying with the day), the
+   osvrt at the end, the karton's rows, "u tijeku" / "odrađen N×".
+4. **Later, if asked** — a first-open tour of the player.
 
 ## What Shape Club's Gym Program adds (captured 30.10.2026, `data/design-reference/shape-club/app/app-27…33`)
 
 The owner was right: a Gym Program training there is exercise by exercise, and it
-holds more than the spec above. Each is a decision for the owner before stage 1:
+holds more than the spec above. **The owner's decisions (30.10.2026):** 1 yes, with
+the fields prefilled as Shape does it ("default value should be input like in shape
+club": reps from the plan, kg from the last saved log); 2 yes ("warm up and main";
+Shape's third, istezanje, is allowed too and may stay empty); 3 yes, the whole list;
+4 yes, "we should add it as well"; 5 not now (the guide and a short line on the day
+page explain the player); 6 no. The stages below carry them.
 
 1. **A set log, not a tick.** Under the current exercise a table SET · REP · KG, a
    row per planned set, REP prefilled with the plan and KG with the last weight,
