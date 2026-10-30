@@ -60,6 +60,19 @@ and the Social Club feed.
   with a dark chip "1. TRENING" top-left, the name bottom-left ("Gluteus i
   noge") and a white-outlined pill "Pokreni trening" bottom-right. Saved on
   the way to the Gym Program's training page (the exercise list with checkmarks).
+- `app-22-dashboard-gym-program-paid-2026-10-30.png` (the same account, the
+  Gym Program tab, desktop 2864×1614 retina): the dashboard is DARK again in
+  this mode (the owner: "When logged in the whole app landing page looks
+  differently": the mode, not the account, sets the theme; Home Challenge
+  light, Gym Program dark). Left, the hero photo card "BOK TANA!", "Nastavi
+  gdje si stala:", "PRVI TRENING DONJI DIO TIJELA" (uppercase, not italic),
+  "Napredak … 0%", the bar, "0/12 treninga odrađeno", one white-outlined pill
+  "Kreni na trening"; right, a dark card "TJEDAN 2 - TRENUTNI TJEDAN ˅ ——— 3
+  TRENINGA" holding the training photo cards one under another: the chip
+  "TRENING 1" top-RIGHT here, "Tjedan 2" small and the name bottom-left,
+  "Pokreni trening" bottom-right. The week opens on the current one (week
+  2 for a fresh account: the programme runs by calendar weeks, 3 trainings a
+  week, 12 in all).
 
 ## Moj napredak — the calendar (`app-08`; top part from the page text)
 
