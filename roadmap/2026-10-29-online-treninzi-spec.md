@@ -123,6 +123,35 @@ of a termin in the gym).
 3. **The player and the history** — `WorkoutLog`, the one-exercise screens, the osvrt at the
    end, the karton's rows, "u tijeku" / "odrađen N×".
 
+## What Shape Club's Gym Program adds (captured 30.10.2026, `data/design-reference/shape-club/app/app-27…33`)
+
+The owner was right: a Gym Program training there is exercise by exercise, and it
+holds more than the spec above. Each is a decision for the owner before stage 1:
+
+1. **A set log, not a tick.** Under the current exercise a table SET · REP · KG, a
+   row per planned set, REP prefilled with the plan and KG with the last weight,
+   "+" to add a set, "Spremi" saves it and the exercise turns green in the list.
+   Proposed for QMT: `WorkoutLog.done` becomes a per-exercise entry of sets
+   `[{"reps": 10, "kg": 20}, …]` (seconds for a timed exercise), saved with one
+   button; a tick is the case of saving the plan unchanged. The karton then
+   shows real progress (the weights over time), which the owner wants kept.
+2. **Sections within a day.** "ZAGRIJAVANJE" and "TRENING" (a cool-down likely).
+   Proposed: `ProgramDayItem.section` (zagrijavanje / trening / istezanje), the
+   list grouped by it.
+3. **The whole day's list beside the player**, every item with its dose
+   ("3 X 10 REP", "2 X 30 SEK"), "Odmor između serija", a note, ▷ to jump to it,
+   and the current one outlined; a segmented bar at the top, one segment per
+   exercise. Proposed: the same on QMT's day page (on a phone the list under the
+   player, the bar on top), in QMT's tokens.
+4. **Swapping an exercise** for a similar one ("Zamijeni vježbu — Slične
+   vježbe"; the log stays with the training). Needs "similar exercises" in the
+   library, Amir's work per exercise. Proposed: stage 4, after the three, if the
+   owner wants it; the library gets an `alternatives` relation then.
+5. **A first-open tour** (six coach marks). Proposed: later, if at all; the
+   questionnaire's guide pattern (`/vodic`) can carry a short "kako se koristi"
+   text instead.
+6. **Music links** (Spotify / YouTube). Not for QMT.
+
 ## Open, to settle with Amir through the owner
 
 - Tags: free words are enough for now, or a fixed list (mišićna skupina, oprema)?

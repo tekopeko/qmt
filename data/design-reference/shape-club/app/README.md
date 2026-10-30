@@ -184,6 +184,10 @@ page holds (`app-27`, desktop 2880×1742 retina, the first open):
   muted grey, the h1 Inter 700 ≈36px, inputs dark rounded 12px boxes, the
   primary "Spremi" a black pill, the tour card a near-black 24px card with a
   blue countdown ring. The video clips are PORTRAIT, ~20 s, looped.
+- After the tour (the owner's capture of 30.10.2026, seen in chat, not saved as
+  a file): the page opens on exercise 1, "Bodyweight RDL", the bar's first
+  segment filled, only › at the video's right (no ‹ on the first), the clip
+  0:21 at rest in the player; the set log and the list are below the fold.
 - Still to capture: the page after "Spremi" (a green item, a filled segment)
   and what "Završi Trening" opens.
 
