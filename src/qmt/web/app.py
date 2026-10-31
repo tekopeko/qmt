@@ -2415,7 +2415,8 @@ def vjezba_obrisi(request: Request, exercise_id: int):
 def program_view(request: Request, program_id: int):
     """A programme: its intro, then its days as cards, each a link to its
     page and saying the viewer's state on it (30.10.2026: "odrađen 2×", "u
-    tijeku", nothing for a day never done; db.day_states, one query)."""
+    tijeku", since 31.10.2026 "nedovršen" for a pass open too long; nothing
+    for a day never done; db.day_states, one query)."""
     user, p = _program_or_403(request, program_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2448,16 +2449,29 @@ def _date_text(d: date) -> str:
 templates.env.globals["pass_date"] = _date_text
 
 
-def _state_line(state: dict) -> str:
+def _when_text(d: date) -> str:
+    """A day as the day page says it: "danas", "jučer", else its date
+    (_date_text). The finish screen's stale sentence too (pass_when)."""
+    today = config.today()
+    return "danas" if d == today else "jučer" if d == today - timedelta(days=1) else _date_text(d)
+
+
+templates.env.globals["pass_when"] = _when_text
+
+
+def _state_line(state: dict, done_n: int, n_items: int, stale: bool) -> str:
     """The viewer's state on a day (db.day_state), in the day page's words:
-    a pass in progress first, then how often and when last, else none."""
+    a pass in progress first (`stale`, its WorkoutLog.stale as the route
+    judged it: one open too long, how much of the day's `n_items` it saved,
+    `done_n`, and that it can only be finished or dropped, 31.10.2026), then
+    how often and when last, else none."""
     if state["open"] is not None:
+        if stale:
+            return (f"Nedovršen trening od {_when_text(state['open'].date)} ({done_n} od {n_items} "
+                    f"{plural(n_items, 'vježbe', 'vježbe', 'vježbi')}) — nastavak nije moguć: završi ga ili ga odbaci.")
         return "U tijeku — nastavi gdje si stao/la."
     if state["count"]:
-        last, today = state["last"], config.today()
-        when = ("danas" if last == today else "jučer" if last == today - timedelta(days=1)
-                else _date_text(last))
-        return f"Odrađen {state['count']}× · zadnji put {when}"
+        return f"Odrađen {state['count']}× · zadnji put {_when_text(state['last'])}"
     return "Još nije odrađen."
 
 
@@ -2471,16 +2485,21 @@ def program_day_view(request: Request, program_id: int, day_id: int):
     tijeku — …"), "Kreni" into the player (or "Nastavi", with "Odbaci
     započeti trening", while a pass is open, whose saved exercises the list
     ticks), and at the bottom his last five passes ("Povijest"), each with
-    its sets."""
+    its sets. A pass open too long (31.10.2026, WorkoutLog.stale) says so
+    ("Nedovršen trening od jučer (6 od 8 vježbi) — …"), and "Završi trening"
+    (its finish screen) stands in Kreni's place, Odbaci beside it."""
     user, p = _program_or_403(request, program_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     day = _day_or_404(program_id, day_id)
     state = db.day_state(user.id, day_id)
+    items, log = _day_items(day), state["open"]
+    done = log.done_items if log is not None else {}
+    stale = log is not None and log.stale()
     return templates.TemplateResponse(request, "trening_day.html", _ctx(
-        request, user, p=p, day=day, state=state, state_line=_state_line(state),
-        done=state["open"].done_items if state["open"] is not None else {},
-        history=db.passes(user.id, day_id, limit=5), order=[it.id for it in _day_items(day)],
+        request, user, p=p, day=day, state=state, stale=stale,
+        state_line=_state_line(state, sum(1 for it in items if it.id in done), len(items), stale),
+        done=done, history=db.passes(user.id, day_id, limit=5), order=[it.id for it in items],
         feelings=FEELING_LABELS))
 
 
@@ -2495,6 +2514,11 @@ def program_day_view(request: Request, program_id: int, day_id: int):
 # route goes through _program_or_403 and the day check, as the day's page: a
 # client reaches only his matched programmes' days; staff may use it too,
 # their passes their own (staff have no karton: they show on the days only).
+# A pass with no activity for PASS_STALE_HOURS (31.10.2026, the owner: no
+# hanging training; WorkoutLog.stale) cannot be continued: Kreni / Nastavi,
+# an exercise's screen, its save and its swap all lead to the finish screen,
+# where it is finished or dropped. Leaving the player or the finish screen
+# asks first (_pass_leave.html, the page's script).
 
 def _day_base(program_id: int, day_id: int) -> str:
     return f"/treninzi/{program_id}/dan/{day_id}"
@@ -2581,7 +2605,8 @@ def pass_start(request: Request, program_id: int, day_id: int):
     """"Kreni" (and "Nastavi": the same form): the viewer's pass through the
     day, a new one or the one in progress, then the first exercise it has
     not saved (exercise 1 of a new one; the last when all are). A day with
-    no exercise starts nothing."""
+    no exercise starts nothing; a pass in progress that is stale (open too
+    long) is not continued: its finish screen."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2589,6 +2614,8 @@ def pass_start(request: Request, program_id: int, day_id: int):
     if not items:
         return RedirectResponse(base, status_code=303)
     log = db.start_pass(user.id, p, day)
+    if log.stale():
+        return RedirectResponse(f"{base}/kraj", status_code=303)
     return RedirectResponse(f"{base}/vjezba/{_next_k(items, log)}", status_code=303)
 
 
@@ -2596,9 +2623,10 @@ def pass_start(request: Request, program_id: int, day_id: int):
 def pass_exercise(request: Request, program_id: int, day_id: int, k: int, odmor: str = ""):
     """Exercise k of the day (1-based, its display order) in the viewer's
     pass in progress; k that is no exercise of it is 404, and without a pass
-    in progress the day's page (where "Kreni" is). `odmor` (the previous
-    exercise's save: its rest after it, in seconds) starts the rest bar at
-    load: an int 1–3600, anything else is ignored."""
+    in progress the day's page (where "Kreni" is), with a stale one (open
+    too long) its finish screen. `odmor` (the previous exercise's save: its
+    rest after it, in seconds) starts the rest bar at load: an int 1–3600,
+    anything else is ignored."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2607,6 +2635,8 @@ def pass_exercise(request: Request, program_id: int, day_id: int, k: int, odmor:
     log = db.open_pass(user.id, day_id)
     if log is None:
         return RedirectResponse(_day_base(program_id, day_id), status_code=303)
+    if log.stale():
+        return RedirectResponse(f"{_day_base(program_id, day_id)}/kraj", status_code=303)
     rest = _id(odmor)
     return _player(request, user, p, day, items, k, log, odmor=rest if rest is not None and 1 <= rest <= 3600 else None)
 
@@ -2620,7 +2650,8 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
     item (the plan's, swapped or not) has a rest after it, the next
     exercise comes with it (?odmor=<seconds>: its screen counts it down);
     the finish screen never does. A refusal comes back as the screen, its
-    sentence under the name and what was typed kept."""
+    sentence under the name and what was typed kept. A stale pass (open too
+    long) saves nothing: its finish screen."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2630,6 +2661,8 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
     log = db.open_pass(user.id, day_id)
     if log is None:
         return RedirectResponse(base, status_code=303)
+    if log.stale():
+        return RedirectResponse(f"{base}/kraj", status_code=303)
     form = await request.form()
 
     def field(name: str) -> str:
@@ -2664,7 +2697,8 @@ def pass_swap(request: Request, program_id: int, day_id: int, k: int, exercise_i
               vrati: str = Form("")):
     """"⇄" in the swap list: a similar exercise in place of exercise k for
     this pass (`exercise_id`), or the plan's back (`vrati`); back on its
-    screen, a refusal's sentence with it."""
+    screen, a refusal's sentence with it. A stale pass (open too long)
+    swaps nothing: its finish screen."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2675,6 +2709,8 @@ def pass_swap(request: Request, program_id: int, day_id: int, k: int, exercise_i
     log = db.open_pass(user.id, day_id)
     if log is None:
         return RedirectResponse(base, status_code=303)
+    if log.stale():
+        return RedirectResponse(f"{base}/kraj", status_code=303)
     back = f"{base}/vjezba/{k}"
     try:
         db.swap_exercise(log.id, user.id, items[k - 1], None if vrati else _id(exercise_id) or -1)
@@ -2686,21 +2722,24 @@ def pass_swap(request: Request, program_id: int, day_id: int, k: int, exercise_i
 def _finish_page(request: Request, user, p, day, log, error: str | None = None, form: dict | None = None,
                  status_code: int = 200):
     """The finish screen: the day, how many of its exercises the pass saved
-    and how long it has run, then the osvrt (`form`, what a refused one
-    sent, kept under `error`)."""
+    and how long it has run (WorkoutLog.active_seconds: a stale pass's to
+    its last save), then the osvrt (`form`, what a refused one sent, kept
+    under `error`). A stale pass (`stale`, open too long) says it was not
+    finished and cannot be continued, with no way back to the exercises."""
     items = _day_items(day)
     done = log.done_items
+    now = datetime.now(config.TZ)
     return templates.TemplateResponse(request, "trening_kraj.html", _ctx(
         request, user, p=p, day=day, log=log, n_items=len(items), done_n=sum(1 for x in items if x.id in done),
-        elapsed=duration_text(int((datetime.now(config.TZ) - log.started_at).total_seconds())),
+        elapsed=duration_text(log.active_seconds(now)), stale=log.stale(now),
         feelings=FEELING_LABELS, v=form or {"effort": None, "feeling": "", "note": ""}, error=error,
         base=_day_base(p.id, day.id)), status_code=status_code)
 
 
 @app.get("/treninzi/{program_id}/dan/{day_id}/kraj", response_class=HTMLResponse)
 def pass_end_page(request: Request, program_id: int, day_id: int):
-    """The finish screen of the viewer's pass in progress; without one, the
-    day's page."""
+    """The finish screen of the viewer's pass in progress (a stale one's
+    too: where it is finished or dropped); without one, the day's page."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)

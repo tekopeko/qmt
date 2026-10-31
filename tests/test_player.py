@@ -25,6 +25,14 @@ per set in the set log starts the rest between sets (the item's
 rest_seconds) in a bar at the bottom; the rest after an exercise (the item's
 rest_after_seconds) rides on the save's redirect (?odmor=) and starts on the
 next exercise's screen. Both count down, skippable; nothing is stored.
+
+Leaving a pass asks, and a pass cannot hang (31.10.2026; the owner: "When a
+user tries to leave the training tab, there should be a popup warning asking
+if he wants to finish the training and then he decides. It shouldn't be
+possible to continue the training and have a hanging training of 9 hours"):
+the player and the finish screen carry #leaveDlg (finish or discard, never
+"later"), and a pass with no activity for PASS_STALE_HOURS (its start or its
+last save) can only be finished, its length to its last save, or dropped.
 """
 
 from __future__ import annotations
@@ -175,6 +183,23 @@ def shift(log_id: int, days: int = 0, minutes: int | None = None) -> None:
         if minutes is not None:
             conn.execute(sa_text("UPDATE workout_logs SET started_at = finished_at - make_interval(mins => :m), "
                                  "elapsed_seconds = :s WHERE id = :i"), {"m": minutes, "s": minutes * 60, "i": log_id})
+
+
+def age(log_id: int, hours: float, saves_at: datetime | None = None) -> None:
+    """Move a pass's start `hours` back; with `saves_at`, stamp every
+    exercise it saved then (each `done` entry's "at", the JSON read and
+    written back). `shift` moves the start and the finish only."""
+    import json
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("UPDATE workout_logs SET started_at = started_at - make_interval(secs => :s) "
+                             "WHERE id = :i"), {"s": float(hours) * 3600, "i": log_id})
+        if saves_at is not None:
+            done = json.loads(conn.execute(sa_text("SELECT done FROM workout_logs WHERE id = :i"),
+                                           {"i": log_id}).scalar_one())
+            for entry in done.values():
+                entry["at"] = saves_at.isoformat()
+            conn.execute(sa_text("UPDATE workout_logs SET done = :d WHERE id = :i"),
+                         {"d": json.dumps(done, ensure_ascii=False), "i": log_id})
 
 
 def stored() -> list[tuple]:
@@ -710,23 +735,29 @@ def test_the_day_page_lists_the_last_five_passes_with_their_sets():
     assert [w.id for w in db.passes(ivan, d.did, limit=1)] == [newest]
 
 
-def test_the_programme_page_says_each_days_state():
+def test_the_programme_page_says_each_days_state(monkeypatch):
     """Each day card's muted line: "… · odrađen 2×" for a day done, "… · u
-    tijeku" while a pass is open, nothing for a day never done."""
+    tijeku" while a pass is open, "… · nedovršen" for a pass open too long
+    (31.10.2026: no activity for PASS_STALE_HOURS), nothing for a day never
+    done."""
+    monkeypatch.setattr(config, "PASS_STALE_HOURS", 2)
     trainer, ivan, ana = people()
     d = build_day()
     d2 = db.add_day(d.pid)
     d3 = db.add_day(d.pid)
     db.add_day_item(d3, d.ex["Plank"], "trening")
+    d4 = db.add_day(d.pid)
+    db.add_day_item(d4, d.ex["Plank"], "trening")
     ci = client_for("ivan@test.local")
     finished(ivan, d)
     finished(ivan, d)
     p, day3 = db.get_program(d.pid), db.get_day(d3)
     db.start_pass(ivan, p, day3)
+    age(db.start_pass(ivan, p, db.get_day(d4)).id, 3)
     page = ci.get(f"/treninzi/{d.pid}").text
     cards = re.findall(r'<strong>([^<]*)</strong>\s*<span class="hint">([^<]*)</span>', page)
     assert cards == [("Dan 1 · Cijelo tijelo", "Preporučeno: ponedjeljak · 4 vježbe · odrađen 2×"),
-                     ("Dan 2", "0 vježbi"), ("Dan 3", "1 vježba · u tijeku")]
+                     ("Dan 2", "0 vježbi"), ("Dan 3", "1 vježba · u tijeku"), ("Dan 4", "1 vježba · nedovršen")]
     assert db.day_states(ivan, [d.did, d2, d3])[d.did]["count"] == 2 and d2 not in db.day_states(ivan, [d2])
     assert re.findall(r'<span class="hint">([^<]*)</span>', client_for("ana@test.local").get(
         f"/treninzi/{build_day('Njen', 'pocetna', 'gornji').pid}").text) == ["Preporučeno: ponedjeljak · 4 vježbe"]
@@ -873,6 +904,150 @@ def test_the_set_log_has_a_tick_per_set_and_the_page_a_rest_bar():
                      r'<span class="pl-rest-h">Odmor</span><span class="pl-rest-t">0:00</span></span>\s*'
                      r'<span class="pl-rest-track" aria-hidden="true"><span class="pl-rest-fill"></span></span>\s*'
                      r'<button type="button" class="pl-rest-skip">Preskoči odmor</button>', page)
+
+
+# ---------- leaving the pass, a pass left open (31.10.2026) ----------
+
+def test_the_player_and_the_finish_screen_ask_before_leaving():
+    """#leaveDlg (the owner: leaving "there should be a popup warning
+    asking if he wants to finish the training and then he decides") is on
+    the player and on the finish screen, once each: the pass's path
+    (data-pass, the day's) and the page's mode, "Završiti trening?", the
+    page's sentence, the ✕ (a dialog form), a hidden line for a failed
+    discard, and two buttons, "Odbaci trening" and the primary: "Završi
+    trening" on the player, "Natrag na osvrt" on the finish screen. The
+    day's page has none: it is outside the pass."""
+    trainer, ivan, ana = people()
+    d = build_day()
+    ci = client_for("ivan@test.local")
+    ci.post(f"{d.base}/kreni")
+    leads = {"player": "Trening je u tijeku. Završi ga osvrtom ili ga odbaci — odbačenom se brišu spremljene "
+                       "serije ovog pokušaja.",
+             "kraj": "Osvrt još nije spremljen. Spremi ga i trening je završen, ili trening odbaci — odbačenom "
+                     "se brišu spremljene serije."}
+    for path, mode, primary in ((f"{d.base}/vjezba/1", "player", "Završi trening"),
+                                (f"{d.base}/kraj", "kraj", "Natrag na osvrt")):
+        page = ci.get(path).text
+        assert page.count('<dialog id="leaveDlg"') == 1, mode
+        dlg = page.split('<dialog id="leaveDlg"')[1].split("</dialog>")[0]
+        assert dlg.startswith(f' class="fb-modal" aria-labelledby="leaveTitle" data-pass="{d.base}" data-mode="{mode}">')
+        assert '<form method="dialog" class="fb-x"><button type="submit" aria-label="Zatvori">✕</button></form>' in dlg
+        assert '<h2 id="leaveTitle">Završiti trening?</h2>' in dlg
+        assert re.findall(r'<p class="fb-lead">([^<]*)</p>', dlg) == [leads[mode]]
+        assert re.search(r'<p class="fb-note" id="leaveErr"[^>]* hidden>Nije uspjelo — pokušaj ponovno.</p>', dlg)
+        assert re.findall(r'<button type="button" class="([^"]+)" id="(leave\w+)"( autofocus)?>([^<]*)</button>', dlg) == [
+            ("btn-ghost btn-sm", "leaveDrop", "", "Odbaci trening"), ("btn btn-sm", "leaveGo", " autofocus", primary)]
+    assert "leaveDlg" not in ci.get(d.base).text
+
+
+def test_a_stale_pass_is_finished_or_dropped_never_continued(monkeypatch):
+    """A pass with no activity for PASS_STALE_HOURS (2 h; the owner: no
+    "hanging training of 9 hours") cannot be continued: an exercise's
+    screen, its save, its swap and Kreni / Nastavi all lead to the finish
+    screen, nothing saved or swapped (db.save_sets and db.swap_exercise say
+    "Trening je predugo otvoren — završi ga ili ga odbaci."). The day says
+    "Nedovršen trening od danas (2 od 4 vježbe) — …" with "Završi trening"
+    in Kreni's place and Odbaci beside it, the programme's card "·
+    nedovršen"; the finish screen is "Nedovršen trening", its length to the
+    last save (25 min, not the 3 h it hung), a sentence why it ends there,
+    and no way back to the exercises. Its osvrt finishes it as ever, 25 min
+    long, finished now; the history says so."""
+    monkeypatch.setattr(config, "PASS_STALE_HOURS", 2)
+    assert db.PASS_STALE == "Trening je predugo otvoren — završi ga ili ga odbaci."
+    trainer, ivan, ana = people()
+    d = build_day()
+    ci = client_for("ivan@test.local")
+    ci.post(f"{d.base}/kreni")
+    log_id = stored()[0][0]
+    for k, sets in ((1, {"reps_1": "15"}), (2, {"reps_1": "10", "kg_1": "20"})):
+        assert ci.post(f"{d.base}/vjezba/{k}", data={"rows": "1", **sets}, follow_redirects=False).status_code == 303
+    started = db.get_pass(log_id, ivan).started_at - timedelta(hours=3)
+    age(log_id, 3, saves_at=started + timedelta(minutes=25))
+    log = db.get_pass(log_id, ivan)
+    assert (log.started_at, log.last_activity, log.stale()) == (started, started + timedelta(minutes=25), True)
+    kraj = f"{d.base}/kraj"
+
+    r = ci.get(f"{d.base}/vjezba/3", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == kraj
+    r = ci.post(f"{d.base}/vjezba/3", data={"rows": "1", "sec_1": "40"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == kraj and db.get_pass(log_id, ivan).done_count == 2
+    for k in (3, 2):                                                    # 2: Goblet, a similar one that would swap
+        r = ci.post(f"{d.base}/vjezba/{k}/zamjena", data={"exercise_id": str(d.ex["Iskorak unatrag"])},
+                    follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == kraj, k
+    assert db.get_pass(log_id, ivan).swap_items == {}
+    r = ci.post(f"{d.base}/kreni", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == kraj and len(stored()) == 1
+    with pytest.raises(ValueError, match=re.escape(db.PASS_STALE)):
+        save(ivan, log_id, d, 3, [{"seconds": 40}])
+    with pytest.raises(ValueError, match=re.escape(db.PASS_STALE)):
+        db.swap_exercise(log_id, ivan, item(d, 2), d.ex["Iskorak unatrag"])
+    log = db.get_pass(log_id, ivan)
+    assert (log.done_count, log.swap_items, log.in_progress) == (2, {}, True)
+
+    began = started.astimezone(config.TZ).date()
+    when = "danas" if began == config.today() else "jučer"
+    page = ci.get(d.base).text
+    assert state_line(page) == f"Nedovršen trening od {when} (2 od 4 vježbe) — nastavak nije moguć: završi ga ili ga odbaci."
+    assert ">Nastavi</button>" not in page and f'action="{d.base}/kreni"' not in page
+    assert f'<div class="go"><a class="btn" href="{kraj}">Završi trening</a></div>' in page
+    assert ">Odbaci započeti trening</button>" in page
+    assert page.count('<span class="dx-ok" role="img" aria-label="spremljeno">✓</span>') == 2   # what it saved, ticked
+    page = ci.get(f"/treninzi/{d.pid}").text
+    assert "4 vježbe · nedovršen</span>" in page and "· u tijeku</span>" not in page
+
+    page = ci.get(kraj).text
+    assert '<p class="kr-eyebrow">Nedovršen trening</p>' in page and "Trening odrađen</p>" not in page
+    assert '<p class="kr-sum">2 od 4 vježbe · 25 min</p>' in page
+    assert (f'<p class="kr-stale">Započet {when} i nije završen — nastavak više nije moguć. '
+            f'Spremi osvrt ili trening odbaci.</p>') in page
+    assert "Natrag na vježbe" not in page and ">Odbaci trening</button>" in page and 'data-mode="kraj"' in page
+
+    r = ci.post(kraj, data={"effort": "6"}, follow_redirects=False)
+    assert location(r) == f"{d.base}?ok=Trening je spremljen."
+    log = db.get_pass(log_id, ivan)
+    assert not log.in_progress and not log.stale() and (log.effort, log.elapsed_seconds) == (6, 1500)
+    assert abs((datetime.now(config.TZ) - log.finished_at).total_seconds()) < 5
+    page = ci.get(d.base).text
+    assert hist_lines(page)[0] == (f"{began.day}.{began.month}." + (f"{began.year}." if began.year != config.today().year else "")
+                                   + " · 2/4 vježbe · 25 min · napor 6")
+    assert state_line(page).startswith("Odrađen 1×") and ">Kreni</button>" in page
+
+
+def test_staleness_is_counted_from_the_last_activity(monkeypatch):
+    """Stale is PASS_STALE_HOURS (2) since the pass last moved, its start or
+    its newest save: started 3 h ago with a save 10 min ago it goes on (its
+    length the whole 3 h); started 1 h 59 min ago with no save it goes on;
+    at 2 h 1 min it is stale (the finish screen), and finished it is 0 s
+    long, which the finish screen and the history say as "1 min" (a
+    duration is a minute at least)."""
+    monkeypatch.setattr(config, "PASS_STALE_HOURS", 2)
+    trainer, ivan, ana = people()
+    d = build_day()
+    ci = client_for("ivan@test.local")
+    ci.post(f"{d.base}/kreni")
+    first = stored()[0][0]
+    ci.post(f"{d.base}/vjezba/1", data={"rows": "1", "reps_1": "15"})
+    age(first, 3, saves_at=datetime.now(config.TZ) - timedelta(minutes=10))
+    assert not db.get_pass(first, ivan).stale()
+    assert ci.get(f"{d.base}/vjezba/2", follow_redirects=False).status_code == 200
+    ci.post(f"{d.base}/kraj", data={"effort": "5"})
+    assert abs(db.get_pass(first, ivan).elapsed_seconds - 3 * 3600) <= 5
+
+    ci.post(f"{d.base}/kreni")
+    second = db.open_pass(ivan, d.did).id
+    age(second, 1 + 59 / 60)
+    assert not db.get_pass(second, ivan).stale()
+    assert ci.get(f"{d.base}/vjezba/1", follow_redirects=False).status_code == 200
+    age(second, 2 / 60)                                                 # 2 h 1 min
+    assert db.get_pass(second, ivan).stale()
+    r = ci.get(f"{d.base}/vjezba/1", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"{d.base}/kraj"
+    assert '<p class="kr-sum">0 od 4 vježbe · 1 min</p>' in ci.get(f"{d.base}/kraj").text
+    ci.post(f"{d.base}/kraj", data={"effort": "4"})
+    log = db.get_pass(second, ivan)
+    assert (log.in_progress, log.elapsed_seconds, log.elapsed_text) == (False, 0, "1 min")
+    assert hist_lines(ci.get(d.base).text)[0].endswith(" · 0/4 vježbe · 1 min · napor 4")
 
 
 # ---------- the migration ----------
@@ -1143,6 +1318,112 @@ def test_the_rest_timers_on_a_phone(server):
             check(bar(pg)[3] is True, "the dock is not back after the rest")
         except Exception as e:                                              # reported below
             problems.append(f"the rest did not run out: {bar(pg)} ({type(e).__name__})")
+        problems += errors
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+def test_leaving_the_player_on_a_phone(server):
+    """At 390px, touch (31.10.2026; the owner: leaving the training asks "if
+    he wants to finish the training and then he decides"): ivan on exercise
+    1 of a pass taps "← Natrag": #leaveDlg opens ("Završi trening" its
+    primary) and the page stays, never wider than the screen; its ✕ closes
+    it, still there. The brand (a member's one-task pill, to /) opens it
+    too, and its "Odbaci trening" drops the pass and goes on to /. A new
+    pass: "← Natrag", then "Završi trening", lands on the finish screen;
+    there the brand opens it with "Natrag na osvrt", which closes it on the
+    first napor button; the finish screen's own "Odbaci trening" is inside
+    the pass (#confirmDlg asks, not #leaveDlg). What no link carries (a
+    script's navigation: the stand-in for a closed tab or a typed address)
+    meets the browser's own prompt (beforeunload), dismissed: the page
+    stays, the pass open. No page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("ivan@test.local")
+    pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    for name in ("Goblet čučanj", "Sklekovi"):
+        iid = db.add_day_item(did, db.create_exercise(name), "trening")
+        db.update_day_item(iid, "trening", 3, 10, None, None, None, "")
+    base = f"/treninzi/{pid}/dan/{did}"
+    ivan = db.get_user_by_email("ivan@test.local").id
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    def shown(pg, dialog: str = "#leaveDlg") -> bool:
+        return pg.evaluate("s => document.querySelector(s).open", dialog)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        pg = ctx.new_page(); errors: list[str] = []
+        pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
+        pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
+        pg.goto(server + "/login")
+        pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        player, kraj = f"{server}{base}/vjezba/1", f"{server}{base}/kraj"
+
+        ctx.request.post(f"{server}{base}/kreni")
+        pg.goto(player); pg.wait_for_load_state("networkidle")
+        pg.tap(".pl-line a.act-quiet")                                     # ← Natrag
+        pg.wait_for_timeout(150)
+        check(shown(pg) and pg.url == player, f"← Natrag: the dialog {shown(pg)}, the page {pg.url}")
+        check(pg.text_content("#leaveGo") == "Završi trening", f"the player's primary: {pg.text_content('#leaveGo')}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the player with the dialog overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.tap("#leaveDlg .fb-x button")
+        pg.wait_for_timeout(150)
+        check(not shown(pg) and pg.url == player, f"the ✕: the dialog {shown(pg)}, the page {pg.url}")
+        pg.tap(".topbar.compact a.brand")
+        pg.wait_for_timeout(150)
+        check(shown(pg) and pg.url == player, f"the brand: the dialog {shown(pg)}, the page {pg.url}")
+        with pg.expect_navigation():
+            pg.tap("#leaveDrop")
+        pg.wait_for_load_state("networkidle")
+        check(pg.url == f"{server}/", f"Odbaci trening led to {pg.url}")
+        check(db.open_pass(ivan, did) is None, "Odbaci trening left the pass open")
+
+        ctx.request.post(f"{server}{base}/kreni")
+        pg.goto(player); pg.wait_for_load_state("networkidle")
+        pg.tap(".pl-line a.act-quiet")
+        pg.wait_for_timeout(150)
+        with pg.expect_navigation():
+            pg.tap("#leaveGo")
+        pg.wait_for_load_state("networkidle")
+        check(pg.url == kraj, f"Završi trening led to {pg.url}")
+        pg.tap(".topbar.compact a.brand")
+        pg.wait_for_timeout(150)
+        check(shown(pg) and pg.text_content("#leaveGo") == "Natrag na osvrt",
+              f"the finish screen's dialog: {shown(pg)}, its primary {pg.text_content('#leaveGo')}")
+        pg.tap("#leaveGo")
+        pg.wait_for_timeout(150)
+        check(not shown(pg) and pg.url == kraj, f"Natrag na osvrt: the dialog {shown(pg)}, the page {pg.url}")
+        check(pg.evaluate("() => document.activeElement.matches('.kr-form input[name=effort][value=\"1\"]')"),
+              "Natrag na osvrt did not focus the first napor button")
+        pg.tap(".kr-drop")
+        pg.wait_for_timeout(150)
+        check(shown(pg, "#confirmDlg") and not shown(pg), "the finish screen's Odbaci did not ask in #confirmDlg alone")
+        pg.tap("#confirmDlg .btn-ghost")                                   # Odustani
+        pg.wait_for_timeout(150)
+        check(not shown(pg, "#confirmDlg") and pg.url == kraj, "Odustani did not keep the finish screen")
+
+        types: list[str] = []
+
+        def on_dialog(d) -> None:
+            types.append(d.type)
+            d.dismiss()
+
+        pg.on("dialog", on_dialog)
+        pg.evaluate("() => { location.href = '/'; }")
+        pg.wait_for_timeout(500)
+        check(types == ["beforeunload"] and pg.url == kraj, f"leaving by script: dialogs {types}, the page {pg.url}")
+        check(db.open_pass(ivan, did) is not None, "the pass is not open after staying")
         problems += errors
         ctx.close()
         browser.close()

@@ -2100,7 +2100,9 @@ def move_day_item(item_id: int, direction: str) -> bool:
 # the osvrt at the end. Every write takes the pass's row first (FOR UPDATE):
 # `done` and `swaps` are read, changed and written whole, so two saves at once
 # (two tabs) never lose one another's entry. A pass is the client's own: every
-# function here matches it by its id AND its client.
+# function here matches it by its id AND its client. A pass with no activity
+# for PASS_STALE_HOURS (31.10.2026, WorkoutLog.stale) takes no more sets or
+# swaps (PASS_STALE): it is only finished or dropped.
 
 # what a logged set's numbers may be, (least, most); else BAD_NUMBER. A weight
 # goes in steps of half a kilo.
@@ -2111,6 +2113,7 @@ TOO_MANY_SETS = f"Najviše {MAX_SETS} serija."
 NOT_SIMILAR = "Ta vježba nije među sličnima."
 BAD_OSVRT = "Neispravan osvrt."                  # the karton's sentence for the same three fields
 PASS_FINISHED = "Trening je već završen."
+PASS_STALE = "Trening je predugo otvoren — završi ga ili ga odbaci."
 
 
 def _set_number(raw: str | None, field: str) -> int | float | None:
@@ -2225,8 +2228,9 @@ def save_sets(log_id: int, user_id: int, item: ProgramDayItem, sets: list[dict],
     stamped now), replacing the one it had. `exercise` is the item's, or the
     similar one swapped in for this pass. False for no such pass of this
     client, or an item of another day. ValueError: the sets' sentences
-    (read_sets), PASS_FINISHED for a pass already finished, NOT_SIMILAR for
-    an exercise that is neither the item's nor its swap."""
+    (read_sets), PASS_FINISHED for a pass already finished, PASS_STALE for
+    one open too long (WorkoutLog.stale), NOT_SIMILAR for an exercise that
+    is neither the item's nor its swap."""
     sets = _checked_sets(sets)
     with session_scope() as s:
         log = _pass_row(s, log_id, user_id)
@@ -2234,6 +2238,8 @@ def save_sets(log_id: int, user_id: int, item: ProgramDayItem, sets: list[dict],
             return False
         if log.finished_at is not None:
             raise ValueError(PASS_FINISHED)
+        if log.stale():
+            raise ValueError(PASS_STALE)
         if exercise.id != item.exercise_id and log.swap_items.get(item.id) != exercise.id:
             raise ValueError(NOT_SIMILAR)
         done = WorkoutLog._object(log.done)
@@ -2247,9 +2253,10 @@ def swap_exercise(log_id: int, user_id: int, item: ProgramDayItem, exercise_id: 
     """Swap the similar exercise `exercise_id` in for `item` in this pass
     (None: the plan's back). Only one of the item's exercise's similar
     exercises (Exercise.alternatives), else ValueError NOT_SIMILAR
-    ("Ta vježba nije među sličnima."); PASS_FINISHED for a pass finished.
-    What the pass saved of the item stays as it was saved. False for no
-    such pass of this client, or an item of another day."""
+    ("Ta vježba nije među sličnima."); PASS_FINISHED for a pass finished,
+    PASS_STALE for one open too long (WorkoutLog.stale). What the pass
+    saved of the item stays as it was saved. False for no such pass of this
+    client, or an item of another day."""
     with session_scope() as s:
         if exercise_id is not None:
             planned = s.scalar(select(Exercise).where(Exercise.id == item.exercise_id)
@@ -2262,6 +2269,8 @@ def swap_exercise(log_id: int, user_id: int, item: ProgramDayItem, exercise_id: 
             return False
         if log.finished_at is not None:
             raise ValueError(PASS_FINISHED)
+        if log.stale():
+            raise ValueError(PASS_STALE)
         swaps = WorkoutLog._object(log.swaps)
         if exercise_id is None:
             swaps.pop(str(item.id), None)
@@ -2274,10 +2283,12 @@ def swap_exercise(log_id: int, user_id: int, item: ProgramDayItem, exercise_id: 
 def finish_pass(log_id: int, user_id: int, effort: int | None, feeling: str | None, note: str) -> bool:
     """Finish a pass with its osvrt: napor 1–10, osjećaj (a FEELING_LABELS
     key, or none), a comment (stripped). The finish is the server's clock,
-    and so is the pass's length (finished − started, whole seconds). False
-    for no such pass of this client. ValueError: BAD_OSVRT ("Neispravan
-    osvrt.", the karton's) for an effort outside 1–10 or a feeling that is
-    none of the labels, PASS_FINISHED for a pass finished already."""
+    and so is the pass's length (WorkoutLog.active_seconds: finished −
+    started, whole seconds; a stale pass's runs to its last save, not to
+    this osvrt hours later). False for no such pass of this client.
+    ValueError: BAD_OSVRT ("Neispravan osvrt.", the karton's) for an effort
+    outside 1–10 or a feeling that is none of the labels, PASS_FINISHED for
+    a pass finished already."""
     if effort is None or not 1 <= effort <= 10 or (feeling and feeling not in FEELING_LABELS):
         raise ValueError(BAD_OSVRT)
     with session_scope() as s:
@@ -2287,8 +2298,8 @@ def finish_pass(log_id: int, user_id: int, effort: int | None, feeling: str | No
         if log.finished_at is not None:
             raise ValueError(PASS_FINISHED)
         now = datetime.now(config.TZ)
+        log.elapsed_seconds = log.active_seconds(now)      # before finished_at: a finished pass is never stale
         log.finished_at = now
-        log.elapsed_seconds = max(0, int((now - log.started_at).total_seconds()))
         log.effort, log.feeling, log.note = effort, feeling or None, (note or "").strip()
         return True
 

@@ -884,14 +884,18 @@ class WorkoutLog(Base):
     finishes it (db.finish_pass). A day can be done again and again: every
     pass is a row. At most one pass per client and day is in progress
     (`finished_at` NULL: the partial unique index uq_workout_logs_open); one
-    left open is continued ("Nastavi") or dropped ("Odbaci").
+    left open is continued ("Nastavi") or dropped ("Odbaci"). Since
+    31.10.2026 (the owner: no hanging training) one with no activity for
+    PASS_STALE_HOURS (stale: its start or its last save that long ago) can
+    no longer be continued, only finished or dropped.
 
     `program_title` and `day_label` are snapshots taken at the start, as the
     exercises' names in `done` are at each save, so a programme or a day
     renamed or deleted later never garbles the history (the foreign keys are
     SET NULL; the upitnik's rule: a client's record is never pruned).
     `elapsed_seconds` is set at the finish from the server's clock (finished
-    − started, whole seconds), never from what a page posts.
+    − started, whole seconds; a stale pass's last activity − started:
+    active_seconds), never from what a page posts.
 
     `done` is a JSON object, one entry per exercise saved in this pass, keyed
     by the day's item id: {"<item id>": {"exercise_id": 12, "name": "Goblet
@@ -969,6 +973,44 @@ class WorkoutLog(Base):
         """The day it was started on, in Zagreb."""
         from .config import TZ
         return self.started_at.astimezone(TZ).date()
+
+    @property
+    def last_activity(self) -> datetime:
+        """When the pass last moved: its start, or the newest exercise it
+        saved when that is later (an entry's "at", read as db.last_sets reads
+        it: ISO, a naive one Zagreb's; one that cannot be read is skipped)."""
+        from .config import TZ
+        last = self.started_at
+        for entry in self.done_items.values():
+            try:
+                at = datetime.fromisoformat(str(entry.get("at")))
+            except ValueError:
+                continue
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=TZ)
+            if at > last:
+                last = at
+        return last
+
+    def stale(self, now: datetime | None = None) -> bool:
+        """A pass in progress with no activity for PASS_STALE_HOURS (31.10.2026,
+        the owner: "It shouldn't be possible to continue the training and have
+        a hanging training of 9 hours"): it can no longer be continued, only
+        finished with its osvrt or dropped. A finished pass is never stale."""
+        from .config import PASS_STALE_HOURS, TZ
+        if not self.in_progress:
+            return False
+        now = now or datetime.now(TZ)
+        return now - self.last_activity >= timedelta(hours=PASS_STALE_HOURS)
+
+    def active_seconds(self, now: datetime | None = None) -> int:
+        """The pass's length so far, whole seconds, 0 at least: from its start
+        to now, or, once stale, to its last activity (a pass left open
+        overnight is as long as it was worked, not as long as it hung)."""
+        from .config import TZ
+        now = now or datetime.now(TZ)
+        end = self.last_activity if self.stale(now) else now
+        return max(0, int((end - self.started_at).total_seconds()))
 
     def lines(self, order=()) -> list[tuple[str, list[str]]]:
         """Each exercise saved, (its name, its sets as the history says them:

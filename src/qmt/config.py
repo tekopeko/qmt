@@ -191,6 +191,12 @@ def stripe_enabled() -> bool:
 CANCEL_CUTOFF_HOURS = int(os.environ.get("CANCEL_CUTOFF_HOURS", "12"))
 CLOSE_EMPTY_HOURS = int(os.environ.get("CLOSE_EMPTY_HOURS", "4"))
 BOOKING_WEEKS = int(os.environ.get("BOOKING_WEEKS", "4"))
+# An online pass (the player's, models.WorkoutLog) with no activity for
+# PASS_STALE_HOURS (2 h, the owner's call of 31.10.2026: no hanging training;
+# activity is its start or its last saved exercise, WorkoutLog.stale) can no
+# longer be continued, only finished with its osvrt or discarded, and its
+# length runs to its last save, not to the osvrt a day later.
+PASS_STALE_HOURS = int(os.environ.get("PASS_STALE_HOURS", "2"))
 
 
 def today() -> date:

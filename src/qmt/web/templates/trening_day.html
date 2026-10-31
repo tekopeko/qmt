@@ -13,7 +13,9 @@
      lead keeps the page header's room under it), then "Kreni" / "Nastavi",
      the page's one primary (the column's width on a phone), and while a
      pass is open "Odbaci započeti trening" beside it, quiet (it asks
-     first). */
+     first). A pass open too long (31.10.2026, stale) cannot be continued:
+     "Završi trening", a link to its finish screen, in Kreni's place (the
+     same .go, so the same width), Odbaci beside it. */
   .dx-state { margin: -12px 0 14px; color: var(--muted); font-weight: 600; font-size: .92rem;
               overflow-wrap: anywhere; }
   .dx-start { max-width: 640px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
@@ -72,13 +74,18 @@
 <p class="hint">{% if day.weekday is not none %}Preporučeno: {{ WEEKDAYS[day.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}</p>
 {# the viewer's state on the day, and the way into the player (30.10.2026):
    "Kreni" opens a pass, "Nastavi" goes on with the one in progress (the
-   same form: the route lands on the first exercise it has not saved) #}
+   same form: the route lands on the first exercise it has not saved); a
+   pass open too long (stale, 31.10.2026) only to its finish screen #}
 {% if k or state.count %}<p class="dx-state">{{ state_line }}</p>{% endif %}
 {% if k %}
 <div class="dx-start">
+  {% if stale %}
+  <div class="go"><a class="btn" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/kraj">Završi trening</a></div>
+  {% else %}
   <form class="go" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/kreni">
     <button type="submit" class="btn">{{ "Nastavi" if state.open else "Kreni" }}</button>
   </form>
+  {% endif %}
   {% if state.open %}
   <form method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/odustani"
         data-confirm-title="Odbaciti započeti trening?"

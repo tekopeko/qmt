@@ -617,6 +617,28 @@ Komentar "(neobavezno)": a 96px textarea), "Spremi trening" (`.btn`, the
 column's width below 600px), and `.kr-more`: "Natrag na vježbe"
 (`.act.act-quiet`) and "Odbaci trening" (`.act.act-quiet` in `--accent`,
 `data-confirm`).
+**`#leaveDlg`, leaving a pass asks** (`_pass_leave.html`, 31.10.2026; the owner:
+leaving the training asks "if he wants to finish the training and then he
+decides"): on the player and the finish screen, at the end of their content.
+The `.fb-modal` idiom: `.fb-box`, the ✕ a `method="dialog"` `.fb-x` form,
+`h2` "Završiti trening?", `.fb-lead` the page's sentence, `p.fb-note#leaveErr`
+in `--accent` ("Nije uspjelo — pokušaj ponovno.", hidden until a discard
+fails), `.fb-actions` with two buttons: "Odbaci trening" (`.btn-ghost.btn-sm`)
+and the primary last (`.btn.btn-sm`, `autofocus`): "Završi trening" (→ the
+finish screen) on the player, "Natrag na osvrt" (closes it on the first napor
+button) on the finish screen. 358px wide at 390px, the two buttons on one row
+there and at 360px (37px tall on a coarse pointer: `.btn-sm`'s growth; the ✕
+fbPrompt's, 32 × 29). Opened by the page's script (capture-phase listeners)
+for a link or a form that leaves the pass, never for its exercises, `…/kraj`
+or `…/odustani`; ✕, Escape and the backdrop close it, nothing more.
+**A stale pass** (31.10.2026, no activity for `PASS_STALE_HOURS`): the finish
+screen's `.kr-eyebrow` says "NEDOVRŠEN TRENING", `p.kr-stale` (6px under
+`.kr-sum`, muted .92rem) says why it ends there, and `.kr-more` holds "Odbaci
+trening" alone; the day page's `.dx-state` says "Nedovršen trening od jučer (6
+od 8 vježbi) — nastavak nije moguć: završi ga ili ga odbaci." and `.dx-start`
+holds `div.go` with an `a.btn` "Završi trening" (→ `…/kraj`; the form's place
+and width) and "Odbaci započeti trening" beside it; the programme's day card
+ends "· nedovršen".
 
 **Calendar (`calendar.html`).** Seven `.day-col` on desktop → on phones one day
 at a time (17.10.2026): the `.day-strip` picks it, the grid gets `.one-day` and

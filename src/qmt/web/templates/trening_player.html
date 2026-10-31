@@ -15,7 +15,9 @@
    one form with one extra row, the swap list a <details>; the script adds
    the timer, "+" (another row), the swipe between exercises, the ✓ per set
    and the rest bar (30.10.2026: the rest between sets after a ✓, the rest
-   between exercises on the next exercise's screen, each skippable). #}
+   between exercises on the next exercise's screen, each skippable). Leaving
+   the pass asks first (31.10.2026, _pass_leave.html: #leaveDlg, finish or
+   discard). #}
 {% set solo_page = not user.is_trainer %}
 {% block title %}{{ ex.name }} — {{ day.label }} — QMT{% endblock %}
 {% block head %}
@@ -345,6 +347,8 @@
   <span class="pl-rest-track" aria-hidden="true"><span class="pl-rest-fill"></span></span>
   <button type="button" class="pl-rest-skip">Preskoči odmor</button>
 </div>
+{# leaving the pass asks: finish it (the finish screen) or discard it #}
+{% set leave_mode = "player" %}{% include "_pass_leave.html" %}
 {% endblock %}
 {% block scripts %}
 <script>
@@ -524,7 +528,8 @@
         x0 = null;
         if (Math.abs(dx) < 60 || Math.abs(dx) <= 2 * Math.abs(dy)) return;
         var to = dx < 0 ? next : prev;
-        if (to) location.href = to.href;
+        // inside the pass: _pass_leave.html's qmtPassGo lets it go unasked
+        if (to) (window.qmtPassGo || function (h) { location.href = h; })(to.href);
       }, {passive: true});
     });
   })();

@@ -8,15 +8,21 @@
    (required), osjećaj as its choice rows (optional), a comment (optional),
    and "Spremi trening". Under it, quiet: back to the exercises, and "Odbaci
    trening" (asks first). A refused osvrt comes back as this page, its
-   sentence under the title and what was chosen kept. #}
+   sentence under the title and what was chosen kept. A stale pass (31.10.2026,
+   open too long: WorkoutLog.stale) is "Nedovršen trening", says it cannot be
+   continued, and has no way back to the exercises. Leaving the page asks
+   first (_pass_leave.html: #leaveDlg). #}
 {% set solo_page = not user.is_trainer %}
-{% block title %}Trening odrađen — {{ day.label }} — QMT{% endblock %}
+{% block title %}{{ "Nedovršen trening" if stale else "Trening odrađen" }} — {{ day.label }} — QMT{% endblock %}
 {% block head %}
 <style>
   .kr { max-width: 640px; margin: clamp(0px, 3vh, 32px) auto 0; }
   .kr-eyebrow { font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
   .kr h1 { font-size: clamp(1.45rem, 5vw, 2rem); line-height: 1.15; margin: 8px 0 6px; overflow-wrap: anywhere; }
   .kr-sum { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+  /* a stale pass's sentence under the line: why it ends here (muted, the day
+     page's state line's size) */
+  .kr-stale { margin-top: 6px; color: var(--muted); font-size: .92rem; overflow-wrap: anywhere; }
   .kr .alert { margin: 14px 0 0; }
   .kr .alert > span { min-width: 0; overflow-wrap: anywhere; }
   .kr-form { margin-top: 8px; }
@@ -39,9 +45,10 @@
 {% block error_alert %}{% endblock %}
 {% block content %}
 <div class="kr">
-  <p class="kr-eyebrow">Trening odrađen</p>
+  <p class="kr-eyebrow">{{ "Nedovršen trening" if stale else "Trening odrađen" }}</p>
   <h1>{{ day.label }}</h1>
   <p class="kr-sum">{{ done_n }} od {{ n_items }} {{ plural(n_items, "vježbe", "vježbe", "vježbi") }} · {{ elapsed }}</p>
+  {% if stale %}<p class="kr-stale">Započet {{ pass_when(log.date) }} i nije završen — nastavak više nije moguć. Spremi osvrt ili trening odbaci.</p>{% endif %}
   {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
 
   <form class="kr-form" method="post" action="{{ base }}/kraj">
@@ -72,7 +79,7 @@
   </form>
 
   <div class="kr-more">
-    <a class="act act-quiet" href="{{ base }}{% if n_items %}/vjezba/{{ n_items }}{% endif %}">Natrag na vježbe</a>
+    {% if not stale %}<a class="act act-quiet" href="{{ base }}{% if n_items %}/vjezba/{{ n_items }}{% endif %}">Natrag na vježbe</a>{% endif %}
     <form method="post" action="{{ base }}/odustani"
           data-confirm-title="Odbaciti započeti trening?"
           data-confirm="Spremljene serije ovog pokušaja se brišu. Dan možeš započeti ponovno."
@@ -81,4 +88,6 @@
     </form>
   </div>
 </div>
+{# leaving the page asks: back to the osvrt, or discard the pass #}
+{% set leave_mode = "kraj" %}{% include "_pass_leave.html" %}
 {% endblock %}

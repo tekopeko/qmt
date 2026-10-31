@@ -86,7 +86,8 @@ of a termin in the gym).
   repeated: every pass is a new row. One row in progress per (user, day) at a time: the
   partial unique index `uq_workout_logs_open` (user_id, day_id) WHERE finished_at IS NULL;
   an index on (user_id, started_at) serves the history. A pass left open is continued
-  ("Nastavi") or dropped ("Odbaci"). A set: reps 0–999, kg 0–500 in steps of 0.5 ("2,5"
+  ("Nastavi") or dropped ("Odbaci"); since 31.10.2026 one with no activity for
+  `PASS_STALE_HOURS` (2 h) is only finished or dropped (below, the player). A set: reps 0–999, kg 0–500 in steps of 0.5 ("2,5"
   or "2.5"; 0 is no weight), a timed exercise's seconds 0–3600; at most 12 sets; a row
   with every field empty dropped.
 - **Migration:** each existing `Program` gets one day ("Dan 1", no weekday) holding its
@@ -151,6 +152,24 @@ of a termin in the gym).
   starts with the screen may end silent: no tap has happened on it yet). The last screen
   `…/kraj`: "Trening odrađen", "6 od 8 vježbi · 38 min", the osvrt (napor 1–10, osjećaj,
   komentar, the karton's three) → `finished_at`; "Odbaci trening" drops the pass.
+  **Leaving asks, and a pass cannot hang (31.10.2026**; the owner: "When a user tries to
+  leave the training tab, there should be a popup warning asking if he wants to finish
+  the training and then he decides. It shouldn't be possible to continue the training
+  and have a hanging training of 9 hours like my account now does."): on the player and
+  the finish screen a link or a form that leaves the pass (the brand, "← Natrag", a tab,
+  Odjava; not its exercises, the finish screen or the discard) opens a dialog,
+  "Završiti trening?": finish ("Završi trening" → the finish screen; there "Natrag na
+  osvrt") or discard ("Odbaci trening": the pass dropped, then where the tap was
+  going), never "later"; a closed tab, a typed address or a reload meets the browser's
+  own prompt (its words, after a tap on the page; iOS Safari shows none). The rule
+  behind it, for the app closed or the phone locked: a pass with no activity for
+  `PASS_STALE_HOURS` (2 h; its start or its last saved exercise) cannot be continued:
+  Kreni / Nastavi, an exercise, its save and its swap all lead to its finish screen,
+  "Nedovršen trening" ("Započet jučer i nije završen — nastavak više nije moguć. Spremi
+  osvrt ili trening odbaci."), finished or dropped there, its length to its last save;
+  the day says "Nedovršen trening od jučer (6 od 8 vježbi) — nastavak nije moguć:
+  završi ga ili ga odbaci." with "Završi trening" in Kreni's place, its card
+  "nedovršen".
 - **The karton** shows online trainings in the diary beside the termini ("Online
   trening", "Dan 1 · Cijelo tijelo — Cijelo tijelo — srednja razina", "6 od 8 vježbi ·
   38 min", the osvrt), and Amir's read-only view the same, with the sets under "Serije".

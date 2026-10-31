@@ -1,0 +1,142 @@
+{# Leaving a pass asks (31.10.2026; the owner: "When a user tries to leave
+   the training tab, there should be a popup warning asking if he wants to
+   finish the training and then he decides. It shouldn't be possible to
+   continue the training and have a hanging training of 9 hours like my
+   account now does."). Included at the end of the content block of the
+   player (leave_mode "player") and of the finish screen ("kraj"); `base` is
+   the day's path. A tap on a link, or a form sent, that leaves the pass
+   (anything but its exercises, …/kraj and …/odustani: the brand, ← Natrag,
+   a tab, Odjava) opens this dialog instead, base.html's modal idiom: finish
+   or discard, never "later". The player's "Završi trening" goes to the
+   finish screen, the finish screen's "Natrag na osvrt" back to its napor;
+   "Odbaci trening" drops the pass (POST …/odustani) and then goes where the
+   tap was going. ✕, Escape and the backdrop close it, nothing more. Without
+   the script every link goes where it says, as before, and a pass left open
+   meets the server's rule (PASS_STALE_HOURS: WorkoutLog.stale). #}
+<dialog id="leaveDlg" class="fb-modal" aria-labelledby="leaveTitle" data-pass="{{ base }}" data-mode="{{ leave_mode }}">
+  <div class="fb-box">
+    <form method="dialog" class="fb-x"><button type="submit" aria-label="Zatvori">✕</button></form>
+    <h2 id="leaveTitle">Završiti trening?</h2>
+    {% if leave_mode == "kraj" %}
+    <p class="fb-lead">Osvrt još nije spremljen. Spremi ga i trening je završen, ili trening odbaci — odbačenom se brišu spremljene serije.</p>
+    {% else %}
+    <p class="fb-lead">Trening je u tijeku. Završi ga osvrtom ili ga odbaci — odbačenom se brišu spremljene serije ovog pokušaja.</p>
+    {% endif %}
+    {# a failed discard's line: base.html's .fb-note (.82rem, muted) in the accent, as an error speaks #}
+    <p class="fb-note" id="leaveErr" role="alert" style="color: var(--accent);" hidden>Nije uspjelo — pokušaj ponovno.</p>
+    <div class="fb-actions">
+      <button type="button" class="btn-ghost btn-sm" id="leaveDrop">Odbaci trening</button>
+      {# the primary last, and the focus showModal() gives (not the ✕) #}
+      <button type="button" class="btn btn-sm" id="leaveGo" autofocus>{{ "Natrag na osvrt" if leave_mode == "kraj" else "Završi trening" }}</button>
+    </div>
+  </div>
+</dialog>
+<script>
+  // Leaving the pass asks (above). Capture-phase listeners on the document,
+  // so they run before every other: a link or a form that leaves the pass is
+  // stopped there and the dialog opens; one inside it (an exercise, Spremi,
+  // the swap, …/kraj, the osvrt's Spremi trening, Odbaci) sets `leaving` and
+  // goes on, so the browser's own prompt (beforeunload, below) lets it go.
+  (function () {
+    var dlg = document.getElementById("leaveDlg");
+    if (!dlg || !dlg.showModal) return;
+    var base = dlg.getAttribute("data-pass"), mode = dlg.getAttribute("data-mode");
+    var go = document.getElementById("leaveGo"), drop = document.getElementById("leaveDrop");
+    var err = document.getElementById("leaveErr");
+    var leaving = false, href = null, form = null, asked = null;
+    // a URL inside the pass: its exercises, its finish screen, its discard
+    // (a query string does not matter)
+    var inside = function (url) {
+      var path = new URL(url, location.href).pathname;
+      return path.indexOf(base + "/vjezba/") === 0 || path === base + "/kraj" || path === base + "/odustani";
+    };
+    var ask = function () {
+      err.hidden = true;
+      go.disabled = drop.disabled = false;
+      dlg.showModal();
+    };
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest ? e.target.closest("a[href]") : null;
+      if (!a || a.getAttribute("href").charAt(0) === "#") return;     // this page (the dock's #popis)
+      // a new tab (target=_blank, a modifier key) leaves this page as it is
+      if (a.target === "_blank" || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      var url = new URL(a.href, location.href);
+      if (url.origin !== location.origin) return;
+      if (inside(url)) { leaving = true; return; }
+      e.preventDefault();
+      e.stopPropagation();
+      href = url.href; form = null;
+      ask();
+    }, true);
+    document.addEventListener("submit", function (e) {
+      var f = e.target;
+      // a dialog's own form (this ✕) closes it and leaves nothing; its
+      // action, the page's own address, would read as inside the pass
+      if (!f || f.method === "dialog") return;
+      if (inside(f.action)) {
+        leaving = true;
+        // the finish screen's Odbaci asks first (base.html's #confirmDlg)
+        asked = f.hasAttribute("data-confirm") && !f.dataset.confirmed ? f : null;
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      form = f; href = null;
+      ask();
+    }, true);
+    // cancelled in #confirmDlg, the page was not left after all: the
+    // browser's prompt asks again (a confirmed form is .submit()ted, marked
+    // confirmed first, before this close event comes). #confirmDlg comes
+    // after this script in base.html, and "close" does not bubble: the
+    // document hears it in its capture phase
+    document.addEventListener("close", function (e) {
+      if (e.target.id !== "confirmDlg") return;
+      if (asked && !asked.dataset.confirmed) leaving = false;
+      asked = null;
+    }, true);
+    go.addEventListener("click", function () {
+      if (mode === "kraj") {
+        // back to the osvrt: its first napor button (the radio is the circle)
+        dlg.close();
+        var first = document.querySelector(".kr-form input[name=effort]");
+        if (first) first.focus();
+        return;
+      }
+      leaving = true;
+      location.href = base + "/kraj";
+    });
+    drop.addEventListener("click", function () {
+      var toHref = href, toForm = form;          // kept: the dialog may close while it runs
+      go.disabled = drop.disabled = true;
+      err.hidden = true;
+      // …/odustani 303s to the day's page, which fetch follows: 200
+      fetch(base + "/odustani", {method: "POST", credentials: "same-origin"}).then(function (r) {
+        if (!r.ok) throw new Error("odustani: " + r.status);
+        leaving = true;
+        // .submit() fires no submit event: the listener above cannot catch it again
+        if (toForm) toForm.submit();
+        else location.href = toHref || base;
+      }).catch(function () {
+        go.disabled = drop.disabled = false;
+        err.hidden = false;
+      });
+    });
+    dlg.addEventListener("click", function (e) { if (e.target === dlg) dlg.close(); });   // the backdrop
+    dlg.addEventListener("close", function () { href = null; form = null; });
+    // The browser's own prompt, for what no link carries: the tab or the app
+    // closed, an address typed. Its words are the browser's (ours cannot be
+    // put in it), Chrome shows it only after a tap on the page, a reload asks
+    // too (nothing tells one apart), and iOS Safari never shows it: for those
+    // the server has its rule (a pass with no activity for PASS_STALE_HOURS
+    // can only be finished or discarded). Not worked around.
+    window.addEventListener("beforeunload", function (e) {
+      if (leaving) return;
+      e.preventDefault();
+      e.returnValue = "";
+    });
+    // a page brought back by Back / Forward (the back-forward cache) asks again
+    window.addEventListener("pageshow", function () { leaving = false; });
+    // the player's swipe: to the exercise beside it, inside the pass
+    window.qmtPassGo = function (to) { leaving = true; location.href = to; };
+  })();
+</script>
