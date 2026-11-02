@@ -13,3 +13,6 @@ data/uploads/
 .claude/settings.local.json
 .claude/ui-audit.stamp
 .claude/ui-audit.blocked
+
+# the gym owner's working sheets (his content, not the repo's)
+*.xlsx
