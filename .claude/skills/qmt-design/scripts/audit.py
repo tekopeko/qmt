@@ -55,7 +55,7 @@ ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana",
 # /upitnik opens on the guide through the training (29.10.2026), ?od=1 on its first question; /vodic is the guide alone.
 # The programmes' days (30.10.2026): "trening:1" is the first programme on
 # the client's /treninzi, "dan:1" its first day's page (the demo seed: ivan's
-# Dan 1, all three sections, two finished passes in its Povijest), both found
+# Trening 1, all three sections, two finished passes in its Povijest), both found
 # by their links (a reseed gives new ids). The player (30.10.2026, stage 3):
 # "kreni:1" presses Kreni on dan:1 and lands on its first exercise, "kraj:1"
 # is the finish screen the player's "Završi trening" leads to; after it the

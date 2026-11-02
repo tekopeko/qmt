@@ -651,7 +651,10 @@
     .crumbs a { color: var(--muted); text-decoration: none; transition: color .15s; }
     .crumbs a:hover { color: var(--accent); }
     .crumbs .sep { color: var(--muted); opacity: .55; }
-    .crumbs .here { color: var(--text); min-width: 0; white-space: nowrap;
+    /* the current segment keeps its words ("TRENING 1", "UREĐIVANJE"): the
+       parent link, which wraps, gives way first; only a label past 60% of
+       the row is cut with an ellipsis (2.11.2026: "TRENING…" at 390px) */
+    .crumbs .here { color: var(--text); flex-shrink: 0; max-width: 60%; min-width: 0; white-space: nowrap;
                     overflow: hidden; text-overflow: ellipsis; }
 
     /* ===== the guide through the training (_vodic.html, 29.10.2026): the

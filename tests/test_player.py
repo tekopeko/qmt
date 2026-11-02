@@ -16,8 +16,9 @@ similar exercises (`swaps`), and is finished by the osvrt (its length the
 server's clock) or dropped. The day says "odrađen N×" and lists the last five
 passes with their sets, the programme's day cards say it too, and the karton
 lists the passes beside the termini (the trainer's view with their sets).
-Migration 3890252ee50f runs for real on qmt_test, there and back. The browser
-half walks ivan through a day on a phone.
+Migration 3890252ee50f runs for real on qmt_test, there and back, and so does
+b61e8d5bf1db (2.11.2026: a day reads "Trening N", and the passes' stored "Dan
+N …" labels with it). The browser half walks ivan through a day on a phone.
 
 The rest timers (30.10.2026; the owner: "a timer which he can skip, in
 between sets as well as between exercises, which Shape Club also has"): a ✓
@@ -117,8 +118,8 @@ def people():
 
 
 def build_day(title: str = "Cijelo tijelo — početna", level: str | None = "pocetna", goal: str | None = "cijelo"):
-    """A programme (ivan's combo by default) and its Dan 1 "Cijelo tijelo",
-    in the day's display order:
+    """A programme (ivan's combo by default) and its Trening 1 "Cijelo
+    tijelo", in the day's display order:
       1 Čučanj s vlastitom težinom (zagrijavanje, 2 × 15, rest 30)
       2 Goblet čučanj (trening, 3 × 10, rest 60, "16 kg"; similar:
         Iskorak unatrag, Čučanj s vlastitom težinom)
@@ -250,7 +251,7 @@ def test_one_pass_in_progress_per_client_and_day():
     again = open_pass(ivan, d)
     assert again.id == first.id and stored() == [(first.id, ivan, d.did, False)]
     assert (first.program_title, first.day_label, first.done_items, first.swap_items, first.in_progress) == (
-        "Cijelo tijelo — početna", "Dan 1 · Cijelo tijelo", {}, {}, True)
+        "Cijelo tijelo — početna", "Trening 1 · Cijelo tijelo", {}, {}, True)
     assert first.started_at is not None and first.finished_at is None and first.elapsed_seconds is None
     with pytest.raises(IntegrityError, match="uq_workout_logs_open"):
         with db.session_scope() as s:
@@ -336,12 +337,12 @@ def test_kreni_opens_a_pass_and_nastavi_goes_on_where_it_stopped():
     r = ci.post(f"/treninzi/{d.pid}/dan/{empty}/kreni", follow_redirects=False)
     assert r.headers["location"] == f"/treninzi/{d.pid}/dan/{empty}" and len(stored()) == 1
     page = ci.get(f"/treninzi/{d.pid}/dan/{empty}").text
-    assert "Dan još nema vježbi." in page and "/kreni" not in page and 'class="dx-state"' not in page
+    assert "Trening još nema vježbi." in page and "/kreni" not in page and 'class="dx-state"' not in page
 
     db.update_program(d.pid, "Novo ime", None, "pocetna", "cijelo")
     db.update_day(d.did, "Drugi naslov", None, "")
     log = db.get_pass(log_id, ivan)
-    assert (log.program_title, log.day_label) == ("Cijelo tijelo — početna", "Dan 1 · Cijelo tijelo")
+    assert (log.program_title, log.day_label) == ("Cijelo tijelo — početna", "Trening 1 · Cijelo tijelo")
 
 
 def test_the_players_access():
@@ -413,7 +414,7 @@ def test_the_set_log_is_prefilled_from_the_plan_and_the_last_log():
     page = ci.get(f"{d.base}/vjezba/2").text                               # Goblet: never logged
     assert [v for f, _, v in inputs(page) if f == "kg"] == ["", "", "", ""]
 
-    # Goblet logged on ANOTHER day (Dan 2): its weights fill Dan 1's rows
+    # Goblet logged on ANOTHER day (Trening 2): its weights fill Trening 1's rows
     d2 = db.add_day(d.pid)
     goblet2 = db.add_day_item(d2, d.ex["Goblet čučanj"], "trening")
     db.update_day_item(goblet2, "trening", 2, 8, None, None, None, "")
@@ -542,7 +543,7 @@ def test_the_bar_the_list_and_the_dock_say_where_the_client_is():
     assert '<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span></span>' in rows[3][3]
     assert "dx-ok" not in rows[1][3] and '<span class="dx-dose">3 × 10</span>' in rows[1][3]
     assert "Odmor između serija: 60 s · 16 kg" in rows[1][3]
-    assert re.findall(r'<h3 class="dx-cap">([^<]*)</h3>', page) == ["Zagrijavanje", "Trening", "Istezanje"]
+    assert re.findall(r'<h3 class="dx-cap">([^<]*)</h3>', page) == ["Zagrijavanje", "Glavni dio", "Istezanje"]
     assert '<a class="pl-dock" href="#popis">Vježbe · 2/4 ✓</a>' in page
     assert re.search(r'<span class="pl-timer" hidden data-started="[0-9T:+-]+"', page)
     assert '<span class="pl-chip">2/4</span>' in page and '<p class="pl-dose">3 × 10</p>' in page
@@ -633,15 +634,17 @@ def test_the_finish_takes_the_osvrt_and_the_servers_clock():
     with db.engine.begin() as conn:                                        # it started 38 minutes 10 s ago
         conn.execute(sa_text("UPDATE workout_logs SET started_at = now() - interval '38 minutes 10 seconds'"))
     page = ci.get(f"{d.base}/kraj").text
-    assert '<p class="kr-eyebrow">Trening odrađen</p>' in page and "<h1>Dan 1 · Cijelo tijelo</h1>" in page
+    assert '<p class="kr-eyebrow">Trening odrađen</p>' in page and "<h1>Trening 1 · Cijelo tijelo</h1>" in page
     assert '<p class="kr-sum">1 od 4 vježbe · 38 min</p>' in page
     assert len(re.findall(r'<input type="radio" name="effort" value="(\d+)" required>', page)) == 10
     assert re.findall(r'<input type="radio" name="feeling" value="(\w+)">', page) == ["slabo", "dobro", "odlicno"]
     assert f'<a class="act act-quiet" href="{d.base}/vjezba/4">Natrag na vježbe</a>' in page
     assert 'data-confirm-title="Odbaciti započeti trening?"' in page and ">Odbaci trening</button>" in page
+    assert 'data-confirm="Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno."' in page
     page = ci.get(d.base).text
     assert state_line(page) == "U tijeku — nastavi gdje si stao/la." and ">Nastavi</button>" in page
     assert ">Odbaci započeti trening</button>" in page
+    assert 'data-confirm="Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno."' in page
 
     for form in ({"feeling": "dobro", "note": "x"}, {"effort": "0"}, {"effort": "11"}, {"effort": "abc"},
                  {"effort": "7", "feeling": "super"}):
@@ -756,8 +759,9 @@ def test_the_programme_page_says_each_days_state(monkeypatch):
     age(db.start_pass(ivan, p, db.get_day(d4)).id, 3)
     page = ci.get(f"/treninzi/{d.pid}").text
     cards = re.findall(r'<strong>([^<]*)</strong>\s*<span class="hint">([^<]*)</span>', page)
-    assert cards == [("Dan 1 · Cijelo tijelo", "Preporučeno: ponedjeljak · 4 vježbe · odrađen 2×"),
-                     ("Dan 2", "0 vježbi"), ("Dan 3", "1 vježba · u tijeku"), ("Dan 4", "1 vježba · nedovršen")]
+    assert cards == [("Trening 1 · Cijelo tijelo", "Preporučeno: ponedjeljak · 4 vježbe · odrađen 2×"),
+                     ("Trening 2", "0 vježbi"), ("Trening 3", "1 vježba · u tijeku"),
+                     ("Trening 4", "1 vježba · nedovršen")]
     assert db.day_states(ivan, [d.did, d2, d3])[d.did]["count"] == 2 and d2 not in db.day_states(ivan, [d2])
     assert re.findall(r'<span class="hint">([^<]*)</span>', client_for("ana@test.local").get(
         f"/treninzi/{build_day('Njen', 'pocetna', 'gornji').pid}").text) == ["Preporučeno: ponedjeljak · 4 vježbe"]
@@ -802,7 +806,7 @@ def test_the_karton_lists_the_passes_among_the_termini():
     page = client_for("ivan@test.local").get("/karton").text
     row = entry(page, a)
     assert '<div class="le-kicker">Online trening</div>' in row
-    assert '<div class="hint le-sub">Dan 1 · Cijelo tijelo — Cijelo tijelo — početna</div>' in row
+    assert '<div class="hint le-sub">Trening 1 · Cijelo tijelo — Cijelo tijelo — početna</div>' in row
     assert '<div class="hint le-sub">2 od 4 vježbe · 38 min</div>' in row
     assert '<span class="rpe">napor 7/10</span>' in row and '<span class="rpe feel ">Odlično</span>' in row
     assert "<p>Online.</p>" in row and "Serije" not in row
@@ -818,7 +822,7 @@ def test_the_karton_lists_the_passes_among_the_termini():
     db.delete_day(d.did)                                                   # the day gone: the pass stays
     page = client_for("ivan@test.local").get("/karton").text
     assert '<div class="hint le-sub">2 vježbe · 38 min</div>' in entry(page, a)
-    assert '<div class="hint le-sub">Dan 1 · Cijelo tijelo — Cijelo tijelo — početna</div>' in entry(page, a)
+    assert '<div class="hint le-sub">Trening 1 · Cijelo tijelo — Cijelo tijelo — početna</div>' in entry(page, a)
     assert db.get_pass(a, ivan).day_id is None
 
 
@@ -1118,6 +1122,47 @@ def test_the_migration_makes_the_table_and_takes_it_away():
     assert "workout_logs" not in sa_inspect(db.engine).get_table_names()
     _run(mig.upgrade)
     assert _schema_diffs("workout_logs") == [] and stored() == []
+
+
+def test_the_label_migration_renames_the_stored_days():
+    """b61e8d5bf1db (2.11.2026: a day reads "Trening N", Amir's word), run on
+    qmt_test with passes stored as before it: every day_label that starts
+    "Dan <digit>" starts "Trening", its number and title kept (prod's "Dan 1
+    · Cijelo tijelo", "Dan 3 · X", "Dan 12"); nothing else changes: a label
+    already new (a pass started since, "Trening 1 · Cijelo tijelo"), one
+    with no number or that only starts so ("Danas"), a "Dan 1" further in,
+    the programme's title. Downgrade makes every "Trening <digit>" "Dan"
+    again, and a second upgrade renames them again. No schema change."""
+    mig = _migration("b61e8d5bf1db_workout_logs_day_label_trening.py")
+    assert (mig.revision, mig.down_revision) == ("b61e8d5bf1db", "4f9d6f7103ad")
+    trainer, ivan, ana = people()
+    d = build_day()
+    finished(ivan, d)                                                       # its snapshot already the new label
+    old = ["Dan 1 · Cijelo tijelo", "Dan 3 · X", "Dan 12", "Dan 2 · Dan 1", "Trening 2", "Danas", "Dan · bez broja", "y"]
+    with db.engine.begin() as conn:
+        for label in old:
+            conn.execute(sa_text("INSERT INTO workout_logs (user_id, program_id, day_id, program_title, day_label, "
+                                 "finished_at) VALUES (:u, :p, :d, 'Dan 1', :l, now())"),
+                         {"u": ivan, "p": d.pid, "d": d.did, "l": label})
+
+    def labels() -> list[str]:
+        with db.engine.connect() as conn:
+            return [label for label, in conn.execute(sa_text("SELECT day_label FROM workout_logs ORDER BY id"))]
+
+    def titles() -> list[str]:
+        with db.engine.connect() as conn:
+            return [title for title, in conn.execute(sa_text("SELECT program_title FROM workout_logs ORDER BY id"))]
+
+    assert labels() == ["Trening 1 · Cijelo tijelo", *old]
+    renamed = ["Trening 1 · Cijelo tijelo", "Trening 1 · Cijelo tijelo", "Trening 3 · X", "Trening 12",
+               "Trening 2 · Dan 1", "Trening 2", "Danas", "Dan · bez broja", "y"]
+    _run(mig.upgrade)
+    assert labels() == renamed and titles() == ["Cijelo tijelo — početna"] + ["Dan 1"] * len(old)
+    _run(mig.downgrade)
+    assert labels() == ["Dan 1 · Cijelo tijelo", "Dan 1 · Cijelo tijelo", "Dan 3 · X", "Dan 12", "Dan 2 · Dan 1",
+                        "Dan 2", "Danas", "Dan · bez broja", "y"]
+    _run(mig.upgrade)
+    assert labels() == renamed and _schema_diffs("workout_logs") == []
 
 
 # ---------- in a browser, on a phone ----------

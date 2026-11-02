@@ -349,7 +349,7 @@ a finished pass among the termini by when it started, a written termin row's
 shape: `.le-kicker` "Online trening" over it (700 .7rem, .12em, uppercase,
 muted: a caption, not the accent's), then `.le-head` (the date, `.rpe` "napor
 7/10", `.rpe.feel` the osjećaj, grey for "Slabo"), two muted `.le-sub` lines
-(.8rem: "Dan 1 · Cijelo tijelo — Cijelo tijelo — srednja razina", the
+(.8rem: "Trening 1 · Cijelo tijelo — Cijelo tijelo — srednja razina", the
 snapshots; "6 od 8 vježbi · 38 min", a day since deleted "6 vježbi") and the
 comment. No `.le-actions`: nothing on the karton edits or deletes a pass. The
 trainer's view adds `details.sets` "Serije" (base.html, below) under it.
@@ -456,22 +456,25 @@ auto`: one group at the right end, wrapping under the name whole on a phone),
 `.it-video` ("video ✓" `.has` in `--good` 600, or "bez videa" muted) and
 `.it-acts` (↑ / ↓ / ✕, `.btn-ghost.btn-sm`, a disabled one at .35).
 
-**The programme editor (`trening_edit.html`).** Its lead: "Trening ima dane;
-svaki dan ima zagrijavanje, trening i istezanje, a vježbe biraš iz baze vježbi."
-(a `.tlink` to the library) and "pogledaj kako polaznik vidi →" (`.act.act-quiet`).
-The programme's form (`.card`, 640px), then **Dani** (30.10.2026): a `.card.it-row`
-per day, `id="dan-<id>"`: its label as `.it-name` (a link to the day's editor),
+**The programme editor (`trening_edit.html`).** The h1 "Uredi program"; its lead:
+"Program ima treninge; svaki trening ima zagrijavanje, glavni dio i istezanje, a
+vježbe biraš iz baze vježbi." (a `.tlink` to the library) and "pogledaj kako
+polaznik vidi →" (`.act.act-quiet`). The programme's form (`.card`, 640px), then
+**Treninzi** (30.10.2026; a day reads "Trening N" since 2.11.2026): a
+`.card.it-row` per day, `id="dan-<id>"`: its label as `.it-name` (a link to the
+day's editor),
 `.it-note` "ponedjeljak · 7 vježbi" (no weekday: "7 vježbi"), then `.it-end`:
 "Uredi" (`.btn-quiet.btn-sm`, the day's editor) and `.it-acts` ↑ / ↓ (each its
 own small form, `smjer` gore / dolje; the first's ↑ and the last's ↓ disabled;
-`aria-label` "Pomakni gore: Dan 1 · …") and ✕ (`data-confirm-title` "Obrisati
-dan?", "„Dan 2 · Gornji dio” se briše s popisom vježbi; same vježbe ostaju u bazi
-vježbi.", cta "Obriši dan"). Empty: "Trening još nema dana — dodaj prvi."
-"+ Dodaj dan" (`form.days-add`, a `.btn.btn-sm`) under the rows, 14px; "Obriši
-cijeli trening" at the bottom ("… briše se trening s danima i vježbama; …").
+`aria-label` "Pomakni gore: Trening 1 · …") and ✕ (`data-confirm-title` "Obrisati
+trening?", "„Trening 2 · Gornji dio” se briše s popisom vježbi; same vježbe ostaju u
+bazi vježbi.", cta "Obriši trening"). Empty: "Program još nema treninga — dodaj
+prvi." "+ Dodaj trening" (`form.days-add`, a `.btn.btn-sm`) under the rows, 14px;
+"Obriši cijeli program" at the bottom ("„…” — briše se program s treninzima i
+vježbama; …").
 
 **The day editor (`trening_day_edit.html`, 30.10.2026).** Crumbs Treninzi / the
-programme (its editor) / Dan N, the h1 "Dan N", the lead ("Naslov, preporučeni dan
+programme (its editor) / Trening N, the h1 "Trening N", the lead ("Naslov, preporučeni dan
 u tjednu i uvod; ispod toga vježbe po dijelovima — …" + "pogledaj kako polaznik
 vidi →" to the day's page). Card 1, `.card.ex-card`: Naslov ("npr. Cijelo
 tijelo"), Preporučeni dan (a select: "Bez preporuke", then the weekdays
@@ -486,8 +489,8 @@ vježbi." (`.st-none`). A row is `.card.it-row`, `id="stavka-<id>"`: line 1 the
 exercise's `.it-name` (to its library page), `.it-video`, ↑ / ↓ (within its
 section; disabled at the section's ends) / ✕ — buttons naming forms that stand
 after the list (`form="st-gore-<id>"`, `st-dolje-`, `st-x-` with `data-confirm`
-"Maknuti vježbu iz dana?" / "„Goblet čučanj” izlazi iz ovog dana; u bazi vježbi
-ostaje." / "Makni"): a form holds no form; after a save (`?ok=` / `?error=` with `?stavka=<id>`, the row's id) the row carries the page's alert itself (`.alert.st-alert`, the row's width, above its form; the top prints none: a phone comes back scrolled to the row), a stavka that names no row leaving the alert at the top; line 2 the row's own `form.st-form`
+"Maknuti vježbu iz treninga?" / "„Goblet čučanj” izlazi iz ovog treninga; u bazi
+vježbi ostaje." / "Makni"): a form holds no form; after a save (`?ok=` / `?error=` with `?stavka=<id>`, the row's id) the row carries the page's alert itself (`.alert.st-alert`, the row's width, above its form; the top prints none: a phone comes back scrolled to the row), a stavka that names no row leaving the alert at the top; line 2 the row's own `form.st-form`
 (`flex: 1 0 100%`), a compact grid of labelled fields in the caption style:
 Dio (a select), Serije, Ponavljanja, Sekunde, Odmor (s) (`type=number`,
 `inputmode=numeric`, `min` / `max`), Napomena, Spremi (`.btn.btn-sm`); two
@@ -495,20 +498,20 @@ columns on a phone (Dio, Napomena and Spremi across both), four from 600px (Dio
 and the dose on line 1, then the rest, the note over two columns and Spremi);
 every control 40px tall, 44px on a coarse pointer, so the grid is one
 footprint. "Dodaj vježbu" (`form#dodaj.card.add-ex`): `.add-fields` (Vježba iz
-baze, the library's select, name · tags; Dio, opening on Trening; one column on a
+baze, the library's select, name · tags; Dio, opening on Glavni dio; one column on a
 phone, the select and a 180px Dio from 600px) and `.add-row` (Dodaj
 `.btn.btn-sm`, "Nova vježba →" `.btn-ghost.btn-sm`, `natrag=` this editor). Last
-"Obriši dan" (`form.ex-delete`, asks first).
+"Obriši trening" (`form.ex-delete`, asks first).
 
 **The programme page (`trening_view.html`) and the day page (`trening_day.html`,
-30.10.2026).** The programme: crumbs, the h1, "2 dana" (`.hint`), its intro, the
-trainer's "Uredi trening" (`.btn-quiet.btn-sm`), then its days as `.card.day-card`
+30.10.2026).** The programme: crumbs, the h1, "2 treninga" (`.hint`), its intro, the
+trainer's "Uredi program" (`.btn-quiet.btn-sm`), then its days as `.card.day-card`
 links (the client's /treninzi cards' look, 52px at least, padding 16px 20px, the
 whole card one link): the label in 700 over a muted "Preporučeno: ponedjeljak · 7
 vježbi", the → in the accent at the right (`aria-hidden`); 640px. The day: the
 normal layout, the h1 the day's label, the lead "Preporučeno: ponedjeljak · 7
 vježbi", then a 640px column (`.day-body`): the intro (`pre-line`), the trainer's
-"Uredi dan" (`.btn-quiet.btn-sm`), the intro video in `.ex-video`'s box under a
+"Uredi trening" (`.btn-quiet.btn-sm`), the intro video in `.ex-video`'s box under a
 muted "Uvodni video — pogledaj ga prije treninga.", and the list, Shape's Gym
 Program list in QMT's tokens: per section that holds an item an `h2.dx-cap`
 (PT Sans 700 .78rem uppercase, letter-spaced .14em, `--muted`, 26px above), its
@@ -522,7 +525,7 @@ each part only when set), and `.dx-go`, a 32px `--surface-2` circle with ▷ tha
 turns 90° (points down) on `details[open]`. Open, `.dx-body` (also `.ex-video`):
 the clip (`controls playsinline preload="none"`) or a muted "Vježba još nema
 videa.", "Jedno ponavljanje: …" and the instructions (`pre-line`). Native
-`<details>`: it opens without JS. A day with no item says "Dan još nema vježbi."
+`<details>`: it opens without JS. A day with no item says "Trening još nema vježbi."
 (the trainer: "… — dodaj ih u uređivanju."). The row's words (`.dx-cap`,
 `.dx-list`, `.dx-n`, `.dx-line`, `.dx-name`, `.dx-dose`, `.dx-sub`) are base.html's
 since 30.10.2026: the player's list is the same rows.

@@ -2791,7 +2791,7 @@ def pass_drop(request: Request, program_id: int, day_id: int):
 @app.get("/treninzi/{program_id}/uredi", response_class=HTMLResponse)
 def program_edit_page(request: Request, program_id: int):
     """The programme's editor: its form, then its days (each opens the day
-    editor, moves with ↑ / ↓ or goes with ✕) and "+ Dodaj dan"."""
+    editor, moves with ↑ / ↓ or goes with ✕) and "+ Dodaj trening"."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -2811,7 +2811,7 @@ def program_edit(request: Request, program_id: int, title: str = Form(...),
     if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
         return RedirectResponse(f"/treninzi/{program_id}/uredi?error=Odaberi+razinu+i+cilj.",
                                 status_code=303)
-    db.update_program(program_id, title.strip() or "Trening", intro.strip() or None,
+    db.update_program(program_id, title.strip() or "Program", intro.strip() or None,
                       level, goal)
     return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Spremljeno.", status_code=303)
 
@@ -2825,7 +2825,7 @@ def program_delete(request: Request, program_id: int):
         return redirect
     for name in db.delete_program(program_id) or ():
         storage.delete(name)
-    return RedirectResponse("/treninzi?ok=Trening+je+obrisan.", status_code=303)
+    return RedirectResponse("/treninzi?ok=Program+je+obrisan.", status_code=303)
 
 
 # ---------- a programme's days (30.10.2026, stage 2 of the online treninzi spec) ----------
@@ -2864,7 +2864,7 @@ def _count(value: str | None) -> int | None:
 
 @app.post("/treninzi/{program_id}/dani")
 def day_add(request: Request, program_id: int):
-    """"+ Dodaj dan": a day after the last, then its editor."""
+    """"+ Dodaj trening": a day after the last, then its editor."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -2975,7 +2975,7 @@ def day_delete(request: Request, program_id: int, day_id: int):
     video = db.delete_day(day_id)
     if video:
         storage.delete(video)
-    return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Dan+je+obrisan.", status_code=303)
+    return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Trening+je+obrisan.", status_code=303)
 
 
 @app.post("/treninzi/{program_id}/dan/{day_id}/stavke")

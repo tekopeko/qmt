@@ -30,6 +30,11 @@ that its his fault, okay? No refilling either way please, no default,
 everything modular so that he can change it."): opening /treninzi makes
 nothing, a programme with no day and a day with no exercise stay so, and a
 client is told what is not there yet.
+
+Since 2.11.2026 (Amir's wish, via the owner: "so that it is clear") a day
+reads "Trening 1 … Trening N", the programme around it "program", and the
+section `trening` "Glavni dio"; the model, the routes and the ids still say
+day.
 """
 
 from __future__ import annotations
@@ -239,14 +244,14 @@ def test_a_programme_whose_last_day_is_deleted_stays_with_none():
     """Its last day deleted, a programme has no day and gets none back:
     not from /treninzi, nor from its own pages (the trainer's, a client's).
     The table shows it with 0 days and 0 exercises, "prazno!"; its editor
-    says "Trening još nema dana — dodaj prvi.", and its delete no longer
-    promises a refill."""
+    says "Program još nema treninga — dodaj prvi.", and its delete no
+    longer promises a refill."""
     ct, *_ = trainer_with_clients()
     pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
     did = db.add_day(pid)
     hold(pid, db.create_exercise("Plank"))
     r = ct.post(f"/treninzi/{pid}/dan/{did}/obrisi", follow_redirects=False)
-    assert location(r) == f"/treninzi/{pid}/uredi?ok=Dan je obrisan."
+    assert location(r) == f"/treninzi/{pid}/uredi?ok=Trening je obrisan."
     assert stored_counts() == (1, 0, 0, 1)
     ct.get("/treninzi")
     view, editor = ct.get(f"/treninzi/{pid}").text, ct.get(f"/treninzi/{pid}/uredi").text
@@ -255,9 +260,9 @@ def test_a_programme_whose_last_day_is_deleted_stays_with_none():
     table = ct.get("/treninzi").text                                        # again, after its pages
     assert stored_counts() == (1, 0, 0, 1) and db.get_program(pid).days == []
     assert admin_row(table, "Cijelo tijelo — početna") == ("0", "0", True)
-    assert '<p class="hint">Trening još nema dana — dodaj prvi u uređivanju.</p>' in view
-    assert '<p class="hint">Trening još nema dana — dodaj prvi.</p>' in editor
-    assert ('data-confirm="&quot;Cijelo tijelo — početna&quot; — briše se trening s danima i vježbama; '
+    assert '<p class="hint">Program još nema treninga — dodaj prvi u uređivanju.</p>' in view
+    assert '<p class="hint">Program još nema treninga — dodaj prvi.</p>' in editor
+    assert ('data-confirm="„Cijelo tijelo — početna” — briše se program s treninzima i vježbama; '
             'same vježbe i njihovi videi ostaju u bazi vježbi."') in editor
     assert "Prazan slot" not in editor and "osnovnim vježbama" not in editor
 
@@ -266,7 +271,7 @@ def test_a_day_whose_last_exercise_is_removed_stays_empty():
     """Its last exercise taken out (✕), a day stays, with none, and gets
     none back: not from /treninzi, nor from the programme's pages or its
     own (the trainer's, a client's). The table shows 1 day and 0
-    exercises, "prazno!"; the client's day says "Dan još nema vježbi."."""
+    exercises, "prazno!"; the client's day says "Trening još nema vježbi."."""
     ct, *_ = trainer_with_clients()
     pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
     did = db.add_day(pid)
@@ -283,14 +288,14 @@ def test_a_day_whose_last_exercise_is_removed_stays_empty():
     table = ct.get("/treninzi").text
     assert stored_counts() == (1, 1, 0, 1) and [len(d.items) for d in db.get_program(pid).days] == [0]
     assert admin_row(table, "Cijelo tijelo — početna") == ("1", "0", True)
-    assert '<p class="hint" style="margin-top:22px;">Dan još nema vježbi.</p>' in client_day
+    assert '<p class="hint" style="margin-top:22px;">Trening još nema vježbi.</p>' in client_day
 
 
 def test_a_client_is_told_what_is_not_there_yet():
     """A client whose combination has no programme (another combination's
     is not his): "Program za tvoju kombinaciju još se priprema."; one whose
-    programme has no day sees it listed, "0 dana", and its page says
-    "Trening još nema dana.". What he opens makes nothing either."""
+    programme has no day sees it listed, "0 treninga", and its page says
+    "Program još nema treninga.". What he opens makes nothing either."""
     trainer_with_clients()
     db.create_program("Gornji blok", None, "pocetna", "gornji")             # ana's combination
     ci = client_for("ivan@test.local")                                      # pocetna / cijelo
@@ -299,8 +304,8 @@ def test_a_client_is_told_what_is_not_there_yet():
     assert "Gornji blok" not in page and stored_counts() == (1, 0, 0, 0)
     pid = db.create_program("Tjedan 1", None, "pocetna", "cijelo")
     page = ci.get("/treninzi").text
-    assert "još se priprema" not in page and f'href="/treninzi/{pid}"' in page and '<div class="hint">0 dana</div>' in page
-    assert '<p class="hint">Trening još nema dana.</p>' in ci.get(f"/treninzi/{pid}").text
+    assert "još se priprema" not in page and f'href="/treninzi/{pid}"' in page and '<div class="hint">0 treninga</div>' in page
+    assert '<p class="hint">Program još nema treninga.</p>' in ci.get(f"/treninzi/{pid}").text
     assert stored_counts() == (2, 0, 0, 0)
 
 
@@ -308,17 +313,17 @@ def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
     """The lead says what is automatic (the matching) and what is his (the
     programmes, their days and exercises), and what a combination with no
     programme tells its client; the form is "Novi program", its button
-    "Kreiraj i dodaj dane", which opens the new programme's editor, the
+    "Kreiraj i dodaj treninge", which opens the new programme's editor, the
     programme with no day."""
     ct, *_ = trainer_with_clients()
     page = ct.get("/treninzi").text
     lead = ("Sve je automatski: upitnik svrsta polaznika u razinu i cilj, a on odmah vidi programe označene tom "
             "kombinacijom — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku kombinaciju koju nudiš "
-            "napravi program pa mu dodaj dane i vježbe. Kombinacija bez programa polazniku kaže da se program "
+            "napravi program pa mu dodaj treninge i vježbe. Kombinacija bez programa polazniku kaže da se program "
             "još priprema.")
     assert f'<p class="hint"> {lead} </p>' in " ".join(page.split())
     assert '<h2 style="font-size:1.05rem; margin-bottom:12px;">Novi program</h2>' in page
-    assert '<button type="submit">Kreiraj i dodaj dane</button>' in page
+    assert '<button type="submit">Kreiraj i dodaj treninge</button>' in page
     assert 'placeholder="npr. Gornji dio tijela — tjedan 2"' in page
     for gone in ("skice se stvore same", "devet osnovnih varijanti", "Dodatni program", "Kreiraj i dodaj vježbe"):
         assert gone not in page, gone
@@ -328,12 +333,13 @@ def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
 
 
 def test_a_day_says_its_label_and_an_item_its_dose_and_rest():
-    """A day's label is "Dan N", with its title "Dan N · title"; its items
-    read section by section in their order, each in position order. An
-    item's dose is the list's words: sets × reps, sets × seconds, reps or
-    seconds alone, sets alone, nothing; its rest "60 s" or nothing."""
-    assert ProgramDay(position=2, title="").label == "Dan 2"
-    assert ProgramDay(position=1, title="Cijelo tijelo").label == "Dan 1 · Cijelo tijelo"
+    """A day's label is "Trening N", with its title "Trening N · title";
+    its items read section by section in their order, each in position
+    order. An item's dose is the list's words: sets × reps, sets × seconds,
+    reps or seconds alone, sets alone, nothing; its rest "60 s" or
+    nothing."""
+    assert ProgramDay(position=2, title="").label == "Trening 2"
+    assert ProgramDay(position=1, title="Cijelo tijelo").label == "Trening 1 · Cijelo tijelo"
 
     def dose(sets=None, reps=None, seconds=None):
         return ProgramDayItem(sets=sets, reps=reps, seconds=seconds).dose
@@ -398,11 +404,11 @@ def test_delete_program_keeps_the_exercises_and_their_clips():
     name, intro = db.exercise(eid).video, db.get_day(did).intro_video
     assert (config.MEDIA_DIR / intro).is_file()
     r = ct.post(f"/treninzi/{pid}/delete", follow_redirects=False)
-    assert location(r) == "/treninzi?ok=Trening je obrisan."
+    assert location(r) == "/treninzi?ok=Program je obrisan."
     assert db.get_program(pid) is None and db.get_day(did) is None
     assert db.exercise(eid).video == name and (config.MEDIA_DIR / name).is_file()
     assert not (config.MEDIA_DIR / intro).exists()
-    assert ("briše se trening s danima i vježbama; same vježbe i njihovi videi ostaju u bazi vježbi."
+    assert ("briše se program s treninzima i vježbama; same vježbe i njihovi videi ostaju u bazi vježbi."
             in ct.get(f"/treninzi/{db.create_program('U', None)}/uredi").text)
     assert db.delete_program(pid) is None                                   # gone already
 
@@ -749,8 +755,8 @@ def test_the_list_and_its_search():
 # ---------- a programme's days (stage 2) ----------
 
 def test_days_are_added_saved_moved_and_deleted():
-    """"+ Dodaj dan" makes a day after the last (Dan 1, 2, 3) and opens its
-    editor. Its form saves a title (one line, its spaces single), a
+    """"+ Dodaj trening" makes a day after the last (Trening 1, 2, 3) and
+    opens its editor. Its form saves a title (one line, its spaces single), a
     suggested weekday ("" none, "0"–"6") and an intro (its line breaks
     kept); a weekday that is none or a title past 160 is refused with the
     sentence. ↑ / ↓ swap two days, their numbers with them (the deferred
@@ -764,7 +770,8 @@ def test_days_are_added_saved_moved_and_deleted():
         r = ct.post(f"/treninzi/{pid}/dani", follow_redirects=False)
         made.append(int(re.fullmatch(rf"/treninzi/{pid}/dan/(\d+)/uredi", r.headers["location"]).group(1)))
     d1, d2, d3 = made
-    assert [(d.id, d.position, d.label) for d in db.get_program(pid).days] == [(d1, 1, "Dan 1"), (d2, 2, "Dan 2"), (d3, 3, "Dan 3")]
+    assert [(d.id, d.position, d.label) for d in db.get_program(pid).days] == [
+        (d1, 1, "Trening 1"), (d2, 2, "Trening 2"), (d3, 3, "Trening 3")]
     assert ct.post("/treninzi/987654/dani").status_code == 404
 
     edit = f"/treninzi/{pid}/dan/{d2}/uredi"
@@ -772,7 +779,7 @@ def test_days_are_added_saved_moved_and_deleted():
                                                     "intro": "  Lagano.\n\n\n\nPolako.  "}, follow_redirects=False)
     assert location(r) == f"{edit}?ok=Spremljeno."
     day = db.get_day(d2)
-    assert (day.title, day.weekday, day.intro, day.label) == ("Gornji dio", 3, "Lagano.\n\nPolako.", "Dan 2 · Gornji dio")
+    assert (day.title, day.weekday, day.intro, day.label) == ("Gornji dio", 3, "Lagano.\n\nPolako.", "Trening 2 · Gornji dio")
     page = ct.get(edit).text
     assert 'value="Gornji dio"' in page and '<option value="3" selected>Četvrtak</option>' in page
     assert '<option value="">Bez preporuke</option>' in page and ">Lagano.\n\nPolako.</textarea>" in page
@@ -789,7 +796,7 @@ def test_days_are_added_saved_moved_and_deleted():
     r = ct.post(f"/treninzi/{pid}/dan/{d3}/pomak", data={"smjer": "gore"}, follow_redirects=False)
     assert r.headers["location"] == f"/treninzi/{pid}/uredi#dan-{d3}"
     assert [(d.id, d.position) for d in db.get_program(pid).days] == [(d1, 1), (d3, 2), (d2, 3)]
-    assert db.get_day(d2).label == "Dan 3 · Gornji dio"
+    assert db.get_day(d2).label == "Trening 3 · Gornji dio"
     assert not db.move_day(d1, "gore") and not db.move_day(d2, "dolje") and not db.move_day(d1, "x")
     assert not db.move_day(987654, "gore")
     assert db.move_day(d1, "dolje")
@@ -798,15 +805,15 @@ def test_days_are_added_saved_moved_and_deleted():
     eid = db.create_exercise("Plank")
     db.add_day_item(d1, eid, "trening")
     r = ct.post(f"/treninzi/{pid}/dan/{d1}/obrisi", follow_redirects=False)
-    assert location(r) == f"/treninzi/{pid}/uredi?ok=Dan je obrisan."
+    assert location(r) == f"/treninzi/{pid}/uredi?ok=Trening je obrisan."
     assert [(d.id, d.position) for d in db.get_program(pid).days] == [(d3, 1), (d2, 2)]
     assert db.get_day(d1) is None and db.exercise(eid) is not None and db.exercises()[0][1] == 0
     assert db.delete_day(d1) is None                                        # gone already
 
 
 def test_days_are_numbered_once_when_adds_race():
-    """Eight "+ Dodaj dan" at once: the programme's row is locked while the
-    next number is read, so the eight days are Dan 1 … Dan 8."""
+    """Eight "+ Dodaj trening" at once: the programme's row is locked while
+    the next number is read, so the eight days are Trening 1 … Trening 8."""
     pid = db.create_program("T", None)
     made: list[int | None] = []
     threads = [threading.Thread(target=lambda: made.append(db.add_day(pid))) for _ in range(8)]
@@ -886,7 +893,7 @@ def test_items_go_into_a_section_and_say_what_the_day_asks():
                 ({"rest": "3601"}, "Neispravan broj."), ({"rest": "-5"}, "Neispravan broj."),
                 ({"sets": "3", "reps": "10", "seconds": "30"}, "Upiši ponavljanja ili sekunde, ne oboje."),
                 ({"note": "x" * 501}, "Napomena može imati najviše 500 znakova."),
-                ({"section": "kardio"}, "Odaberi dio dana.")]
+                ({"section": "kardio"}, "Odaberi dio treninga.")]
     for fields, sentence in refusals:
         r = save(ia, **fields)
         assert location(r) == f"{base}/uredi?error={sentence}&stavka={ia}#stavka-{ia}", fields
@@ -941,49 +948,53 @@ def test_a_foreign_day_or_item_is_404():
 # ---------- the editors ----------
 
 def test_the_programme_editor_lists_its_days():
-    """Its lead says what a programme is now; a row per day: its label (a
-    link to its editor), "ponedjeljak · 2 vježbe" muted, Uredi, ↑ / ↓
-    (disabled at the ends) and ✕, which asks first; "+ Dodaj dan" under
-    them. No exercise list, picker or dose hint any more."""
+    """"Uredi program": its lead says what a programme is now; under
+    "Treninzi" a row per day: its label (a link to its editor),
+    "ponedjeljak · 2 vježbe" muted, Uredi, ↑ / ↓ (disabled at the ends) and
+    ✕, which asks first; "+ Dodaj trening" under them. No exercise list,
+    picker or dose hint any more."""
     ct, *_ = trainer_with_clients()
     pid = db.create_program("T", None, "pocetna", "cijelo")
     page = ct.get(f"/treninzi/{pid}/uredi").text
-    assert ('Trening ima dane; svaki dan ima zagrijavanje, trening i istezanje, a vježbe biraš iz '
+    assert "<h1>Uredi program</h1>" in page and '<h2 style="font-size:1.05rem; margin-bottom:12px;">Treninzi</h2>' in page
+    assert ('Program ima treninge; svaki trening ima zagrijavanje, glavni dio i istezanje, a vježbe biraš iz '
             '<a class="tlink" href="/treninzi/vjezbe">baze vježbi</a>.') in page
     assert f'<a class="act act-quiet" href="/treninzi/{pid}">pogledaj kako polaznik vidi →</a>' in page
-    assert '<p class="hint">Trening još nema dana — dodaj prvi.</p>' in page
+    assert '<p class="hint">Program još nema treninga — dodaj prvi.</p>' in page
     assert (f'<form method="post" action="/treninzi/{pid}/dani" class="days-add">\n'
-            '  <button type="submit" class="btn btn-sm">+ Dodaj dan</button>') in page
+            '  <button type="submit" class="btn btn-sm">+ Dodaj trening</button>') in page
     d1, d2 = db.add_day(pid), db.add_day(pid)
     db.update_day(d1, "Cijelo tijelo", 0, "")
     for n in ("Plank", "Sklekovi"):
         hold(pid, db.create_exercise(n))
     page = ct.get(f"/treninzi/{pid}/uredi").text
-    assert "Trening još nema dana" not in page
+    assert "Program još nema treninga" not in page
     rows = page.split('<div class="card it-row" id="dan-')[1:]
     assert [r.split('"')[0] for r in rows] == [str(d1), str(d2)]
     found = [re.search(r'<a class="it-name" href="([^"]+)">([^<]*)</a>\s*<span class="it-note">([^<]*)</span>', r).groups()
              for r in rows]
-    assert found == [(f"/treninzi/{pid}/dan/{d1}/uredi", "Dan 1 · Cijelo tijelo", "ponedjeljak · 2 vježbe"),
-                     (f"/treninzi/{pid}/dan/{d2}/uredi", "Dan 2", "0 vježbi")]
+    assert found == [(f"/treninzi/{pid}/dan/{d1}/uredi", "Trening 1 · Cijelo tijelo", "ponedjeljak · 2 vježbe"),
+                     (f"/treninzi/{pid}/dan/{d2}/uredi", "Trening 2", "0 vježbi")]
     assert f'<a class="btn btn-quiet btn-sm" href="/treninzi/{pid}/dan/{d1}/uredi">Uredi</a>' in rows[0]
-    assert re.search(r'disabled style="opacity:.35;"\s+aria-label="Pomakni gore: Dan 1 · Cijelo tijelo"', rows[0])
-    assert re.search(r'<button class="btn-ghost btn-sm" \s+aria-label="Pomakni dolje: Dan 1 · Cijelo tijelo"', rows[0])
-    assert re.search(r'disabled style="opacity:.35;"\s+aria-label="Pomakni dolje: Dan 2"', rows[1])
+    assert re.search(r'disabled style="opacity:.35;"\s+aria-label="Pomakni gore: Trening 1 · Cijelo tijelo"', rows[0])
+    assert re.search(r'<button class="btn-ghost btn-sm" \s+aria-label="Pomakni dolje: Trening 1 · Cijelo tijelo"', rows[0])
+    assert re.search(r'disabled style="opacity:.35;"\s+aria-label="Pomakni dolje: Trening 2"', rows[1])
     assert (f'action="/treninzi/{pid}/dan/{d1}/obrisi" style="margin:0; display:inline;"\n'
-            '              data-confirm-title="Obrisati dan?"\n'
-            '              data-confirm="„Dan 1 · Cijelo tijelo” se briše s popisom vježbi; same vježbe ostaju u bazi vježbi."\n'
-            '              data-confirm-cta="Obriši dan">') in rows[0]
+            '              data-confirm-title="Obrisati trening?"\n'
+            '              data-confirm="„Trening 1 · Cijelo tijelo” se briše s popisom vježbi; same vježbe ostaju u bazi vježbi."\n'
+            '              data-confirm-cta="Obriši trening">\n'
+            '          <button class="btn-ghost btn-sm" aria-label="Obriši trening: Trening 1 · Cijelo tijelo">✕</button>') in rows[0]
     assert 'id="dodaj"' not in page and 'name="exercise_id"' not in page and "Doza uz naziv" not in page
 
 
 def test_the_day_editor_shows_each_row_and_its_form():
-    """The day editor: crumbs to the programme's editor, "Dan N", the lead
-    with the way to the client's page, the day's form, the intro video's
-    card, then every section's caption with its rows ("Nema vježbi." when
-    it has none): the exercise's name (a link to it), whether it has a
-    clip, ↑ / ↓ / ✕ naming forms that stand after the list, and the row's
-    own form, its values in it. "Obriši dan" at the bottom asks first."""
+    """The day editor: crumbs to the programme's editor, "Trening N" (its
+    <title> too), the lead with the way to the client's page, the day's
+    form, the intro video's card, then every section's caption with its
+    rows ("Nema vježbi." when it has none): the exercise's name (a link to
+    it), whether it has a clip, ↑ / ↓ / ✕ naming forms that stand after
+    the list, and the row's own form, its values in it. "Obriši trening"
+    at the bottom asks first."""
     ct, *_ = trainer_with_clients()
     pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
     did = db.add_day(pid)
@@ -995,7 +1006,8 @@ def test_the_day_editor_shows_each_row_and_its_form():
     page = ct.get(f"/treninzi/{pid}/dan/{did}/uredi").text
     assert (f'<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span>'
             f'<a href="/treninzi/{pid}/uredi">Cijelo tijelo — početna</a><span class="sep">/</span>'
-            '<span class="here">Dan 1</span></nav>\n<h1>Dan 1</h1>') in page
+            '<span class="here">Trening 1</span></nav>\n<h1>Trening 1</h1>') in page
+    assert "<title>Uredi: Trening 1 — Cijelo tijelo — početna — QMT</title>" in page
     assert ("Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja ili "
             "sekunde, odmor i napomena.") in page
     assert ("„Odmor (s)” je odmor između serija, a „Nakon vježbe (s)” odmor prije sljedeće vježbe: polaznik za oba "
@@ -1003,7 +1015,7 @@ def test_the_day_editor_shows_each_row_and_its_form():
     assert f'<a class="act act-quiet" href="/treninzi/{pid}/dan/{did}">pogledaj kako polaznik vidi →</a>' in page
     assert 'placeholder="npr. Cijelo tijelo"' in page and "Kratko objašnjenje treninga — polaznik ga gleda prije prve vježbe." in page
     assert re.findall(r'<h3 class="st-cap" id="dio-(\w+)">([^<]*)</h3>', page) == [
-        ("zagrijavanje", "Zagrijavanje"), ("trening", "Trening"), ("istezanje", "Istezanje")]
+        ("zagrijavanje", "Zagrijavanje"), ("trening", "Glavni dio"), ("istezanje", "Istezanje")]
     assert page.count('<p class="hint st-none">Nema vježbi.</p>') == 2
     rows = page.split('<div class="card it-row" id="stavka-')[1:]
     assert [r.split('"')[0] for r in rows] == [str(ig), str(ip)]
@@ -1012,10 +1024,10 @@ def test_the_day_editor_shows_each_row_and_its_form():
     assert re.search(rf'form="st-gore-{ig}" class="btn-ghost btn-sm"\s+disabled', rows[0])
     assert re.search(rf'form="st-dolje-{ig}" class="btn-ghost btn-sm"\s+aria-label="Pomakni dolje: Goblet čučanj"', rows[0])
     assert re.search(rf'form="st-dolje-{ip}" class="btn-ghost btn-sm"\s+disabled', rows[1])
-    assert f'form="st-x-{ig}" class="btn-ghost btn-sm" aria-label="Makni iz dana: Goblet čučanj">✕</button>' in rows[0]
+    assert f'form="st-x-{ig}" class="btn-ghost btn-sm" aria-label="Makni iz treninga: Goblet čučanj">✕</button>' in rows[0]
     form = rows[0].split('<form class="st-form"')[1].split("</form>")[0]
     assert f'action="/treninzi/{pid}/dan/{did}/stavke/{ig}"' in form
-    assert '<option value="trening" selected>Trening</option>' in form and '<option value="zagrijavanje">Zagrijavanje</option>' in form
+    assert '<option value="trening" selected>Glavni dio</option>' in form and '<option value="zagrijavanje">Zagrijavanje</option>' in form
     values = dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', form))
     assert values == {"sets": "4", "reps": "10", "seconds": "", "rest": "60", "rest_after": "90", "note": "16 kg"}
     assert 'name="sets" inputmode="numeric" min="1" max="99"' in form and 'name="reps" inputmode="numeric" min="1" max="999"' in form
@@ -1027,22 +1039,22 @@ def test_the_day_editor_shows_each_row_and_its_form():
     assert dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', second))["rest_after"] == ""
     after = page.split('<h2 style="font-size:1.05rem; margin:30px 0 12px;">Dodaj vježbu</h2>')[0].split("</section>")[-1]
     assert (f'<form id="st-x-{ig}" method="post" action="/treninzi/{pid}/dan/{did}/stavke/{ig}/obrisi"\n'
-            '      data-confirm-title="Maknuti vježbu iz dana?"\n'
-            '      data-confirm="„Goblet čučanj” izlazi iz ovog dana; u bazi vježbi ostaje."\n'
+            '      data-confirm-title="Maknuti vježbu iz treninga?"\n'
+            '      data-confirm="„Goblet čučanj” izlazi iz ovog treninga; u bazi vježbi ostaje."\n'
             '      data-confirm-cta="Makni"></form>') in after
     assert f'<form id="st-gore-{ip}" method="post" action="/treninzi/{pid}/dan/{did}/stavke/{ip}/pomak"><input type="hidden" name="smjer" value="gore"></form>' in after
-    assert ('data-confirm-title="Obrisati dan?"\n'
-            '      data-confirm="„Dan 1” se briše s popisom vježbi; same vježbe ostaju u bazi vježbi."\n'
-            '      data-confirm-cta="Obriši dan">\n'
-            '  <button type="submit" class="btn-ghost">Obriši dan</button>') in page
+    assert ('data-confirm-title="Obrisati trening?"\n'
+            '      data-confirm="„Trening 1” se briše s popisom vježbi; same vježbe ostaju u bazi vježbi."\n'
+            '      data-confirm-cta="Obriši trening">\n'
+            '  <button type="submit" class="btn-ghost">Obriši trening</button>') in page
 
 
 def test_the_day_editors_picker_adds_into_the_chosen_section():
     """"Dodaj vježbu" is a select of the library (name · tags, the
-    alphabet's order) and a select of the section, opening on Trening, then
-    Dodaj and "Nova vježba →" (back to this day's editor); the exercise
-    goes into the chosen section, pointing at the library row. An empty
-    library says so, with the way to make one."""
+    alphabet's order) and a select of the section, opening on Glavni dio,
+    then Dodaj and "Nova vježba →" (back to this day's editor); the
+    exercise goes into the chosen section, pointing at the library row. An
+    empty library says so, with the way to make one."""
     ct, *_ = trainer_with_clients()
     pid = db.create_program("T", None, "pocetna", "cijelo")
     did = db.add_day(pid)
@@ -1058,7 +1070,7 @@ def test_the_day_editors_picker_adds_into_the_chosen_section():
     assert [(v, unescape(t)) for v, t in options] == [("", "Odaberi vježbu…"), (str(biceps), "Biceps pregib"),
                                                        (str(cucanj), "Čučanj s vlastitom težinom"), (str(plank), "Plank · core, kod kuće")]
     sections = re.findall(r'<option value="(\w+)"( selected)?>([^<]*)</option>', page.split('id="add-dio"')[1].split("</select>")[0])
-    assert sections == [("zagrijavanje", "", "Zagrijavanje"), ("trening", " selected", "Trening"), ("istezanje", "", "Istezanje")]
+    assert sections == [("zagrijavanje", "", "Zagrijavanje"), ("trening", " selected", "Glavni dio"), ("istezanje", "", "Istezanje")]
     assert '<label for="add-ex">Vježba iz baze</label>' in page and '<label for="add-dio">Dio</label>' in page
     assert f'href="/treninzi/vjezbe/nova?natrag={edit}">Nova vježba →</a>' in page
     r = ct.post(f"/treninzi/{pid}/dan/{did}/stavke", data={"exercise_id": str(plank), "section": "istezanje"},
@@ -1106,16 +1118,19 @@ def test_nova_vjezba_comes_back_to_the_editor_and_ignores_a_foreign_path():
 def test_the_clients_programme_page_lists_the_days():
     """A programme's page: its days as cards, each one link to its day's
     page, its label and, muted, the weekday it suggests and how many
-    exercises it holds ("1 vježba", "2 vježbe", "5 vježbi"); none: "Trening
-    još nema dana." (the trainer: "… — dodaj prvi u uređivanju."). The
-    client's list says how many days a programme has."""
+    exercises it holds ("1 vježba", "2 vježbe", "5 vježbi"); none: "Program
+    još nema treninga." (the trainer: "… — dodaj prvi u uređivanju.", and
+    "Uredi program"). The client's list says how many days a programme has
+    ("1 trening", "2 treninga", "3 treninga")."""
     ct, *_ = trainer_with_clients()
     pid = db.create_program("Tjedan 1", "Uvod u program.", "pocetna", "cijelo")
     ci = client_for("ivan@test.local")
     page = ci.get(f"/treninzi/{pid}").text
-    assert '<p class="hint" style="margin-bottom:6px;">0 dana</p>' in page
-    assert '<p class="hint">Trening još nema dana.</p>' in page and "dodaj prvi" not in page
-    assert '<p class="hint">Trening još nema dana — dodaj prvi u uređivanju.</p>' in ct.get(f"/treninzi/{pid}").text
+    assert '<p class="hint" style="margin-bottom:6px;">0 treninga</p>' in page
+    assert '<p class="hint">Program još nema treninga.</p>' in page and "dodaj prvi" not in page
+    trainers = ct.get(f"/treninzi/{pid}").text
+    assert '<p class="hint">Program još nema treninga — dodaj prvi u uređivanju.</p>' in trainers
+    assert f'<a class="btn btn-quiet btn-sm" href="/treninzi/{pid}/uredi">Uredi program</a>' in trainers
     d1, d2, d3 = db.add_day(pid), db.add_day(pid), db.add_day(pid)
     db.update_day(d1, "Cijelo tijelo", 0, "")
     db.update_day(d3, "", 4, "")
@@ -1123,17 +1138,18 @@ def test_the_clients_programme_page_lists_the_days():
     for n, eid in enumerate(exercises):
         hold(pid, eid, day=1 if n < 2 else 2 if n < 3 else 3)
     page = ci.get(f"/treninzi/{pid}").text
-    assert '<p class="hint" style="margin-bottom:6px;">3 dana</p>' in page
+    assert '<p class="hint" style="margin-bottom:6px;">3 treninga</p>' in page
     cards = re.findall(r'<a class="card day-card" href="([^"]+)">\s*<span class="dc-main">\s*<strong>([^<]*)</strong>\s*'
                        r'<span class="hint">([^<]*)</span>', page)
-    assert cards == [(f"/treninzi/{pid}/dan/{d1}", "Dan 1 · Cijelo tijelo", "Preporučeno: ponedjeljak · 2 vježbe"),
-                     (f"/treninzi/{pid}/dan/{d2}", "Dan 2", "1 vježba"),
-                     (f"/treninzi/{pid}/dan/{d3}", "Dan 3", "Preporučeno: petak · 5 vježbi")]
-    assert "Uvod u program." in page and "Uredi trening" not in page and "Trening još nema dana" not in page
-    assert '<div class="hint">3 dana · Uvod u program.</div>' in ci.get("/treninzi").text
+    assert cards == [(f"/treninzi/{pid}/dan/{d1}", "Trening 1 · Cijelo tijelo", "Preporučeno: ponedjeljak · 2 vježbe"),
+                     (f"/treninzi/{pid}/dan/{d2}", "Trening 2", "1 vježba"),
+                     (f"/treninzi/{pid}/dan/{d3}", "Trening 3", "Preporučeno: petak · 5 vježbi")]
+    assert "Uvod u program." in page and "Uredi program" not in page and "Program još nema treninga" not in page
+    assert '<div class="hint">3 treninga · Uvod u program.</div>' in ci.get("/treninzi").text
     db.delete_day(d3)
+    assert '<div class="hint">2 treninga · Uvod u program.</div>' in ci.get("/treninzi").text
     db.delete_day(d2)
-    assert '<div class="hint">1 dan · Uvod u program.</div>' in ci.get("/treninzi").text
+    assert '<div class="hint">1 trening · Uvod u program.</div>' in ci.get("/treninzi").text
 
 
 def test_the_day_page_prints_the_whole_list():
@@ -1142,7 +1158,7 @@ def test_the_day_page_prints_the_whole_list():
     caption, in the sections' order, and each exercise a <details> row:
     "Vježba n" counted across the day, the name, the dose, the rest line and
     the note; open, its clip (preload none) or "Vježba još nema videa.",
-    what one rep is and how it is done. The trainer gets "Uredi dan"."""
+    what one rep is and how it is done. The trainer gets "Uredi trening"."""
     ct, *_ = trainer_with_clients()
     goblet = db.create_exercise("Goblet čučanj", "Pete na podu.\nTrup uspravan.", "Do paralele i natrag.")
     upload(ct, goblet, "g.mp4", MP4)
@@ -1161,11 +1177,12 @@ def test_the_day_page_prints_the_whole_list():
     ci = client_for("ivan@test.local")
     page = ci.get(f"/treninzi/{pid}/dan/{did}").text
     assert (f'<a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{pid}">Tjedan 1</a>'
-            '<span class="sep">/</span><span class="here">Dan 1</span></nav>\n<h1>Dan 1 · Cijelo tijelo</h1>') in page
+            '<span class="sep">/</span><span class="here">Trening 1</span></nav>\n<h1>Trening 1 · Cijelo tijelo</h1>') in page
     assert '<p class="hint">Preporučeno: ponedjeljak · 3 vježbe</p>' in page
-    assert '<p class="day-intro">Lagano.\nBez žurbe.</p>' in page and "Uredi dan" not in page and "<title>Dan 1 · Cijelo tijelo" in page
+    assert '<p class="day-intro">Lagano.\nBez žurbe.</p>' in page and "Uredi trening" not in page
+    assert "<title>Trening 1 · Cijelo tijelo — Tjedan 1 — QMT</title>" in page
     assert re.findall(r'<h2 class="dx-cap" id="dio-(\w+)">([^<]*)</h2>', page) == [
-        ("zagrijavanje", "Zagrijavanje"), ("trening", "Trening"), ("istezanje", "Istezanje")]
+        ("zagrijavanje", "Zagrijavanje"), ("trening", "Glavni dio"), ("istezanje", "Istezanje")]
     rows = page.split('<details class="card ex">')[1:]
     heads = [re.search(r'<span class="dx-n">([^<]*)</span>\s*<span class="dx-line"><span class="dx-name">([^<]*)</span>'
                        r'(?:<span class="dx-dose">([^<]*)</span>)?</span>\s*(?:<span class="dx-sub">([^<]*)</span>)?', r).groups()
@@ -1180,7 +1197,7 @@ def test_the_day_page_prints_the_whole_list():
     assert "Vježba još nema videa." in rows[1] and "<video" not in rows[1] and "Jedno ponavljanje" not in rows[1]
     assert '<p class="pre">Lopatice aktivne.</p>' in rows[1] and "Vježba još nema videa." in rows[2]
     assert ci.get(f"/media/{clip}").status_code == 200
-    assert (f'<a class="btn btn-quiet btn-sm" href="/treninzi/{pid}/dan/{did}/uredi">Uredi dan</a>'
+    assert (f'<a class="btn btn-quiet btn-sm" href="/treninzi/{pid}/dan/{did}/uredi">Uredi trening</a>'
             in ct.get(f"/treninzi/{pid}/dan/{did}").text)
 
     db.delete_day_item(i3)                                                  # a section with none is not on the page
@@ -1191,12 +1208,12 @@ def test_the_day_page_prints_the_whole_list():
     assert 'class="dx-dose"' not in first and 'class="dx-sub"' not in first
     db.update_day(did, "", None, "")
     page = ci.get(f"/treninzi/{pid}/dan/{did}").text
-    assert "<h1>Dan 1</h1>" in page and '<p class="hint">2 vježbe</p>' in page and '<p class="day-intro">' not in page
+    assert "<h1>Trening 1</h1>" in page and '<p class="hint">2 vježbe</p>' in page and '<p class="day-intro">' not in page
 
     empty = db.add_day(pid)
     page = ci.get(f"/treninzi/{pid}/dan/{empty}").text
-    assert '<p class="hint">0 vježbi</p>' in page and "Dan još nema vježbi." in page and '<h2 class="dx-cap"' not in page
-    assert "Dan još nema vježbi — dodaj ih u uređivanju." in ct.get(f"/treninzi/{pid}/dan/{empty}").text
+    assert '<p class="hint">0 vježbi</p>' in page and "Trening još nema vježbi." in page and '<h2 class="dx-cap"' not in page
+    assert "Trening još nema vježbi — dodaj ih u uređivanju." in ct.get(f"/treninzi/{pid}/dan/{empty}").text
 
 
 def test_the_rest_after_an_exercise_is_saved_refused_and_shown():
@@ -1723,7 +1740,7 @@ def test_the_trainer_builds_the_library_on_a_phone(server):
 
 def test_the_trainer_builds_a_day_on_a_phone(server):
     """At 390px, touch: the trainer opens a programme's editor, adds a day
-    ("+ Dodaj dan", which opens its editor), adds "Goblet čučanj" into
+    ("+ Dodaj trening", which opens its editor), adds "Goblet čučanj" into
     Zagrijavanje with the picker, sets 2 × 15 and 30 s of rest on its row
     and saves, then follows "pogledaj kako polaznik vidi →" to the client's
     day page and sees the row: "Vježba 1", the name, "2 × 15", "Odmor između
@@ -1750,14 +1767,14 @@ def test_the_trainer_builds_a_day_on_a_phone(server):
         browser = pw.chromium.launch()
         ctx, pg, errors = _phone(browser, server, "trener@test.local")
         pg.goto(f"{server}/treninzi/{pid}/uredi"); pg.wait_for_load_state("networkidle")
-        check(pg.is_visible("text=Trening još nema dana — dodaj prvi."), "the empty editor says nothing")
+        check(pg.is_visible("text=Program još nema treninga — dodaj prvi."), "the empty editor says nothing")
         check(pg.evaluate(OVERFLOW) == 0, f"the programme's editor overflows by {pg.evaluate(OVERFLOW)}px")
         with pg.expect_navigation():
             pg.tap("form.days-add button")
         pg.wait_for_load_state("networkidle")
         days = db.get_program(pid).days
         did = days[0].id if days else 0
-        check(len(days) == 1 and pg.url == f"{server}/treninzi/{pid}/dan/{did}/uredi", f"+ Dodaj dan led to {pg.url}")
+        check(len(days) == 1 and pg.url == f"{server}/treninzi/{pid}/dan/{did}/uredi", f"+ Dodaj trening led to {pg.url}")
         pg.select_option("#add-ex", str(goblet))
         pg.select_option("#add-dio", "zagrijavanje")
         with pg.expect_navigation():

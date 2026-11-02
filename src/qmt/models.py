@@ -42,8 +42,12 @@ FEELING_LABELS = {"slabo": "Slabo", "dobro": "Dobro", "odlicno": "Odlično"}
 
 # An online programme's day (30.10.2026, ProgramDay): its three sections, in
 # the day's order (the dict's order), each item in one of them; and the
-# weekday a day suggests, 0 = ponedjeljak (a suggestion, never a gate).
-SECTIONS = {"zagrijavanje": "Zagrijavanje", "trening": "Trening", "istezanje": "Istezanje"}
+# weekday a day suggests, 0 = ponedjeljak (a suggestion, never a gate). The
+# main section's key stays `trening` (the CHECK, the stored value); since
+# 2.11.2026 it reads "Glavni dio", the coaching term for a session's main
+# part: a day is "Trening 1" now, and "Trening 1" holding a section called
+# "Trening" is the confusion Amir asked to remove.
+SECTIONS = {"zagrijavanje": "Zagrijavanje", "trening": "Glavni dio", "istezanje": "Istezanje"}
 WEEKDAYS = ("ponedjeljak", "utorak", "srijeda", "četvrtak", "petak", "subota", "nedjelja")
 
 
@@ -723,10 +727,12 @@ class ProgramDay(Base):
     """One day of a programme (30.10.2026, stage 2 of
     roadmap/2026-10-29-online-treninzi-spec.md; the owner: "Dan 1, … Dan N
     with suggested days in the week but the user can do them whenever he
-    wants"). Until then a programme was a flat list of items, which
-    migration 7c3bf996c983 made its Dan 1.
+    wants"). Since 2.11.2026 a day reads "Trening 1 … Trening N" (Amir's
+    word, via the owner: "so that it is clear"); the model, the routes and
+    the ids still say day. Until then a programme was a flat list of items,
+    which migration 7c3bf996c983 made its first day.
 
-    `position` is its number, 1-based and dense ("Dan 2": db.delete_day
+    `position` is its number, 1-based and dense ("Trening 2": db.delete_day
     closes the gap), unique per programme; Amir's ↑ / ↓ swap two days'
     positions in one flush (db.move_day), which is why the constraint is
     deferred, as the announcements' is: a swap is checked when it commits,
@@ -763,8 +769,8 @@ class ProgramDay(Base):
 
     @property
     def label(self) -> str:
-        """"Dan 1", or "Dan 1 · Cijelo tijelo" with a title."""
-        return f"Dan {self.position}" + (f" · {self.title}" if self.title else "")
+        """"Trening 1", or "Trening 1 · Cijelo tijelo" with a title."""
+        return f"Trening {self.position}" + (f" · {self.title}" if self.title else "")
 
     @property
     def by_section(self) -> dict[str, list["ProgramDayItem"]]:
@@ -785,7 +791,8 @@ class ProgramDayItem(Base):
     rep is, the clip) and what the day asks of it.
 
     `section` is one of SECTIONS (zagrijavanje, trening, istezanje; the
-    owner: "warm up and main", Shape's third allowed and may stay empty).
+    owner: "warm up and main", Shape's third allowed and may stay empty;
+    `trening` reads "Glavni dio" since 2.11.2026).
     `position` is unique across the day, and the day reads its items section
     by section in SECTIONS' order, each section in position order (the
     display order, ProgramDay.by_section); a gap a deleted item left does
@@ -892,7 +899,9 @@ class WorkoutLog(Base):
     `program_title` and `day_label` are snapshots taken at the start, as the
     exercises' names in `done` are at each save, so a programme or a day
     renamed or deleted later never garbles the history (the foreign keys are
-    SET NULL; the upitnik's rule: a client's record is never pruned).
+    SET NULL; the upitnik's rule: a client's record is never pruned). The
+    one rewrite: when the days became "Trening N" (2.11.2026), migration
+    b61e8d5bf1db gave the labels already stored the new word.
     `elapsed_seconds` is set at the finish from the server's clock (finished
     − started, whole seconds; a stale pass's last activity − started:
     active_seconds), never from what a page posts.

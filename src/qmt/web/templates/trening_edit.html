@@ -2,17 +2,18 @@
 {% block title %}Uredi: {{ p.title }} — QMT{% endblock %}
 {% block head %}
 <style>
-  /* the days (30.10.2026): base.html's .it-row, one per day, its label a
-     link to the day's editor; "+ Dodaj dan" under them */
+  /* the days (30.10.2026), "Trening 1 … Trening N" since 2.11.2026:
+     base.html's .it-row, one per day, its label a link to the day's
+     editor; "+ Dodaj trening" under them */
   .days-edit { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
   .days-add { margin-top: 14px; }
 </style>
 {% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Uređivanje</span></nav>
-<h1>Uredi trening</h1>
+<h1>Uredi program</h1>
 <p class="hint" style="margin-bottom:20px;">
-  Trening ima dane; svaki dan ima zagrijavanje, trening i istezanje, a vježbe biraš iz <a class="tlink" href="/treninzi/vjezbe">baze vježbi</a>.
+  Program ima treninge; svaki trening ima zagrijavanje, glavni dio i istezanje, a vježbe biraš iz <a class="tlink" href="/treninzi/vjezbe">baze vježbi</a>.
   <a class="act act-quiet" href="/treninzi/{{ p.id }}">pogledaj kako polaznik vidi →</a>
 </p>
 
@@ -34,10 +35,10 @@
   <button type="submit" class="btn-sm">Spremi</button>
 </form>
 
-<h2 style="font-size:1.05rem; margin-bottom:12px;">Dani</h2>
-{# A row per day: its label (a link to its editor), what it holds in muted
-   words, then Uredi, ↑ / ↓ (its number moves with it: Dan 2 above Dan 1
-   becomes Dan 1) and ✕, which asks first. #}
+<h2 style="font-size:1.05rem; margin-bottom:12px;">Treninzi</h2>
+{# A row per day ("Trening N"): its label (a link to its editor), what it
+   holds in muted words, then Uredi, ↑ / ↓ (its number moves with it:
+   Trening 2 above Trening 1 becomes Trening 1) and ✕, which asks first. #}
 <div class="days-edit">
   {% for d in p.days %}{% set k = d.items|length %}
   <div class="card it-row" id="dan-{{ d.id }}">
@@ -57,26 +58,26 @@
                   aria-label="Pomakni dolje: {{ d.label }}">↓</button>
         </form>
         <form method="post" action="/treninzi/{{ p.id }}/dan/{{ d.id }}/obrisi" style="margin:0; display:inline;"
-              data-confirm-title="Obrisati dan?"
+              data-confirm-title="Obrisati trening?"
               data-confirm="„{{ d.label }}” se briše s popisom vježbi; same vježbe ostaju u bazi vježbi."
-              data-confirm-cta="Obriši dan">
-          <button class="btn-ghost btn-sm" aria-label="Obriši dan: {{ d.label }}">✕</button>
+              data-confirm-cta="Obriši trening">
+          <button class="btn-ghost btn-sm" aria-label="Obriši trening: {{ d.label }}">✕</button>
         </form>
       </span>
     </span>
   </div>
   {% else %}
-  <p class="hint">Trening još nema dana — dodaj prvi.</p>
+  <p class="hint">Program još nema treninga — dodaj prvi.</p>
   {% endfor %}
 </div>
 <form method="post" action="/treninzi/{{ p.id }}/dani" class="days-add">
-  <button type="submit" class="btn btn-sm">+ Dodaj dan</button>
+  <button type="submit" class="btn btn-sm">+ Dodaj trening</button>
 </form>
 
 <form method="post" action="/treninzi/{{ p.id }}/delete" style="margin-top:34px;"
-      data-confirm-title="Obrisati cijeli trening?"
-      data-confirm="&quot;{{ p.title }}&quot; — briše se trening s danima i vježbama; same vježbe i njihovi videi ostaju u bazi vježbi."
-      data-confirm-cta="Obriši trening">
-  <button class="btn-ghost" style="color:var(--accent); border-color:var(--accent);">Obriši cijeli trening</button>
+      data-confirm-title="Obrisati cijeli program?"
+      data-confirm="„{{ p.title }}” — briše se program s treninzima i vježbama; same vježbe i njihovi videi ostaju u bazi vježbi."
+      data-confirm-cta="Obriši program">
+  <button class="btn-ghost" style="color:var(--accent); border-color:var(--accent);">Obriši cijeli program</button>
 </form>
 {% endblock %}

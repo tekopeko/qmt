@@ -33,7 +33,7 @@
     <div style="flex:1; min-width:0;">
       <strong>{{ p.title }}</strong>
       {% set n = p.days|length %}
-      <div class="hint">{{ n }} {{ plural(n, "dan", "dana", "dana") }}{% if p.intro %} · {{ p.intro | truncate(60) }}{% endif %}</div>
+      <div class="hint">{{ n }} {{ plural(n, "trening", "treninga", "treninga") }}{% if p.intro %} · {{ p.intro | truncate(60) }}{% endif %}</div>
     </div>
     <span style="color:var(--accent); font-weight:700;">→</span>
   </a>

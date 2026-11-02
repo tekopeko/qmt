@@ -6,6 +6,14 @@ built 30.10.2026, reviewed and live the same day.** Written by
 Fable from the owner's answers of 29.10.2026 (settled 30.10.2026, below). Builds in three
 stages (below), each shippable.
 
+**Note (2.11.2026): a day reads "Trening 1 … Trening N" now**, no longer "Dan 1 … Dan N"
+(Amir's wish, via the owner: "Instead of calling the training parts Day 1, 2, etc Amir would
+like them to be called Training 1, Training 2 and so on so that it is clear."); the
+programme around them reads "program" wherever the pages said "trening" ("Uredi program",
+"+ Dodaj trening"), and the section `trening` reads "Glavni dio" (its key stays). The
+passes' stored labels followed (migration `b61e8d5bf1db`). The spec below keeps the words
+of its day; the model, the routes and the ids still say day.
+
 ## What the owner asked
 
 "For each group he needs to add the training programme per days which the user will

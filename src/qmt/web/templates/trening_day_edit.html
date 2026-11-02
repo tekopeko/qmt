@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Uredi: Dan {{ day.position }} — {{ p.title }} — QMT{% endblock %}
+{% block title %}Uredi: Trening {{ day.position }} — {{ p.title }} — QMT{% endblock %}
 {% block head %}
 <style>
   /* A day's editor (30.10.2026, stage 2 of the online treninzi spec): the
@@ -58,8 +58,8 @@
 {% block error_alert %}{% if not in_row %}{{ super() }}{% endif %}{% endblock %}
 {% block ok_alert %}{% if not in_row %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
-<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}/uredi">{{ p.title }}</a><span class="sep">/</span><span class="here">Dan {{ day.position }}</span></nav>
-<h1>Dan {{ day.position }}</h1>
+<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}/uredi">{{ p.title }}</a><span class="sep">/</span><span class="here">Trening {{ day.position }}</span></nav>
+<h1>Trening {{ day.position }}</h1>
 <p class="hint">
   Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja ili sekunde, odmor i napomena.
   „Odmor (s)” je odmor između serija, a „Nakon vježbe (s)” odmor prije sljedeće vježbe: polaznik za oba dobiva odbrojavanje koje može preskočiti.
@@ -98,7 +98,7 @@
   {# its button sits beside "Zamijeni video" (form=), a form holds no form #}
   <form id="dan-video-x" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/video/ukloni"
         data-confirm-title="Ukloniti video?"
-        data-confirm="Uvodni video dana „{{ day.label }}” bit će obrisan. Naslov, uvod i vježbe ostaju."
+        data-confirm="Uvodni video treninga „{{ day.label }}” bit će obrisan. Naslov, uvod i vježbe ostaju."
         data-confirm-cta="Ukloni video"></form>
   {% endif %}
 </section>
@@ -123,7 +123,7 @@
                   {% if loop.first %}disabled style="opacity:.35;"{% endif %} aria-label="Pomakni gore: {{ ex.name }}">↑</button>
           <button type="submit" form="st-dolje-{{ it.id }}" class="btn-ghost btn-sm"
                   {% if loop.last %}disabled style="opacity:.35;"{% endif %} aria-label="Pomakni dolje: {{ ex.name }}">↓</button>
-          <button type="submit" form="st-x-{{ it.id }}" class="btn-ghost btn-sm" aria-label="Makni iz dana: {{ ex.name }}">✕</button>
+          <button type="submit" form="st-x-{{ it.id }}" class="btn-ghost btn-sm" aria-label="Makni iz treninga: {{ ex.name }}">✕</button>
         </span>
       </span>
       {% if in_row and focus == it.id|string %}
@@ -166,8 +166,8 @@
 <form id="st-gore-{{ it.id }}" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/pomak"><input type="hidden" name="smjer" value="gore"></form>
 <form id="st-dolje-{{ it.id }}" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/pomak"><input type="hidden" name="smjer" value="dolje"></form>
 <form id="st-x-{{ it.id }}" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/obrisi"
-      data-confirm-title="Maknuti vježbu iz dana?"
-      data-confirm="„{{ it.exercise.name }}” izlazi iz ovog dana; u bazi vježbi ostaje."
+      data-confirm-title="Maknuti vježbu iz treninga?"
+      data-confirm="„{{ it.exercise.name }}” izlazi iz ovog treninga; u bazi vježbi ostaje."
       data-confirm-cta="Makni"></form>
 {% endfor %}
 
@@ -199,9 +199,9 @@
 </form>
 
 <form method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/obrisi" class="ex-delete" style="margin-top:34px;"
-      data-confirm-title="Obrisati dan?"
+      data-confirm-title="Obrisati trening?"
       data-confirm="„{{ day.label }}” se briše s popisom vježbi; same vježbe ostaju u bazi vježbi."
-      data-confirm-cta="Obriši dan">
-  <button type="submit" class="btn-ghost">Obriši dan</button>
+      data-confirm-cta="Obriši trening">
+  <button type="submit" class="btn-ghost">Obriši trening</button>
 </form>
 {% endblock %}

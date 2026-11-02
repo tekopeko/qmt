@@ -9,7 +9,7 @@ Idempotent — safe to re-run. Passwords are for LOCAL DEV ONLY.
 
 Also the upitnik's questions (the gym owner's fifteen, ids 1–15, and the two
 asked after the safety questions, 16 and 17) and ivan's answers to them, and
-(30.10.2026, the player) ivan's two finished passes of his Dan 1.
+(30.10.2026, the player) ivan's two finished passes of his Trening 1.
 """
 
 from __future__ import annotations
@@ -173,7 +173,7 @@ DEMO_EXERCISES = {
     "Rumunjsko mrtvo dizanje": "Neutralna kralježnica, kukovi idu unatrag.",
     "Glute most": "Stisni gluteuse gore i zadrži sekundu.",
 }
-# Each programme's Dan 1 (no title, no weekday, no intro): per cilj, its
+# Each programme's Trening 1 (no title, no weekday, no intro): per cilj, its
 # exercises in their order, in section trening, each with its dose per
 # razina, (sets, reps, seconds, note), DEMO_REST seconds of rest between
 # sets and DEMO_REST_AFTER after the exercise. Each programme is titled by
@@ -233,11 +233,11 @@ LIBRARY = {
 }
 
 # The days' demo (30.10.2026, stage 2): ivan's programme (srednja × cijelo)
-# gets a title and a weekday on its Dan 1, a warm-up and a stretch around its
-# DEMO_PROGRAMS exercises, and a Dan 2, so the demo shows two days and all
+# gets a title and a weekday on its Trening 1, a warm-up and a stretch around
+# its DEMO_PROGRAMS exercises, and a Trening 2, so the demo shows two days and all
 # three sections.
 # (day title, weekday, [(exercise, section, sets, reps, seconds, rest, note)]):
-# Dan 1's items are added to DEMO_PROGRAMS', Dan 2's make a new day; every
+# Trening 1's items are added to DEMO_PROGRAMS', Trening 2's make a new day; every
 # item gets DEMO_REST_AFTER seconds of rest after it.
 DAYS = [
     ("Cijelo tijelo", 0, [("Čučanj s vlastitom težinom", "zagrijavanje", 2, 15, None, 30, ""),
@@ -249,7 +249,7 @@ DAYS = [
 
 
 def seed_program() -> None:
-    """The 9 combo programmes (DEMO_PROGRAMS), each with its Dan 1 of the
+    """The 9 combo programmes (DEMO_PROGRAMS), each with its Trening 1 of the
     demo exercises in section trening (library rows, DEMO_EXERCISES: the
     cues; each item its razina's dose, DEMO_REST seconds of rest between its
     sets and DEMO_REST_AFTER after it), then the library's demo (LIBRARY)
@@ -291,7 +291,7 @@ def seed_program() -> None:
         for name, section, sets, reps, seconds, rest, note in items:
             item_id = db.add_day_item(day_id, ids[name], section)
             db.update_day_item(item_id, section, sets, reps, seconds, rest, DEMO_REST_AFTER, note)
-    print(f"  {made} demo programa (razina × cilj), svaki s Danom 1 ({made_items} stavki u svima); "
+    print(f"  {made} demo programa (razina × cilj), svaki s Treningom 1 ({made_items} stavki u svima); "
           f"{len(ids)} vježbi u bazi; srednja × cijelo: {len(DAYS)} dana, sva tri dijela")
 
 
@@ -381,7 +381,7 @@ def seed_karton() -> None:
 
 
 # Ivan's history in the player (30.10.2026, stage 3): two finished passes of
-# his Dan 1 (srednja × cijelo, "Cijelo tijelo"), days ago, each pass's sets
+# his Trening 1 (srednja × cijelo, "Cijelo tijelo"), days ago, each pass's sets
 # per exercise of the day by name: (reps or None, kg, seconds or None) per set,
 # the first pass's then the second's. Goblet čučanj went from 16 to 20 kg, so
 # the next pass prefills 20.
@@ -401,7 +401,7 @@ PASS_SETS = {
 
 
 def seed_passes() -> None:
-    """Ivan's two finished passes of his Dan 1 (PASSES, PASS_SETS): every
+    """Ivan's two finished passes of his Trening 1 (PASSES, PASS_SETS): every
     exercise of the day saved, a minute or so apart, the osvrt at the end;
     no pass in progress, so the day says "Odrađen 2× · zadnji put …" and
     offers "Kreni", and the karton lists both beside the termini."""

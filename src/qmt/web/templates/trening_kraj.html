@@ -82,7 +82,7 @@
     {% if not stale %}<a class="act act-quiet" href="{{ base }}{% if n_items %}/vjezba/{{ n_items }}{% endif %}">Natrag na vježbe</a>{% endif %}
     <form method="post" action="{{ base }}/odustani"
           data-confirm-title="Odbaciti započeti trening?"
-          data-confirm="Spremljene serije ovog pokušaja se brišu. Dan možeš započeti ponovno."
+          data-confirm="Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno."
           data-confirm-cta="Odbaci">
       <button type="submit" class="act act-quiet kr-drop">Odbaci trening</button>
     </form>

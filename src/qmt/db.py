@@ -1886,8 +1886,8 @@ def _item_locked(s: Session, item_id: int) -> tuple[Program, ProgramDay, Program
 
 
 def add_day(program_id: int) -> int | None:
-    """A new day after the last ("Dan N+1": no title, no weekday, no intro);
-    its id. None when the programme is gone."""
+    """A new day after the last ("Trening N+1": no title, no weekday, no
+    intro); its id. None when the programme is gone."""
     with session_scope() as s:
         p = s.get(Program, program_id, with_for_update=True)
         if p is None:
@@ -1931,9 +1931,9 @@ def update_day(day_id: int, title: str, weekday: int | None, intro: str) -> bool
 
 def delete_day(day_id: int) -> str | None:
     """Delete a day and its items (their exercises stay in the library); the
-    later days move up, so the days stay Dan 1 … Dan N. Returns its intro
-    video's file name for the caller to delete from storage, None without
-    one or for a day already gone."""
+    later days move up, so the days stay Trening 1 … Trening N. Returns its
+    intro video's file name for the caller to delete from storage, None
+    without one or for a day already gone."""
     with session_scope() as s:
         found = _day_locked(s, day_id)
         if found is None:
@@ -1951,10 +1951,10 @@ def delete_day(day_id: int) -> str | None:
 
 def move_day(day_id: int, direction: str) -> bool:
     """Swap a day with its neighbour: "gore" the one before it, "dolje" the
-    one after (their numbers trade: Dan 2 becomes Dan 1). False: no such
-    day, a direction that is neither, or none beyond it that way. The two
-    positions trade in one flush; the unique constraint is deferred to the
-    commit, which sees the swap whole."""
+    one after (their numbers trade: Trening 2 becomes Trening 1). False: no
+    such day, a direction that is neither, or none beyond it that way. The
+    two positions trade in one flush; the unique constraint is deferred to
+    the commit, which sees the swap whole."""
     if direction not in ("gore", "dolje"):
         return False
     with session_scope() as s:
@@ -2031,7 +2031,7 @@ def update_day_item(item_id: int, section: str, sets: int | None, reps: int | No
     ponavljanja ili sekunde, ne oboje."), a note past ITEM_NOTE_MAX, a
     section that is none."""
     if section not in SECTIONS:
-        raise ValueError("Odaberi dio dana.")
+        raise ValueError("Odaberi dio treninga.")
     for field, value in (("sets", sets), ("reps", reps), ("seconds", seconds), ("rest_seconds", rest_seconds),
                          ("rest_after_seconds", rest_after_seconds)):
         least, most = ITEM_LIMITS[field]

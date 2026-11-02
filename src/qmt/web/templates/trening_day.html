@@ -68,7 +68,7 @@
 </style>
 {% endblock %}
 {% block content %}
-<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Dan {{ day.position }}</span></nav>
+<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Trening {{ day.position }}</span></nav>
 <h1>{{ day.label }}</h1>
 {% set k = day.items|length %}
 <p class="hint">{% if day.weekday is not none %}Preporučeno: {{ WEEKDAYS[day.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}</p>
@@ -89,7 +89,7 @@
   {% if state.open %}
   <form method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/odustani"
         data-confirm-title="Odbaciti započeti trening?"
-        data-confirm="Spremljene serije ovog pokušaja se brišu. Dan možeš započeti ponovno."
+        data-confirm="Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno."
         data-confirm-cta="Odbaci">
     <button type="submit" class="act act-quiet">Odbaci započeti trening</button>
   </form>
@@ -99,7 +99,7 @@
 <div class="day-body">
   {% if day.intro %}<p class="day-intro">{{ day.intro }}</p>{% endif %}
   {% if user.is_trainer %}
-  <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/uredi">Uredi dan</a>
+  <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/uredi">Uredi trening</a>
   {% endif %}
   {% if day.intro_video %}
   <section class="day-video ex-video" aria-label="Uvodni video">
@@ -138,7 +138,7 @@
   {% endif %}
   {% endfor %}
   {% if not k %}
-  <p class="hint" style="margin-top:22px;">{% if user.is_trainer %}Dan još nema vježbi — dodaj ih u uređivanju.{% else %}Dan još nema vježbi.{% endif %}</p>
+  <p class="hint" style="margin-top:22px;">{% if user.is_trainer %}Trening još nema vježbi — dodaj ih u uređivanju.{% else %}Trening još nema vježbi.{% endif %}</p>
   {% endif %}
 
   {% if history %}
