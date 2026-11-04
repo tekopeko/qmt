@@ -250,8 +250,10 @@
 
     {% if row.workout %}{% set w = row.workout %}
     {# an online pass (30.10.2026): its day and programme as named when it
-       started (the snapshots), the exercises it saved of the day's and how
-       long it took, the osvrt; nothing here edits or deletes it #}
+       started (the snapshots), the exercises it saved of the day's as it is
+       now (row.done: one deleted since is not counted; a day gone, or
+       holding no exercise now, counts them all) and how long it took, the
+       osvrt; nothing here edits or deletes it #}
     <div class="log-entry online" id="pass-{{ w.id }}">
       <div class="le-kicker">Online trening</div>
       <div class="le-head">
@@ -260,7 +262,7 @@
         {% if w.feeling %}<span class="rpe feel {% if w.feeling == 'slabo' %}low{% endif %}">{{ feelings.get(w.feeling, w.feeling) }}</span>{% endif %}
       </div>
       <div class="hint le-sub">{{ w.day_label }} — {{ w.program_title }}</div>
-      <div class="hint le-sub">{% if row.size is not none %}{{ w.done_count }} od {{ row.size }} {{ plural(row.size, "vježbe", "vježbe", "vježbi") }}{% else %}{{ w.done_count }} {{ plural(w.done_count, "vježba", "vježbe", "vježbi") }}{% endif %}{% if w.elapsed_text %} · {{ w.elapsed_text }}{% endif %}</div>
+      <div class="hint le-sub">{% if row.size is not none %}{{ row.done }} od {{ row.size }} {{ plural(row.size, "vježbe", "vježbe", "vježbi") }}{% else %}{{ w.done_text }}{% endif %}{% if w.elapsed_text %} · {{ w.elapsed_text }}{% endif %}</div>
       {% if w.note %}<p>{{ w.note }}</p>{% endif %}
       {% if not own %}{% set lines = w.lines() %}{% if lines %}
       <details class="sets">

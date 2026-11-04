@@ -76,8 +76,12 @@
    "Kreni" opens a pass, "Nastavi" goes on with the one in progress (the
    same form: the route lands on the first exercise it has not saved); a
    pass open too long (stale, 31.10.2026) only to its finish screen #}
-{% if k or state.count %}<p class="dx-state">{{ state_line }}</p>{% endif %}
-{% if k %}
+{# a pass left open on a day that holds no exercise now (its exercises
+   deleted since, 4.11.2026) still says so and keeps its way out: Nastavi
+   (its finish screen) or a stale one's Završi trening, and Odbaci; Kreni
+   only on a day with exercises #}
+{% if k or state.count or state.open %}<p class="dx-state">{{ state_line }}</p>{% endif %}
+{% if k or state.open %}
 <div class="dx-start">
   {% if stale %}
   <div class="go"><a class="btn" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/kraj">Završi trening</a></div>
@@ -142,13 +146,16 @@
   {% endif %}
 
   {% if history %}
-  {# the viewer's last five passes of this day (db.passes), newest first #}
+  {# the viewer's last five passes of this day (db.passes), newest first; each
+     counts what it saved of the day as it is now (done_in: an exercise
+     deleted since stays in its Serije, not in the count); a day holding no
+     exercise now, every entry (done_text, a deleted day's words) #}
   <section class="dx-hist" aria-labelledby="povijest">
     <h2 class="dx-cap" id="povijest">Povijest</h2>
     <ol class="hist">
       {% for w in history %}
       <li class="card hist-row">
-        <p class="hist-line">{{ pass_date(w.date) }} · {{ w.done_count }}/{{ k }} {{ plural(k, "vježbe", "vježbe", "vježbi") }} · {{ w.elapsed_text }}
+        <p class="hist-line">{{ pass_date(w.date) }} · {% if k %}{{ w.done_in(order) }}/{{ k }} {{ plural(k, "vježbe", "vježbe", "vježbi") }}{% else %}{{ w.done_text }}{% endif %} · {{ w.elapsed_text }}
           {%- if w.effort %} · napor {{ w.effort }}{% endif %}{% if w.feeling in feelings %} · {{ feelings[w.feeling]|lower }}{% endif %}</p>
         {% if w.note %}<p class="hist-note">{{ w.note }}</p>{% endif %}
         {% set lines = w.lines(order) %}

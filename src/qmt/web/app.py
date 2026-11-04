@@ -1731,7 +1731,9 @@ def _diary_rows(subject_id: int) -> list[dict]:
     an osvrt whose termin falls outside booking_history's window still shows.
     Since 30.10.2026 his finished online passes (db.passes) join them by when
     they were started, each with its day's number of exercises now (`size`,
-    None for a day that is gone)."""
+    None for a day that is gone or holds no exercise now) and, since
+    4.11.2026, how many of those it saved (`done`: an entry whose exercise
+    has left the day since is not counted; with no size, every entry)."""
     from datetime import datetime, time
 
     sessions = db.booking_history(subject_id)
@@ -1751,10 +1753,11 @@ def _diary_rows(subject_id: int) -> list[dict]:
               else datetime.combine(x.date, time(0), tzinfo=config.TZ))
         rows.append({"session": x.session, "log": x, "at": at})
     workouts = db.passes(subject_id)
-    sizes = db.day_sizes({w.day_id for w in workouts if w.day_id is not None})
+    held = db.day_item_ids({w.day_id for w in workouts if w.day_id is not None})
     for w in workouts:
+        ids = held.get(w.day_id)             # None: the day gone, or holding no exercise now
         rows.append({"session": None, "log": None, "workout": w, "at": w.started_at.astimezone(config.TZ),
-                     "size": sizes.get(w.day_id, 0) if w.day_id is not None else None})
+                     "size": len(ids) if ids else None, "done": w.done_in(ids) if ids else w.done_count})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows
 
@@ -2396,19 +2399,20 @@ def vjezba_video_ukloni(request: Request, exercise_id: int):
 
 @app.post("/treninzi/vjezbe/{exercise_id}/obrisi")
 def vjezba_obrisi(request: Request, exercise_id: int):
-    """Delete an exercise nothing holds, then its clip; one a programme holds
-    stays, its page saying where it is."""
+    """Delete an exercise, whatever holds it (4.11.2026), then its clip: it
+    leaves every training (day) that held it, the trainings stay. Back on
+    the library, the flash saying how many trainings it left ("Vježba je
+    obrisana i maknuta iz 3 treninga."), or "Vježba je obrisana." when none
+    held it (or it was gone already)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     from urllib.parse import quote
-    try:
-        video = db.delete_exercise(exercise_id)
-    except ValueError as err:
-        return RedirectResponse(f"/treninzi/vjezbe/{exercise_id}?error={quote(str(err))}", status_code=303)
+    video, days = db.delete_exercise(exercise_id) or (None, 0)
     if video:
         storage.delete(video)
-    return RedirectResponse("/treninzi/vjezbe?ok=Vje%C5%BEba+je+obrisana.", status_code=303)
+    said = f"Vježba je obrisana i maknuta iz {days} treninga." if days else "Vježba je obrisana."
+    return RedirectResponse(f"/treninzi/vjezbe?ok={quote(said)}", status_code=303)
 
 
 @app.get("/treninzi/{program_id}", response_class=HTMLResponse)
@@ -2463,12 +2467,16 @@ def _state_line(state: dict, done_n: int, n_items: int, stale: bool) -> str:
     """The viewer's state on a day (db.day_state), in the day page's words:
     a pass in progress first (`stale`, its WorkoutLog.stale as the route
     judged it: one open too long, how much of the day's `n_items` it saved,
-    `done_n`, and that it can only be finished or dropped, 31.10.2026), then
-    how often and when last, else none."""
+    `done_n`, and that it can only be finished or dropped, 31.10.2026; a day
+    that holds no exercise now, every exercise the pass saved: "2 vježbe",
+    WorkoutLog.done_text, 4.11.2026), then how often and when last, else
+    none."""
     if state["open"] is not None:
         if stale:
-            return (f"Nedovršen trening od {_when_text(state['open'].date)} ({done_n} od {n_items} "
-                    f"{plural(n_items, 'vježbe', 'vježbe', 'vježbi')}) — nastavak nije moguć: završi ga ili ga odbaci.")
+            count = (f"{done_n} od {n_items} {plural(n_items, 'vježbe', 'vježbe', 'vježbi')}" if n_items
+                     else state["open"].done_text)
+            return (f"Nedovršen trening od {_when_text(state['open'].date)} ({count}) — nastavak nije moguć: "
+                    "završi ga ili ga odbaci.")
         return "U tijeku — nastavi gdje si stao/la."
     if state["count"]:
         return f"Odrađen {state['count']}× · zadnji put {_when_text(state['last'])}"
@@ -2605,13 +2613,17 @@ def pass_start(request: Request, program_id: int, day_id: int):
     """"Kreni" (and "Nastavi": the same form): the viewer's pass through the
     day, a new one or the one in progress, then the first exercise it has
     not saved (exercise 1 of a new one; the last when all are). A day with
-    no exercise starts nothing; a pass in progress that is stale (open too
-    long) is not continued: its finish screen."""
+    no exercise starts nothing, and a pass left open on it (its exercises
+    deleted since, 4.11.2026) goes to its finish screen (_past_the_end); a
+    pass in progress that is stale (open too long) is not continued: its
+    finish screen."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     base = _day_base(program_id, day_id)
     if not items:
+        if db.open_pass(user.id, day_id) is not None:
+            return _past_the_end(base, items)
         return RedirectResponse(base, status_code=303)
     log = db.start_pass(user.id, p, day)
     if log.stale():
@@ -2619,24 +2631,41 @@ def pass_start(request: Request, program_id: int, day_id: int):
     return RedirectResponse(f"{base}/vjezba/{_next_k(items, log)}", status_code=303)
 
 
+# a save whose page was drawn for another list (its hidden item is not
+# exercise k's: an exercise deleted from the day, or moved, since)
+DAY_CHANGED = "Trening se u međuvremenu promijenio — provjeri vježbu i spremi ponovno."
+
+
+def _past_the_end(base: str, items: list) -> RedirectResponse:
+    """Where a k past the day's count goes, with a pass in progress (4.11.2026:
+    an exercise deleted from the library leaves the day while a client is
+    on its player, his page still counting the old list): the day's last
+    exercise, or the finish screen when none is left."""
+    return RedirectResponse(f"{base}/vjezba/{len(items)}" if items else f"{base}/kraj", status_code=303)
+
+
 @app.get("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}", response_class=HTMLResponse)
 def pass_exercise(request: Request, program_id: int, day_id: int, k: int, odmor: str = ""):
     """Exercise k of the day (1-based, its display order) in the viewer's
-    pass in progress; k that is no exercise of it is 404, and without a pass
-    in progress the day's page (where "Kreni" is), with a stale one (open
-    too long) its finish screen. `odmor` (the previous exercise's save: its
-    rest after it, in seconds) starts the rest bar at load: an int 1–3600,
-    anything else is ignored."""
+    pass in progress; k below 1 is 404, and without a pass in progress the
+    day's page (where "Kreni" is), with a stale one (open too long) its
+    finish screen. A k past the day's count goes to its last exercise, or
+    to the finish screen when it has none left (_past_the_end). `odmor`
+    (the previous exercise's save: its rest after it, in seconds) starts
+    the rest bar at load: an int 1–3600, anything else is ignored."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    if not 1 <= k <= len(items):
+    if k < 1:
         raise HTTPException(status_code=404)
+    base = _day_base(program_id, day_id)
     log = db.open_pass(user.id, day_id)
     if log is None:
-        return RedirectResponse(_day_base(program_id, day_id), status_code=303)
+        return RedirectResponse(base, status_code=303)
     if log.stale():
-        return RedirectResponse(f"{_day_base(program_id, day_id)}/kraj", status_code=303)
+        return RedirectResponse(f"{base}/kraj", status_code=303)
+    if k > len(items):
+        return _past_the_end(base, items)
     rest = _id(odmor)
     return _player(request, user, p, day, items, k, log, odmor=rest if rest is not None and 1 <= rest <= 3600 else None)
 
@@ -2651,11 +2680,16 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
     exercise comes with it (?odmor=<seconds>: its screen counts it down);
     the finish screen never does. A refusal comes back as the screen, its
     sentence under the name and what was typed kept. A stale pass (open too
-    long) saves nothing: its finish screen."""
+    long) saves nothing: its finish screen. k below 1 is 404; a k past the
+    day's count saves nothing either: the day's last exercise, or the
+    finish screen when it has none left (_past_the_end). The form names its
+    item (`item`, 4.11.2026): one that is not exercise k's now, or none, is
+    refused as a bad number is (DAY_CHANGED), nothing saved: the page was
+    drawn before the day changed, and its sets are not this exercise's."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    if not 1 <= k <= len(items):
+    if k < 1:
         raise HTTPException(status_code=404)
     base = _day_base(program_id, day_id)
     log = db.open_pass(user.id, day_id)
@@ -2663,6 +2697,8 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
         return RedirectResponse(base, status_code=303)
     if log.stale():
         return RedirectResponse(f"{base}/kraj", status_code=303)
+    if k > len(items):
+        return _past_the_end(base, items)
     form = await request.form()
 
     def field(name: str) -> str:
@@ -2673,17 +2709,24 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
     n = min(max(_id(field("rows")) or 1, 1), 30)
     raw = [{"seconds": field(f"sec_{i}")} if timed else {"reps": field(f"reps_{i}"), "kg": field(f"kg_{i}")}
            for i in range(1, n + 1)]
+
+    def refused(sentence: str):
+        # the screen again, what was typed back in its inputs: a weight with
+        # a comma as a number input's value takes a dot, or the browser
+        # would empty it
+        planned = min(it.sets or 1, db.MAX_SETS)
+        kept = [{"reps": r.get("reps", ""), "kg": r.get("kg", "").replace(",", "."), "sec": r.get("seconds", ""),
+                 "extra": i > planned} for i, r in enumerate(raw, start=1)]
+        return _player(request, user, p, day, items, k, log, error=sentence, posted=kept, status_code=400)
+
+    if field("item") != str(it.id):
+        return refused(DAY_CHANGED)
     swaps = log.swap_items
     exercise = (db.exercises_by_id([swaps[it.id]]).get(swaps[it.id]) if it.id in swaps else None) or it.exercise
     try:
         saved = db.save_sets(log.id, user.id, it, db.read_sets(raw, timed), exercise)
     except ValueError as err:
-        # what was typed, back in its inputs: a weight with a comma as a
-        # number input's value takes a dot, or the browser would empty it
-        planned = min(it.sets or 1, db.MAX_SETS)
-        kept = [{"reps": r.get("reps", ""), "kg": r.get("kg", "").replace(",", "."), "sec": r.get("seconds", ""),
-                 "extra": i > planned} for i, r in enumerate(raw, start=1)]
-        return _player(request, user, p, day, items, k, log, error=str(err), posted=kept, status_code=400)
+        return refused(str(err))
     if not saved:
         return RedirectResponse(base, status_code=303)
     if k == len(items):
@@ -2698,11 +2741,13 @@ def pass_swap(request: Request, program_id: int, day_id: int, k: int, exercise_i
     """"⇄" in the swap list: a similar exercise in place of exercise k for
     this pass (`exercise_id`), or the plan's back (`vrati`); back on its
     screen, a refusal's sentence with it. A stale pass (open too long)
-    swaps nothing: its finish screen."""
+    swaps nothing: its finish screen. k below 1 is 404; a k past the day's
+    count swaps nothing: the day's last exercise, or the finish screen when
+    it has none left (_past_the_end, 4.11.2026)."""
     user, p, day, items = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    if not 1 <= k <= len(items):
+    if k < 1:
         raise HTTPException(status_code=404)
     from urllib.parse import quote
     base = _day_base(program_id, day_id)
@@ -2711,6 +2756,8 @@ def pass_swap(request: Request, program_id: int, day_id: int, k: int, exercise_i
         return RedirectResponse(base, status_code=303)
     if log.stale():
         return RedirectResponse(f"{base}/kraj", status_code=303)
+    if k > len(items):
+        return _past_the_end(base, items)
     back = f"{base}/vjezba/{k}"
     try:
         db.swap_exercise(log.id, user.id, items[k - 1], None if vrati else _id(exercise_id) or -1)

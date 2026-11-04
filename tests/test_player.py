@@ -34,6 +34,15 @@ possible to continue the training and have a hanging training of 9 hours"):
 the player and the finish screen carry #leaveDlg (finish or discard, never
 "later"), and a pass with no activity for PASS_STALE_HOURS (its start or its
 last save) can only be finished, its length to its last save, or dropped.
+
+An exercise deleted from the library (4.11.2026: it leaves every day that
+held it) stays in the passes that saved it (their "Serije" name it), the
+counts say the day as it is now, a similar exercise swapped in and deleted
+gives the plan's back, and the player's k past the day's count leads to its
+last exercise (or to the finish screen when none is left). A pass open on a
+day left with no exercise keeps its way out, a day holding none counts a
+pass as a deleted day does ("2 vježbe"), and a save names its item: one
+from a page drawn before the day changed is refused.
 """
 
 from __future__ import annotations
@@ -348,9 +357,10 @@ def test_kreni_opens_a_pass_and_nastavi_goes_on_where_it_stopped():
 def test_the_players_access():
     """The player follows the day's page: a guest goes to log in, another
     client's programme is 403, a day of another programme 404, an exercise
-    that is not the day's 404; without a pass in progress the exercise, its
-    save and the finish screen lead to the day's page (where Kreni is).
-    Staff may use it: their pass is their own."""
+    below 1 404 and one past the day's count its last (4.11.2026); without
+    a pass in progress the exercise, its save and the finish screen lead to
+    the day's page (where Kreni is). Staff may use it: their pass is their
+    own."""
     trainer, ivan, ana = people()
     d = build_day()
     other = build_day("Drugi", "srednja", "cijelo")
@@ -373,9 +383,13 @@ def test_the_players_access():
               ci.post(f"{foreign}/odustani")):
         assert r.status_code == 404, r.request.url
     ci.post(f"{d.base}/kreni")
-    for k in (0, 5, 99):
-        assert ci.get(f"{d.base}/vjezba/{k}").status_code == 404
-        assert ci.post(f"{d.base}/vjezba/{k}", data={"rows": "1", "reps_1": "5"}).status_code == 404
+    assert ci.get(f"{d.base}/vjezba/0").status_code == 404
+    assert ci.post(f"{d.base}/vjezba/0", data={"rows": "1", "reps_1": "5"}).status_code == 404
+    for k in (5, 99):                                                       # past the day's 4: its last
+        for r in (ci.get(f"{d.base}/vjezba/{k}", follow_redirects=False),
+                  ci.post(f"{d.base}/vjezba/{k}", data={"rows": "1", "reps_1": "5"}, follow_redirects=False)):
+            assert r.status_code == 303 and r.headers["location"] == f"{d.base}/vjezba/4", r.request.url
+    assert db.open_pass(ivan, d.did).done_items == {}
     assert ci.get(f"{d.base}/vjezba/4").status_code == 200 and ci.get(f"{d.base}/kraj").status_code == 200
     assert ca.get(f"{d.base}/vjezba/1").status_code == 403                 # his pass is his
     r = ct.post(f"{d.base}/kreni", follow_redirects=False)
@@ -447,7 +461,7 @@ def test_the_set_log_is_read_saved_and_refused():
     ci = client_for("ivan@test.local")
     ci.post(f"{d.base}/kreni")
     log_id = stored()[0][0]
-    form = {"rows": "4", "reps_1": "10", "kg_1": "2,5", "reps_2": "", "kg_2": "", "reps_3": "8", "kg_3": "2.5",
+    form = {"rows": "4", "item": str(d.items[1]), "reps_1": "10", "kg_1": "2,5", "reps_2": "", "kg_2": "", "reps_3": "8", "kg_3": "2.5",
             "reps_4": "6", "kg_4": ""}
     r = ci.post(f"{d.base}/vjezba/2", data=form, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == f"{d.base}/vjezba/3"
@@ -465,29 +479,30 @@ def test_the_set_log_is_read_saved_and_refused():
                  "Upiši bar jednu seriju.": [{"reps_1": "", "kg_1": ""}, {"reps_1": "  ", "kg_1": " "}]}
     for sentence, changes in sentences.items():
         for change in changes:
-            r = ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "reps_1": "10", "kg_1": "20", **change})
+            r = ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "item": str(d.items[1]), "reps_1": "10", "kg_1": "20", **change})
             assert r.status_code == 400 and alert(r.text) == [sentence], change
             assert re.search(r'<h1 class="pl-name" id="pl-name">Goblet čučanj</h1>\s*<div class="alert" role="alert">', r.text)
             kept = {**{"reps_1": "10", "kg_1": "20"}, **change}
             assert inputs(r.text) == [("reps", "1", kept["reps_1"]), ("kg", "1", kept["kg_1"].replace(",", "."))], change
-    many = {"rows": "13", **{f"reps_{i}": "5" for i in range(1, 14)}}
+    many = {"rows": "13", "item": str(d.items[1]), **{f"reps_{i}": "5" for i in range(1, 14)}}
     r = ci.post(f"{d.base}/vjezba/2", data=many)
     assert r.status_code == 400 and alert(r.text) == ["Najviše 12 serija."] and len(inputs(r.text)) == 26
     assert db.get_pass(log_id, ivan).done_items[d.items[1]]["sets"][0] == {"reps": 10, "kg": 2.5}   # untouched
-    r = ci.post(f"{d.base}/vjezba/3", data={"rows": "2", "sec_1": "3601", "sec_2": ""})
+    r = ci.post(f"{d.base}/vjezba/3", data={"rows": "2", "item": str(d.items[2]), "sec_1": "3601", "sec_2": ""})
     assert r.status_code == 400 and alert(r.text) == ["Neispravan broj."]
-    r = ci.post(f"{d.base}/vjezba/3", data={"rows": "3", "sec_1": "40", "sec_2": "", "sec_3": "35"},
+    r = ci.post(f"{d.base}/vjezba/3", data={"rows": "3", "item": str(d.items[2]), "sec_1": "40", "sec_2": "", "sec_3": "35"},
                 follow_redirects=False)
     assert r.headers["location"] == f"{d.base}/vjezba/4"
     assert db.get_pass(log_id, ivan).done_items[d.items[2]]["sets"] == [{"seconds": 40}, {"seconds": 35}]
 
-    r = ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "reps_1": "12", "kg_1": "500"}, follow_redirects=False)
+    r = ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "item": str(d.items[1]), "reps_1": "12", "kg_1": "500"}, follow_redirects=False)
     log = db.get_pass(log_id, ivan)                                         # a re-save replaces the entry
     assert r.status_code == 303 and log.done_items[d.items[1]]["sets"] == [{"reps": 12, "kg": 500.0}]
     assert log.done_count == 2
     page = ci.get(f"{d.base}/vjezba/4").text
     assert ">Spremi i završi</button>" in page
-    r = ci.post(f"{d.base}/vjezba/4", data={"rows": "1", "reps_1": "1"}, follow_redirects=False)
+    r = ci.post(f"{d.base}/vjezba/4", data={"rows": "1", "item": str(d.items[3]), "reps_1": "1"},
+                follow_redirects=False)
     assert r.headers["location"] == f"{d.base}/kraj"                       # after the last: the finish screen
 
     with pytest.raises(ValueError, match="Upiši bar jednu seriju."):
@@ -600,7 +615,7 @@ def test_an_exercise_is_swapped_for_a_similar_one_only():
     assert '<p class="pl-dose">3 × 10</p>' in page                        # the plan's dose stays
     assert ci.get(f"/media/{clip}").status_code == 200 and ca.get(f"/media/{clip}").status_code == 403
 
-    ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "reps_1": "10", "kg_1": "8"})
+    ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "item": str(d.items[1]), "reps_1": "10", "kg_1": "8"})
     entry = db.get_pass(log_id, ivan).done_items[d.items[1]]
     assert (entry["exercise_id"], entry["name"], entry["sets"]) == (d.ex["Iskorak unatrag"], "Iskorak unatrag",
                                                                     [{"reps": 10, "kg": 8.0}])
@@ -826,6 +841,199 @@ def test_the_karton_lists_the_passes_among_the_termini():
     assert db.get_pass(a, ivan).day_id is None
 
 
+# ---------- an exercise deleted from the library (4.11.2026) ----------
+
+def test_a_pass_keeps_an_exercise_deleted_from_the_library():
+    """Deleted from the library, an exercise leaves the day, and a pass
+    that saved it keeps its entry (`done` is a snapshot: the name, the
+    sets), listed by name in "Serije", after the day's own. The counts say
+    the day as it is now (n: the entries whose exercise is still in the
+    day; N: the day's exercises now): the day page's Povijest "3/3 vježbe",
+    the karton's "3 od 3 vježbe", and a pass in progress its finish
+    screen's "1 od 3 vježbe", the player's dock and chip; once the day is
+    gone the karton counts every entry, "4 vježbe"."""
+    trainer, ivan, ana = people()
+    d = build_day()
+    ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
+    done_id = finished(ivan, d, {1: [{"reps": 15, "kg": 0.0}], 2: [{"reps": 10, "kg": 20.0}],
+                                 3: [{"seconds": 40}, {"seconds": 40}], 4: [{"reps": 1, "kg": 0.0}]}, minutes=38)
+    ci.post(f"{d.base}/kreni")
+    open_id = db.open_pass(ivan, d.did).id
+    save(ivan, open_id, d, 2, [{"reps": 10, "kg": 20.0}])
+    save(ivan, open_id, d, 3, [{"seconds": 40}])
+    assert db.delete_exercise(d.ex["Plank"]) == (None, 1)
+    kept = db.get_pass(done_id, ivan).done_items
+    assert len(kept) == 4 and (kept[d.items[2]]["name"], kept[d.items[2]]["sets"]) == (
+        "Plank", [{"seconds": 40}, {"seconds": 40}])
+
+    page = ci.get(d.base).text
+    listed = page.split('id="povijest"')[0]                                # the day's list, before Povijest
+    assert [unescape(n) for n in re.findall(r'<span class="dx-name">([^<]*)</span>', listed)] == [
+        "Čučanj s vlastitom težinom", "Goblet čučanj", "Istezanje stražnje lože"]
+    [line] = hist_lines(page)
+    assert line.split(" · ", 1)[1] == "3/3 vježbe · 38 min · napor 6 · dobro"
+    first = page.split('<li class="card hist-row">')[1]
+    assert sets_lines(first) == ["Čučanj s vlastitom težinom: 15", "Goblet čučanj: 10 × 20 kg",
+                                 "Istezanje stražnje lože: 1", "Plank: 40 s · 40 s"]
+
+    def entry(page: str, log_id: int) -> str:
+        return page.split(f'id="pass-{log_id}"')[1].split('<div class="log-entry')[0]
+
+    assert '<div class="hint le-sub">3 od 3 vježbe · 38 min</div>' in entry(ci.get("/karton").text, done_id)
+    row = entry(ct.get(f"/karton/{ivan}").text, done_id)
+    assert '<div class="hint le-sub">3 od 3 vježbe · 38 min</div>' in row and "Plank: 40 s · 40 s" in sets_lines(row)
+    assert re.search(r'<p class="kr-sum">1 od 3 vježbe · \d+ min</p>', ci.get(f"{d.base}/kraj").text)
+    page = ci.get(f"{d.base}/vjezba/2").text
+    assert '<a class="pl-dock" href="#popis">Vježbe · 1/3 ✓</a>' in page and '<span class="pl-chip">2/3</span>' in page
+
+    db.delete_day(d.did)                                                   # the day gone: every entry counts
+    assert '<div class="hint le-sub">4 vježbe · 38 min</div>' in entry(ci.get("/karton").text, done_id)
+
+
+def test_a_swapped_in_exercise_deleted_gives_the_plans_back():
+    """A similar exercise swapped in for this pass, then deleted from the
+    library: the pass's swap points at nothing, and the player falls back
+    to the plan's exercise (its name, no "Zamjena za", no "(zamjena)" in
+    the list, no "Vrati …"; the swap list its similar ones left), a save
+    names the plan's; what the pass saved of the swapped one stays."""
+    trainer, ivan, ana = people()
+    d = build_day()
+    ci = client_for("ivan@test.local")
+    ci.post(f"{d.base}/kreni")
+    log_id = stored()[0][0]
+    ci.post(f"{d.base}/vjezba/2/zamjena", data={"exercise_id": str(d.ex["Iskorak unatrag"])})
+    ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "item": str(d.items[1]), "reps_1": "10", "kg_1": "8"})
+    assert db.get_pass(log_id, ivan).done_items[d.items[1]]["name"] == "Iskorak unatrag"
+    assert db.delete_exercise(d.ex["Iskorak unatrag"]) == (None, 0)        # only similar: no day held it
+    assert db.get_pass(log_id, ivan).swap_items == {d.items[1]: d.ex["Iskorak unatrag"]}
+    page = ci.get(f"{d.base}/vjezba/2").text
+    assert '<h1 class="pl-name" id="pl-name">Goblet čučanj</h1>' in page
+    assert "Zamjena za" not in page and "(zamjena)" not in page and 'name="vrati"' not in page
+    assert re.findall(r'<span class="swap-name">([^<]*)', page) == ["Čučanj s vlastitom težinom"]
+    assert '<p class="pl-dose">3 × 10</p>' in page
+    assert db.get_pass(log_id, ivan).done_items[d.items[1]]["name"] == "Iskorak unatrag"   # what was saved stays
+    r = ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "item": str(d.items[1]), "reps_1": "10", "kg_1": "16"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith(f"{d.base}/vjezba/3")
+    entry = db.get_pass(log_id, ivan).done_items[d.items[1]]
+    assert (entry["exercise_id"], entry["name"], entry["sets"]) == (d.ex["Goblet čučanj"], "Goblet čučanj",
+                                                                    [{"reps": 10, "kg": 16.0}])
+
+
+def test_a_k_past_the_days_count_leads_to_its_last_exercise():
+    """An exercise deleted from the day while a pass is open: the player's
+    k past the day's count (a page counting the old list) goes to the
+    day's last exercise, its screen, its save and its swap alike (saving
+    and swapping nothing), or to the finish screen once the day has none
+    left (its sum then the deleted day's words, "0 vježbi"); k below 1
+    stays 404, and without a pass in progress any k leads to the day's
+    page."""
+    trainer, ivan, ana = people()
+    d = build_day()
+    ci = client_for("ivan@test.local")
+    swap_to = {"exercise_id": str(d.ex["Iskorak unatrag"])}
+    for r in (ci.get(f"{d.base}/vjezba/9", follow_redirects=False),
+              ci.post(f"{d.base}/vjezba/9/zamjena", data=swap_to, follow_redirects=False)):
+        assert r.status_code == 303 and r.headers["location"] == d.base, r.request.url
+    ci.post(f"{d.base}/kreni")
+    log_id = stored()[0][0]
+    assert db.delete_exercise(d.ex["Goblet čučanj"]) == (None, 1)
+    for k in (4, 5, 99):
+        for r in (ci.get(f"{d.base}/vjezba/{k}", follow_redirects=False),
+                  ci.post(f"{d.base}/vjezba/{k}", data={"rows": "1", "reps_1": "5"}, follow_redirects=False),
+                  ci.post(f"{d.base}/vjezba/{k}/zamjena", data=swap_to, follow_redirects=False)):
+            assert r.status_code == 303 and r.headers["location"] == f"{d.base}/vjezba/3", r.request.url
+    log = db.get_pass(log_id, ivan)
+    assert log.done_items == {} and log.swap_items == {}
+    assert ci.get(f"{d.base}/vjezba/0").status_code == 404
+    assert ci.post(f"{d.base}/vjezba/0/zamjena", data=swap_to).status_code == 404
+    page = ci.get(f"{d.base}/vjezba/3").text
+    assert '<span class="pl-chip">3/3</span>' in page
+    assert '<h1 class="pl-name" id="pl-name">Istezanje stražnje lože</h1>' in page
+    for name in ("Čučanj s vlastitom težinom", "Plank", "Istezanje stražnje lože"):
+        db.delete_exercise(d.ex[name])
+    for r in (ci.get(f"{d.base}/vjezba/1", follow_redirects=False),
+              ci.post(f"{d.base}/vjezba/1", data={"rows": "1", "reps_1": "5"}, follow_redirects=False),
+              ci.post(f"{d.base}/vjezba/1/zamjena", data=swap_to, follow_redirects=False)):
+        assert r.status_code == 303 and r.headers["location"] == f"{d.base}/kraj", r.request.url
+    page = ci.get(f"{d.base}/kraj").text
+    assert re.search(r'<p class="kr-sum">0 vježbi · \d+ min</p>', page)
+    assert f'<a class="act act-quiet" href="{d.base}">Natrag na vježbe</a>' in page
+    assert db.get_pass(log_id, ivan).in_progress
+
+
+def test_a_pass_open_on_a_day_left_empty_keeps_its_way_out(monkeypatch):
+    """A pass open on a day whose exercises have all been deleted from the
+    library since: the day page still says it ("U tijeku — …") and keeps
+    its way out, "Nastavi" (to the finish screen: nothing is left to do)
+    and "Odbaci započeti trening", never "Kreni"; once stale, "Završi
+    trening" and Odbaci. Counted against a day that holds no exercise now,
+    a pass says what it saved as a deleted day's does, "2 vježbe": the
+    finish screen's sum, the stale sentence, Povijest and the karton. With
+    the pass finished, the empty day offers nothing to start."""
+    monkeypatch.setattr(config, "PASS_STALE_HOURS", 2)
+    trainer, ivan, ana = people()
+    d = build_day()
+    ci = client_for("ivan@test.local")
+    ci.post(f"{d.base}/kreni")
+    log_id = stored()[0][0]
+    save(ivan, log_id, d, 1, [{"reps": 15, "kg": 0.0}])
+    save(ivan, log_id, d, 3, [{"seconds": 40}])
+    for name in ("Čučanj s vlastitom težinom", "Goblet čučanj", "Plank", "Istezanje stražnje lože"):
+        db.delete_exercise(d.ex[name])
+    page = ci.get(d.base).text
+    assert "Trening još nema vježbi." in page and state_line(page) == "U tijeku — nastavi gdje si stao/la."
+    assert ">Nastavi</button>" in page and ">Kreni</button>" not in page
+    assert ">Odbaci započeti trening</button>" in page
+    r = ci.post(f"{d.base}/kreni", follow_redirects=False)                # Nastavi: nothing left but the end
+    assert r.status_code == 303 and r.headers["location"] == f"{d.base}/kraj" and len(stored()) == 1
+    assert re.search(r'<p class="kr-sum">2 vježbe · \d+ min</p>', ci.get(f"{d.base}/kraj").text)
+
+    started = db.get_pass(log_id, ivan).started_at - timedelta(hours=3)
+    age(log_id, 3, saves_at=started + timedelta(minutes=25))
+    began = started.astimezone(config.TZ).date()
+    when = "danas" if began == config.today() else "jučer"
+    page = ci.get(d.base).text
+    assert state_line(page) == f"Nedovršen trening od {when} (2 vježbe) — nastavak nije moguć: završi ga ili ga odbaci."
+    assert f'<div class="go"><a class="btn" href="{d.base}/kraj">Završi trening</a></div>' in page
+    assert ">Odbaci započeti trening</button>" in page and ">Nastavi</button>" not in page
+    assert '<p class="kr-sum">2 vježbe · 25 min</p>' in ci.get(f"{d.base}/kraj").text
+    ci.post(f"{d.base}/kraj", data={"effort": "6"})
+    page = ci.get(d.base).text
+    assert hist_lines(page)[0].split(" · ", 1)[1] == "2 vježbe · 25 min · napor 6"
+    assert state_line(page).startswith("Odrađen 1×") and 'class="dx-start"' not in page
+    karton = ci.get("/karton").text.split(f'id="pass-{log_id}"')[1].split('<div class="log-entry')[0]
+    assert '<div class="hint le-sub">2 vježbe · 25 min</div>' in karton
+
+
+def test_a_save_from_a_page_drawn_before_the_day_changed_is_refused():
+    """The set log names its item (a hidden `item`): a save whose item is
+    not exercise k's now (its exercise deleted from the day between the
+    page and its Spremi), or that names none, is refused, nothing saved:
+    the screen again (exercise k as it is now), 400, "Trening se u
+    međuvremenu promijenio — provjeri vježbu i spremi ponovno." under the
+    name, what was typed kept. Saved again from that screen, it goes
+    through."""
+    trainer, ivan, ana = people()
+    d = build_day()
+    ci = client_for("ivan@test.local")
+    ci.post(f"{d.base}/kreni")
+    log_id = stored()[0][0]
+    assert f'<input type="hidden" name="item" value="{d.items[0]}">' in ci.get(f"{d.base}/vjezba/1").text
+    db.delete_exercise(d.ex["Čučanj s vlastitom težinom"])                  # exercise 1 is Goblet čučanj now
+    assert web.DAY_CHANGED == "Trening se u međuvremenu promijenio — provjeri vježbu i spremi ponovno."
+    typed = {"rows": "2", "reps_1": "12", "kg_1": "2,5", "reps_2": "10", "kg_2": "5"}
+    for posted in ({**typed, "item": str(d.items[0])}, typed):               # the page's item; none at all
+        r = ci.post(f"{d.base}/vjezba/1", data=posted)
+        assert r.status_code == 400 and alert(r.text) == [web.DAY_CHANGED]
+        assert re.search(r'<h1 class="pl-name" id="pl-name">Goblet čučanj</h1>\s*<div class="alert" role="alert">', r.text)
+        assert inputs(r.text) == [("reps", "1", "12"), ("kg", "1", "2.5"), ("reps", "2", "10"), ("kg", "2", "5")]
+        assert f'<input type="hidden" name="item" value="{d.items[1]}">' in r.text
+    assert db.get_pass(log_id, ivan).done_items == {}
+    r = ci.post(f"{d.base}/vjezba/1", data={**typed, "item": str(d.items[1])}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"{d.base}/vjezba/2"
+    assert db.get_pass(log_id, ivan).done_items[d.items[1]]["sets"] == [{"reps": 12, "kg": 2.5}, {"reps": 10, "kg": 5.0}]
+
+
 # ---------- the rest timers (30.10.2026) ----------
 
 def form_tag(page: str) -> str:
@@ -854,13 +1062,13 @@ def test_the_rest_after_an_exercise_comes_with_the_next_one():
     steps = ((1, {"reps_1": "15"}, f"{d.base}/vjezba/2"), (2, {"reps_1": "10", "kg_1": "16"}, f"{d.base}/vjezba/3?odmor=90"),
              (3, {"sec_1": "40"}, f"{d.base}/vjezba/4"), (4, {"reps_1": "1"}, f"{d.base}/kraj"))
     for k, sets, to in steps:
-        r = ci.post(f"{d.base}/vjezba/{k}", data={"rows": "1", **sets}, follow_redirects=False)
+        r = ci.post(f"{d.base}/vjezba/{k}", data={"rows": "1", "item": str(d.items[k - 1]), **sets}, follow_redirects=False)
         assert r.status_code == 303 and r.headers["location"] == to, k
     assert db.get_pass(log_id, ivan).done_count == 4
     ci.post(f"{d.base}/vjezba/2/zamjena", data={"exercise_id": str(d.ex["Iskorak unatrag"])})
-    r = ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "reps_1": "10", "kg_1": "8"}, follow_redirects=False)
+    r = ci.post(f"{d.base}/vjezba/2", data={"rows": "1", "item": str(d.items[1]), "reps_1": "10", "kg_1": "8"}, follow_redirects=False)
     assert r.headers["location"] == f"{d.base}/vjezba/3?odmor=90"          # swapped: the plan's item's rest
-    r = ci.post(f"{d.base}/vjezba/3?odmor=90", data={"rows": "1", "sec_1": "x"})
+    r = ci.post(f"{d.base}/vjezba/3?odmor=90", data={"rows": "1", "item": str(d.items[2]), "sec_1": "x"})
     assert r.status_code == 400 and "data-odmor" not in form_tag(r.text)     # refused: the screen, no rest
 
     for q in ("abc", "0", "5000", "3601", "-5", "1.5", "", "90s", "²"):
@@ -964,7 +1172,7 @@ def test_a_stale_pass_is_finished_or_dropped_never_continued(monkeypatch):
     ci.post(f"{d.base}/kreni")
     log_id = stored()[0][0]
     for k, sets in ((1, {"reps_1": "15"}), (2, {"reps_1": "10", "kg_1": "20"})):
-        assert ci.post(f"{d.base}/vjezba/{k}", data={"rows": "1", **sets}, follow_redirects=False).status_code == 303
+        assert ci.post(f"{d.base}/vjezba/{k}", data={"rows": "1", "item": str(d.items[k - 1]), **sets}, follow_redirects=False).status_code == 303
     started = db.get_pass(log_id, ivan).started_at - timedelta(hours=3)
     age(log_id, 3, saves_at=started + timedelta(minutes=25))
     log = db.get_pass(log_id, ivan)
@@ -973,7 +1181,8 @@ def test_a_stale_pass_is_finished_or_dropped_never_continued(monkeypatch):
 
     r = ci.get(f"{d.base}/vjezba/3", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == kraj
-    r = ci.post(f"{d.base}/vjezba/3", data={"rows": "1", "sec_1": "40"}, follow_redirects=False)
+    r = ci.post(f"{d.base}/vjezba/3", data={"rows": "1", "item": str(d.items[2]), "sec_1": "40"},
+                follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == kraj and db.get_pass(log_id, ivan).done_count == 2
     for k in (3, 2):                                                    # 2: Goblet, a similar one that would swap
         r = ci.post(f"{d.base}/vjezba/{k}/zamjena", data={"exercise_id": str(d.ex["Iskorak unatrag"])},
@@ -1031,7 +1240,7 @@ def test_staleness_is_counted_from_the_last_activity(monkeypatch):
     ci = client_for("ivan@test.local")
     ci.post(f"{d.base}/kreni")
     first = stored()[0][0]
-    ci.post(f"{d.base}/vjezba/1", data={"rows": "1", "reps_1": "15"})
+    ci.post(f"{d.base}/vjezba/1", data={"rows": "1", "item": str(d.items[0]), "reps_1": "15"})
     age(first, 3, saves_at=datetime.now(config.TZ) - timedelta(minutes=10))
     assert not db.get_pass(first, ivan).stale()
     assert ci.get(f"{d.base}/vjezba/2", follow_redirects=False).status_code == 200

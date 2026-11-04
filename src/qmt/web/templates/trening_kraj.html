@@ -47,7 +47,7 @@
 <div class="kr">
   <p class="kr-eyebrow">{{ "Nedovršen trening" if stale else "Trening odrađen" }}</p>
   <h1>{{ day.label }}</h1>
-  <p class="kr-sum">{{ done_n }} od {{ n_items }} {{ plural(n_items, "vježbe", "vježbe", "vježbi") }} · {{ elapsed }}</p>
+  <p class="kr-sum">{% if n_items %}{{ done_n }} od {{ n_items }} {{ plural(n_items, "vježbe", "vježbe", "vježbi") }}{% else %}{{ log.done_text }}{% endif %} · {{ elapsed }}</p>
   {% if stale %}<p class="kr-stale">Započet {{ pass_when(log.date) }} i nije završen — nastavak više nije moguć. Spremi osvrt ili trening odbaci.</p>{% endif %}
   {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
 

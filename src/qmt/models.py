@@ -637,9 +637,12 @@ class Exercise(Base):
     what one rep means."). A programme's items point at these rows (since
     30.10.2026 its days' items, ProgramDayItem.exercise_id), so an exercise
     renamed or given a new clip is renamed and re-shown in every programme
-    that holds it, and one that a programme holds cannot be deleted
-    (db.delete_exercise; the foreign key is RESTRICT). Migration 4c2e8a6f1d39
-    made the items typed by hand until then into these rows.
+    that holds it. Since 4.11.2026 (the owner: "allow Amir to delete
+    exercises even if they are part of some training and that the
+    programme/training stays but it will just be without that exercise") one
+    deleted leaves every day that held it, the days staying (db.delete_exercise;
+    the foreign key is CASCADE, migration 45c543c860f3). Migration
+    4c2e8a6f1d39 made the items typed by hand until then into these rows.
 
     `name` is unique whatever its case: db.create_exercise / update_exercise
     compare the names casefolded under the table's lock (the rule, with the
@@ -805,8 +808,11 @@ class ProgramDayItem(Base):
     nozi"). Migration 7c3bf996c983 parsed each old item's note, its razina's
     dose ("3 × 8 · 8 kg"), into these.
 
-    The exercise's foreign key is RESTRICT: an exercise a day holds cannot be
-    deleted (db.delete_exercise says where it is first)."""
+    The exercise's foreign key is CASCADE since 4.11.2026 (RESTRICT until
+    migration 45c543c860f3): an exercise deleted from the library takes its
+    items out of every day that holds them, the days staying, one left with
+    none too (db.delete_exercise). A pass keeps what it saved of it
+    (WorkoutLog.done: the name, the sets)."""
 
     __tablename__ = "program_day_items"
 
@@ -814,7 +820,7 @@ class ProgramDayItem(Base):
     day_id: Mapped[int] = mapped_column(ForeignKey("program_days.id", ondelete="CASCADE"), index=True)
     position: Mapped[int] = mapped_column(Integer)
     section: Mapped[str] = mapped_column(String(12), server_default=text("'trening'"), default="trening")
-    exercise_id: Mapped[int] = mapped_column(ForeignKey("exercises.id", ondelete="RESTRICT"), index=True)
+    exercise_id: Mapped[int] = mapped_column(ForeignKey("exercises.id", ondelete="CASCADE"), index=True)
     sets: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -964,6 +970,24 @@ class WorkoutLog(Base):
     @property
     def done_count(self) -> int:
         return len(self.done_items)
+
+    def done_in(self, item_ids) -> int:
+        """How many of these items (a day's, as it is now) the pass saved:
+        the "6 od 8 vježbi" of the history and the karton. An entry whose
+        item has left the day since (its exercise deleted from the library,
+        4.11.2026) stays in the pass and in its "Serije" (lines), and is not
+        counted against the day."""
+        ids = set(item_ids)
+        return sum(1 for item_id in self.done_items if item_id in ids)
+
+    @property
+    def done_text(self) -> str:
+        """Every exercise the pass saved, as a day gone, or holding no
+        exercise now, counts it (4.11.2026, one rule wherever a pass is
+        counted: the karton, Povijest, the finish screen, the stale
+        sentence): "2 vježbe", "1 vježba", "6 vježbi"."""
+        n = self.done_count
+        return f"{n} {plural(n, 'vježba', 'vježbe', 'vježbi')}"
 
     @property
     def swap_items(self) -> dict[int, int]:

@@ -14,6 +14,10 @@ programme around them reads "program" wherever the pages said "trening" ("Uredi 
 passes' stored labels followed (migration `b61e8d5bf1db`). The spec below keeps the words
 of its day; the model, the routes and the ids still say day.
 
+**Note (4.11.2026): an exercise can be deleted while trainings hold it**: the item's key to
+its exercise is CASCADE (migration `45c543c860f3`; RESTRICT below), so it leaves every day
+that held it and the days stay; a pass keeps what it saved of it.
+
 ## What the owner asked
 
 "For each group he needs to add the training programme per days which the user will

@@ -109,9 +109,15 @@
   {% endif %}
 </section>
 
+{# deleting it takes it out of every training that holds it (4.11.2026), so
+   the question names where it is, as the lead does: the programmes
+   (program_name), up to three then " …"; one no programme holds as before #}
+{% set n = programs|length %}
 <form method="post" action="/treninzi/vjezbe/{{ e.id }}/obrisi" class="ex-delete"
       data-confirm-title="Obrisati vježbu?"
-      data-confirm="„{{ e.name }}” se briše iz baze vježbi, s uputama i videom."
+      data-confirm="„{{ e.name }}” se briše iz baze vježbi, s uputama i videom
+        {%- if n %}, i izlazi iz svakog treninga koji je drži (u {{ n }} {{ "programu" if n % 10 == 1 and n % 100 != 11 else "programa" }}: {{ (programs|map("program_name")|list)[:3]|join(", ") }}{{ " …" if n > 3 else "" }}). Treninzi ostaju bez nje; odrađeni treninzi u kartonima zadrže njezino ime.
+        {%- else %}.{% endif %}"
       data-confirm-cta="Obriši vježbu">
   <button type="submit" class="btn-ghost">Obriši vježbu</button>
 </form>

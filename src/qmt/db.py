@@ -1566,7 +1566,11 @@ EXERCISE_DUPLICATE = "Vježba s tim imenom već postoji."
 # Every write that may set a name (a new exercise, a save) takes the table in
 # this mode first: it conflicts with itself, so two saves cannot both find a
 # name free and both write it (tested: without it the C locale's index lets
-# "Čučanj" and "ČUČANJ" both in).
+# "Čučanj" and "ČUČANJ" both in). Since 4.11.2026 every other write to an
+# exercise's row takes it first too (its clip, its deletion), so they queue
+# whole: a write that held the row and then needed the table (an UPDATE or a
+# DELETE needs ROW EXCLUSIVE, which this mode refuses) would deadlock against
+# one that held the table and waited on the row (tested).
 _EXERCISES_LOCK = "LOCK TABLE exercises IN SHARE ROW EXCLUSIVE MODE"
 
 
@@ -1722,42 +1726,49 @@ def exercise_programs(exercise_id: int) -> list[Program]:
     return sorted(rows, key=lambda p: alpha_key(program_name(p)))
 
 
-def in_programs(titles: list[str]) -> str:
-    """Why an exercise cannot be deleted: "Vježba je u 3 programa (Booty
-    build (napredna razina), Core control, Donji dio tijela — srednja) —
-    prvo je makni iz njih.", the programmes' names (program_name) up to
-    three, then "…"."""
-    n = len(titles)
-    named = ", ".join(titles[:3]) + (" …" if n > 3 else "")
-    noun = "programu" if n % 10 == 1 and n % 100 != 11 else "programa"
-    return f"Vježba je u {n} {noun} ({named}) — prvo je makni iz {'njega' if n == 1 else 'njih'}."
-
-
-def delete_exercise(exercise_id: int) -> str | None:
-    """Delete a library row nothing holds (its pairs of similar exercises go
-    with it); returns its clip's file name for the caller to delete from
-    storage, None without one or for a row already gone. One a programme
-    holds is refused: ValueError with in_programs' sentence."""
+def delete_exercise(exercise_id: int) -> tuple[str | None, int] | None:
+    """Delete a library row, whatever holds it (4.11.2026, the owner: "allow
+    Amir to delete exercises even if they are part of some training and that
+    the programme/training stays but it will just be without that
+    exercise"): its items go from every day that holds it (the foreign key
+    cascades), the days and the programmes stay, a day left with none too
+    ("Trening još nema vježbi."), and its pairs of similar exercises go with
+    it. A pass keeps what it saved of it (WorkoutLog.done, a snapshot).
+    Its locks, in this order: the table's (_EXERCISES_LOCK, as every write
+    to an exercise takes it first: a save of this one waits whole, or this
+    waits on it, never each on the other), the row FOR UPDATE, then the
+    rows of the programmes that hold it, in their ids' order (every write
+    to a programme's days or their items locks the programme's row; one
+    order), each one's updated_at bumped. add_day_item keeps its own order
+    (the row FOR KEY SHARE, then the programme), which the table's lock
+    does not refuse. Returns (its clip's file name for the caller to delete
+    from storage, None without one; the number of days it was taken out
+    of), None for a row already gone."""
     with session_scope() as s:
+        s.execute(sa_text(_EXERCISES_LOCK))
         e = s.get(Exercise, exercise_id, with_for_update=True)
         if e is None:
             return None
-        titles = sorted((program_name(p) for p in s.scalars(select(Program)
-                                                              .where(Program.id.in_(_holding([exercise_id]))))),
-                        key=alpha_key)
-        if titles:
-            raise ValueError(in_programs(titles))
+        for p in s.scalars(select(Program).where(Program.id.in_(_holding([exercise_id])))
+                           .order_by(Program.id).with_for_update()):
+            p.updated_at = func.now()
+        days = s.scalar(select(func.count(func.distinct(ProgramDayItem.day_id)))
+                        .where(ProgramDayItem.exercise_id == exercise_id))
         video = e.video
         s.delete(e)
-        return video
+        return video, days
 
 
 def set_exercise_video(exercise_id: int, name: str | None, user_id: int | None = None) -> str | None:
     """Give an exercise a stored clip (None: no clip) and return the one it
     had, which the caller deletes from storage once no row names it (the
     announcements' photos' order). LookupError for an exercise that is gone:
-    the caller deletes the clip it stored for it."""
+    the caller deletes the clip it stored for it. The table's lock first, as
+    every write to an exercise (since 4.11.2026: holding the row and then
+    needing the table for its UPDATE, it would deadlock against a delete
+    holding the table and waiting on the row)."""
     with session_scope() as s:
+        s.execute(sa_text(_EXERCISES_LOCK))
         e = s.get(Exercise, exercise_id, with_for_update=True)
         if e is None:
             raise LookupError(exercise_id)
@@ -1993,13 +2004,22 @@ def add_day_item(day_id: int, exercise_id: int, section: str) -> int | None:
     """Put a library exercise last in a day, in a section (SECTIONS), nothing
     asked of it yet; the new item's id. None when the section is not one,
     or the day or the exercise is gone (deleted while it was added too: the
-    foreign key)."""
+    foreign key). The exercise's row is taken FOR KEY SHARE first (the lock
+    the foreign key's check takes), then the programme's, the order
+    delete_exercise follows after the table's lock (the exercise, then the
+    programmes that hold it), so an add and a delete of one exercise never
+    wait on each other in a circle; one that waited on a delete finds the
+    row gone. It takes no table lock: its KEY SHARE (ROW SHARE on the table)
+    does not conflict with _EXERCISES_LOCK, so adds never queue behind
+    saves."""
     if section not in SECTIONS:
         return None
     try:
         with session_scope() as s:
+            if s.get(Exercise, exercise_id, with_for_update={"read": True, "key_share": True}) is None:
+                return None
             found = _day_locked(s, day_id)
-            if found is None or s.get(Exercise, exercise_id) is None:
+            if found is None:
                 return None
             p, day = found
             last = s.scalar(select(func.coalesce(func.max(ProgramDayItem.position), 0))
@@ -2381,15 +2401,20 @@ def day_state(user_id: int, day_id: int) -> dict:
     return day_states(user_id, [day_id]).get(day_id, {"open": None, "count": 0, "last": None})
 
 
-def day_sizes(day_ids) -> dict[int, int]:
-    """How many exercises each of these days holds now (a day that is gone,
-    or holds none, is not in it)."""
+def day_item_ids(day_ids) -> dict[int, set[int]]:
+    """The items (their ids) each of these days holds now: the karton counts
+    a pass's exercises against them, its day's size and the entries still
+    in it (WorkoutLog.done_in). A day that is gone, or holds none, is not in
+    it."""
     day_ids = list(day_ids)
     if not day_ids:
         return {}
+    out: dict[int, set[int]] = {}
     with session_scope() as s:
-        return dict(s.execute(select(ProgramDayItem.day_id, func.count()).where(ProgramDayItem.day_id.in_(day_ids))
-                              .group_by(ProgramDayItem.day_id)).all())
+        for day_id, item_id in s.execute(select(ProgramDayItem.day_id, ProgramDayItem.id)
+                                         .where(ProgramDayItem.day_id.in_(day_ids))):
+            out.setdefault(day_id, set()).add(item_id)
+    return out
 
 
 def exercises_by_id(ids) -> dict[int, Exercise]:

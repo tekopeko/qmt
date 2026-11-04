@@ -438,8 +438,10 @@ video …" with one) and the recording hint under it (`.ex-hint`), then "Dodaj v
 / "Zamijeni video" (`.btn.btn-sm`) and "Ukloni video" (`.btn-ghost.btn-sm`, its
 form named with `form=`, `data-confirm`) side by side, one footprint. Last
 "Obriši vježbu" (`.btn-ghost` in the accent, its border too, as "Obriši cijeli
-trening"; `data-confirm`), refused while a programme holds it, the sentence naming
-them in the alert.
+trening"; `data-confirm`: "Obrisati vježbu?", the text for one a programme holds
+naming them as the lead does, three then " …", and saying the trainings stay
+without it), never refused since 4.11.2026: deleted, it leaves every training that
+held it, and the library's flash says how many ("… maknuta iz 4 treninga.").
 
 **The online programmes' shared rules (base.html since 30.10.2026, when the
 day editor and the day page needed vjezba.html's).** `.ex-card` (a 640px admin

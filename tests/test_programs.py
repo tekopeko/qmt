@@ -8,8 +8,15 @@ modular. Each exercise will have a video connected to it which will show the
 exercise and show what one rep means." An exercise is a row (`Exercise`:
 name, unique whatever its case, instructions, what one rep is, a clip, free
 tags, and the similar exercises a client may later swap one for, one row a
-pair, read both ways); a programme's days' items point at it, so one held by
-a programme cannot be deleted. Amir builds the library on its own pages.
+pair, read both ways); a programme's days' items point at it. Amir builds the
+library on its own pages.
+
+Since 4.11.2026 (the owner: "allow Amir to delete exercises even if they are
+part of some training and that the programme/training stays but it will just
+be without that exercise and allow that there is a training with no
+exercises") an exercise is deleted whatever holds it: it leaves every day
+that held it (the foreign key is CASCADE, migration 45c543c860f3, run for
+real on qmt_test there and back), the days and the programmes stay.
 
 Stage 2 (the owner: "Dan 1, … Dan N with suggested days in the week but the
 user can do them whenever he wants"; per exercise "sets × reps, or seconds,
@@ -59,6 +66,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect as sa_inspect, text as sa_text
+from sqlalchemy.exc import IntegrityError
 
 from qmt import auth, config, db
 from qmt.models import Base, ProgramDay, ProgramDayItem, alpha_key
@@ -567,51 +575,225 @@ def test_the_form_lists_the_ticked_similar_exercises_first():
     assert 'id="altFilter"' in page and "hidden>" in page.split('id="altFilter"')[1][:120]
 
 
-def test_an_exercise_a_programme_holds_is_not_deleted():
-    """Deleting is refused while any programme holds the exercise in any of
-    its days, the sentence naming them (up to three, in the alphabet's
-    order, then "…"; one programme, held in two of its days, is one), on
-    the page's alert too; once out of them all it goes, and its clip with
-    it."""
-    ct, *_ = trainer_with_clients()
+def confirm_text(page: str) -> str:
+    """What "Obriši vježbu" asks (its form's data-confirm), as read."""
+    m = re.search(r'class="ex-delete"\s*data-confirm-title="Obrisati vježbu\?"\s*data-confirm="([^"]*)"\s*'
+                  r'data-confirm-cta="Obriši vježbu">', page)
+    return unescape(m.group(1))
+
+
+def updated(pid: int):
+    with db.engine.connect() as conn:
+        return conn.execute(sa_text("SELECT updated_at FROM programs WHERE id = :p"), {"p": pid}).scalar_one()
+
+
+def test_an_exercise_is_deleted_out_of_every_training_that_holds_it():
+    """Held by programmes, an exercise is deleted all the same (4.11.2026):
+    its confirm says so first, naming where it is (as the lead does, up to
+    three, then "…"), and what stays; deleted, its items leave every day of
+    every programme that held them, the days and the programmes stay (one
+    emptied too: "Trening još nema vježbi."), the holding programmes'
+    updated_at moves (another's not), its pairs and its clip go, and the
+    library's flash says how many trainings it left ("treninga" for every
+    N). One no training holds says "Vježba je obrisana."; one gone already,
+    the same; an exercise deleted cannot be added to a day."""
+    ct, ivan, _ = trainer_with_clients()
     eid = db.create_exercise("Goblet čučanj")
+    other = db.create_exercise("Iskorak")
+    plank = db.create_exercise("Plank")
+    db.update_exercise(eid, "Goblet čučanj", "", "", "", {other})
     upload(ct, eid, "g.mp4", MP4)
-    clip = db.exercise(eid).video
-    progs = {t: db.create_program(t, None) for t in ("Donji dio tijela — srednja", "Core control", "Cijelo tijelo — početna",
-                                                     "Zadnji")}
-    held = [hold(progs["Core control"], eid), hold(progs["Core control"], eid, "zagrijavanje", day=2)]
-    with pytest.raises(ValueError) as refused:
-        db.delete_exercise(eid)
-    assert str(refused.value) == "Vježba je u 1 programu (Core control) — prvo je makni iz njega."
-    assert [p.title for p in db.exercise_programs(eid)] == ["Core control"]
-    held.append(hold(progs["Donji dio tijela — srednja"], eid))
-    with pytest.raises(ValueError) as refused:
-        db.delete_exercise(eid)
-    assert str(refused.value) == "Vježba je u 2 programa (Core control, Donji dio tijela — srednja) — prvo je makni iz njih."
-    held += [hold(progs["Cijelo tijelo — početna"], eid, "istezanje"), hold(progs["Zadnji"], eid)]
+    upload(ct, other, "i.mp4", MP4)
+    clip, other_clip = db.exercise(eid).video, db.exercise(other).video
+    progs = {t: db.create_program(t, None) for t in ("Donji dio tijela — srednja", "Core control",
+                                                     "Cijelo tijelo — početna", "Bez nje")}
+    progs["Zadnji"] = db.create_program("Zadnji", None, "pocetna", "cijelo")   # ivan's combination
+    hold(progs["Core control"], plank)
+    hold(progs["Core control"], eid)
+    hold(progs["Core control"], eid, "zagrijavanje", day=2)                   # one programme, two of its days
+    hold(progs["Donji dio tijela — srednja"], eid)
+    hold(progs["Cijelo tijelo — početna"], eid, "istezanje")
+    hold(progs["Zadnji"], eid)                                                # the day's only exercise
+    hold(progs["Bez nje"], plank)
+    page = ct.get(f"/treninzi/vjezbe/{eid}").text
+    assert ('<p class="hint">U 4 programa: Cijelo tijelo — početna, Core control, Donji dio tijela — srednja, '
+            'Zadnji (početna razina).</p>' in page)
+    assert confirm_text(page) == ("„Goblet čučanj” se briše iz baze vježbi, s uputama i videom, i izlazi iz svakog "
+                                  "treninga koji je drži (u 4 programa: Cijelo tijelo — početna, Core control, "
+                                  "Donji dio tijela — srednja …). Treninzi ostaju bez nje; odrađeni treninzi u "
+                                  "kartonima zadrže njezino ime.")
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("UPDATE programs SET updated_at = '2026-01-01 12:00+01'"))
+    before = updated(progs["Bez nje"])
     r = ct.post(f"/treninzi/vjezbe/{eid}/obrisi", follow_redirects=False)
-    sentence = "Vježba je u 4 programa (Cijelo tijelo — početna, Core control, Donji dio tijela — srednja …) — prvo je makni iz njih."
-    assert r.status_code == 303 and location(r) == f"/treninzi/vjezbe/{eid}?error={sentence}"
-    page = ct.get(r.headers["location"]).text
-    assert f'<div class="alert" role="alert"><span>{sentence}</span></div>' in unescape(page)
-    assert ('<p class="hint">U 4 programa: Cijelo tijelo — početna, Core control, Donji dio tijela — srednja, Zadnji.</p>'
-            in page)
-    assert db.exercise(eid) is not None and (config.MEDIA_DIR / clip).is_file()
-    for item_id in held:
-        db.delete_day_item(item_id)
+    assert r.status_code == 303 and location(r) == "/treninzi/vjezbe?ok=Vježba je obrisana i maknuta iz 5 treninga."
+    assert '<div class="alert ok" role="status">Vježba je obrisana i maknuta iz 5 treninga.</div>' in ct.get(
+        r.headers["location"]).text
+    assert db.exercise(eid) is None and not (config.MEDIA_DIR / clip).exists()
+    assert pairs() == set() and db.exercise(other).alternatives == []
+    assert [item_names(progs[t]) for t in ("Core control", "Donji dio tijela — srednja", "Cijelo tijelo — početna",
+                                           "Zadnji", "Bez nje")] == [["Plank"], [], [], [], ["Plank"]]
+    assert [len(db.get_program(progs[t]).days) for t in ("Core control", "Donji dio tijela — srednja",
+                                                         "Cijelo tijelo — početna", "Zadnji")] == [2, 1, 1, 1]
+    assert stored_counts() == (5, 6, 2, 2)
+    assert all(updated(progs[t]) > before for t in progs if t != "Bez nje") and updated(progs["Bez nje"]) == before
+    emptied = db.get_program(progs["Zadnji"]).days[0].id
+    page = client_for("ivan@test.local").get(f"/treninzi/{progs['Zadnji']}/dan/{emptied}").text
+    assert '<p class="hint" style="margin-top:22px;">Trening još nema vježbi.</p>' in page
+    assert db.add_day_item(emptied, eid, "trening") is None and stored_counts() == (5, 6, 2, 2)
+
+    assert db.delete_exercise(eid) is None                                  # gone already: nothing to do
     r = ct.post(f"/treninzi/vjezbe/{eid}/obrisi", follow_redirects=False)
     assert location(r) == "/treninzi/vjezbe?ok=Vježba je obrisana."
-    assert db.exercise(eid) is None and not (config.MEDIA_DIR / clip).exists()
-    assert db.delete_exercise(eid) is None                                  # gone already: nothing to do
+    assert "Još nije ni u jednom programu." in (page := ct.get(f"/treninzi/vjezbe/{other}").text)
+    assert confirm_text(page) == "„Iskorak” se briše iz baze vježbi, s uputama i videom."
+    r = ct.post(f"/treninzi/vjezbe/{other}/obrisi", follow_redirects=False)  # none held it
+    assert location(r) == "/treninzi/vjezbe?ok=Vježba je obrisana."
+    assert db.exercise(other) is None and not (config.MEDIA_DIR / other_clip).exists()
+    assert db.delete_exercise(plank) == (None, 2)                           # no clip; two days, two programmes
+    assert stored_counts() == (5, 6, 0, 0) and [d.items for d in db.get_program(progs["Bez nje"]).days] == [[]]
+
+
+def lock_waiters() -> int:
+    """How many client connections to the test database wait on a lock now,
+    asked afresh (one transaction would see one snapshot of the activity)."""
+    with db.engine.connect() as conn:
+        return conn.execute(sa_text("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                                    "AND backend_type = 'client backend' AND wait_event_type = 'Lock'")).scalar_one()
+
+
+def a_lock_waiter() -> int:
+    """Wait (5 s at most) until a connection waits on a lock; how many do."""
+    for _ in range(100):
+        if lock_waiters():
+            break
+        time.sleep(0.05)
+    return lock_waiters()
+
+
+def test_an_exercise_added_while_it_is_deleted_is_not_added():
+    """delete_exercise takes the exercise's row, then the rows of the
+    programmes that hold it; add_day_item takes the exercise's row (FOR KEY
+    SHARE, the foreign key's own lock) before the programme's. So the two
+    never wait on each other in a circle: here a delete holds the exercise
+    (as delete_exercise does first) while an add into a programme that
+    holds it starts and waits; the delete then takes the programme (as
+    delete_exercise does next) at once and deletes, and the add finds the
+    exercise gone and adds nothing. (Programme first, as add_day_item took
+    them until 4.11.2026, the add held the programme while it waited on the
+    exercise, and the delete's turn for the programme closed the circle: a
+    deadlock.)"""
+    trainer_with_clients()
+    eid = db.create_exercise("Bird dog")
+    pid = db.create_program("Core control", None)
+    hold(pid, eid)
+    second = db.add_day(pid)
+    got, errors = [], []
+
+    def add():
+        try:
+            got.append(db.add_day_item(second, eid, "trening"))
+        except Exception as e:                                              # pragma: no cover - reported below
+            errors.append(e)
+
+    conn = db.engine.connect()
+    adding = threading.Thread(target=add)
+    try:
+        conn.execute(sa_text("SET LOCAL lock_timeout = '5s'"))             # this transaction's: never the pool's
+        conn.execute(sa_text("SELECT id FROM exercises WHERE id = :e FOR UPDATE"), {"e": eid})
+        adding.start()
+        assert a_lock_waiter() == 1                                         # the add waits on the exercise
+        conn.execute(sa_text("SELECT id FROM programs WHERE id = :p FOR UPDATE"), {"p": pid})
+        conn.execute(sa_text("DELETE FROM exercises WHERE id = :e"), {"e": eid})
+        conn.commit()
+    finally:
+        conn.close()
+        adding.join(timeout=10)
+    assert not errors and got == [None]
+    assert stored_counts() == (1, 2, 0, 0) and [d.items for d in db.get_program(pid).days] == [[], []]
+
+
+def test_an_exercise_saved_while_it_is_deleted_never_deadlocks(monkeypatch):
+    """update_exercise and delete_exercise on one exercise at once (two
+    threads): each takes the table's lock first (_EXERCISES_LOCK), so one
+    waits for the other whole. Here the save holds the lock and is about to
+    write the row when the delete starts: the delete waits on the lock,
+    holding nothing of the row; the save writes and commits (True), and the
+    delete then deletes the row as saved, out of its one day ((None, 1)).
+    (Row first, as delete_exercise took it until 4.11.2026, the delete held
+    the row the save was about to write and waited on the table the save
+    held: a deadlock.)"""
+    trainer_with_clients()
+    eid = db.create_exercise("Bird dog")
+    hold(db.create_program("Core control", None), eid)
+    original, holding, got, errors = db._set_alternatives, threading.Event(), {}, []
+
+    def paused(s, exercise_id, wanted):
+        holding.set()                                                       # the save holds the table's lock
+        a_lock_waiter()                                                     # until the delete waits on a lock
+        return original(s, exercise_id, wanted)                             # its first query writes the row
+
+    monkeypatch.setattr(db, "_set_alternatives", paused)
+
+    def run(key: str, call) -> None:
+        try:
+            got[key] = call()
+        except Exception as e:                                              # pragma: no cover - reported below
+            errors.append(e)
+
+    saving = threading.Thread(target=run, args=("save", lambda: db.update_exercise(eid, "Bird dog 2", "", "", "")))
+    deleting = threading.Thread(target=run, args=("delete", lambda: db.delete_exercise(eid)))
+    saving.start()
+    assert holding.wait(5)
+    deleting.start()
+    saving.join(15)
+    deleting.join(15)
+    assert not errors, errors
+    assert got == {"save": True, "delete": (None, 1)}
+    assert db.exercise(eid) is None and stored_counts() == (1, 1, 0, 0)
+
+
+def test_a_clip_saved_while_its_exercise_is_deleted_waits_its_turn():
+    """set_exercise_video takes the table's lock first, as delete_exercise
+    does (4.11.2026): while a delete holds it, the clip's save waits holding
+    nothing of the exercise's row, so the delete takes the row at once
+    (NOWAIT) and deletes it, and the save then finds the exercise gone
+    (LookupError: the route deletes the file it stored). (Row first, the
+    save would hold the row the delete waits on and wait for its UPDATE on
+    the table the delete holds: a deadlock.)"""
+    eid = db.create_exercise("Bird dog")
+    got = []
+
+    def save():
+        try:
+            got.append(db.set_exercise_video(eid, "vjezba-x.mp4"))
+        except Exception as e:
+            got.append(e)
+
+    conn = db.engine.connect()
+    saving = threading.Thread(target=save)
+    try:
+        conn.execute(sa_text("SET LOCAL lock_timeout = '5s'"))             # this transaction's: never the pool's
+        conn.execute(sa_text(db._EXERCISES_LOCK))                           # as delete_exercise does first
+        saving.start()
+        assert a_lock_waiter() == 1                                         # the save waits on the table
+        conn.execute(sa_text("SELECT id FROM exercises WHERE id = :e FOR UPDATE NOWAIT"), {"e": eid})
+        conn.execute(sa_text("DELETE FROM exercises WHERE id = :e"), {"e": eid})
+        conn.commit()
+    finally:
+        conn.close()
+        saving.join(timeout=10)
+    assert len(got) == 1 and isinstance(got[0], LookupError) and db.exercise(eid) is None
 
 
 def test_a_programme_is_named_with_its_razina_on_the_library_pages():
     """Programmes may share a title, one per razina (the owner, 30.10.2026:
     three live "Booty build"s, and "U 17 programa: …, Booty build, …" sent
-    him to the wrong one): the exercise's page and the delete refusal name
-    a programme that has a razina by its title and the razina's label,
+    him to the wrong one): the exercise's page and its delete's confirm
+    name a programme that has a razina by its title and the razina's label,
     lower-cased, "Booty build (napredna razina)", in the alphabet's order;
-    one without a razina is its title."""
+    one without a razina is its title. The confirm names three, then "…";
+    one programme is "u 1 programu"."""
     ct, *_ = trainer_with_clients()
     eid = db.create_exercise("Plank")
     for level in ("pocetna", "srednja", "napredna"):
@@ -619,11 +801,17 @@ def test_a_programme_is_named_with_its_razina_on_the_library_pages():
     hold(db.create_program("Core control", None), eid)
     names = ["Booty build (napredna razina)", "Booty build (početna razina)", "Booty build (srednja razina)", "Core control"]
     assert [db.program_name(p) for p in db.exercise_programs(eid)] == names
-    assert f'<p class="hint">U 4 programa: {", ".join(names)}.</p>' in ct.get(f"/treninzi/vjezbe/{eid}").text
-    with pytest.raises(ValueError) as refused:
-        db.delete_exercise(eid)
-    assert str(refused.value) == ("Vježba je u 4 programa (Booty build (napredna razina), Booty build (početna razina), "
-                                  "Booty build (srednja razina) …) — prvo je makni iz njih.")
+    page = ct.get(f"/treninzi/vjezbe/{eid}").text
+    assert f'<p class="hint">U 4 programa: {", ".join(names)}.</p>' in page
+    assert ("(u 4 programa: Booty build (napredna razina), Booty build (početna razina), "
+            "Booty build (srednja razina) …). Treninzi ostaju bez nje;") in confirm_text(page)
+    one = db.create_exercise("Bird dog")
+    hold(db.create_program("Core control", None, "srednja", "cijelo"), one)
+    page = ct.get(f"/treninzi/vjezbe/{one}").text
+    assert '<p class="hint">U 1 programu: Core control (srednja razina).</p>' in page
+    assert confirm_text(page) == ("„Bird dog” se briše iz baze vježbi, s uputama i videom, i izlazi iz svakog "
+                                  "treninga koji je drži (u 1 programu: Core control (srednja razina)). Treninzi "
+                                  "ostaju bez nje; odrađeni treninzi u kartonima zadrže njezino ime.")
 
 
 # ---------- the library: the clip ----------
@@ -1362,9 +1550,11 @@ def _schema_diffs(tables: set[str]) -> list:
 
 
 TRENINZI = {"programs", "program_days", "program_day_items", "program_items", "exercises", "exercise_alternatives"}
-# 4f9d6f7103ad, the rest after an exercise: a test that builds program_day_items
-# with 7c3bf996c983 runs it on top, so the table is the model's again
+# 4f9d6f7103ad, the rest after an exercise, and 45c543c860f3, the items' key to
+# their exercise CASCADE (4.11.2026): a test that builds program_day_items with
+# 7c3bf996c983 runs them on top, so the table is the model's again
 REST_AFTER = "4f9d6f7103ad_program_day_items_rest_after.py"
+CASCADE = "45c543c860f3_program_day_items_exercise_cascade.py"
 
 
 def _old_items() -> list[tuple]:
@@ -1492,6 +1682,7 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
 
     _run(_migration("7c3bf996c983_program_days.py").upgrade)                 # and on to the days
     _run(_migration(REST_AFTER).upgrade)                                     # and their rest after an exercise
+    _run(_migration(CASCADE).upgrade)                                        # and their key to it, CASCADE
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI) == []
     assert _library() == library
     assert [[(i.exercise.name, i.sets, i.reps, i.seconds, i.note) for i in items_of(p)] for p in (p1, p2, p3)] == [
@@ -1534,9 +1725,10 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     counting on across its days in each day's display order, each note its
     dose and its note joined by " · ", and drops the days; a second upgrade
     folds them again. (4f9d6f7103ad follows each upgrade: the items' rest
-    after an exercise, a later column the models have.)"""
+    after an exercise, a later column the models have; and 45c543c860f3,
+    their key to the exercise CASCADE, as the models have it.)"""
     mig = _migration("7c3bf996c983_program_days.py")
-    rest_after = _migration(REST_AFTER)
+    rest_after, cascade = _migration(REST_AFTER), _migration(CASCADE)
     assert (mig.revision, mig.down_revision) == ("7c3bf996c983", "4c2e8a6f1d39")
     with db.engine.begin() as conn:                                         # the tables as before the revision
         # (workout_logs, 3890252ee50f's, points at program_days: it goes first)
@@ -1557,6 +1749,7 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
                          {"p": p1, "n": n, "e": eid, "t": note})
     _run(mig.upgrade)
     _run(rest_after.upgrade)
+    _run(cascade.upgrade)
     assert capsys.readouterr().out == f"[7c3bf996c983] programs {p1} ('Cijelo tijelo — srednja'): Dan 1 with 7 exercises\n"
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI) == []
     days = db.get_program(p1).days
@@ -1582,6 +1775,7 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     assert _flat_items() == [(p1, n, eid, note) for n, (eid, note) in enumerate(zip(exercises, back), start=1)]
     _run(mig.upgrade)
     _run(rest_after.upgrade)
+    _run(cascade.upgrade)
     assert capsys.readouterr().out.endswith("Dan 1 with 10 exercises\n")
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI) == []
     assert [(i.exercise_id, i.section, i.sets, i.reps, i.seconds, i.note) for i in items_of(p1)][:3] == [
@@ -1616,6 +1810,56 @@ def test_the_rest_after_migration_adds_the_column_and_takes_it_away():
                             {"i": iid}).one() == (3, 40, 60, "po strani")
     _run(mig.upgrade)
     assert _schema_diffs(TRENINZI) == [] and db.get_day_item(iid).rest_after_seconds is None
+
+
+def _exercise_rule() -> str | None:
+    """The ON DELETE rule of the items' key to their exercise, as the
+    database reports it (the key's name and target checked on the way)."""
+    [fk] = [f for f in sa_inspect(db.engine).get_foreign_keys("program_day_items")
+            if f["constrained_columns"] == ["exercise_id"]]
+    assert (fk["name"], fk["referred_table"], fk["referred_columns"]) == (
+        "program_day_items_exercise_id_fkey", "exercises", ["id"])
+    return fk["options"].get("ondelete")
+
+
+def _delete_refused(eid: int) -> bool:
+    """Does the database refuse a plain DELETE of the exercise (RESTRICT)?
+    When it does not, the exercise is gone."""
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(sa_text("DELETE FROM exercises WHERE id = :e"), {"e": eid})
+    except IntegrityError:
+        return True
+    return False
+
+
+def test_the_cascade_migration_lets_an_exercise_go_with_its_items_and_back():
+    """45c543c860f3, run on qmt_test as before it (the items' key to their
+    exercise ON DELETE RESTRICT: a plain delete of an exercise a day holds
+    is refused): the key is CASCADE, its name kept, the tables the models'
+    and the items as they were; downgrade puts RESTRICT back (refused
+    again), and a second upgrade CASCADE, under which deleting the exercise
+    takes its item and leaves the day and its other item."""
+    mig = _migration(CASCADE)
+    assert (mig.revision, mig.down_revision) == ("45c543c860f3", "b61e8d5bf1db")
+    pid = db.create_program("T", None, "pocetna", "cijelo")
+    eid, keep = db.create_exercise("Bird dog"), db.create_exercise("Plank")
+    gone, stays = hold(pid, eid), hold(pid, keep)
+    with db.engine.begin() as conn:                                         # the key as before the revision
+        conn.execute(sa_text("ALTER TABLE program_day_items DROP CONSTRAINT program_day_items_exercise_id_fkey, "
+                             "ADD CONSTRAINT program_day_items_exercise_id_fkey FOREIGN KEY (exercise_id) "
+                             "REFERENCES exercises (id) ON DELETE RESTRICT"))
+    assert _exercise_rule() == "RESTRICT" and _schema_diffs(TRENINZI) != [] and _delete_refused(eid)
+    _run(mig.upgrade)
+    assert _exercise_rule() == "CASCADE" and _schema_diffs(TRENINZI) == []
+    assert [i.id for i in items_of(pid)] == [gone, stays]
+    _run(mig.downgrade)
+    assert _exercise_rule() == "RESTRICT" and _delete_refused(eid)
+    assert [i.id for i in items_of(pid)] == [gone, stays]
+    _run(mig.upgrade)
+    assert _exercise_rule() == "CASCADE" and _schema_diffs(TRENINZI) == []
+    assert not _delete_refused(eid) and db.exercise(eid) is None
+    assert [i.id for i in items_of(pid)] == [stays] and len(db.get_program(pid).days) == 1
 
 
 def test_nutricionizam_links_to_mojimakrosi():

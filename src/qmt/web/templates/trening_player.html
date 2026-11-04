@@ -261,6 +261,9 @@
         <form class="pl-log" id="plLog" method="post" action="{{ base }}/vjezba/{{ k }}" data-max="{{ max_sets }}"
               {%- if it.rest_seconds %} data-rest="{{ it.rest_seconds }}"{% endif %}{% if odmor %} data-odmor="{{ odmor }}"{% endif %}>
           <input type="hidden" name="rows" value="{{ rows|length }}">
+          {# the exercise this page was drawn for: a save after the day
+             changed under it is refused, not put into another's (4.11.2026) #}
+          <input type="hidden" name="item" value="{{ it.id }}">
           <table class="pl-sets">
             <thead><tr><th scope="col">Set</th>{% if timed %}<th scope="col">Sek.</th>{% else %}<th scope="col">Pon.</th><th scope="col">Kg</th>{% endif %}<th scope="col" class="pl-tick" hidden><span aria-hidden="true">✓</span><span class="pl-sr">Odrađena serija</span></th></tr></thead>
             <tbody>
