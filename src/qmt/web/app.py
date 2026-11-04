@@ -2277,8 +2277,13 @@ def _exercise_page(request: Request, user, e, form: dict | None = None, error: s
                    natrag: str | None = None, status_code: int = 200):
     """An exercise's form page: a new one (e None) or one of the library. With
     `form`, what was posted and refused (a name taken, say), shown again under
-    the error. The similar exercises to tick are every other exercise, the
-    ticked ones first, each group in the alphabet's order."""
+    the error. "Zamjene za ovu vježbu" (since 4.11.2026 a swap has a
+    direction): every other exercise to tick, a tick a swap this one -> that
+    one, the ticked ones first, each group in the alphabet's order. `reverse`
+    is the exercises this one may stand in for (the reverse rows, as
+    stored): a ticked row among them is a mutual pair and carries "u oba
+    smjera" (an unticked one nothing), and the line under the list names
+    them all (Exercise.stands_in_for)."""
     if form is None:
         form = ({"name": e.name, "instructions": e.instructions, "rep_note": e.rep_note, "tags": e.tags,
                  "alternatives": {a.id for a in e.alternatives}} if e is not None else
@@ -2287,6 +2292,7 @@ def _exercise_page(request: Request, user, e, form: dict | None = None, error: s
     choices.sort(key=lambda x: x.id not in form["alternatives"])      # stable: the alphabet within each
     return templates.TemplateResponse(request, "vjezba.html", _ctx(
         request, user, e=e, v=form, choices=choices, error=error, natrag=natrag,
+        reverse={x.id for x in e.stands_in_for} if e is not None else set(),
         programs=db.exercise_programs(e.id) if e is not None else [],
         video_max_mb=config.VIDEO_MAX_MB), status_code=status_code)
 
@@ -2336,7 +2342,8 @@ def vjezba_page(request: Request, exercise_id: int):
 @app.post("/treninzi/vjezbe/{exercise_id}")
 def vjezba_save(request: Request, exercise_id: int, name: str = Form(""), instructions: str = Form(""),
                 rep_note: str = Form(""), tags: str = Form(""), alternative: list[str] = Form([])):
-    """The form's one POST: the texts and the similar exercises together."""
+    """The form's one POST: the texts and the exercises a client may swap
+    this one for (its own direction) together."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -3094,7 +3101,8 @@ def day_item_delete(request: Request, program_id: int, day_id: int, item_id: int
 def media(request: Request, name: str):
     """An exercise's clip or a day's intro video — auth-gated, never a
     public static mount: staff (the trainer, the owner) watch any, a client
-    one whose exercise is in a programme he is matched to, or whose day is
+    one whose exercise is in a programme he is matched to (or may stand in
+    for one that is: a swap's target, db.video_programs), or whose day is
     one of its days, while his online plan runs."""
     user = current_user(request)
     if user is None:

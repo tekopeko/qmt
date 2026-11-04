@@ -595,12 +595,22 @@ class TrainingLog(Base):
     session: Mapped[TrainingSession | None] = relationship()
 
 
-# Two exercises of the library a client may swap one for the other (the
-# spec's stage 3, "Zamijeni vježbu — Slične vježbe"; Amir ticks them on an
-# exercise's form, 30.10.2026). ONE row per pair, stored from the side whose
-# form ticked the other, read from both (Exercise.alternatives); unticked on
-# either form, the pair goes whichever way it was stored (db.update_exercise).
-# Either exercise deleted takes its pairs with it.
+# A swap a client may make in the player (the spec's stage 3, "Zamijeni
+# vježbu — Slične vježbe"; Amir ticks them on an exercise's form,
+# 30.10.2026). Since 4.11.2026 a row is a direction (the owner: "Amir wants
+# it so that he can choose A -> B but not B -> A for some pairs"):
+# (exercise_id, alternative_id) means a client doing exercise_id may do
+# alternative_id instead, usually a regression (one planned the jump may do
+# the plain squat, not the other way); a mutual pair is two rows. An
+# exercise's form sets its own rows only, those with its exercise_id
+# (db.update_exercise); the rows pointing at it are the other exercises' to
+# set. Read as Exercise.alternatives (its targets) and Exercise.stands_in_for
+# (the exercises it may stand in for). No migration came with it: every row
+# stays as Amir ticked it, on the page of its exercise_id (on prod the harder
+# or more equipped exercise, pointing at what may replace it: what that tick
+# meant), and only the reading narrowed. Until 4.11.2026 each row was also
+# read the other way round (the easier exercise offered the harder one too);
+# that reading went. Either exercise deleted takes its rows with it.
 exercise_alternatives = Table(
     "exercise_alternatives", Base.metadata,
     Column("exercise_id", ForeignKey("exercises.id", ondelete="CASCADE"), primary_key=True),
@@ -668,9 +678,11 @@ class Exercise(Base):
                                                  onupdate=func.now())
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-    # the pairs this side stored, and those the other side stored: read
-    # together as `alternatives`, loaded by the query that needs them
-    # (db.exercise), written only through the table (db.update_exercise)
+    # its rows of exercise_alternatives (exercise_id = this one: the exercises
+    # a client may swap it for) and the rows that point at it (alternative_id
+    # = this one: the exercises it may stand in for), read as `alternatives`
+    # and `stands_in_for`, loaded by the query that needs them (db.exercise),
+    # written only through the table (db.update_exercise)
     alternatives_to: Mapped[list["Exercise"]] = relationship(
         secondary=exercise_alternatives, viewonly=True,
         primaryjoin=lambda: Exercise.id == exercise_alternatives.c.exercise_id,
@@ -682,10 +694,17 @@ class Exercise(Base):
 
     @property
     def alternatives(self) -> list["Exercise"]:
-        """The similar exercises, whichever side stored the pair: the union
-        of both directions, in the alphabet's order."""
-        both = {e.id: e for e in [*self.alternatives_to, *self.alternatives_from]}
-        return sorted(both.values(), key=lambda e: alpha_key(e.name))
+        """The exercises a client may swap this one for (its own rows,
+        alternatives_to: since 4.11.2026 a swap has a direction), in the
+        alphabet's order: the player's "Slične vježbe"."""
+        return sorted(self.alternatives_to, key=lambda e: alpha_key(e.name))
+
+    @property
+    def stands_in_for(self) -> list["Exercise"]:
+        """The exercises this one may stand in for (the rows that point at
+        it, alternatives_from: a client planned one of them may do this one
+        instead), in the alphabet's order: its page's "Zamjena je za: …"."""
+        return sorted(self.alternatives_from, key=lambda e: alpha_key(e.name))
 
     @property
     def tag_items(self) -> list[str]:

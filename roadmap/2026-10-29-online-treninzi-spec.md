@@ -18,6 +18,12 @@ of its day; the model, the routes and the ids still say day.
 its exercise is CASCADE (migration `45c543c860f3`; RESTRICT below), so it leaves every day
 that held it and the days stay; a pass keeps what it saved of it.
 
+**Note (4.11.2026): a swap has a direction**: a row of `exercise_alternatives`, (A, B), lets a
+client doing A do B instead, a mutual pair is two rows, and an exercise's form ("Zamjene za
+ovu vježbu") sets its own rows only (the "alternatives" below). No migration: the rows stay
+as Amir ticked them, each on the page of the exercise it may be replaced from; until then
+each was also read the other way round, and that reading went.
+
 ## What the owner asked
 
 "For each group he needs to add the training programme per days which the user will

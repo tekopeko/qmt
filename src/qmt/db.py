@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Iterator
 
-from sqlalchemy import and_, create_engine, delete as sa_delete, func, or_, select, text as sa_text, union
+from sqlalchemy import and_, create_engine, delete as sa_delete, func, or_, select, text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload, sessionmaker
@@ -1611,30 +1611,33 @@ def _duplicate(err: IntegrityError) -> bool:
 
 
 def _set_alternatives(s: Session, exercise_id: int, wanted) -> None:
-    """Make an exercise's similar exercises exactly `wanted` (ids): a pair
-    ticked and not held is stored from this side, one held and not ticked
-    goes whichever side stored it. Ids that are no exercise, and its own, are
-    ignored."""
+    """Make the exercises a client may swap this one for exactly `wanted`
+    (ids): its own rows of exercise_alternatives, those whose exercise_id is
+    this one (a row ticked and not held is stored, one held and not ticked
+    goes). The rows that point at it from other exercises are theirs, set on
+    their pages, and are not touched (since 4.11.2026 a swap has a
+    direction; until then a pair was one row, and unticking it on one
+    exercise's page dropped it for both). Ids that are no exercise, and its
+    own, are ignored."""
     t = exercise_alternatives
     wanted = {int(x) for x in wanted} - {exercise_id}
     if wanted:
         wanted &= set(s.scalars(select(Exercise.id).where(Exercise.id.in_(wanted))))
-    held = (set(s.scalars(select(t.c.alternative_id).where(t.c.exercise_id == exercise_id)))
-            | set(s.scalars(select(t.c.exercise_id).where(t.c.alternative_id == exercise_id))))
+    held = set(s.scalars(select(t.c.alternative_id).where(t.c.exercise_id == exercise_id)))
     for other in sorted(wanted - held):
         s.execute(pg_insert(t).values(exercise_id=exercise_id, alternative_id=other).on_conflict_do_nothing())
     gone = held - wanted
     if gone:
-        s.execute(sa_delete(t).where(or_((t.c.exercise_id == exercise_id) & t.c.alternative_id.in_(gone),
-                                         (t.c.alternative_id == exercise_id) & t.c.exercise_id.in_(gone))))
+        s.execute(sa_delete(t).where(t.c.exercise_id == exercise_id, t.c.alternative_id.in_(gone)))
 
 
 def create_exercise(name: str, instructions: str = "", rep_note: str = "", tags: str = "",
                     alternatives=(), user_id: int | None = None) -> int:
-    """A new library row with its similar exercises; its id. ValueError with
-    the sentence to show when the name is empty, too long or taken, whatever
-    its case ("Vježba s tim imenom već postoji."). The texts are cleaned as
-    copy is (copy.clean), the tags by clean_tags."""
+    """A new library row with the exercises a client may swap it for
+    (_set_alternatives); its id. ValueError with the sentence to show when
+    the name is empty, too long or taken, whatever its case ("Vježba s tim
+    imenom već postoji."). The texts are cleaned as copy is (copy.clean),
+    the tags by clean_tags."""
     name = _checked_name(name)
     try:
         with session_scope() as s:
@@ -1655,9 +1658,9 @@ def create_exercise(name: str, instructions: str = "", rep_note: str = "", tags:
 
 def update_exercise(exercise_id: int, name: str, instructions: str, rep_note: str, tags: str,
                     alternatives=(), user_id: int | None = None) -> bool:
-    """Save an exercise's texts and its similar exercises in one go (the
-    form's one POST); False for an exercise that is gone. ValueError as
-    create_exercise's."""
+    """Save an exercise's texts and the exercises a client may swap it for
+    (its own direction, _set_alternatives) in one go (the form's one POST);
+    False for an exercise that is gone. ValueError as create_exercise's."""
     name = _checked_name(name)
     try:
         with session_scope() as s:
@@ -1679,7 +1682,9 @@ def update_exercise(exercise_id: int, name: str, instructions: str, rep_note: st
 
 
 def exercise(exercise_id: int) -> Exercise | None:
-    """One library row, its similar exercises loaded (both directions)."""
+    """One library row with its swaps loaded: the exercises a client may
+    swap it for (Exercise.alternatives) and those it may stand in for
+    (Exercise.stands_in_for)."""
     with session_scope() as s:
         return s.scalar(select(Exercise).where(Exercise.id == exercise_id)
                         .options(selectinload(Exercise.alternatives_to), selectinload(Exercise.alternatives_from)))
@@ -1780,10 +1785,12 @@ def set_exercise_video(exercise_id: int, name: str | None, user_id: int | None =
 def video_programs(name: str) -> list[Program] | None:
     """Who may watch a stored clip (/media): None when neither an exercise
     nor a day holds it (an exercise's clip, a day's intro video), else the
-    programmes that hold its exercise in a day, or an exercise it is similar
-    to (since 30.10.2026 the player shows a similar exercise swapped in, its
-    clip too), or whose day it introduces (a client watches it through one
-    of his matched programmes; staff watch any)."""
+    programmes that hold its exercise in a day, or an exercise it may stand
+    in for (the player shows an exercise swapped in, its clip too,
+    30.10.2026; since 4.11.2026 a swap has a direction, so only a target of
+    one the programme holds: not an exercise that merely points at one), or
+    whose day it introduces (a client watches it through one of his matched
+    programmes; staff watch any)."""
     with session_scope() as s:
         ids = select(Exercise.id).where(Exercise.video == name)
         intro = select(ProgramDay.program_id).where(ProgramDay.intro_video == name)
@@ -1791,10 +1798,9 @@ def video_programs(name: str) -> list[Program] | None:
                 or s.scalar(select(func.count()).select_from(intro.subquery()))):
             return None
         t = exercise_alternatives
-        similar = union(select(t.c.alternative_id).where(t.c.exercise_id.in_(ids)),
-                        select(t.c.exercise_id).where(t.c.alternative_id.in_(ids)))
+        stands_in_for = select(t.c.exercise_id).where(t.c.alternative_id.in_(ids))
         return list(s.scalars(select(Program).where(or_(Program.id.in_(_holding(ids)),
-                                                        Program.id.in_(_holding(select(similar.subquery()))),
+                                                        Program.id.in_(_holding(stands_in_for)),
                                                         Program.id.in_(intro)))))
 
 
@@ -2271,17 +2277,18 @@ def save_sets(log_id: int, user_id: int, item: ProgramDayItem, sets: list[dict],
 
 def swap_exercise(log_id: int, user_id: int, item: ProgramDayItem, exercise_id: int | None) -> bool:
     """Swap the similar exercise `exercise_id` in for `item` in this pass
-    (None: the plan's back). Only one of the item's exercise's similar
-    exercises (Exercise.alternatives), else ValueError NOT_SIMILAR
-    ("Ta vježba nije među sličnima."); PASS_FINISHED for a pass finished,
-    PASS_STALE for one open too long (WorkoutLog.stale). What the pass
-    saved of the item stays as it was saved. False for no such pass of this
-    client, or an item of another day."""
+    (None: the plan's back). Only one the item's exercise may be swapped
+    for (Exercise.alternatives: its own rows; since 4.11.2026 a swap has a
+    direction, so never one that may merely be swapped for it), else
+    ValueError NOT_SIMILAR ("Ta vježba nije među sličnima.");
+    PASS_FINISHED for a pass finished, PASS_STALE for one open too long
+    (WorkoutLog.stale). What the pass saved of the item stays as it was
+    saved. False for no such pass of this client, or an item of another
+    day."""
     with session_scope() as s:
         if exercise_id is not None:
             planned = s.scalar(select(Exercise).where(Exercise.id == item.exercise_id)
-                               .options(selectinload(Exercise.alternatives_to),
-                                        selectinload(Exercise.alternatives_from)))
+                               .options(selectinload(Exercise.alternatives_to)))
             if planned is None or exercise_id not in {a.id for a in planned.alternatives}:
                 raise ValueError(NOT_SIMILAR)
         log = _pass_row(s, log_id, user_id)
@@ -2418,11 +2425,11 @@ def day_item_ids(day_ids) -> dict[int, set[int]]:
 
 
 def exercises_by_id(ids) -> dict[int, Exercise]:
-    """These exercises of the library, each with its similar exercises loaded."""
+    """These exercises of the library, each with the exercises a client may
+    swap it for loaded (Exercise.alternatives: the player's swap list)."""
     ids = list(ids)
     if not ids:
         return {}
     with session_scope() as s:
         return {e.id: e for e in s.scalars(select(Exercise).where(Exercise.id.in_(ids))
-                                           .options(selectinload(Exercise.alternatives_to),
-                                                    selectinload(Exercise.alternatives_from)))}
+                                           .options(selectinload(Exercise.alternatives_to)))}

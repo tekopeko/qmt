@@ -7,9 +7,16 @@ can choose from and add them to different training programmes that will be
 modular. Each exercise will have a video connected to it which will show the
 exercise and show what one rep means." An exercise is a row (`Exercise`:
 name, unique whatever its case, instructions, what one rep is, a clip, free
-tags, and the similar exercises a client may later swap one for, one row a
-pair, read both ways); a programme's days' items point at it. Amir builds the
-library on its own pages.
+tags, and the exercises a client may swap it for); a programme's days' items
+point at it. Amir builds the library on its own pages.
+
+Since 4.11.2026 a swap has a direction (the owner: "Amir wants it so that he
+can choose A -> B but not B -> A for some pairs"): a row of
+exercise_alternatives, (A, B), lets a client doing A do B instead; a mutual
+pair is two rows. An exercise's form ("Zamjene za ovu vježbu") sets its own
+rows only, and its page says which exercises it may stand in for. No
+migration: the rows stay as Amir ticked them (each on the page of the
+exercise it may be replaced from), only the reading narrowed.
 
 Since 4.11.2026 (the owner: "allow Amir to delete exercises even if they are
 part of some training and that the programme/training stays but it will just
@@ -521,42 +528,128 @@ def test_tags_are_stored_cleaned_and_shown_as_chips():
     assert re.findall(r'<span class="ex-tag">([^<]*)</span>', row) == ["noge", "kod kuće", "bučice"]
 
 
-def test_similar_exercises_read_both_ways_and_go_from_either_side():
-    """Ticked on A's form, B is stored once, (A, B), and read both ways: B's
-    page has A ticked. Unticked on B's form the pair goes, though B's side
-    never stored it; ticked there again it is stored from B's side, (B, A),
-    and A's form unticking B removes that row. Its own id, an unknown one
-    and a pair held already store nothing; a deleted exercise takes its
-    pairs."""
+def save_swaps(ct: TestClient, eid: int, name: str, *ticked: int) -> None:
+    """The exercise's form posted as the trainer: its name, these ticked."""
+    r = ct.post(f"/treninzi/vjezbe/{eid}", data={"name": name, "alternative": [str(t) for t in ticked]},
+                follow_redirects=False)
+    assert r.status_code == 303, r.text
+
+
+def swaps(eid: int) -> list[str]:
+    """The exercises a client may swap this one for (Exercise.alternatives)."""
+    return [x.name for x in db.exercise(eid).alternatives]
+
+
+def stands(eid: int) -> list[str]:
+    """The exercises this one may stand in for (Exercise.stands_in_for)."""
+    return [x.name for x in db.exercise(eid).stands_in_for]
+
+
+def test_a_swap_is_a_direction_its_exercises_form_sets():
+    """A row of exercise_alternatives is a direction (4.11.2026, the owner:
+    "Amir wants it so that he can choose A -> B but not B -> A for some
+    pairs"): ticked on A's form, B is stored as (A, B) and read one way, A's
+    swaps are B and B's none, B stands in for A. B's form ticking A stores
+    (B, A), a mutual pair of two rows; B's form unticking A takes (B, A)
+    only, A's row stays; A's form unticking B takes (A, B) and leaves (B,
+    A). Its own id, an unknown one and a row held already store nothing; a
+    row the other way is the other form's own, stored; a deleted exercise
+    takes its rows either way."""
     ct, *_ = trainer_with_clients()
     a, b, c = (db.create_exercise(n) for n in ("Goblet čučanj", "Iskorak", "Čučanj s vlastitom težinom"))
 
-    def save(eid: int, name: str, *ticked: int):
-        r = ct.post(f"/treninzi/vjezbe/{eid}", data={"name": name, "alternative": [str(t) for t in ticked]},
-                    follow_redirects=False)
-        assert r.status_code == 303, r.text
-
-    def similar(eid: int) -> list[str]:
-        return [x.name for x in db.exercise(eid).alternatives]
-
-    save(a, "Goblet čučanj", b, c)
+    save_swaps(ct, a, "Goblet čučanj", b, c)
     assert pairs() == {(a, b), (a, c)}
-    assert similar(a) == ["Čučanj s vlastitom težinom", "Iskorak"] and similar(b) == ["Goblet čučanj"] == similar(c)
-    page = ct.get(f"/treninzi/vjezbe/{b}").text
-    assert re.search(rf'<input type="checkbox" name="alternative" value="{a}" checked>', page)
-    assert re.search(rf'<input type="checkbox" name="alternative" value="{c}">', page)
-    assert f'value="{b}"' not in page.split('id="altList"')[1].split("</fieldset>")[0]   # never itself
-    save(b, "Iskorak")                                                # unticked on the other side
-    assert pairs() == {(a, c)} and similar(a) == ["Čučanj s vlastitom težinom"] and similar(b) == []
-    save(b, "Iskorak", a)                                             # stored from B's side now
-    assert pairs() == {(a, c), (b, a)} and similar(a) == ["Čučanj s vlastitom težinom", "Iskorak"]
-    save(a, "Goblet čučanj", c)                                       # A's form removes B's row
-    assert pairs() == {(a, c)}
-    save(a, "Goblet čučanj", a, c, 987654)
-    save(c, "Čučanj s vlastitom težinom", a)                          # held already (from A's side)
-    assert pairs() == {(a, c)}
-    db.delete_exercise(c)
-    assert pairs() == set() and similar(a) == []
+    assert swaps(a) == ["Čučanj s vlastitom težinom", "Iskorak"] and swaps(b) == [] == swaps(c)
+    assert stands(a) == [] and stands(b) == ["Goblet čučanj"] == stands(c)
+    save_swaps(ct, b, "Iskorak", a)                                   # the other direction: two rows
+    assert pairs() == {(a, b), (a, c), (b, a)}
+    assert swaps(b) == ["Goblet čučanj"] and stands(a) == ["Iskorak"] and stands(b) == ["Goblet čučanj"]
+    save_swaps(ct, b, "Iskorak")                                      # B's untick: its own row only
+    assert pairs() == {(a, b), (a, c)} and swaps(a) == ["Čučanj s vlastitom težinom", "Iskorak"]
+    save_swaps(ct, b, "Iskorak", a)
+    save_swaps(ct, a, "Goblet čučanj", c)                             # A's untick: (A, B) goes, (B, A) stays
+    assert pairs() == {(a, c), (b, a)}
+    assert swaps(a) == ["Čučanj s vlastitom težinom"] and swaps(b) == ["Goblet čučanj"] and stands(b) == []
+    save_swaps(ct, a, "Goblet čučanj", a, c, 987654)                  # its own id, an unknown one, (A, C) held
+    assert pairs() == {(a, c), (b, a)}
+    save_swaps(ct, c, "Čučanj s vlastitom težinom", a)                # (C, A): C's own, though (A, C) is there
+    assert pairs() == {(a, c), (b, a), (c, a)} and stands(a) == ["Čučanj s vlastitom težinom", "Iskorak"]
+    db.delete_exercise(a)
+    assert pairs() == set() and swaps(b) == [] == swaps(c) and stands(c) == []
+
+
+def alt_rows(page: str) -> list[tuple[int, bool, bool]]:
+    """"Zamjene za ovu vježbu"'s rows in order: (the exercise's id, ticked,
+    tagged "u oba smjera")."""
+    box = page.split('id="altList"')[1].split("</div>")[0]
+    return [(int(v), bool(on), '<span class="alt-back">· u oba smjera</span>' in rest) for v, on, rest in
+            re.findall(r'<input type="checkbox" name="alternative" value="(\d+)"( checked)?>(.*?)</label>', box, re.S)]
+
+
+def stands_line(page: str) -> tuple[str, list[tuple[str, str]]] | None:
+    """The line under the list as read, and its links (href, name); None
+    without one."""
+    m = re.search(r'<p class="hint alt-for">(.*?)</p>', page, re.S)
+    if m is None:
+        return None
+    links = [(h, unescape(n)) for h, n in re.findall(r'<a class="tlink" href="([^"]+)">([^<]*)</a>', m.group(1))]
+    return unescape(re.sub(r"<[^>]+>", "", m.group(1))), links
+
+
+def test_the_page_says_which_way_a_swap_goes():
+    """The section is "Zamjene za ovu vježbu" with its one hint; a ticked
+    row is this -> that; a ticked row whose exercise may also be swapped
+    for this one (the reverse row: a mutual pair) carries "u oba smjera"
+    after its tags, a muted span (text, not a control), and an unticked row
+    none, the reverse row or not; under the list "Zamjena je za: A, B."
+    names the exercises this one may stand in for, in the alphabet's order,
+    each a .tlink to its page (where that direction is ticked). An exercise
+    in no mutual pair has no tag, one that stands in for none no line, a
+    new one's page neither. The filter is "Filtriraj zamjene", a new
+    exercise's lead names "zamjene". A refused save keeps the ticks as
+    posted, the reverse rows (the tags' half) and the line as stored."""
+    ct, *_ = trainer_with_clients()
+    ids = {n: db.create_exercise(n, tags=t) for n, t in (("Goblet čučanj", "noge"), ("Čučanj skok", ""),
+                                                         ("Čučanj s vlastitom težinom", "kod kuće"), ("Iskorak", ""))}
+    g, j, b, i = (ids[n] for n in ("Goblet čučanj", "Čučanj skok", "Čučanj s vlastitom težinom", "Iskorak"))
+    db.update_exercise(j, "Čučanj skok", "", "", "", {g, b})                  # the jump: to the goblet, the plain squat
+    db.update_exercise(g, "Goblet čučanj", "", "", "noge", {b, i})            # the goblet: the plain squat, the lunge
+    db.update_exercise(b, "Čučanj s vlastitom težinom", "", "", "kod kuće", {g})   # and back to the goblet
+    page = ct.get(f"/treninzi/vjezbe/{g}").text
+    assert "<legend>Zamjene za ovu vježbu</legend>" in page and "<legend>Slične vježbe</legend>" not in page
+    assert ('<p class="hint">Polaznik smije odraditi označene vježbe umjesto ove. Da ova vježba zamijeni neku '
+            'drugu, označi je na stranici te vježbe.</p>') in page
+    assert alt_rows(page) == [(b, True, True), (i, True, False), (j, False, False)]  # Č s … before Č sk …
+    assert ('Čučanj s vlastitom težinom <span class="tags">· kod kuće</span> '
+            '<span class="alt-back">· u oba smjera</span></span></label>') in page       # after its tags
+    assert 'aria-label="Filtriraj zamjene"' in page
+    assert stands_line(page) == ("Zamjena je za: Čučanj s vlastitom težinom, Čučanj skok.",
+                                 [(f"/treninzi/vjezbe/{b}", "Čučanj s vlastitom težinom"),
+                                  (f"/treninzi/vjezbe/{j}", "Čučanj skok")])
+    for href, name in stands_line(page)[1]:                                   # each its page
+        assert f'<h1>{name}</h1>' in ct.get(href).text
+    page = ct.get(f"/treninzi/vjezbe/{b}").text                               # the jump unticked: no tag
+    assert alt_rows(page) == [(g, True, True), (j, False, False), (i, False, False)]
+    assert stands_line(page)[0] == "Zamjena je za: Čučanj skok, Goblet čučanj."
+    page = ct.get(f"/treninzi/vjezbe/{j}").text                               # stands in for none
+    assert alt_rows(page) == [(b, True, False), (g, True, False), (i, False, False)]
+    assert stands_line(page) is None and 'class="alt-back"' not in page
+    page = ct.get(f"/treninzi/vjezbe/{i}").text                               # stands in for Goblet, ticks none
+    assert alt_rows(page) == [(b, False, False), (j, False, False), (g, False, False)]
+    assert stands_line(page) == ("Zamjena je za: Goblet čučanj.", [(f"/treninzi/vjezbe/{g}", "Goblet čučanj")])
+    assert 'class="alt-back"' not in page
+    page = ct.get("/treninzi/vjezbe/nova").text
+    assert "<legend>Zamjene za ovu vježbu</legend>" in page and 'class="alt-back"' not in page
+    assert stands_line(page) is None
+    assert '<p class="hint">Upute, jedno ponavljanje, oznake i zamjene; video joj dodaješ kad je spremiš.</p>' in page
+    assert [x for x, _, _ in alt_rows(page)] == [b, j, g, i]
+
+    r = ct.post(f"/treninzi/vjezbe/{g}", data={"name": "Iskorak", "tags": "noge", "alternative": [str(j)]})
+    assert r.status_code == 400 and "Vježba s tim imenom već postoji." in r.text
+    assert alt_rows(r.text) == [(j, True, True), (b, False, False), (i, False, False)]   # j ticked, j -> g stored
+    assert stands_line(r.text)[0] == "Zamjena je za: Čučanj s vlastitom težinom, Čučanj skok."
+    assert pairs() == {(j, g), (j, b), (g, b), (g, i), (b, g)}                # nothing saved
 
 
 def test_the_form_lists_the_ticked_similar_exercises_first():
@@ -841,6 +934,7 @@ def test_a_clip_is_stored_replaced_and_removed(monkeypatch):
     assert f"Zamijeni video (mp4, mov ili webm, do {cap} MB)" in page and ">Zamijeni video</button>" in page
     assert 'form="ex-video-x" class="btn-ghost btn-sm">Ukloni video</button>' in page
     assert re.search(r'<form id="ex-video-x" method="post" action="/treninzi/vjezbe/\d+/video/ukloni"\s+data-confirm-title=', page)
+    assert 'data-confirm="Video vježbe „Plank” bit će obrisan. Upute, oznake i zamjene ostaju."' in page
     served = ct.get(f"/media/{first}")
     assert served.status_code == 200 and served.headers["content-type"] == "video/mp4" and served.content == MP4
 

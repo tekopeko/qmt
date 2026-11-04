@@ -215,9 +215,12 @@ DEMO_REST_AFTER = 90             # seconds after the exercise, before the next o
 DEMO_INTRO = "Odmor 60–90 s između serija. Tempo kontroliran."
 
 # The library's demo (30.10.2026): tags on some of DEMO_EXERCISES, a few
-# exercises no programme holds yet, and the similar exercises a client may
-# swap one for (stored one way, read both: Exercise.alternatives).
-# name -> (tags, instructions for a new one, rep note, similar exercises)
+# exercises no programme holds yet, and the exercises a client may swap one
+# for. A swap has a direction since 4.11.2026 (Exercise.alternatives: a
+# client planned the exercise may do these instead): here each is a
+# regression, an easier exercise in its place, and nothing is added the
+# other way (a client planned the easier one is not offered the harder).
+# name -> (tags, instructions for a new one, rep note, its swaps)
 LIBRARY = {
     "Goblet čučanj": ("noge, bučice", None, "Spust dok su bedra paralelna s podom, pa natrag do pune ekstenzije.",
                       ("Čučanj s vlastitom težinom", "Iskorak unatrag")),
@@ -279,10 +282,9 @@ def seed_program() -> None:
     for name, (tags, instructions, rep_note, _) in LIBRARY.items():
         if name not in ids:
             ids[name] = db.create_exercise(name, instructions or "", rep_note, tags)
-    for name, (tags, _, rep_note, similar) in LIBRARY.items():
+    for name, (tags, _, rep_note, swaps) in LIBRARY.items():
         e = db.exercise(ids[name])
-        db.update_exercise(e.id, e.name, e.instructions, rep_note or e.rep_note, tags,
-                           {ids[x] for x in similar} | {a.id for a in e.alternatives})
+        db.update_exercise(e.id, e.name, e.instructions, rep_note or e.rep_note, tags, {ids[x] for x in swaps})
     with db.session_scope() as s:
         pid = s.scalar(select(Program.id).where(Program.level == "srednja", Program.goal == "cijelo"))
     for n, (title, weekday, items) in enumerate(DAYS, start=1):

@@ -35,6 +35,12 @@ the player and the finish screen carry #leaveDlg (finish or discard, never
 "later"), and a pass with no activity for PASS_STALE_HOURS (its start or its
 last save) can only be finished, its length to its last save, or dropped.
 
+A swap has a direction (4.11.2026; the owner: "Amir wants it so that he can
+choose A -> B but not B -> A for some pairs"): the player offers the plan
+exercise's own swaps (Exercise.alternatives), never an exercise that may
+merely be swapped for it, and a client watches the clip of a swap's target
+of an exercise in his day, not of one that only points at one of his.
+
 An exercise deleted from the library (4.11.2026: it leaves every day that
 held it) stays in the passes that saved it (their "Serije" name it), the
 counts say the day as it is now, a similar exercise swapped in and deleted
@@ -130,8 +136,8 @@ def build_day(title: str = "Cijelo tijelo — početna", level: str | None = "po
     """A programme (ivan's combo by default) and its Trening 1 "Cijelo
     tijelo", in the day's display order:
       1 Čučanj s vlastitom težinom (zagrijavanje, 2 × 15, rest 30)
-      2 Goblet čučanj (trening, 3 × 10, rest 60, "16 kg"; similar:
-        Iskorak unatrag, Čučanj s vlastitom težinom)
+      2 Goblet čučanj (trening, 3 × 10, rest 60, "16 kg"; its swaps, one
+        way: Iskorak unatrag, Čučanj s vlastitom težinom)
       3 Plank (trening, 3 × 40 s)
       4 Istezanje stražnje lože (istezanje, nothing asked)
     added out of that order, so the display order is the sections'."""
@@ -576,7 +582,7 @@ def test_an_exercise_is_swapped_for_a_similar_one_only():
     first in the list, the list's row its name "(zamjena)"; a save names it
     in the entry. Any other exercise is refused ("Ta vježba nije među
     sličnima."), and "vrati" puts the plan's back. Its clip is the client's
-    to watch (it is similar to one his programme holds)."""
+    to watch (a swap's target of one his programme holds)."""
     trainer, ivan, ana = people()
     d = build_day()
     ct, ci, ca = client_for("trener@test.local"), client_for("ivan@test.local"), client_for("ana@test.local")
@@ -626,6 +632,68 @@ def test_an_exercise_is_swapped_for_a_similar_one_only():
     page = ci.get(f"{d.base}/vjezba/2").text
     assert '<h1 class="pl-name" id="pl-name">Goblet čučanj</h1>' in page and "Zamjena za" not in page
     assert db.get_pass(log_id, ivan).done_items[d.items[1]]["name"] == "Iskorak unatrag"   # what was done stays
+
+
+def test_a_swap_goes_one_way_only():
+    """A swap has a direction (4.11.2026): Goblet čučanj's page ticks Čučanj
+    s vlastitom težinom (build_day), so a client planned Goblet may do the
+    plain squat, and one planned the plain squat (exercise 1) is offered no
+    swap: Goblet posted there is refused ("Ta vježba nije među sličnima."),
+    by the database's own check too. Ticked on the plain squat's page,
+    Goblet is offered there and Goblet's own list stays; unticked on
+    Goblet's page, the plain squat leaves Goblet's list and Goblet stays in
+    the plain squat's. A clip is the client's to watch when its exercise is
+    a swap's target of one in his day (Iskorak unatrag), never when it only
+    points at one of his (a jump squat that may be swapped for Goblet, in
+    no day: 403 to him; staff watch any)."""
+    trainer, ivan, ana = people()
+    d = build_day()
+    ct, ci = client_for("trener@test.local"), client_for("ivan@test.local")
+    goblet, plain, lunge = d.ex["Goblet čučanj"], d.ex["Čučanj s vlastitom težinom"], d.ex["Iskorak unatrag"]
+    ci.post(f"{d.base}/kreni")
+    log_id = stored()[0][0]
+
+    def offered(k: int) -> list[str]:
+        return re.findall(r'<span class="swap-name">([^<]*)', ci.get(f"{d.base}/vjezba/{k}").text)
+
+    def form(eid: int, *ticked: int) -> None:
+        """The exercise's page saved by the trainer, its texts as they are,
+        these ticked."""
+        e = db.exercise(eid)
+        r = ct.post(f"/treninzi/vjezbe/{eid}", data={"name": e.name, "instructions": e.instructions,
+                                                    "rep_note": e.rep_note, "tags": e.tags,
+                                                    "alternative": [str(t) for t in ticked]}, follow_redirects=False)
+        assert r.status_code == 303, r.text
+
+    assert offered(1) == [] and "Zamijeni vježbu" not in ci.get(f"{d.base}/vjezba/1").text
+    r = ci.post(f"{d.base}/vjezba/1/zamjena", data={"exercise_id": str(goblet)}, follow_redirects=False)
+    assert location(r) == f"{d.base}/vjezba/1?error=Ta vježba nije među sličnima."
+    with pytest.raises(ValueError, match="Ta vježba nije među sličnima."):
+        db.swap_exercise(log_id, ivan, item(d, 1), goblet)
+    assert db.get_pass(log_id, ivan).swap_items == {}
+
+    form(plain, goblet)                                                   # the plain squat's own row: plain -> Goblet
+    assert offered(1) == ["Goblet čučanj"] and offered(2) == ["Čučanj s vlastitom težinom", "Iskorak unatrag"]
+    form(goblet, lunge)                                                   # Goblet's page drops Goblet -> plain
+    assert offered(2) == ["Iskorak unatrag"] and offered(1) == ["Goblet čučanj"]
+    r = ci.post(f"{d.base}/vjezba/2/zamjena", data={"exercise_id": str(plain)}, follow_redirects=False)
+    assert location(r) == f"{d.base}/vjezba/2?error=Ta vježba nije među sličnima."
+    r = ci.post(f"{d.base}/vjezba/1/zamjena", data={"exercise_id": str(goblet)}, follow_redirects=False)
+    assert r.headers["location"] == f"{d.base}/vjezba/1"
+    assert db.get_pass(log_id, ivan).swap_items == {d.items[0]: goblet}
+
+    jump = db.create_exercise("Čučanj skok")
+    form(jump, goblet)                                                    # the jump -> Goblet: it points at his
+    clips = {}
+    for eid in (lunge, jump):
+        r = ct.post(f"/treninzi/vjezbe/{eid}/video", files={"video": ("v.mp4", io.BytesIO(MP4), "video/mp4")},
+                    follow_redirects=False)
+        assert r.status_code == 303
+        clips[eid] = db.exercise(eid).video
+    assert [p.id for p in db.video_programs(clips[lunge])] == [d.pid] and db.video_programs(clips[jump]) == []
+    assert ci.get(f"/media/{clips[lunge]}").status_code == 200                # a target of Goblet, in his day
+    assert ci.get(f"/media/{clips[jump]}").status_code == 403                 # only points at Goblet
+    assert ct.get(f"/media/{clips[jump]}").status_code == 200                 # staff watch any
 
 
 # ---------- the finish, the drop ----------

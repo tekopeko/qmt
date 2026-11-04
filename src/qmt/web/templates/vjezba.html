@@ -7,11 +7,18 @@
      since the day editor's cards are the same). Two forms, each its own
      card: the texts with the similar exercises (one POST), and the clip (a
      POST of its own, multipart, for an exercise that exists). */
-  /* Slične vježbe: every other exercise as a checkbox row, in a box that
+  /* Zamjene za ovu vježbu ("Slične vježbe" until 4.11.2026, when a swap
+     got a direction): every other exercise as a checkbox row, in a box that
      scrolls past seven rows or so; the filter above it is shown by the
      script (without it the box is the whole list). A row is a label, not
      the uppercase caption every label is (base.html), 40px tall: a finger's
-     target. A ticked row says so in the accent's tint. */
+     target. A ticked row (this one -> that one) says so in the accent's
+     tint. A ticked row whose exercise may also be swapped for this one (the
+     reverse row: a mutual pair) carries "u oba smjera" after its tags,
+     muted as they are: text, not a control (.alt-back); an unticked row
+     carries none. Under the box "Zamjena je za: …" (.alt-for) names the
+     exercises this one may stand in for, each a .tlink to its page, where
+     that direction is ticked. */
   .ex-alts { border: 0; padding: 0; margin: 0 0 16px; min-width: 0; }
   .ex-alts legend { font: 600 .76rem var(--font-body); text-transform: uppercase; letter-spacing: .06em;
                     color: var(--muted); margin-bottom: 5px; padding: 0; }
@@ -27,6 +34,8 @@
   .alt-list label:has(input:checked) { background: var(--accent-dim); }
   .alt-list input { flex: none; width: 18px; height: 18px; padding: 0; accent-color: var(--accent); }
   .alt-list .tags { color: var(--muted); font-size: .8rem; }
+  .alt-list .alt-back { color: var(--muted); font-size: .8rem; white-space: nowrap; }
+  .ex-alts .alt-for { margin: 8px 0 0; }
   .alt-none { color: var(--muted); font-size: .9rem; }
   /* the clip as it plays (.ex-video) and "Obriši vježbu" (.ex-delete):
      base.html's, shared with the day editor and the client's day page */
@@ -42,7 +51,7 @@
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi/vjezbe">Vježbe</a><span class="sep">/</span><span class="here">{{ e.name if e else "Nova vježba" }}</span></nav>
 <h1>{{ e.name if e else "Nova vježba" }}</h1>
 {% if e is none %}
-<p class="hint">Upute, jedno ponavljanje, oznake i slične vježbe; video joj dodaješ kad je spremiš.</p>
+<p class="hint">Upute, jedno ponavljanje, oznake i zamjene; video joj dodaješ kad je spremiš.</p>
 {% elif programs %}
 {# where it is, said, in the lead's muted words: the names, not six accent
    links (the one loud colour is the actions'); deleting it names them too.
@@ -64,19 +73,22 @@
   <div class="field"><label for="ex-tags">Oznake (odvoji zarezom)</label>
     <input id="ex-tags" type="text" name="tags" value="{{ v.tags }}" placeholder="npr. noge, bučice, kod kuće"></div>
   <fieldset class="ex-alts">
-    <legend>Slične vježbe</legend>
-    <p class="hint">Vježbe kojima se ova može zamijeniti; vrijedi u oba smjera.</p>
+    <legend>Zamjene za ovu vježbu</legend>
+    <p class="hint">Polaznik smije odraditi označene vježbe umjesto ove. Da ova vježba zamijeni neku drugu, označi je na stranici te vježbe.</p>
     {% if choices %}
     <input type="search" class="alt-filter" id="altFilter" placeholder="Filtriraj po nazivu ili oznaci"
-           aria-label="Filtriraj slične vježbe" hidden>
+           aria-label="Filtriraj zamjene" hidden>
     <div class="alt-list" id="altList">
       {% for x in choices %}
       <label data-find="{{ (x.name ~ ' ' ~ x.tags)|lower }}"><input type="checkbox" name="alternative" value="{{ x.id }}"{% if x.id in v.alternatives %} checked{% endif %}>
-        <span>{{ x.name }}{% if x.tags %} <span class="tags">· {{ x.tags }}</span>{% endif %}</span></label>
+        <span>{{ x.name }}{% if x.tags %} <span class="tags">· {{ x.tags }}</span>{% endif %}{% if x.id in v.alternatives and x.id in reverse %} <span class="alt-back">· u oba smjera</span>{% endif %}</span></label>
       {% endfor %}
     </div>
     {% else %}
     <p class="alt-none">U bazi još nema drugih vježbi.</p>
+    {% endif %}
+    {% if e and e.stands_in_for %}
+    <p class="hint alt-for">Zamjena je za: {% for x in e.stands_in_for %}<a class="tlink" href="/treninzi/vjezbe/{{ x.id }}">{{ x.name }}</a>{{ "." if loop.last else ", " }}{% endfor %}</p>
     {% endif %}
   </fieldset>
   <div class="ex-actions">
@@ -104,7 +116,7 @@
   {# its button sits beside "Zamijeni video" (form=), a form holds no form #}
   <form id="ex-video-x" method="post" action="/treninzi/vjezbe/{{ e.id }}/video/ukloni"
         data-confirm-title="Ukloniti video?"
-        data-confirm="Video vježbe „{{ e.name }}” bit će obrisan. Upute, oznake i slične vježbe ostaju."
+        data-confirm="Video vježbe „{{ e.name }}” bit će obrisan. Upute, oznake i zamjene ostaju."
         data-confirm-cta="Ukloni video"></form>
   {% endif %}
 </section>
@@ -125,7 +137,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-  // Slične vježbe's filter: shown once this runs (without it the box is the
+  // The swaps' filter: shown once this runs (without it the box is the
   // whole list). It keeps the rows whose name or tags hold what is typed,
   // whatever its case; a row it hides keeps its tick, and the form posts it.
   (function () {

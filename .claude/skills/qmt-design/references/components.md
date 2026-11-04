@@ -419,15 +419,22 @@ the button. **An exercise's page**: crumbs (Vježbe / its name), the h1, the lea
 (where it is, "U 2 programa: A, B." in the hint's muted words, not links: the
 accent is the actions'; "Još nije ni u jednom programu."; a new one: what to fill),
 then `.card.ex-card` (640px) holding the one form: labelled fields (Naziv,
-Upute, Što je jedno ponavljanje, Oznake (odvoji zarezom)) and **Slične vježbe**, a
-`fieldset.ex-alts` (its legend in the label's look) with a muted hint, the
+Upute, Što je jedno ponavljanje, Oznake (odvoji zarezom)) and **Zamjene za ovu
+vježbu** ("Slične vježbe" until 4.11.2026, when a swap got a direction), a
+`fieldset.ex-alts` (its legend in the label's look) with a muted hint ("Polaznik
+smije odraditi označene vježbe umjesto ove. Da ova vježba zamijeni neku drugu, označi
+je na stranici te vježbe."), the
 `.alt-filter` search (rendered `hidden`, the script shows it and keeps the rows
 whose name or tags hold what is typed; a row it hides keeps its tick; Enter
 there only filters: in the form, a phone keyboard's "Go" would save it half
 typed) and
 `.alt-list`, a 300px box that scrolls, of `label` rows (40px, a checkbox, the name
-and its tags muted; the ticked ones first, each group in the alphabet's order; a
-ticked row in `--accent-dim`); then `.ex-actions`: "Spremi" (`.btn.btn-sm`; a new
+and its tags muted, then, on a ticked row whose reverse row exists too (a mutual pair), `.alt-back` "· u oba
+smjera", muted as the tags and unbroken: text, not a control, an unticked row none (the line
+under the box names what this one stands in for); the ticked ones first, each group in the alphabet's order; a ticked
+row, a swap this one → that one, in `--accent-dim`), and under the box, when this one
+stands in for any, `p.hint.alt-for` "Zamjena je za: A, B.", each name a `.tlink` to
+its page (where that direction is ticked); then `.ex-actions`: "Spremi" (`.btn.btn-sm`; a new
 one's "Odustani" `.btn-ghost.btn-sm` beside it). A refused save comes back as the
 page, what was typed kept, its sentence in the page's own alert (the
 `error_alert` block). For an existing exercise a second card, **Video**
