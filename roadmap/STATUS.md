@@ -7,7 +7,7 @@ Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 The owner (24.11.2026): "The 'bazna cijena' has to be from the 10.9.2026. i.e. it should be pointed out like Bazna cijena na 10.9.2026. : __ €". The label is the one slot every base line prints (`price.base_label`, required): its default is "Bazna cijena na 10.9.2026." now, so every price reads "Bazna cijena na 10.9.2026.: 25 €" (the template's colon after it; in brackets the same), on the landing and on /moja-clanarina; nothing else changed, no migration (the slot had no row on prod: the new default prints there). The tests that pinned the words follow (test_copy, test_clanarina, test_payments, test_booking), the docs too.
 
 - **Checked**: `tests/test_copy.py tests/test_clanarina.py tests/test_payments.py tests/test_booking.py` `170 passed, 1 warning in 300.30s (0:05:00)` (the levelness walk among them, the longer line at 360 / 390 / 900 / 1280); the full `audit.py` `new findings: 0`, stamped.
-- **On prod (24.11.2026)**: see below.
+- **On prod (24.11.2026)**: commit `9522d93`, pushed; the database dumped first (`/opt/backups/qmt-pre-bazna-label-20261123T234152.sql.gz` on the box; no migration); `deploy.sh` healthy; the live landing as a guest reads "Bazna cijena na 10.9.2026.: …" under all nine prices, each on one line, the three cards of each row level to the pixel at 390 and 1000 px, overflow 0 (screenshot looked at).
 
 ## 23.11.2026 — the karton, part 2: height, the weight history, limitations, a monthly photo (Opus draft, reviewed, live)
 
