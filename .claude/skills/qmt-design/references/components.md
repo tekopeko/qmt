@@ -94,7 +94,7 @@ targets; do not introduce new uses.
 | `.rpe` (karton) | grey numeric badge "napor 7/10"; `.rpe.feel` green for osjećaj, `.rpe.feel.low` grey for "slabo" (green "slabo" read as a contradiction) |
 | `.ramp` (karton) | three rungs, filled to the razina, captioned "Razina N od 3" — colour never alone |
 | `.u-fact` (karton, upitnik v2) | a fact from the upitnik's part 1 (the goal, "3 dana tjedno", "45-60 min", the place): a neutral pill, `--surface-2` with `--text`, 600 .78rem — facts, not state, so no razina colour |
-| `.u-flag` (karton, the trainer's view) | the upitnik's safety flags, 999px pills, 700 .78rem: `.review` "Zahtijeva pregled" (q15 Da) in `--accent-dim` / `--accent-tint-ink`; `.pain` "Bolovi N/10 · where" (q14 ≥ 4) in the karton's amber (`--warn` on `--warn-soft`, the `.act-absent` values, AA on both themes) |
+| `.u-flag` (karton, the trainer's view) | the upitnik's safety flags, 999px pills, 700 .78rem: `.review` "Zahtijeva pregled" (q15 Da) in `--accent-dim` / `--accent-tint-ink`; `.pain` "Bolovi N/10 · where" (q14 ≥ 4) in the karton's amber (`--warn` on `--warn-soft`, the `.act-absent` values, AA on both themes); since 23.11.2026 the same `.pain` chip "Ograničenja" heads the limitations card on the trainer's view while the member's text holds anything |
 | `.u-note` (karton) | the pain sentence for a client at q14 ≥ 7 (`upitnik.pain_note`), shown to him and the trainer: `--text` on the amber tint, `--r-md`, 10px 14px |
 | `.price > .base` / `.base-l` (base.html; the landing, /moja-clanarina) | the **bazna cijena** under a price (23.11.2026, the law's base price; `_plan_price.html`'s `base`): `<small class="base">`, the last child of its `.price` block, so the Mjesečno / Godišnje switch shows and hides it with its price; a block of its own under the amount and its unit (`flex-basis: 100%` in the landing's flex row), 500 .8rem/1.3 `--muted`, 2px under the amount, tabular-nums, `overflow-wrap: anywhere`. Its words: `.base-l` "Bazna cijena:" (the `price.base_label` slot, the colon the template's), then the base slot, " €" after a number without its sign (`priced`). Only under a price that holds a number, and for a visitor only when the base holds one too (the editor's box shows as soon as the price does). In a line of prices it goes in brackets after each price instead (`base_paren`: Individualno's other plans, prehrana's MojiMakrosi line), " (Bazna cijena: 25 €)", a `span.base-paren` (an inline block in the landing's `.price-note`, as a price's `.whole` is) |
 
@@ -349,7 +349,7 @@ planovi, uplate i računi →", allowed to wrap: it nearly fills a 360px card).
 (`--lvl`/`--lvl-soft` per theme), diary `.log-entry` rows in four states
 (written / `.is-absent` / cancelled / open — `.fresh` gets the accent inset bar),
 `.le-actions` right-aligned pills, `.le-edit` inline form toggled by
-`qmtToggleForm`. Rail `.termini` holds only Nadolazeći. `.upitnik` and `.termini`
+`qmtToggleForm`. Rail `aside.k-rail`: "Tjelesna masa" (`.masa`, 23.11.2026, below), then `.termini`, Nadolazeći. `.upitnik`, `.masa` and `.termini`
 are `--r-xl`; `.log-entry` rows are `--r-md` and keep the accent inset bar for
 `.fresh` — at 12px the bar still reads as a bar. A v2 response's block (26.10.2026)
 puts `.u-fact` pills and the muted score ("6,4 / 10") on its `.u-meta` line, the
@@ -401,6 +401,49 @@ row's `th`, 600), Procjena (`.mx-val`,
 whole, `.nw`, then `.mx-src` "dvorana" / "online" muted; a bodyweight row the
 date and the source alone: its reps are the Procjena). Empty: the hint and
 `.mx-empty` (muted .88rem).
+**The body and the photos** (23.11.2026, part 2 of Amir's karton). **The head
+line**: the lead under the h1 carries "Visina 178 cm · Masa 82,5 kg (12.11.)",
+each part only when known; the member's a block line of its own inside the
+`.hint` (`span.k-body`, tabular), the trainer's after the age and the phone.
+A card's head is `.kc-head` (a wrapping flex row, the ends apart: the h2 with
+no margin and, on the member's own karton, the `.act` that opens its form,
+`qmtToggleForm`: `.editing` on the card shows its `.le-edit`; a narrow card
+puts the button on a line of its own under the title, left), its buttons row
+`.kc-btns` (Spremi `.btn-sm.btn-signal`, Odustani `.btn-sm.btn-ghost`), an
+empty card's line `.kc-empty` (muted .88rem). `qmtToggleForm` focuses the
+form's `[data-focus]` control, else its first select or textarea, else its
+first input. **`.k-x`**: the quiet ✕ (the calendar's `.unbook-x`): 32px round
+at every pointer, no fill, `--muted`, a faint `--text` wash on hover; its form
+asks first (`data-confirm`).
+**"Ograničenja i bolovi"** (`section.card.limits#ogranicenja`) and **"Napredak
+— fotografije"** (`section.card.photos#napredak`): blocks of their own between
+the upitnik block and the maxes, in that order, the maxes' look (`.card`,
+720px at most, 18px 20px, 16px under 600px; h2 1.05rem). The limitations'
+text `.lim-text` (.92rem, `pre-line`, wrapping anywhere), hidden with the
+empty line while the textarea is open (`aria-label`, `maxlength` 2000,
+resizable); the trainer's head carries the upitnik's `.u-flag.pain`
+"Ograničenja" (the pain flag's amber, `.limits .u-flag`) while it holds any
+text. The photos: `ul.ph-row`, a wrapping flex row (14px 12px), never a
+sideways scroll; `li.ph` 120px wide, `a.ph-img` its 120 × 160 box
+(`--r-md`, `--surface-2` under the photo, `overflow: hidden`, the img
+`object-fit: cover`, lazy), a new tab; `.ph-cap` the month under it on one
+line (.8rem); the member's ✕ `form.ph-x` on the photo's top-right corner, 6px
+in, its `.k-x` a solid `--surface` circle with `--shadow` (a control on a
+photo, never text on it: `--surface-2` on hover). The photo form's two fields
+`.ph-fields` side by side where two of 220px fit, else stacked, its rule line
+`.ph-rule` (muted .82rem); the empty card's hint `.kc-hint`.
+**"Tjelesna masa"** (`section.masa#masa`): the rail is `aside.k-rail` (a grid,
+18px apart) holding it and then `.termini`, each the hero-grade rail card
+(`.termini, .masa`: `--surface`, hairline, `--r-xl`, 18px; h2 .95rem). Under
+the head `.ms-height` (muted .82rem: "Visina 178 cm · uredi", the `.tlink` the
+member's), `.ms-val` the newest weight (Inter 800 1.6rem, tabular), `.ms-date`
+its date (muted .82rem); the form's `.ms-fields`, Kilogrami beside Datum
+(`minmax(0, 1fr) minmax(0, 1.35fr)`, 12px; both inputs 44px, one line); then
+`ul.ms-list` (.88rem, tabular): a row per day, a hairline over each, 34px at
+least, "12.11.2026. · 82,5 kg" and the member's `.k-x`; past twelve the rest
+under base.html's `details.sets` fold, "prikaži sve" (the trainer's whole
+history under "Povijest"). Every card clears the floating bar when a save
+comes back to it (`scroll-margin-top: 96px`).
 
 **Upitnik (`upitnik.html`, 26.10.2026; patterns.md §7).** One `form.quiz` (640px,
 centred) holds every step; for a member the page sets `solo_page` (`not can_edit_copy`),

@@ -59,10 +59,12 @@
   .upitnik .u-fact { font:600 .78rem var(--font-body); color:var(--text); background:var(--surface-2);
                      border-radius:999px; padding:3px 11px; overflow-wrap:anywhere; }
   .upitnik .u-flags { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
-  .upitnik .u-flag { font:700 .78rem var(--font-body); border-radius:999px; padding:3px 11px;
-                     overflow-wrap:anywhere; }
+  /* the pain flag's amber is also the trainer's "Ograničenja" chip on the
+     limitations card (23.11.2026), so he does not miss what a member wrote */
+  .upitnik .u-flag, .limits .u-flag { font:700 .78rem var(--font-body); border-radius:999px; padding:3px 11px;
+                                      overflow-wrap:anywhere; }
   .upitnik .u-flag.review { background:var(--accent-dim); color:var(--accent-tint-ink); }
-  .upitnik .u-flag.pain { background:var(--warn-soft); color:var(--warn); }
+  .upitnik .u-flag.pain, .limits .u-flag.pain { background:var(--warn-soft); color:var(--warn); }
   /* q14 at 7 or more: početna, and see the trainer first — said to the client too */
   .upitnik .u-note { margin-top:12px; padding:10px 14px; border-radius:var(--r-md); font-size:.9rem;
                      background:var(--warn-soft); color:var(--text); overflow-wrap:anywhere; white-space:pre-line; }
@@ -139,10 +141,15 @@
   .log-entry.editing .le-edit { display:block; }
   .log-entry.editing .le-read p { display:none; }
 
-  /* the rail keeps one job: what's still ahead */
-  .termini { background:var(--surface); border:1px solid var(--line);
-             border-radius:var(--r-xl); padding:18px; }
-  .termini h2 { font-size:.95rem; margin-bottom:8px; }
+  /* the rail: the body's weight (23.11.2026), then what's still ahead; each
+     a hero-grade card of its own, 18px apart. On a phone the rail follows
+     the diary, as the termini did; the head line under the title carries
+     the newest weight to the top. */
+  .k-rail { display:grid; gap:18px; align-content:start; min-width:0; }
+  .termini, .masa { background:var(--surface); border:1px solid var(--line);
+                    border-radius:var(--r-xl); padding:18px; }
+  .termini h2, .masa h2 { font-size:.95rem; }
+  .termini h2 { margin-bottom:8px; }
   .cal-row { display:flex; align-items:baseline; gap:10px; font-size:.88rem;
              padding:8px 4px; border-bottom:1px solid var(--line); }
   .cal-row:last-child { border-bottom:none; }
@@ -175,6 +182,79 @@
   .maxes .nw { white-space:nowrap; }
   .maxes .mx-src { color:var(--muted); }
   .maxes .mx-empty { font-size:.88rem; color:var(--muted); }
+
+  /* ===== the karton, part 2 (23.11.2026, Amir: "tjelesna visina, tjelesna
+     masa, onda slika jednomjesečno … ograničenja koja će se on napisati,
+     bolovi itd."): the weight card heads the rail; "Ograničenja i bolovi"
+     and "Napredak — fotografije" are blocks of their own between the
+     upitnik block and the maxes, as wide as those (720px at most), the
+     maxes card's padding. A card's head is its h2 and, on the member's own
+     karton, the .act that opens its form (qmtToggleForm, as a diary row's:
+     .editing shows the .le-edit under the head); the trainer's view reads
+     them. A save or a refusal comes back to the card (#masa, #ogranicenja,
+     #napredak), clear of the floating bar. ===== */
+  .k-body { display:block; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .kc-head { display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap; }
+  .kc-head h2 { margin:0; }
+  .kc-btns { display:flex; gap:9px; flex-wrap:wrap; }
+  .kc-empty { font-size:.88rem; color:var(--muted); margin-top:8px; }
+  :is(.masa, .limits, .photos) { scroll-margin-top:96px; }
+  :is(.masa, .limits, .photos).editing .le-edit { display:block; }
+  /* a quiet ✕ (the calendar's .unbook-x): a weight's, a photo's; 32px round
+     at every pointer, a faint wash on hover; its form asks first */
+  .k-x { width:32px; height:32px; padding:0; border:none; border-radius:50%; flex:none;
+         background:none; box-shadow:none; color:var(--muted);
+         font:600 .9rem var(--font-body); display:grid; place-items:center; }
+  .k-x:hover, .k-x:focus-visible { background:color-mix(in srgb, var(--text) 8%, transparent);
+                                   color:var(--text); transform:none; }
+  .masa .ms-list form { margin:0; flex:none; }
+
+  /* "Tjelesna masa": the height from the profile under the head (muted,
+     "uredi" the member's way to /profil), the newest weight big and its
+     day under it, the form (Kilogrami beside Datum), then the history: a
+     row per day, newest first, "12.11.2026. · 82,5 kg" and the member's ✕;
+     past twelve the rest under "prikaži sve" (base.html's details.sets
+     fold), the trainer's whole history folded under "Povijest" */
+  .masa .ms-height { font-size:.82rem; margin-top:4px; overflow-wrap:anywhere; }
+  .masa .ms-val { font:800 1.6rem/1.15 var(--font-body); font-variant-numeric:tabular-nums; margin-top:10px; }
+  .masa .ms-date { font-size:.82rem; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .masa .ms-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.35fr); gap:12px; }
+  .masa .ms-fields input { min-width:0; min-height:44px; }   /* a number and a date: one height, one line */
+  .masa .ms-list { list-style:none; margin:12px 0 0; padding:0; display:block;
+                   font-size:.88rem; font-variant-numeric:tabular-nums; }
+  .masa details.sets .ms-list { margin-top:4px; }
+  .masa .ms-list li { display:flex; align-items:center; justify-content:space-between; gap:8px;
+                      min-height:34px; border-top:1px solid var(--line); overflow-wrap:anywhere; }
+
+  /* "Ograničenja i bolovi": the member's text as he saved it (its line
+     breaks), or the muted empty line; Uredi swaps it for the textarea */
+  .limits, .photos { max-width:720px; margin-bottom:26px; padding:18px 20px; }
+  @media (max-width: 600px) { .limits, .photos { padding:16px; } }
+  .limits h2, .photos h2 { font-size:1.05rem; }
+  .limits .lim-text { margin-top:8px; font-size:.92rem; white-space:pre-line; overflow-wrap:anywhere; }
+  .limits.editing :is(.lim-text, .kc-empty) { display:none; }
+  .limits textarea { resize:vertical; }
+
+  /* "Napredak — fotografije": a wrapping row of thumbnails, never a
+     sideways scroll, the newest month first; each a 120 × 160 box (the
+     photo cropped to it, object-fit), a link to the whole photo, its month
+     under it on one line. The member's ✕ sits in the photo's top-right
+     corner, a solid --surface circle with a soft shadow (a control on a
+     photo, as the landing editor's photo pills: never text on the image),
+     its ✕ muted until hovered. The form's two fields side by side where
+     two fit (220px each), else one under the other. */
+  .photos .ph-row { list-style:none; margin:12px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:14px 12px; }
+  .photos .ph { width:120px; position:relative; }
+  .photos .ph-img { display:block; width:120px; height:160px; border-radius:var(--r-md); overflow:hidden;
+                    background:var(--surface-2); }
+  .photos .ph-img img { display:block; width:100%; height:100%; object-fit:cover; }
+  .photos .ph-cap { margin-top:6px; font-size:.8rem; overflow-wrap:anywhere; }
+  .photos .ph-x { position:absolute; top:6px; right:6px; margin:0; }
+  .photos .ph-x .k-x { background:var(--surface); box-shadow:var(--shadow); }
+  .photos .ph-x .k-x:hover, .photos .ph-x .k-x:focus-visible { background:var(--surface-2); }
+  .photos .ph-fields { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap:0 12px; }
+  .photos .ph-rule { font-size:.82rem; margin:-4px 0 12px; overflow-wrap:anywhere; }
+  .photos .kc-hint { font-size:.82rem; margin-top:4px; overflow-wrap:anywhere; }
 
   /* a training's exercises in the diary (23.11.2026): the count under the
      comment ("3 vježbe", .le-sub), then base.html's details.sets "Serije";
@@ -277,14 +357,37 @@
 </fieldset>
 {%- endmacro %}
 
+{# The weight card's history rows (23.11.2026): "12.11.2026. · 82,5 kg",
+   newest first, on the member's own karton each with its quiet ✕, which
+   asks first #}
+{% macro weight_rows(rows, own) -%}
+<ul class="ms-list">
+  {%- for w in rows %}{% set day = w.measured_on.strftime("%-d.%-m.%Y.") %}
+  <li><span>{{ day }} · {{ w.kg_text }} kg</span>
+    {%- if own %}
+    <form method="post" action="/karton/masa/{{ w.id }}/obrisi"
+          data-confirm-title="Obrisati unos?"
+          data-confirm="Unos {{ w.kg_text }} kg od {{ day }} bit će trajno obrisan."
+          data-confirm-cta="Obriši unos">
+      <button type="submit" class="k-x" aria-label="Obriši unos {{ day }}">✕</button>
+    </form>
+    {%- endif %}</li>
+  {%- endfor %}
+</ul>
+{%- endmacro %}
+
 {% block content %}
 {% if not own %}
 <nav class="crumbs" aria-label="Putanja"><a href="/clanarine">Trenutne članarine</a><span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
 {% endif %}
 <h1>{% if own %}Moj karton{% else %}Karton — {{ subject.full_name or subject.email }}{% endif %}</h1>
+{# the head line of the body (23.11.2026): "Visina 178 cm · Masa 82,5 kg
+   (12.11.)", each part only when it is known (app._body_line) — the
+   member's own on a line under the lead, the trainer's after the age and
+   the phone #}
 <p class="hint">
-  {% if own %}Dnevnik treninga, upitnik i termini na jednom mjestu.
-  {% else %}{{ subject.email }}{% if age %} · {{ age }} god.{% endif %}{% if subject.phone %} · {{ subject.phone }}{% endif %}{% endif %}
+  {% if own %}Dnevnik treninga, upitnik i termini na jednom mjestu.{% if body_line %}<span class="k-body">{{ body_line }}</span>{% endif %}
+  {% else %}{{ subject.email }}{% if age %} · {{ age }} god.{% endif %}{% if subject.phone %} · {{ subject.phone }}{% endif %}{% if body_line %} · {{ body_line }}{% endif %}{% endif %}
 </p>
 
 {% set order = ["pocetna", "srednja", "napredna"] %}
@@ -363,6 +466,84 @@
   <p class="hint" style="margin-top:6px;">Upitnik još nije ispunjen.</p>
 </section>
 {% endif %}
+
+{# "Ograničenja i bolovi" (23.11.2026, Amir: "ograničenja koja će se on
+   napisati, bolovi itd."): the member's own text as he saved it; his Uredi
+   opens the textarea (cleaned as copy is, 2000 characters at most). The
+   trainer reads it, with the pain flag's amber "Ograničenja" in the head
+   when it holds anything, so he does not miss it. #}
+<section class="card limits" id="ogranicenja" aria-labelledby="lim-h">
+  <div class="kc-head">
+    <h2 id="lim-h">Ograničenja i bolovi</h2>
+    {% if own %}<button type="button" class="act" onclick="qmtToggleForm('ogranicenja')">Uredi</button>
+    {% elif subject.limitations %}<span class="u-flag pain">Ograničenja</span>{% endif %}
+  </div>
+  {% if subject.limitations %}<p class="lim-text">{{ subject.limitations }}</p>
+  {% else %}<p class="kc-empty">Nema upisanih ograničenja.</p>{% endif %}
+  {% if own %}
+  <form class="le-edit" method="post" action="/karton/ogranicenja">
+    <div class="field"><textarea id="lim-input" name="text" rows="4" maxlength="{{ limitations_max }}" aria-label="Ograničenja i bolovi"
+              placeholder="npr. bol u koljenu pri čučnju, stara ozljeda ramena">{{ subject.limitations }}</textarea></div>
+    <div class="kc-btns">
+      <button type="submit" class="btn-sm btn-signal">Spremi</button>
+      <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('ogranicenja')">Odustani</button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+
+{# "Napredak — fotografije" (23.11.2026, Amir: "slika jednomjesečno koja će
+   biti proizvoljna i po želji"): one photo a month at most, the newest
+   month first, each thumbnail a link to the whole photo (/media: the member
+   and staff only). The member's form files a photo to its month, this one
+   or one of the eleven before it; a month that has one gets the new one
+   instead (its button says so for this month), the old file deleted. #}
+<section class="card photos" id="napredak" aria-labelledby="napredak-h">
+  <div class="kc-head">
+    <h2 id="napredak-h">Napredak — fotografije</h2>
+    {% if own %}<button type="button" class="act" onclick="qmtToggleForm('napredak')">{{ "Zamijeni ovomjesečnu" if month_has_photo else "Dodaj fotografiju" }}</button>{% endif %}
+  </div>
+  {% if own %}
+  <form class="le-edit" method="post" action="/karton/slika" enctype="multipart/form-data">
+    <div class="ph-fields">
+      <div class="field"><label for="ph-file">Fotografija (jpg, png ili webp, do {{ image_mb }} MB)</label>
+        <input id="ph-file" type="file" name="slika" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" required data-focus></div>
+      <div class="field"><label for="ph-month">Mjesec</label>
+        <select id="ph-month" name="mjesec">
+          {%- for m in photo_months %}
+          <option value="{{ m.strftime('%Y-%m') }}"{% if loop.first %} selected{% endif %}>{{ month_label(m) }}</option>
+          {%- endfor %}
+        </select></div>
+    </div>
+    <p class="hint ph-rule">Jedna fotografija po mjesecu: nova za isti mjesec zamjenjuje staru.</p>
+    <div class="kc-btns">
+      <button type="submit" class="btn-sm btn-signal">Spremi</button>
+      <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('napredak')">Odustani</button>
+    </div>
+  </form>
+  {% endif %}
+  {% if photos %}
+  <ul class="ph-row">
+    {%- for p in photos %}{% set label = month_label(p.month) %}
+    <li class="ph">
+      <a class="ph-img" href="/media/{{ p.image }}" target="_blank" rel="noopener"><img src="/media/{{ p.image }}" alt="Fotografija napretka, {{ label }}" loading="lazy" decoding="async"></a>
+      <p class="ph-cap">{{ label }}</p>
+      {%- if own %}
+      <form class="ph-x" method="post" action="/karton/slika/{{ p.id }}/obrisi"
+            data-confirm-title="Obrisati fotografiju?"
+            data-confirm="Fotografija za {{ label }} bit će trajno obrisana."
+            data-confirm-cta="Obriši fotografiju">
+        <button type="submit" class="k-x" aria-label="Obriši fotografiju za {{ label }}">✕</button>
+      </form>
+      {%- endif %}
+    </li>
+    {%- endfor %}
+  </ul>
+  {% else %}
+  <p class="kc-empty">Još nema fotografija.</p>
+  {% if own %}<p class="hint kc-hint">Jedna fotografija mjesečno, kad želiš — za usporedbu kroz vrijeme.</p>{% endif %}
+  {% endif %}
+</section>
 
 {# The estimated maxes (23.11.2026, db.estimated_maxes): each exercise's
    best one-rep max by Epley's formula from the sets logged with a gym
@@ -619,17 +800,68 @@
     {% endfor %}
   </div>
 
-  {# the rail keeps one job: what is still ahead #}
-  <aside class="k-sec termini">
-    <h2>Nadolazeći termini</h2>
-    {% for s in upcoming %}
-    <div class="cal-row" {% if s.canceled %}style="opacity:.55;"{% endif %}>
-      <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
-      <span class="what"{% if s.canceled %} style="text-decoration:line-through;"{% endif %}>{{ s.title }}</span>
-      {% if s.canceled %}<strong style="margin-left:auto; color:var(--danger); font-size:.72rem;">OTKAZANO</strong>{% endif %}
-    </div>
-    {% else %}<p class="empty">Nema rezervacija.</p>{% endfor %}
-    {% if own %}<a class="act act-quiet more" href="/raspored">Otvori raspored →</a>{% endif %}
+  {# the rail: the body's weight (23.11.2026), then what is still ahead #}
+  <aside class="k-sec k-rail">
+    {# "Tjelesna masa" (23.11.2026, Amir: "tjelesna visina, tjelesna masa";
+       the owner: "Height is one number, weight a dated history"): the
+       height from the profile, the newest weight and its day, the member's
+       form (one a day: a second save that day replaces it), then the
+       history, newest first: twelve, the rest under "prikaži sve" (the
+       member's, each with its ✕), or for the trainer the whole of a longer
+       one under "Povijest". No BMI: not asked. #}
+    <section class="masa" id="masa" aria-labelledby="masa-h">
+      <div class="kc-head">
+        <h2 id="masa-h">Tjelesna masa</h2>
+        {% if own %}<button type="button" class="act" onclick="qmtToggleForm('masa')">Upiši</button>{% endif %}
+      </div>
+      {% if subject.height_cm %}
+      <p class="hint ms-height">Visina {{ subject.height_cm }} cm{% if own %} · <a class="tlink" href="/profil">uredi</a>{% endif %}</p>
+      {% elif own %}
+      <p class="hint ms-height">Visina nije upisana — <a class="tlink" href="/profil">upiši je na profilu</a>.</p>
+      {% endif %}
+      {% if weights %}
+      <p class="ms-val">{{ weights[0].kg_text }} kg</p>
+      <p class="hint ms-date">{{ weights[0].measured_on.strftime("%-d.%-m.%Y.") }}</p>
+      {% else %}
+      <p class="kc-empty">Još nije upisana.</p>
+      {% endif %}
+      {% if own %}
+      <form class="le-edit" method="post" action="/karton/masa">
+        <div class="ms-fields">
+          <div class="field"><label for="ms-kg">Kilogrami</label>
+            <input id="ms-kg" type="number" name="kg" min="20" max="300" step="0.1" inputmode="decimal" required></div>
+          <div class="field"><label for="ms-day">Datum</label>
+            <input id="ms-day" type="date" name="day" value="{{ today.isoformat() }}"
+                   min="{{ first_day.isoformat() }}" max="{{ today.isoformat() }}" required></div>
+        </div>
+        <div class="kc-btns">
+          <button type="submit" class="btn-sm btn-signal">Spremi</button>
+          <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('masa')">Odustani</button>
+        </div>
+      </form>
+      {% endif %}
+      {% if own %}
+      {% if weights %}{{ weight_rows(weights[:weights_shown], own) }}{% endif %}
+      {% if weights|length > weights_shown %}
+      <details class="sets"><summary>prikaži sve</summary>{{ weight_rows(weights[weights_shown:], own) }}</details>
+      {% endif %}
+      {% elif weights|length > weights_shown %}
+      <details class="sets"><summary>Povijest</summary>{{ weight_rows(weights, own) }}</details>
+      {% elif weights %}
+      {{ weight_rows(weights, own) }}
+      {% endif %}
+    </section>
+    <section class="termini" aria-labelledby="termini-h">
+      <h2 id="termini-h">Nadolazeći termini</h2>
+      {% for s in upcoming %}
+      <div class="cal-row" {% if s.canceled %}style="opacity:.55;"{% endif %}>
+        <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
+        <span class="what"{% if s.canceled %} style="text-decoration:line-through;"{% endif %}>{{ s.title }}</span>
+        {% if s.canceled %}<strong style="margin-left:auto; color:var(--danger); font-size:.72rem;">OTKAZANO</strong>{% endif %}
+      </div>
+      {% else %}<p class="empty">Nema rezervacija.</p>{% endfor %}
+      {% if own %}<a class="act act-quiet more" href="/raspored">Otvori raspored →</a>{% endif %}
+    </section>
   </aside>
 </div>
 {% if own %}
@@ -646,11 +878,16 @@
 <script>
   // rows read first, write on demand: one toggle drives both the osvrt form on
   // an open termin and the edit form on a written one (and since 23.11.2026
-  // the form of a training outside a termin)
+  // the form of a training outside a termin, and the weight, limitations and
+  // photo cards' forms). Opened, the focus goes to the form's first question:
+  // a control it names (data-focus: the photo's file), else its first select
+  // or textarea (napor, the limitations), else its first input (the weight)
   function qmtToggleForm(id) {
     var row = document.getElementById(id);
-    if (!row) return;
-    if (row.classList.toggle("editing")) row.querySelector("select, textarea").focus();
+    if (!row || !row.classList.toggle("editing")) return;
+    var first = row.querySelector("[data-focus]") || row.querySelector("select, textarea")
+                || row.querySelector(".le-edit input:not([type=hidden])");
+    if (first) first.focus();
   }
 
 {% if own %}

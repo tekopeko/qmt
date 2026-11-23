@@ -18,7 +18,19 @@ diary shows how many exercises and their sets ("Serije", the online passes'
 too, the client's as the trainer's). The karton estimates each exercise's
 max (db.estimated_maxes: Epley's formula over the best set, gym and online
 alike, a bodyweight exercise's most reps). The browser half fills the osvrt
-on a phone, with the script and without it."""
+on a phone, with the script and without it.
+
+The karton's part 2, the same day (Amir: "tjelesna visina, tjelesna masa,
+onda slika jednomjesečno … ograničenja koja će se on napisati, bolovi itd.";
+the owner: "Height is one number, weight a dated history, limitations a free
+text, the photo optional and shrunk like the landing's photos, visible to the
+member and Amir only"; migration 0401f7fb9861, run for real on qmt_test there
+and back): the height on /profil and in the karton's head line, the weight
+card in the rail (one value a day, the history, its ✕), "Ograničenja i
+bolovi" (the member's text, the trainer's amber chip), and "Napredak —
+fotografije" (one photo a month, shrunk and bare as an announcement's, served
+by /media to the member and staff only), in a test client, under racing
+writes and on a phone."""
 
 from __future__ import annotations
 
@@ -37,24 +49,36 @@ os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
 os.environ["ALLOWED_EMAILS"] = "ivan@test.local,ana@test.local"
 os.environ["OWNER_EMAIL"] = "trener@test.local"
 
+import io
+from decimal import Decimal
+
 import httpx
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import inspect as sa_inspect, text as sa_text
+from sqlalchemy.exc import IntegrityError
 
-from qmt import auth, config, copy, db
+from qmt import auth, config, copy, db, storage
 from qmt.models import Base, Booking, User
-from qmt.web.app import app
+from qmt.web.app import _month_label, app
 
 PORT = 8116    # test_copy's server is 8111, test_raspored_ui's and test_upitnik_ui's 8112, test_nav's 8113, test_programs' 8114, test_player's 8115
 
 
 @pytest.fixture(autouse=True)
-def clean_db():
+def clean_db(tmp_path, monkeypatch):
     Base.metadata.drop_all(db.engine)
     Base.metadata.create_all(db.engine)
+    # the karton's photos (23.11.2026) land in a throwaway dir, never the
+    # real data/uploads, and never a real R2 bucket: a developer's .env may
+    # carry live R2_* keys (as in tests/test_programs.py). The browser
+    # test's server is a thread of this process, and storage reads config
+    # at every call: it sees these too.
+    monkeypatch.setattr(config, "MEDIA_DIR", tmp_path / "uploads")
+    monkeypatch.setattr(config, "R2_ACCOUNT_ID", "")
     yield
 
 
@@ -539,7 +563,8 @@ def test_an_osvrt_logs_its_exercises_for_the_client_and_the_trainer():
             and '<div class="xl-blocks"></div>' in form
             and '<button type="button" class="act xl-add">+ Dodaj vježbu</button>' in form)
     assert not re.search(r'name="(ex|reps|kg)_', form) and 'name="log"' not in form    # no block, no log=1
-    assert {n for n in re.findall(r'<select id="[^"]+" name="([^"]+)"', page)} == {"effort", "feeling"}
+    # napor and osjećaj, and the photo's month (part 2, 23.11.2026): no select of the library
+    assert {n for n in re.findall(r'<select id="[^"]+" name="([^"]+)"', page)} == {"effort", "feeling", "mjesec"}
     assert library_json(page) == [[odd, "Čučanj </script><b> 'x' & \"y\"", "noge"],
                                   [bench, "Potisak s klupe", "prsa, šipka"], [pull, "Zgibovi", "leđa"]]
     template = page.split('<template id="ex-block">')[1].split("</template>")[0]
@@ -887,6 +912,415 @@ def test_the_karton_shows_the_maxes_to_the_client_and_the_trainer():
                 in section and "mx-empty" not in section)
 
 
+# ---------- the karton, part 2: height, weight, limitations, photos (23.11.2026) ----------
+
+def short(d: date) -> str:
+    """A day as the head line says it: "12.11.", "12.11.2025." in another year."""
+    return f"{d.day}.{d.month}." + (f"{d.year}." if d.year != config.today().year else "")
+
+
+def full(d: date) -> str:
+    """A day as the weight card says it: "12.11.2026."."""
+    return d.strftime("%-d.%-m.%Y.")
+
+
+def age_of(born: date) -> int:
+    today = config.today()
+    return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+
+
+def text_of(chunk: str) -> str:
+    """A piece of a page as a reader reads it: tags gone, spaces collapsed."""
+    return " ".join(unescape(re.sub(r"<[^>]+>", " ", chunk)).split())
+
+
+def head_line(page: str) -> str:
+    """The lead under the karton's h1, as read."""
+    return text_of(page.split("</h1>")[1].split("</p>")[0])
+
+
+def card(page: str, cls: str) -> str:
+    """One of part 2's cards: "masa" (the rail's), "card limits", "card photos"."""
+    return page.split(f'<section class="{cls}"')[1].split("</section>")[0]
+
+
+def weight_list(chunk: str) -> list[str]:
+    """The weight rows of a piece of a page: "12.11.2026. · 82,5 kg"."""
+    return [unescape(x) for x in re.findall(r"<li><span>([^<]*)</span>", chunk)]
+
+
+def picture(w: int, h: int, fmt: str = "JPEG", orientation: int | None = None, mode: str = "RGB") -> bytes:
+    """A real image, made here (Pillow has to open what is posted): a JPEG
+    carries EXIF, a camera's make and, when given, the orientation a phone
+    stores instead of turning the pixels (test_copy's)."""
+    im, buf, extra = Image.new(mode, (w, h), (180, 60, 40, 128)[:len(mode)]), io.BytesIO(), {}
+    if fmt == "JPEG":
+        exif = Image.Exif()
+        exif[0x010F] = "QMT testna kamera"                                 # Make
+        if orientation:
+            exif[0x0112] = orientation                                      # Orientation
+        extra["exif"] = exif.tobytes()
+    im.save(buf, fmt, **extra)
+    return buf.getvalue()
+
+
+def stored_files() -> list[str]:
+    return sorted(p.name for p in config.MEDIA_DIR.iterdir()) if config.MEDIA_DIR.exists() else []
+
+
+def test_the_height_is_a_profile_field_and_heads_the_karton():
+    """"Visina (cm)" on /profil (optional, whole centimetres, 100–250): saved
+    with the rest and shown back in its field; 99, 251, "178,5", "178.5",
+    "abc" and "-178" refused ("Neispravna visina."), nothing changed; empty
+    clears it. The karton's head line says it, "Visina 178 cm" (the member's
+    on its own line under the lead, the trainer's after the age), and so
+    does the weight card's head (the member's with "uredi" to /profil); with
+    no height neither line has it, the member's card asks for it."""
+    ivan = make_user("ivan@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
+    field = r'<input id="p-height" type="number" name="height" value="{}"\s+min="100" max="250" step="1" inputmode="numeric">'
+    assert re.search(field.format(""), ci.get("/profil").text) and '<label for="p-height">Visina (cm)</label>' in ci.get("/profil").text
+    form = {"name": "ivan", "last_name": "Test", "birth_date": "1990-01-01", "phone": ""}
+    r = ci.post("/profil", data={**form, "height": " 178 "}, follow_redirects=False)
+    assert location(r) == "/profil?ok=Podaci su spremljeni." and db.get_user(ivan).height_cm == 178
+    assert re.search(field.format("178"), ci.get("/profil").text)
+    for bad in ("99", "251", "178,5", "178.5", "abc", "-178"):
+        r = ci.post("/profil", data={**form, "height": bad}, follow_redirects=False)
+        assert location(r) == "/profil?error=Neispravna visina." and db.get_user(ivan).height_cm == 178, bad
+    with pytest.raises(ValueError, match="Neispravna visina."):
+        db.update_profile(ivan, "ivan", "Test", date(1990, 1, 1), "", height_cm=300)
+    page, seen = ci.get("/karton").text, ct.get(f"/karton/{ivan}").text
+    assert head_line(page) == "Dnevnik treninga, upitnik i termini na jednom mjestu. Visina 178 cm"
+    assert '<span class="k-body">Visina 178 cm</span>' in page
+    assert head_line(seen) == f"ivan@test.local · {age_of(date(1990, 1, 1))} god. · Visina 178 cm"
+    assert '<p class="hint ms-height">Visina 178 cm · <a class="tlink" href="/profil">uredi</a></p>' in card(page, "masa")
+    assert '<p class="hint ms-height">Visina 178 cm</p>' in card(seen, "masa")
+    r = ci.post("/profil", data={**form, "height": ""}, follow_redirects=False)            # emptied: none
+    assert location(r) == "/profil?ok=Podaci su spremljeni." and db.get_user(ivan).height_cm is None
+    page, seen = ci.get("/karton").text, ct.get(f"/karton/{ivan}").text
+    assert head_line(page) == "Dnevnik treninga, upitnik i termini na jednom mjestu." and '<span class="k-body">' not in page
+    assert "Visina" not in head_line(seen) and "ms-height" not in card(seen, "masa")
+    assert ('<p class="hint ms-height">Visina nije upisana — <a class="tlink" href="/profil">upiši je na profilu</a>.</p>'
+            in card(page, "masa"))
+    assert "BMI" not in page and "ITM" not in page                                       # not asked
+
+
+def test_read_weight_takes_a_comma_or_a_point_in_tenths_from_20_to_300():
+    """db.read_weight: "82,5" and "82.5" alike, whole kilos too, in steps of
+    0.1 within 20–300 (an exact Decimal); anything else "Neispravna masa."."""
+    for raw, kg in (("82,5", "82.5"), ("82.5", "82.5"), (" 82 ", "82.0"), ("20", "20.0"), ("300", "300.0"),
+                    ("82,50", "82.5"), ("19,9", None), ("300.1", None), ("82,55", None), ("", None), ("abc", None),
+                    ("-80", None), ("1e2", None), ("82,", None), (",5", None), ("８２", None), ("82.5.1", None)):
+        if kg is None:
+            with pytest.raises(ValueError, match="Neispravna masa."):
+                db.read_weight(raw)
+        else:
+            assert db.read_weight(raw) == Decimal(kg), raw
+
+
+def test_a_weight_a_day_upserted_shown_and_deleted_own_only():
+    """POST /karton/masa (the weight card's form): a weight and its day; a
+    refusal ("Neispravna masa.", "Neispravan datum." for a day in the future,
+    before 2020 or none) stores nothing. A second save on a day replaces the
+    first: one row a day. The card: the newest day's value big and its date,
+    the history newest first ("12.11.2026. · 82,5 kg"), each row's ✕ asking
+    first; the head line "Masa 82,5 kg (12.11.)" (with the height, "Visina
+    178 cm · Masa …"); none yet: "Još nije upisana.". The ✕ deletes the
+    member's own rows only: another member's id, and one gone, are 404."""
+    ivan = make_user("ivan@test.local")
+    ana = make_user("ana@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
+    page = ci.get("/karton").text
+    assert '<p class="kc-empty">Još nije upisana.</p>' in card(page, "masa") and "ms-list" not in card(page, "masa")
+    assert "Masa" not in head_line(page) and "Masa" not in head_line(ct.get(f"/karton/{ivan}").text)
+    today = config.today()
+    older, newer = today - timedelta(days=9), today - timedelta(days=2)
+    for kg, day, error in (("19,9", newer, "Neispravna masa."), ("abc", newer, "Neispravna masa."),
+                           ("80", today + timedelta(days=1), "Neispravan datum."),
+                           ("80", date(2019, 12, 31), "Neispravan datum."), ("80", None, "Neispravan datum.")):
+        r = ci.post("/karton/masa", data={"kg": kg, "day": day.isoformat() if day else ""}, follow_redirects=False)
+        assert location(r) == f"/karton?error={error}#masa", (kg, day)
+    assert db.weights(ivan) == []
+    for kg, day in (("84", older), ("83.0", newer), ("82,5", newer)):                       # the second save that day replaces
+        r = ci.post("/karton/masa", data={"kg": kg, "day": day.isoformat()}, follow_redirects=False)
+        assert location(r) == "/karton?ok=Masa je spremljena.#masa"
+    db.set_weight(ana, newer, Decimal("61"))
+    assert [(w.measured_on, w.kg) for w in db.weights(ivan)] == [(newer, Decimal("82.5")), (older, Decimal("84.0"))]
+    page, seen = ci.get("/karton").text, ct.get(f"/karton/{ivan}").text
+    for p in (page, seen):
+        masa = card(p, "masa")
+        assert f'<p class="ms-val">82,5 kg</p>\n      <p class="hint ms-date">{full(newer)}</p>' in masa
+        assert weight_list(masa) == [f"{full(newer)} · 82,5 kg", f"{full(older)} · 84 kg"]
+        assert "prikaži sve" not in masa and "Povijest" not in masa
+    assert head_line(page).endswith(f"mjestu. Masa 82,5 kg ({short(newer)})")
+    assert head_line(seen) == f"ivan@test.local · {age_of(date(1990, 1, 1))} god. · Masa 82,5 kg ({short(newer)})"
+    newest = db.weights(ivan)[0]
+    assert (f'<form method="post" action="/karton/masa/{newest.id}/obrisi"\n          data-confirm-title="Obrisati unos?"\n'
+            f'          data-confirm="Unos 82,5 kg od {full(newer)} bit će trajno obrisan."\n          data-confirm-cta="Obriši unos">\n'
+            f'      <button type="submit" class="k-x" aria-label="Obriši unos {full(newer)}">✕</button>') in card(page, "masa")
+    masa = card(seen, "masa")                                                              # the trainer reads
+    assert "<form" not in masa and "k-x" not in masa and "Upiši" not in masa
+    assert '<button type="button" class="act" onclick="qmtToggleForm(\'masa\')">Upiši</button>' in card(page, "masa")
+    db.update_profile(ivan, "ivan", "Test", date(1990, 1, 1), "", height_cm=178)
+    assert head_line(ci.get("/karton").text).endswith(f"mjestu. Visina 178 cm · Masa 82,5 kg ({short(newer)})")
+    theirs = db.weights(ana)[0].id
+    assert ci.post(f"/karton/masa/{theirs}/obrisi", follow_redirects=False).status_code == 404   # not his
+    assert [w.id for w in db.weights(ana)] == [theirs]
+    r = ci.post(f"/karton/masa/{newest.id}/obrisi", follow_redirects=False)
+    assert location(r) == "/karton?ok=Unos je obrisan.#masa"
+    assert ci.post(f"/karton/masa/{newest.id}/obrisi", follow_redirects=False).status_code == 404   # gone
+    assert [w.measured_on for w in db.weights(ivan)] == [older]
+    assert head_line(ci.get("/karton").text).endswith(f"Masa 84 kg ({short(older)})")
+    assert TestClient(app).post("/karton/masa", data={"kg": "80", "day": today.isoformat()},
+                                follow_redirects=False).headers["location"] == "/login"
+
+
+def test_the_weight_history_shows_twelve_then_folds_the_rest():
+    """Fourteen days of weights: the member's card lists the newest twelve,
+    each with its ✕, and the two oldest under "prikaži sve"; the trainer's
+    view reads the same card with no form and no ✕, the whole history
+    folded under "Povijest", fourteen rows. With twelve he gets the list."""
+    ivan = make_user("ivan@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
+    today = config.today()
+    days = [today - timedelta(days=3 * k) for k in range(14)]                             # newest first
+    for k, day in enumerate(days):
+        db.set_weight(ivan, day, Decimal(80) + Decimal(k) / 10)
+    rows = [f"{full(d)} · {str(Decimal(80) + Decimal(k) / 10).replace('.', ',')} kg" for k, d in enumerate(days)]
+    masa = card(ci.get("/karton").text, "masa")
+    shown, folded = masa.split('<details class="sets"><summary>prikaži sve</summary>')
+    assert weight_list(shown) == rows[:12] and weight_list(folded) == rows[12:]
+    assert masa.count('class="k-x"') == 14
+    masa = card(ct.get(f"/karton/{ivan}").text, "masa")
+    before, history = masa.split('<details class="sets"><summary>Povijest</summary>')
+    assert weight_list(before) == [] and weight_list(history) == rows and "k-x" not in masa and "prikaži sve" not in masa
+    for w in db.weights(ivan)[12:]:
+        db.delete_weight(w.id, ivan)
+    masa = card(ct.get(f"/karton/{ivan}").text, "masa")
+    assert weight_list(masa) == rows[:12] and "<details" not in masa
+
+
+def test_two_weights_saved_on_one_day_at_once_leave_one_row():
+    """Six saves for one day at once (two phones, a double tap): the upsert
+    on the day's unique rule leaves one row, holding one of the six."""
+    ivan = make_user("ivan@test.local")
+    day, values = config.today(), [Decimal(80) + k for k in range(6)]
+    threads = [threading.Thread(target=db.set_weight, args=(ivan, day, kg)) for kg in values]
+    for th in threads: th.start()
+    for th in threads: th.join()
+    rows = db.weights(ivan)
+    assert len(rows) == 1 and rows[0].measured_on == day and rows[0].kg in values
+
+
+def test_the_limitations_are_the_members_text_and_the_trainers_flag():
+    """POST /karton/ogranicenja: the member's text cleaned as copy is
+    (spaces collapsed, three empty lines one, the ends trimmed), shown as
+    saved under "Ograničenja i bolovi" (its line breaks, pre-line), a card
+    between the upitnik block and the photos, which come before the maxes;
+    2001 characters refused ("Najviše 2000 znakova."), nothing changed;
+    emptied, "Nema upisanih ograničenja.". The member has Uredi and the
+    textarea (the text in it); the trainer reads it, the amber "Ograničenja"
+    chip in the card's head while it holds anything."""
+    ivan = make_user("ivan@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
+    empty = '<p class="kc-empty">Nema upisanih ograničenja.</p>'
+    page, seen = ci.get("/karton").text, ct.get(f"/karton/{ivan}").text
+    assert empty in card(page, "card limits") and empty in card(seen, "card limits")
+    assert "u-flag" not in card(seen, "card limits")
+    assert (page.index('<section class="upitnik') < page.index('<section class="card limits"')
+            < page.index('<section class="card photos"') < page.index('<section class="card maxes"'))
+    r = ci.post("/karton/ogranicenja", data={"text": "  Bol u   koljenu.\r\n\r\n\r\n\r\nOzljeda ramena 2023.  \n\n"},
+                follow_redirects=False)
+    assert location(r) == "/karton?ok=Ograničenja su spremljena.#ogranicenja"
+    text = "Bol u koljenu.\n\nOzljeda ramena 2023."
+    assert db.get_user(ivan).limitations == text
+    page, seen = ci.get("/karton").text, ct.get(f"/karton/{ivan}").text
+    assert f'<p class="lim-text">{text}</p>' in card(page, "card limits") and f'<p class="lim-text">{text}</p>' in card(seen, "card limits")
+    assert ('<h2 id="lim-h">Ograničenja i bolovi</h2>\n    <span class="u-flag pain">Ograničenja</span>'
+            in card(seen, "card limits"))
+    assert "u-flag" not in card(page, "card limits")                                     # his own: no flag
+    assert '<button type="button" class="act" onclick="qmtToggleForm(\'ogranicenja\')">Uredi</button>' in card(page, "card limits")
+    assert (f'placeholder="npr. bol u koljenu pri čučnju, stara ozljeda ramena">{text}</textarea>' in card(page, "card limits")
+            and 'maxlength="2000"' in card(page, "card limits"))
+    assert "<form" not in card(seen, "card limits") and "Uredi" not in card(seen, "card limits")
+    r = ci.post("/karton/ogranicenja", data={"text": "x" * 2001}, follow_redirects=False)
+    assert location(r) == "/karton?error=Najviše 2000 znakova.#ogranicenja" and db.get_user(ivan).limitations == text
+    assert ci.post("/karton/ogranicenja", data={"text": "y" * 2000}, follow_redirects=False).status_code == 303
+    assert db.get_user(ivan).limitations == "y" * 2000
+    ci.post("/karton/ogranicenja", data={"text": " \n \n "}, follow_redirects=False)        # emptied
+    assert db.get_user(ivan).limitations == ""
+    seen = ct.get(f"/karton/{ivan}").text
+    assert empty in card(seen, "card limits") and "u-flag" not in card(seen, "card limits")
+    assert TestClient(app).post("/karton/ogranicenja", data={"text": "x"}, follow_redirects=False).headers["location"] == "/login"
+
+
+def test_a_monthly_photo_is_shrunk_bare_and_one_a_month():
+    """POST /karton/slika: the month it is OF (the select's twelve options,
+    this month first and selected, "studeni 2026.") and the file. A phone's
+    JPEG (2400 × 1600, EXIF orientation 6) is stored upright, 1600 px on its
+    long side, a progressive JPEG with no EXIF, as
+    napredak-<id>-<YYYYMM>-<hex>.jpg; a small PNG with transparency is a
+    JPEG of its size (never enlarged). One a month: a second photo for the
+    month replaces the first and its file goes; another month is a photo of
+    its own. Refused, nothing stored: a month outside the twelve, a file
+    that is no photo or not named as one, one over 15 MB. The card: the
+    thumbnails, the newest month first, each a link to /media and its month
+    under it, the member's ✕ (asks first); its button "Dodaj fotografiju",
+    "Zamijeni ovomjesečnu" once this month has one; empty, "Još nema
+    fotografija." and the member's hint. The ✕ deletes his own (the row,
+    then the file); another member's is 404."""
+    ivan = make_user("ivan@test.local")
+    ana = make_user("ana@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
+    months = db.photo_months()
+    this, last = months[0], months[1]
+    assert this == config.today().replace(day=1) and len(months) == 12 and len(set(months)) == 12
+    page = ci.get("/karton").text
+    photos = card(page, "card photos")
+    options = re.findall(r'<option value="([0-9-]+)"( selected)?>([^<]*)</option>', photos)
+    assert options == [(m.strftime("%Y-%m"), " selected" if m == this else "", _month_label(m)) for m in months]
+    assert _month_label(date(2026, 11, 1)) == "studeni 2026." and _month_label(date(2025, 12, 1)) == "prosinac 2025."
+    assert ('<button type="button" class="act" onclick="qmtToggleForm(\'napredak\')">Dodaj fotografiju</button>' in photos
+            and '<p class="kc-empty">Još nema fotografija.</p>' in photos
+            and "Jedna fotografija mjesečno, kad želiš — za usporedbu kroz vrijeme." in photos)
+    assert ('<input id="ph-file" type="file" name="slika" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" required data-focus>'
+            in photos and 'enctype="multipart/form-data"' in photos)
+    seen = card(ct.get(f"/karton/{ivan}").text, "card photos")
+    assert "<form" not in seen and "Još nema fotografija." in seen and "za usporedbu" not in seen
+
+    def send(month: date | str, name: str, data: bytes, kind: str = "image/jpeg"):
+        value = month if isinstance(month, str) else month.strftime("%Y-%m")
+        return ci.post("/karton/slika", data={"mjesec": value}, files={"slika": (name, data, kind)}, follow_redirects=False)
+
+    unsupported = "Nepodržan format — dozvoljeno: jpg, png, webp."
+    for month, name, data, error in ((this.replace(year=this.year - 1), "a.jpg", picture(30, 20), "Neispravan mjesec."),
+                                     ("2026-13", "a.jpg", picture(30, 20), "Neispravan mjesec."),
+                                     ("", "a.jpg", picture(30, 20), "Neispravan mjesec."),
+                                     (this, "foto.txt", b"samo tekst", unsupported),
+                                     (this, "foto.gif", picture(30, 20, "GIF"), unsupported),
+                                     (this, "foto.jpg", picture(30, 20, "GIF"), unsupported),
+                                     (this, "foto.jpg", b"ovo nije slika", unsupported),
+                                     (this, "velika.jpg", b"\0" * (16 * 1024 * 1024), "Slika je veća od 15 MB.")):
+        assert location(send(month, name, data)) == f"/karton?error={error}#napredak", (month, name)
+    assert db.photos(ivan) == [] and stored_files() == []
+
+    r = send(this, "IMG_0001.JPG", picture(2400, 1600, orientation=6))
+    assert location(r) == "/karton?ok=Fotografija je spremljena.#napredak"
+    first = db.photos(ivan)[0].image
+    assert re.fullmatch(rf"napredak-{ivan}-{this:%Y%m}-[0-9a-f]{{16}}\.jpg", first) and stored_files() == [first]
+    with Image.open(config.MEDIA_DIR / first) as im:
+        assert im.format == "JPEG" and im.size == (1067, 1600)                          # upright, its long side 1600
+        assert im.info.get("progressive") and not im.getexif() and "exif" not in im.info   # no camera, no place
+    r = send(this, "druga.png", picture(300, 200, "PNG", mode="RGBA"), "image/png")    # this month again: replaces
+    assert location(r) == "/karton?ok=Fotografija je spremljena.#napredak"
+    second = db.photos(ivan)[0].image
+    assert second != first and [p.image for p in db.photos(ivan)] == [second] and stored_files() == [second]
+    with Image.open(config.MEDIA_DIR / second) as im:
+        assert im.format == "JPEG" and im.mode == "RGB" and im.size == (300, 200)       # never enlarged
+    r = send(last, "treca.webp", picture(800, 600, "WEBP"), "image/webp")               # another month: its own
+    assert location(r) == "/karton?ok=Fotografija je spremljena.#napredak"
+    assert [(p.month, p.image) for p in db.photos(ivan)] == [(this, second), (last, db.photos(ivan)[1].image)]
+    third = db.photos(ivan)[1].image
+    assert third.startswith(f"napredak-{ivan}-{last:%Y%m}-") and stored_files() == sorted([second, third])
+
+    page, seen = ci.get("/karton").text, ct.get(f"/karton/{ivan}").text
+    for p in (page, seen):
+        rows = re.findall(r'<li class="ph">\s*<a class="ph-img" href="/media/([^"]+)" target="_blank" rel="noopener">'
+                          r'<img src="/media/([^"]+)" alt="Fotografija napretka, ([^"]+)" loading="lazy" decoding="async"></a>\s*'
+                          r'<p class="ph-cap">([^<]*)</p>', card(p, "card photos"))
+        assert rows == [(second, second, _month_label(this), _month_label(this)),
+                        (third, third, _month_label(last), _month_label(last))]
+    photos = card(page, "card photos")
+    assert "Zamijeni ovomjesečnu</button>" in photos and "Još nema fotografija." not in photos
+    one = db.photos(ivan)[0].id
+    assert (f'<form class="ph-x" method="post" action="/karton/slika/{one}/obrisi"\n'
+            f'            data-confirm-title="Obrisati fotografiju?"\n'
+            f'            data-confirm="Fotografija za {_month_label(this)} bit će trajno obrisana."\n'
+            f'            data-confirm-cta="Obriši fotografiju">\n'
+            f'        <button type="submit" class="k-x" aria-label="Obriši fotografiju za {_month_label(this)}">✕</button>') in photos
+    assert "ph-x" not in card(seen, "card photos") and "<form" not in card(seen, "card photos")
+
+    db.set_photo(ana, this, f"napredak-{ana}-{this:%Y%m}-0123456789abcdef.jpg")
+    theirs = db.photos(ana)[0].id
+    assert ci.post(f"/karton/slika/{theirs}/obrisi", follow_redirects=False).status_code == 404   # not his
+    assert [p.id for p in db.photos(ana)] == [theirs]
+    r = ci.post(f"/karton/slika/{one}/obrisi", follow_redirects=False)                # his: the row, then the file
+    assert location(r) == "/karton?ok=Fotografija je obrisana.#napredak"
+    assert [p.image for p in db.photos(ivan)] == [third] and stored_files() == [third]
+    assert ci.post(f"/karton/slika/{one}/obrisi", follow_redirects=False).status_code == 404       # gone
+    assert "Dodaj fotografiju</button>" in card(ci.get("/karton").text, "card photos")   # this month has none again
+    assert TestClient(app).post("/karton/slika", data={"mjesec": this.strftime("%Y-%m")},
+                                files={"slika": ("a.jpg", picture(30, 20), "image/jpeg")},
+                                follow_redirects=False).headers["location"] == "/login"
+
+
+def test_media_shows_a_photo_to_its_member_and_staff_only(monkeypatch):
+    """/media/<a progress photo>: the member whose photo it is (200, a JPEG,
+    Cache-Control private), staff, the owner and a trainer alike (200),
+    whatever their plans; another client is 403 (his online plan and the
+    programmes it opens do not reach it), a guest goes to log in (303).
+    Under R2 the member and staff get the 307 to the presigned link, private
+    too, another client still 403. db.photo_owner names the member; a name
+    no photo holds is none (a clip's stays a clip's: 404 when nothing
+    holds it)."""
+    ivan = make_user("ivan@test.local", plans=())
+    make_user("ana@test.local")
+    make_user("trener@test.local", plans=())                                       # the owner (OWNER_EMAIL), not a trainer
+    make_user("amir@test.local", is_trainer=True, plans=())
+    month = config.today().replace(day=1)
+    ci = client_for("ivan@test.local")
+    ci.post("/karton/slika", data={"mjesec": month.strftime("%Y-%m")}, files={"slika": ("a.jpg", picture(400, 300), "image/jpeg")})
+    name = db.photos(ivan)[0].image
+    assert db.photo_owner(name) == ivan and db.photo_owner("vjezba-1-0000000000000000.mp4") is None
+    body = (config.MEDIA_DIR / name).read_bytes()
+    for who in ("ivan@test.local", "trener@test.local", "amir@test.local"):
+        r = client_for(who).get(f"/media/{name}")
+        assert r.status_code == 200 and r.content == body, who
+        assert r.headers["content-type"] == "image/jpeg" and r.headers["cache-control"] == "private", who
+    assert client_for("ana@test.local").get(f"/media/{name}").status_code == 403
+    r = TestClient(app).get(f"/media/{name}", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+    assert ci.get("/media/napredak-0-000000-0000000000000000.jpg").status_code == 404   # held by no photo, no clip
+    monkeypatch.setattr(storage, "r2_enabled", lambda: True)
+    monkeypatch.setattr(storage, "presigned_url", lambda n, expires_s=600: f"https://r2.example/{n}?sig=1")
+    for who in ("ivan@test.local", "amir@test.local"):
+        r = client_for(who).get(f"/media/{name}", follow_redirects=False)
+        assert r.status_code == 307 and r.headers["location"] == f"https://r2.example/{name}?sig=1", who
+        assert r.headers["cache-control"] == "private", who
+    assert client_for("ana@test.local").get(f"/media/{name}", follow_redirects=False).status_code == 403
+
+
+def test_two_photos_for_one_month_at_once_leave_one_and_name_every_other():
+    """Six photos filed to one month at once (db.set_photo, as six uploads
+    landing together): under the member's row lock they take turns, so one
+    row is left, holding one of them, and every other name comes back to
+    exactly one caller as the photo it replaced, for its file to go: no
+    file is left behind, none is named twice."""
+    ivan = make_user("ivan@test.local")
+    month = config.today().replace(day=1)
+    names = [f"napredak-{ivan}-{month:%Y%m}-{k:016x}.jpg" for k in range(6)]
+    replaced, errors = [], []
+
+    def file(name: str) -> None:
+        try:
+            replaced.append(db.set_photo(ivan, month, name))
+        except Exception as err:                       # an IntegrityError here would be the race lost
+            errors.append(repr(err))
+
+    threads = [threading.Thread(target=file, args=(n,)) for n in names]
+    for th in threads: th.start()
+    for th in threads: th.join()
+    rows = db.photos(ivan)
+    assert errors == [] and len(rows) == 1
+    olds = [r for r in replaced if r is not None]
+    assert replaced.count(None) == 1 and len(olds) == 5 and sorted(olds + [rows[0].image]) == sorted(names)
+
+
 # ---------- the migration ----------
 
 def _migration(file: str):
@@ -956,6 +1390,62 @@ def test_the_sets_migration_adds_the_column_and_takes_it_away():
         assert conn.execute(sa_text("SELECT effort, note FROM training_logs WHERE id = :i"), {"i": log_id}).one() == (6, "Prije.")
     _run(mig.upgrade)
     assert _schema_diffs("training_logs") == [] and [x[5] for x in stored(ivan)] == [[], []]
+
+
+def test_the_body_migration_adds_the_columns_and_the_tables_and_takes_them_away():
+    """0401f7fb9861, run on qmt_test as before it (users without height_cm
+    and limitations, neither table, members in it): the columns and the
+    tables as the models have them (users.height_cm SmallInteger NULL,
+    users.limitations Text NOT NULL '' by default; weights and
+    progress_photos), the members already there with no height and an empty
+    text. In SQL: one value a day and one photo a month (a second row is
+    refused), another day, month or member is a row of its own, and a
+    member's rows go with him. Downgrade takes the tables and the columns
+    away, the members staying; a second upgrade brings them back, empty."""
+    mig = _migration("0401f7fb9861_karton_body_and_photos.py")
+    assert (mig.revision, mig.down_revision) == ("0401f7fb9861", "f43e976906a1")
+    ivan = make_user("ivan@test.local")
+    ana = make_user("ana@test.local", plans=())
+    with db.engine.begin() as conn:                                          # the schema as before the revision
+        conn.execute(sa_text("DROP TABLE progress_photos"))
+        conn.execute(sa_text("DROP TABLE weights"))
+        conn.execute(sa_text("ALTER TABLE users DROP COLUMN height_cm, DROP COLUMN limitations"))
+    assert not {"weights", "progress_photos"} & set(sa_inspect(db.engine).get_table_names())
+    _run(mig.upgrade)
+    for table in ("users", "weights", "progress_photos"):
+        assert _schema_diffs(table) == [], table
+    cols = {c["name"]: c for c in sa_inspect(db.engine).get_columns("users")}
+    assert cols["height_cm"]["nullable"] and str(cols["height_cm"]["type"]) == "SMALLINT"
+    assert not cols["limitations"]["nullable"] and cols["limitations"]["default"] == "''::text"
+    assert {t: {(u["name"], tuple(u["column_names"])) for u in sa_inspect(db.engine).get_unique_constraints(t)}
+            for t in ("weights", "progress_photos")} == {"weights": {("uq_weights_user_day", ("user_id", "measured_on"))},
+                                                         "progress_photos": {("uq_progress_photos_user_month", ("user_id", "month"))}}
+    with db.engine.begin() as conn:
+        assert conn.execute(sa_text("SELECT height_cm, limitations FROM users WHERE id = :i"), {"i": ivan}).one() == (None, "")
+        conn.execute(sa_text("INSERT INTO weights (user_id, measured_on, kg) VALUES (:i, '2026-11-12', 82.5), "
+                             "(:i, '2026-11-13', 82.4), (:a, '2026-11-12', 61)"), {"i": ivan, "a": ana})
+        conn.execute(sa_text("INSERT INTO progress_photos (user_id, month, image) VALUES (:i, '2026-11-01', 'a.jpg'), "
+                             "(:i, '2026-10-01', 'b.jpg'), (:a, '2026-11-01', 'c.jpg')"), {"i": ivan, "a": ana})
+    for sql in ("INSERT INTO weights (user_id, measured_on, kg) VALUES (:i, '2026-11-12', 80)",
+                "INSERT INTO progress_photos (user_id, month, image) VALUES (:i, '2026-11-01', 'd.jpg')"):
+        with pytest.raises(IntegrityError):
+            with db.engine.begin() as conn:
+                conn.execute(sa_text(sql), {"i": ivan})
+    assert [(w.measured_on, w.kg, w.kg_text) for w in db.weights(ivan)] == [(date(2026, 11, 13), Decimal("82.4"), "82,4"),
+                                                                            (date(2026, 11, 12), Decimal("82.5"), "82,5")]
+    with db.engine.begin() as conn:                                          # a member's rows go with him
+        conn.execute(sa_text("DELETE FROM users WHERE id = :a"), {"a": ana})
+        assert conn.execute(sa_text("SELECT count(*) FROM weights WHERE user_id = :a"), {"a": ana}).scalar_one() == 0
+        assert conn.execute(sa_text("SELECT count(*) FROM progress_photos WHERE user_id = :a"), {"a": ana}).scalar_one() == 0
+    _run(mig.downgrade)
+    assert not {"weights", "progress_photos"} & set(sa_inspect(db.engine).get_table_names())
+    assert not {"height_cm", "limitations"} & {c["name"] for c in sa_inspect(db.engine).get_columns("users")}
+    with db.engine.connect() as conn:
+        assert conn.execute(sa_text("SELECT email FROM users WHERE id = :i"), {"i": ivan}).scalar_one() == "ivan@test.local"
+    _run(mig.upgrade)
+    for table in ("users", "weights", "progress_photos"):
+        assert _schema_diffs(table) == [], table
+    assert db.weights(ivan) == [] and db.photos(ivan) == [] and db.get_user(ivan).limitations == ""
 
 
 # ---------- in a browser, on a phone ----------
@@ -1048,7 +1538,7 @@ def test_the_exercise_log_on_a_phone(server):
         ctx, pg, errors = _phone(browser, server, "ivan@test.local")
         pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle")
         check(pg.evaluate(OVERFLOW) == 0, f"the karton overflows by {pg.evaluate(OVERFLOW)}px")
-        check(pg.locator("select:not([name=effort]):not([name=feeling])").count() == 0, "a select of the library is on the page")
+        check(pg.locator("select:not([name=effort]):not([name=feeling]):not([name=mjesec])").count() == 0, "a select of the library is on the page")
         form = f"#s-{sid} form.le-edit"
         pg.tap(f"#s-{sid} button.act:has-text('Ispuni osvrt')")
         check(pg.is_visible(form), "Ispuni osvrt did not open the form")
@@ -1164,7 +1654,7 @@ def test_the_exercise_log_on_a_phone(server):
             edit = f"#log-{saved.id} form.le-edit"
             pg.evaluate(f"() => document.getElementById('log-{saved.id}').classList.add('editing')")   # as its toggle opens it
             check(pg.is_visible(edit) and not pg.is_visible(f"{edit} fieldset.xl") and pg.locator(f"{edit} .xb").count() == 0
-                  and pg.locator("select:not([name=effort]):not([name=feeling])").count() == 0
+                  and pg.locator("select:not([name=effort]):not([name=feeling]):not([name=mjesec])").count() == 0
                   and pg.locator(f'{edit} input[name="log"]').count() == 0, "without JS an exercise block or log=1 is there")
             pg.select_option(f"#ed-effort-{saved.id}", "3")
             pg.fill(f"#ed-note-{saved.id}", "Bez skripte.")
@@ -1176,6 +1666,92 @@ def test_the_exercise_log_on_a_phone(server):
             after = next((x for x in db.training_logs(ivan) if x.session_id == sid), None)
             check(after is not None and (after.effort, after.note, after.lines()) == (3, "Bez skripte.", [("Zgibovi", ["12", "10"])]),
                   f"without JS the edit stored {after and (after.effort, after.note, after.lines())}")
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+# the part 2 cards' places on the page: [top, left, width] of each
+PLACES = """() => Object.fromEntries(['.upitnik', '#ogranicenja', '#napredak', '.maxes', '#masa', '.termini'].map(s => {
+  const r = document.querySelector(s).getBoundingClientRect(); return [s, [Math.round(r.top + scrollY), Math.round(r.left), Math.round(r.width)]]; }))"""
+
+
+def test_the_body_cards_on_a_phone(server):
+    """At 390px, touch, on ivan's karton: the limitations and the photos are
+    blocks between the upitnik block and the maxes, the weight card heads
+    the rail (the termini under it); every card fits the screen. "Upiši"
+    opens the weight form, the focus in Kilogrami, Datum today: 82.5 and
+    Spremi, and the card says 82,5 kg and today, its history one row, the
+    head line "Masa 82,5 kg (…)". "Uredi" opens the textarea, focused: two
+    lines and Spremi, shown on two lines. "Dodaj fotografiju" opens the
+    photo form, the focus on the file: a photo chosen and Spremi, one
+    thumbnail of this month that loads through /media, the button now
+    "Zamijeni ovomjesečnu". The page never scrolls sideways; no page
+    errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    ivan = make_user("ivan@test.local")
+    today = config.today()
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx, pg, errors = _phone(browser, server, "ivan@test.local")
+        pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle")
+        check(pg.evaluate(OVERFLOW) == 0, f"the karton overflows by {pg.evaluate(OVERFLOW)}px")
+        at = pg.evaluate(PLACES)
+        check(at[".upitnik"][0] < at["#ogranicenja"][0] < at["#napredak"][0] < at[".maxes"][0] < at["#masa"][0] < at[".termini"][0]
+              and all(left >= 0 and left + width <= 390 for _, left, width in at.values()), f"the cards' places: {at}")
+        # the weight
+        pg.tap("#masa .kc-head .act")
+        check(pg.is_visible("#masa form.le-edit") and pg.evaluate("() => document.activeElement.id") == "ms-kg"
+              and pg.input_value("#ms-day") == today.isoformat(), "Upiši: the form, its focus or its day")
+        pg.fill("#ms-kg", "82.5")
+        check(pg.evaluate(OVERFLOW) == 0, f"the weight form overflows by {pg.evaluate(OVERFLOW)}px")
+        with pg.expect_navigation():
+            pg.tap("#masa button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        check([(w.measured_on, w.kg) for w in db.weights(ivan)] == [(today, Decimal("82.5"))], f"stored: {db.weights(ivan)}")
+        check(pg.text_content("#masa .ms-val") == "82,5 kg" and pg.text_content("#masa .ms-date") == full(today)
+              and pg.locator("#masa .ms-list li > span").all_text_contents() == [f"{full(today)} · 82,5 kg"],
+              "the card after Spremi")
+        check(pg.text_content(".k-body") == f"Masa 82,5 kg ({short(today)})", f"the head line: {pg.text_content('.k-body')}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the weight card overflows by {pg.evaluate(OVERFLOW)}px")
+        # the limitations
+        pg.tap("#ogranicenja .kc-head .act")
+        check(pg.is_visible("#lim-input") and pg.evaluate("() => document.activeElement.id") == "lim-input"
+              and not pg.is_visible("#ogranicenja .kc-empty"), "Uredi: the textarea, its focus, the empty line gone")
+        pg.fill("#lim-input", "Bol u desnom koljenu.\nBez skokova.")
+        check(pg.evaluate(OVERFLOW) == 0, f"the limitations' form overflows by {pg.evaluate(OVERFLOW)}px")
+        with pg.expect_navigation():
+            pg.tap("#ogranicenja button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        check(db.get_user(ivan).limitations == "Bol u desnom koljenu.\nBez skokova.", "the limitations stored")
+        check(pg.evaluate("() => document.querySelector('#ogranicenja .lim-text').innerText") == "Bol u desnom koljenu.\nBez skokova.",
+              "the limitations shown on two lines")
+        # the photo
+        pg.tap("#napredak .kc-head .act")
+        check(pg.is_visible("#ph-file") and pg.evaluate("() => document.activeElement.id") == "ph-file"
+              and pg.input_value("#ph-month") == today.strftime("%Y-%m"), "Dodaj fotografiju: the form, its focus or its month")
+        check(pg.evaluate(OVERFLOW) == 0, f"the photo form overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.set_input_files("#ph-file", files=[{"name": "foto.jpg", "mimeType": "image/jpeg", "buffer": picture(900, 1200)}])
+        with pg.expect_navigation():
+            pg.tap("#napredak button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        pg.locator("#napredak").scroll_into_view_if_needed()
+        pg.wait_for_function("() => [...document.querySelectorAll('#napredak .ph img')].every(i => i.complete)")
+        thumbs = pg.evaluate("""() => [...document.querySelectorAll('#napredak .ph')].map(li => {
+          const img = li.querySelector('img'), r = li.querySelector('.ph-img').getBoundingClientRect();
+          return [li.querySelector('.ph-cap').textContent, img.naturalWidth > 0, Math.round(r.width), Math.round(r.height)]; })""")
+        check(thumbs == [[_month_label(today.replace(day=1)), True, 120, 160]], f"the thumbnails: {thumbs}")
+        check((pg.text_content("#napredak .kc-head .act") or "").strip() == "Zamijeni ovomjesečnu", "the photo button")
+        check(pg.evaluate(OVERFLOW) == 0, f"the photos overflow by {pg.evaluate(OVERFLOW)}px")
+        problems += errors
         ctx.close()
         browser.close()
     print("\n".join(problems))

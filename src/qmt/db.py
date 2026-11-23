@@ -27,8 +27,9 @@ from sqlalchemy.orm import Session, aliased, joinedload, load_only, selectinload
 from . import config, copy, upitnik
 from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, Announcement, Base, Booking,
                      Exercise, GymCard, Membership, OnboardingResponse, Payment, Program, ProgramDay, ProgramDayItem,
-                     ReminderLog, SessionTemplate, SiteCopy, TrainingLog, TrainingSession, UpitnikQuestion, User,
-                     WorkoutLog, alpha_key, exercise_alternatives, fold, kg_text, matches, plural)
+                     ProgressPhoto, ReminderLog, SessionTemplate, SiteCopy, TrainingLog, TrainingSession,
+                     UpitnikQuestion, User, Weight, WorkoutLog, alpha_key, exercise_alternatives, fold, kg_text,
+                     matches, plural)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -110,8 +111,36 @@ def reset_password(email: str, password_hash: str, expected_marker: str) -> bool
         return True
 
 
+HEIGHT_LIMITS = (100, 250)       # cm, the profile's "Visina (cm)" (23.11.2026)
+BAD_HEIGHT = "Neispravna visina."
+
+
+def read_height(raw: str | None) -> int | None:
+    """The profile's "Visina (cm)" as its form posts it: "" (or spaces) is
+    none; else whole centimetres in ASCII digits within HEIGHT_LIMITS
+    (100–250), or ValueError BAD_HEIGHT ("Neispravna visina.")."""
+    value = (raw or "").strip()
+    if not value:
+        return None
+    if not re.fullmatch(r"[0-9]{1,3}", value) or not HEIGHT_LIMITS[0] <= int(value) <= HEIGHT_LIMITS[1]:
+        raise ValueError(BAD_HEIGHT)
+    return int(value)
+
+
+KEEP = object()                  # update_profile: a height not given stays what it is
+
+
 def update_profile(user_id: int, name: str, last_name: str,
-                   birth_date: date | None, phone: str) -> bool:
+                   birth_date: date | None, phone: str, *, height_cm=KEEP) -> bool:
+    """The profile's fields, every one as given: the form posts them all.
+    `height_cm` (23.11.2026, read_height's) is the karton's height, None for
+    none, checked again here (ValueError BAD_HEIGHT); a caller that does not
+    name it (KEEP, the default: the seeds, the tests' users) leaves the
+    stored height as it is, so only /profil, which posts the field, ever
+    clears it."""
+    if height_cm is not KEEP and height_cm is not None and (
+            type(height_cm) is not int or not HEIGHT_LIMITS[0] <= height_cm <= HEIGHT_LIMITS[1]):
+        raise ValueError(BAD_HEIGHT)
     with session_scope() as s:
         u = s.get(User, user_id)
         if u is None:
@@ -120,6 +149,8 @@ def update_profile(user_id: int, name: str, last_name: str,
         u.last_name = last_name.strip() or None
         u.birth_date = birth_date
         u.phone = phone.strip() or None
+        if height_cm is not KEEP:
+            u.height_cm = height_cm
         return True
 
 
@@ -1786,6 +1817,166 @@ def estimated_maxes(user_id: int) -> list[Max]:
     out += [Max(ex, names.get(ex) or snapshot.get(ex, ""), "reps", v, reps, kg, on, source)
             for ex, (v, reps, kg, on, source) in most.items() if ex not in best]
     return sorted(out, key=lambda m: (alpha_key(m.name), m.exercise_id))
+
+
+# ---------- the karton's body facts and photos (23.11.2026) ----------
+#
+# Amir: "tjelesna visina, tjelesna masa, onda slika jednomjesečno koja će
+# biti proizvoljna i po želji … ograničenja koja će se on napisati, bolovi
+# itd."; the owner: "Height is one number, weight a dated history,
+# limitations a free text, the photo optional and shrunk like the landing's
+# photos, visible to the member and Amir only." The height is the profile's
+# (read_height, update_profile); the rest is the member's own, on his karton,
+# and the trainer reads it on /karton/{id}.
+
+WEIGHT_LIMITS = (Decimal(20), Decimal(300))    # kg
+BAD_WEIGHT = "Neispravna masa."
+LIMITATIONS_MAX = 2000                         # characters after copy.clean, a copy slot's cap
+LIMITATIONS_TOO_LONG = f"Najviše {LIMITATIONS_MAX} znakova."
+PHOTO_MONTHS = 12                              # the month a photo is of: this one or the eleven before it
+BAD_MONTH = "Neispravan mjesec."
+
+
+def _checked_weight(kg) -> Decimal:
+    """A weight in kg as stored (Numeric(5, 1)): a number in steps of 0.1
+    within WEIGHT_LIMITS (20–300), else ValueError BAD_WEIGHT."""
+    if isinstance(kg, bool) or not isinstance(kg, (Decimal, int, float)):
+        raise ValueError(BAD_WEIGHT)
+    kg = Decimal(str(kg))
+    if not kg.is_finite() or (kg * 10) % 1 or not WEIGHT_LIMITS[0] <= kg <= WEIGHT_LIMITS[1]:
+        raise ValueError(BAD_WEIGHT)
+    return kg.quantize(Decimal("0.1"))
+
+
+def read_weight(raw: str | None) -> Decimal:
+    """A weight as the karton's form posts it, in kg: ASCII digits, a
+    decimal comma or point ("82,5" or "82.5", as read_sets takes a set's
+    kilograms), in steps of 0.1 within WEIGHT_LIMITS (20–300); else
+    ValueError BAD_WEIGHT ("Neispravna masa.")."""
+    value = (raw or "").strip()
+    if not re.fullmatch(r"[0-9]{1,3}(?:[.,][0-9]{1,2})?", value):
+        raise ValueError(BAD_WEIGHT)
+    return _checked_weight(Decimal(value.replace(",", ".")))
+
+
+def set_weight(user_id: int, on: date, kg) -> None:
+    """A member's weight on a day (read_weight's, read_day's): one a day, so
+    a second save that day replaces the first (an upsert on
+    uq_weights_user_day: two at once leave one row). Checked again here
+    (ValueError BAD_WEIGHT; BAD_DAY for a day past read_day's bounds)."""
+    kg = _checked_weight(kg)
+    if not FIRST_DAY <= on <= config.today():
+        raise ValueError(BAD_DAY)
+    stmt = pg_insert(Weight).values(user_id=user_id, measured_on=on, kg=kg)
+    with session_scope() as s:
+        s.execute(stmt.on_conflict_do_update(constraint="uq_weights_user_day",
+                                             set_={"kg": stmt.excluded.kg, "created_at": func.now()}))
+
+
+def weights(user_id: int) -> list[Weight]:
+    """A member's weights, the newest day first: the karton's value (the
+    first) and its history."""
+    with session_scope() as s:
+        return list(s.scalars(select(Weight).where(Weight.user_id == user_id)
+                              .order_by(Weight.measured_on.desc(), Weight.id.desc())))
+
+
+def delete_weight(weight_id: int, user_id: int) -> bool:
+    """A member deletes his OWN weights only: user_id is part of the match.
+    False: none such of his."""
+    with session_scope() as s:
+        return s.execute(sa_delete(Weight).where(Weight.id == weight_id, Weight.user_id == user_id)).rowcount > 0
+
+
+def set_limitations(user_id: int, text: str) -> str:
+    """A member's limitations and pains, his own text on the karton: cleaned
+    as copy is (copy.clean: line breaks kept, one empty line at most), "" for
+    none, at most LIMITATIONS_MAX characters after that (ValueError
+    LIMITATIONS_TOO_LONG, "Najviše 2000 znakova."). Returns what is stored.
+    LookupError: no such member."""
+    cleaned = copy.clean(text or "")
+    if len(cleaned) > LIMITATIONS_MAX:
+        raise ValueError(LIMITATIONS_TOO_LONG)
+    with session_scope() as s:
+        u = s.get(User, user_id)
+        if u is None:
+            raise LookupError(user_id)
+        u.limitations = cleaned
+    return cleaned
+
+
+def photo_months(today: date | None = None) -> list[date]:
+    """The months a photo may be filed to, as their firsts: this month first,
+    then the PHOTO_MONTHS − 1 before it (the karton's Mjesec select: an old
+    photo goes to its own month)."""
+    first = (today or config.today()).replace(day=1)
+    months = [first]
+    while len(months) < PHOTO_MONTHS:
+        months.append((months[-1] - timedelta(days=1)).replace(day=1))
+    return months
+
+
+def read_month(raw: str | None, today: date | None = None) -> date:
+    """The Mjesec a photo form posts, "2026-11", as that month's first, when
+    it is one of photo_months; else ValueError BAD_MONTH ("Neispravan
+    mjesec.")."""
+    value = (raw or "").strip()
+    try:
+        month = date.fromisoformat(value + "-01") if re.fullmatch(r"[0-9]{4}-[0-9]{2}", value) else None
+    except ValueError:
+        month = None
+    if month is None or month not in photo_months(today):
+        raise ValueError(BAD_MONTH)
+    return month
+
+
+def photos(user_id: int) -> list[ProgressPhoto]:
+    """A member's photos, the newest month first (the karton's row)."""
+    with session_scope() as s:
+        return list(s.scalars(select(ProgressPhoto).where(ProgressPhoto.user_id == user_id)
+                              .order_by(ProgressPhoto.month.desc())))
+
+
+def set_photo(user_id: int, month: date, name: str) -> str | None:
+    """File a stored photo (its name) as a member's photo of `month` (its
+    first). One a month: a photo the month had is replaced, and its name is
+    returned for the caller to delete from storage now that no row names it
+    (the row first, as an announcement's photo); None when the month had
+    none. Under the member's row lock (FOR NO KEY UPDATE: his bookings and
+    logs are not held up), so two uploads for one month at once take turns
+    and each photo replaced is named to exactly one caller: no file is left
+    behind. LookupError: no such member (the caller deletes the file it
+    stored); ValueError: a name that is a path, not a file."""
+    if not name or len(name) > 120 or "/" in name or "\\" in name or ".." in name:
+        raise ValueError(f"not a file name: {name!r}")
+    month = month.replace(day=1)
+    with session_scope() as s:
+        if s.execute(select(User.id).where(User.id == user_id).with_for_update(key_share=True)).first() is None:
+            raise LookupError(user_id)
+        p = s.scalar(select(ProgressPhoto).where(ProgressPhoto.user_id == user_id, ProgressPhoto.month == month))
+        if p is None:
+            s.add(ProgressPhoto(user_id=user_id, month=month, image=name))
+            return None
+        old = p.image
+        p.image, p.created_at = name, func.now()
+        return old
+
+
+def delete_photo(photo_id: int, user_id: int) -> str | None:
+    """A member deletes his OWN photo only: user_id is part of the match.
+    Returns its file's name for the caller to delete from storage (the row
+    first); None: none such of his."""
+    with session_scope() as s:
+        return s.scalar(sa_delete(ProgressPhoto)
+                        .where(ProgressPhoto.id == photo_id, ProgressPhoto.user_id == user_id)
+                        .returning(ProgressPhoto.image))
+
+
+def photo_owner(name: str) -> int | None:
+    """Whose progress photo a stored file is (/media: the member and staff
+    see it, nobody else); None when no photo holds the name."""
+    with session_scope() as s:
+        return s.scalar(select(ProgressPhoto.user_id).where(ProgressPhoto.image == name))
 
 
 # ---------- training programmes (treninzi) ----------

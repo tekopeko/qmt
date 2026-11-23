@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import json
 from datetime import date as SADate, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import (
-    Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Table, Text,
-    UniqueConstraint, func, text, text as sql_text,
+    Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, SmallInteger, String,
+    Table, Text, UniqueConstraint, func, text, text as sql_text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -108,6 +109,16 @@ class User(Base):
     last_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     birth_date: Mapped[SADate | None] = mapped_column(Date, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # The karton's body facts (23.11.2026, Amir: "tjelesna visina, tjelesna
+    # masa … ograničenja koja će se on napisati, bolovi itd."; migration
+    # 0401f7fb9861): the height, one number with no history (the owner:
+    # "Height not needing a history"), typed on /profil, 100–250 cm
+    # (db.read_height), NULL for none; and the member's own free text of his
+    # limitations and pains, on the karton, cleaned as copy is (copy.clean,
+    # db.set_limitations), "" for none. His weight is a dated history of its
+    # own (Weight), his monthly photos too (ProgressPhoto).
+    height_cm: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    limitations: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     password_hash: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # The trainer runs the timetable and sees rosters; clients only see their own
     # bookings. Same one-owner shape as mojimakrosi's is_admin.
@@ -644,6 +655,59 @@ class TrainingLog(Base):
             sets = e.get("sets") if isinstance(e.get("sets"), list) else []
             out.append((str(e.get("name", "")), [set_text(s) for s in sets if isinstance(s, dict)]))
         return out
+
+
+class Weight(Base):
+    """One body weight of a member's, the karton's "Tjelesna masa"
+    (23.11.2026, Amir: "tjelesna masa"; the owner: "weight a dated
+    history"): `kg` on the day it was measured, typed by the member on his
+    karton (POST /karton/masa: db.read_weight, 20–300 in steps of 0.1, "82,5"
+    or "82.5"; db.read_day, not in the future, not before 2020). One a day
+    (uq_weights_user_day): a second save that day replaces it
+    (db.set_weight). The newest is the karton's value and its head line's
+    "Masa 82,5 kg (12.11.)"; the member deletes his own, the trainer reads
+    them on /karton/{id}."""
+
+    __tablename__ = "weights"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    measured_on: Mapped[SADate] = mapped_column(Date)
+    kg: Mapped[Decimal] = mapped_column(Numeric(5, 1))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # one value a day; its index (user_id first) serves a member's history
+    __table_args__ = (UniqueConstraint("user_id", "measured_on", name="uq_weights_user_day"),)
+
+    @property
+    def kg_text(self) -> str:
+        """"82,5", "82" (kg_text: a comma for the decimal)."""
+        return kg_text(self.kg)
+
+
+class ProgressPhoto(Base):
+    """A member's photo of a month, the karton's "Napredak — fotografije"
+    (23.11.2026, Amir: "slika jednomjesečno koja će biti proizvoljna i po
+    želji"; the owner: "the photo optional and shrunk like the landing's
+    photos, visible to the member and Amir only"). `month` is the first of
+    the month the photo is OF (the member picks it: this month or one of the
+    eleven before it, db.photo_months), one a month (uq_progress_photos_user_month):
+    a new one for that month replaces it and its file goes (db.set_photo).
+    `image` is the stored file's name, napredak-<user id>-<YYYYMM>-<hex>.jpg
+    (app._shrink_image: upright, 1600 px on its long side at most, a
+    progressive JPEG with no EXIF), served by the auth-gated /media to the
+    member and staff only (db.photo_owner), never by /slika."""
+
+    __tablename__ = "progress_photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    month: Mapped[SADate] = mapped_column(Date)
+    image: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # one photo a month; its index (user_id first) serves a member's row
+    __table_args__ = (UniqueConstraint("user_id", "month", name="uq_progress_photos_user_month"),)
 
 
 # A swap a client may make in the player (the spec's stage 3, "Zamijeni

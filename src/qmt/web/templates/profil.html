@@ -39,6 +39,11 @@
              value="{{ user.birth_date.isoformat() if user.birth_date else '' }}"></div>
     <div class="field"><label for="p-phone">Telefon (neobavezno)</label>
       <input id="p-phone" type="tel" name="phone" value="{{ user.phone or '' }}" placeholder="09x xxx xxxx"></div>
+    {# the karton's height (23.11.2026, Amir's karton: one number, no
+       history), whole centimetres; empty for none #}
+    <div class="field"><label for="p-height">Visina (cm)</label>
+      <input id="p-height" type="number" name="height" value="{{ user.height_cm or '' }}"
+             min="100" max="250" step="1" inputmode="numeric"></div>
   </div>
   <button type="submit" class="btn-signal">Spremi podatke</button>
 </form>

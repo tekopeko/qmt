@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from qmt import auth, db
 from qmt.models import SessionTemplate, User
@@ -89,8 +89,8 @@ def main() -> None:
 
     print("timetable (dev RESET — replaces all templates/sessions/bookings):")
     from sqlalchemy import delete
-    from qmt.models import (Booking, Membership, OnboardingResponse, Payment,
-                            TrainingLog, TrainingSession, WorkoutLog)
+    from qmt.models import (Booking, Membership, OnboardingResponse, Payment, ProgressPhoto,
+                            TrainingLog, TrainingSession, Weight, WorkoutLog)
     with db.session_scope() as s:
         s.execute(delete(Booking))
         s.execute(delete(TrainingSession))
@@ -100,6 +100,9 @@ def main() -> None:
         s.execute(delete(OnboardingResponse))
         s.execute(delete(TrainingLog))
         s.execute(delete(WorkoutLog))       # the online passes: seed_passes makes ivan's
+        s.execute(delete(Weight))           # the karton's body (23.11.2026): the weights, the photos'
+        s.execute(delete(ProgressPhoto))    # rows (their files stay under data/uploads), the height
+        s.execute(update(User).values(height_cm=None, limitations=""))   # and the limitations
         for title, wd, hhmm, dur, cap, note, kind in TIMETABLE:
             h, m = map(int, hhmm.split(":"))
             s.add(SessionTemplate(title=title, kind=kind, weekday=wd, start_min=h * 60 + m,
