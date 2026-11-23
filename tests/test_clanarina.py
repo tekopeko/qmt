@@ -651,15 +651,15 @@ def test_no_price_carries_a_note_and_prehranas_hint_keeps_the_two_amounts():
         assert cijena.count('<div class="price">') == 1 and "price-hint" not in cijena, key
     assert "8, 12 ili 16 treninga" not in card(ivan, "grupni") and "paketi od 5" not in card(ivan, "rehabilitacija")
     # each price over its bazna cijena, each add-on amount with its own in brackets (23.11.2026)
-    assert ("Cijena od 3 € / mjesečno Bazna cijena : od 3 € 3 € uz dvoranu ( Bazna cijena : 3 &nbsp;€) , "
-            "5 € uz online ( Bazna cijena : 5 &nbsp;€) Uplaćeno") in text(card(ivan, "prehrana"))
+    assert ("Cijena od 3 € / mjesečno Bazna cijena na 10.9.2026. : od 3 € 3 € uz dvoranu ( Bazna cijena na 10.9.2026. : 3 &nbsp;€) , "
+            "5 € uz online ( Bazna cijena na 10.9.2026. : 5 &nbsp;€) Uplaćeno") in text(card(ivan, "prehrana"))
     editor = client_for("trener@test.local").get("/moja-clanarina").text
     assert not re.search(r'data-copy="price\.\w+\.note"', editor)
     prehrana = cards_in(section(editor, "mcAdd"))["prehrana"]      # its card to add: the hint after both lines
     assert '<div class="hint price-hint"><span class="ed t" data-copy="addon.dvorana"' in prehrana
     assert 'data-copy="addon.online"' in prehrana
-    assert ("od 3 € / mjesečno Bazna cijena : od 3 € na upit 3 € uz dvoranu ( Bazna cijena : 3 &nbsp;€) , "
-            "5 € uz online ( Bazna cijena : 5 &nbsp;€)") in text(prehrana)
+    assert ("od 3 € / mjesečno Bazna cijena na 10.9.2026. : od 3 € na upit 3 € uz dvoranu ( Bazna cijena na 10.9.2026. : 3 &nbsp;€) , "
+            "5 € uz online ( Bazna cijena na 10.9.2026. : 5 &nbsp;€)") in text(prehrana)
 
 
 # ---------- the online plan's tiers (20.10.2026) ----------

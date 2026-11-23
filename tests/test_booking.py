@@ -958,8 +958,8 @@ def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
     for price in ("60–80 € / paket", "35 € / trening"):
         assert price in shown(gym), price
     read = " ".join(unescape(re.sub(r"<[^>]+>", "", gym)).split())        # the tags dropped without a space
-    assert ("u dvoje ili troje 25 € / trening (Bazna cijena: 25 €) · rehabilitacija od 30 € / tretman "
-            "(Bazna cijena: od 30 €)") in read                            # Individualno's line, each base in brackets
+    assert ("u dvoje ili troje 25 € / trening (Bazna cijena na 10.9.2026.: 25 €) · rehabilitacija od 30 € / tretman "
+            "(Bazna cijena na 10.9.2026.: od 30 €)") in read                            # Individualno's line, each base in brackets
     assert "od 60" not in shown(offer + gym)
     for amount, unit in (("25", "/ trening"), ("od 30", "/ tretman")):   # a price and its unit are held together
         assert f'<span class="t">{amount}</span>&nbsp;€&nbsp;<span class="t">{unit}</span>' in gym, amount

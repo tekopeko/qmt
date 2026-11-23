@@ -141,7 +141,8 @@ beside each retail price the base price, for a service the one applied on
 10.9.2026): a slot of its own beside each price slot (BASE_OF: price key ->
 base key, price.<plan>.base / .year_base, offer.online*.base / .year_base,
 addon.*.base), a number, so required, and the words before it,
-price.base_label ("Bazna cijena"). It prints under its price, "Bazna
+price.base_label ("Bazna cijena na 10.9.2026.", the owner's words of 24.11.2026:
+the law's day named). It prints under its price, "Bazna
 cijena: 50 €", wherever the price holds a number and, for a visitor, the
 base does too. The first number typed into a price whose base holds none
 becomes its base as well (app.py, copy_save); Zadano never touches a base.
@@ -449,7 +450,7 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "addon.online": Slot(MOJIMAKROSI_ADDON["online"], CAP, "MojiMakrosi dodatak uz online (€)", required=True),
     "addon.dvorana": Slot(MOJIMAKROSI_ADDON["dvorana"], CAP, "MojiMakrosi dodatak uz dvoranu (€)", required=True),
     # ---- the bazna cijena beside every price (23.11.2026; BASE_OF below) ----
-    # The words printed before every base amount ("Bazna cijena: 50 €",
+    # The words printed before every base amount ("Bazna cijena na 10.9.2026.: 50 €",
     # the template puts the colon after them), then each price's base:
     # per plan its amount's (default the amount's own) and, but for online,
     # its yearly amount's ("na upit", as the yearly amount); each QMove
@@ -457,7 +458,7 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # amounts' (theirs). All numbers, so required: emptied, the default
     # comes back. Migration 8a67c43d0bb4 started every base the gym owner
     # had typed a price for at that price's text.
-    "price.base_label": Slot("Bazna cijena", CAP, "Bazna cijena: natpis uz svaku cijenu", required=True),
+    "price.base_label": Slot("Bazna cijena na 10.9.2026.", CAP, "Bazna cijena na 10.9.2026.: natpis uz svaku cijenu", required=True),
     **{f"price.{plan}.{part}": Slot(text, CAP, f"Cijena · {plan}: {label}", required=True)
        for plan, row in REFERENCE_PRICES.items()
        for part, label, text in (("base", "bazni iznos", row[0]),
@@ -558,7 +559,7 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
 # service the one applied on 10.9.2026, or on the day it was first offered
 # after that). The templates look a price's base up here (a Jinja global,
 # app.py: _plan_price.html's base and base_paren) and print it under the
-# price, "Bazna cijena: 50 €"; POST /copy/{key} fills a base with its
+# price, "Bazna cijena na 10.9.2026.: 50 €"; POST /copy/{key} fills a base with its
 # price's first number (app.py, copy_save). A gym card's own prices have
 # theirs in its row (GYM_CARD_BASE_OF, below).
 BASE_OF = {
