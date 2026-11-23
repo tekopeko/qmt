@@ -415,7 +415,17 @@ Vježbe).** The list: the page header, then `.ex-tools`, one wrapping row of the
 search (`form.ex-search`, `role="search"`: a `type=search` input and a
 `.btn-ghost.btn-sm` "Traži", `?q=`) and "+ Nova vježba" (`.btn.btn-sm`, the page's
 one primary), `align-items: stretch` so the buttons are the input's height (one
-footprint); with `q`, a muted "2 od 13 · prikaži sve" (`.tlink`). Then ONE
+footprint); with `q`, a muted "2 od 13 · prikaži sve" (`.tlink`). **The search filters
+as it is typed** (23.11.2026; no new component, the same input and rows): the page's
+script hides "Traži" (the input then fills the form) and, at each key, puts `hidden`
+on the rows not every typed word is in (`qmtFold` over each row's `data-find`, "name ·
+tags"); every row is on the page, `?q=` too, where the server hides the same ones. The
+count line (`p.hint.ex-found`, its number `.ex-n`) is always rendered, `hidden` while the
+box is empty; the none line (`p.ex-none`, its quote `.ex-q`) is the list's last child,
+`hidden` unless nothing is left. The input is `autocomplete="off"`: the browser's own
+dropdown of past entries hung over the rows. With rows hidden, the hairline is drawn
+between two visible rows (`.ex-row:not([hidden]) ~ .ex-row:not([hidden])`), never
+above the first one shown. Then ONE
 `.card.ex-list` of rows, a hairline between them: each row an `a.ex-row`, the whole
 row the tap target (52px at least, as the client's /treninzi cards are links
 whole), in the Croatian alphabet's order (`models.alpha_key`): `.ex-name` (600), the

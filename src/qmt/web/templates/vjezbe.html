@@ -3,9 +3,10 @@
 {% block head %}
 <style>
   /* The library of exercises (30.10.2026, Admin ▾ → Vježbe). The tools row:
-     the search (?q=, the server's) and "+ Nova vježba", the page's one
-     primary, wrapping under the search on a phone. The button stretches to
-     the input's height, so the row is one footprint. */
+     the search (?q=, the server's; since 23.11.2026 the script below
+     filters as it is typed and hides "Traži") and "+ Nova vježba", the
+     page's one primary, wrapping under the search on a phone. The button
+     stretches to the input's height, so the row is one footprint. */
   .ex-tools { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px 12px; margin-bottom: 16px; max-width: 860px; }
   .ex-search { display: flex; align-items: stretch; gap: 8px; flex: 1 1 260px; min-width: 0; margin: 0; }
   .ex-search input { flex: 1 1 auto; min-width: 0; }
@@ -21,8 +22,10 @@
   .ex-list { max-width: 860px; overflow: hidden; }
   .ex-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 52px;
             padding: 10px 18px; color: var(--text); text-decoration: none;
-            border-top: 1px solid var(--line); transition: background .15s; }
-  .ex-row:first-child { border-top: none; }
+            border-top: none; transition: background .15s; }
+  /* the hairline: a visible row that follows a visible row (the search
+     hides rows, so the first one shown need not be the first child) */
+  .ex-row:not([hidden]) ~ .ex-row:not([hidden]) { border-top: 1px solid var(--line); }
   .ex-row:hover { background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
   .ex-row:focus-visible { outline-offset: -2px; }
   .ex-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
@@ -44,15 +47,15 @@
 {% if total %}
 <div class="ex-tools">
   <form class="ex-search" method="get" action="/treninzi/vjezbe" role="search">
-    <input type="search" name="q" value="{{ q }}" placeholder="Naziv ili oznaka" aria-label="Traži vježbu po nazivu ili oznaci">
+    <input type="search" name="q" value="{{ q }}" placeholder="Naziv ili oznaka" aria-label="Traži vježbu po nazivu ili oznaci" autocomplete="off">
     <button type="submit" class="btn-ghost btn-sm">Traži</button>
   </form>
   <a class="btn btn-sm" href="/treninzi/vjezbe/nova">+ Nova vježba</a>
 </div>
-{% if q %}<p class="hint ex-found">{{ rows|length }} od {{ total }} · <a class="tlink" href="/treninzi/vjezbe">prikaži sve</a></p>{% endif %}
+<p class="hint ex-found" aria-live="polite"{% if not q %} hidden{% endif %}><span class="ex-n">{{ found }}</span> od {{ total }} · <a class="tlink" href="/treninzi/vjezbe">prikaži sve</a></p>
 <div class="card ex-list">
-  {% for e, n in rows %}
-  <a class="ex-row" href="/treninzi/vjezbe/{{ e.id }}">
+  {% for e, n, hit in rows %}
+  <a class="ex-row" href="/treninzi/vjezbe/{{ e.id }}" data-find="{{ e.name }}{% if e.tags %} · {{ e.tags }}{% endif %}"{% if not hit %} hidden{% endif %}>
     <span class="ex-name">{{ e.name }}</span>
     {% if e.tag_items %}<span class="ex-tags">{% for t in e.tag_items %}<span class="ex-tag">{{ t }}</span>{% endfor %}</span>{% endif %}
     <span class="ex-meta">
@@ -60,14 +63,79 @@
       <span>{% if n == 0 %}ni u jednom programu{% elif n % 10 == 1 and n % 100 != 11 %}u {{ n }} programu{% else %}u {{ n }} programa{% endif %}</span>
     </span>
   </a>
-  {% else %}
-  <p class="ex-none">Nijedna vježba ne odgovara traženju „{{ q }}”.</p>
   {% endfor %}
+  <p class="ex-none"{% if found %} hidden{% endif %}>Nijedna vježba ne odgovara traženju „<span class="ex-q">{{ q }}</span>”.</p>
 </div>
 {% else %}
 <div class="card ex-empty">
   <p>Još nema vježbi.</p>
   <a class="btn btn-sm" href="/treninzi/vjezbe/nova">+ Nova vježba</a>
 </div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if total %}
+<script>
+  // The search filters as it is typed (23.11.2026, the owner: "I want this
+  // to be in real time i.e. when I search the dropdown changes"). Every row
+  // is on the page (?q= too: the server hides the ones it drops, which is
+  // the page without this script), each with "name · tags" in data-find,
+  // folded once here (qmtFold, base.html). A row is kept when every word
+  // typed is in it: a word holds no space, so it is in "name · tags"
+  // exactly when it is in the name or in the tags (a lone "·" aside), the
+  // server's rule (models.matches). The count ("2 od 4 · prikaži sve")
+  // shows while the box holds text, the none line when nothing is kept,
+  // and the address follows (replaceState, never a new history entry:
+  // typing is no navigation), so a reload, a share or Back shows the same
+  // list. "Traži" goes and Enter sends nothing: the list is what a submit
+  // would fetch. "prikaži sve" clears the box here, in place. The count
+  // line is aria-live: a screen reader hears "2 od 14" as the list changes.
+  (function () {
+    var form = document.querySelector("form.ex-search"), list = document.querySelector(".ex-list");
+    var box = form && form.querySelector('input[name="q"]'), count = document.querySelector(".ex-found");
+    var none = list && list.querySelector(".ex-none");
+    if (!box || !list || !count || !none) return;
+    var shownN = count.querySelector(".ex-n"), quoted = none.querySelector(".ex-q"), later = null;
+    var rows = [].map.call(list.querySelectorAll("a.ex-row[data-find]"), function (a) {
+      return [a, qmtFold(a.getAttribute("data-find"))];
+    });
+    form.querySelector('button[type="submit"]').hidden = true;
+    function filter(follow) {
+      var typed = box.value.trim(), words = qmtFold(typed).split(/\s+/).filter(Boolean), kept = 0;
+      rows.forEach(function (r) {
+        var hit = words.every(function (w) { return r[1].indexOf(w) >= 0; });
+        r[0].hidden = !hit;
+        if (hit) kept++;
+      });
+      shownN.textContent = kept;
+      count.hidden = !typed;
+      quoted.textContent = typed;
+      none.hidden = kept > 0;
+      if (follow) {
+        // the address a little after the last key, not at every one: WebKit
+        // (every iOS browser) refuses more than 100 replaceState calls in
+        // 30 s, and a fast typist would hit that, the address then stuck
+        clearTimeout(later);
+        later = setTimeout(function () {
+          try { history.replaceState(null, "", location.pathname + (typed ? "?q=" + encodeURIComponent(typed) : "")); } catch (e) {}
+        }, 250);
+      }
+    }
+    box.addEventListener("input", function () { filter(true); });
+    // Enter, a phone keyboard's "Go": the list is already what a submit
+    // would fetch, so nothing is sent; the box lets go of the focus, which
+    // closes the phone's keyboard and shows the list
+    form.addEventListener("submit", function (e) { e.preventDefault(); box.blur(); });
+    count.querySelector("a").addEventListener("click", function (e) {
+      e.preventDefault();
+      box.value = ""; filter(true); box.focus();
+    });
+    // the box and the rows agree at load (a ?q= page: the server's rows,
+    // the same rule) and when Back or Forward brings the page out of the
+    // browser's cache
+    filter(false);
+    window.addEventListener("pageshow", function (e) { if (e.persisted) filter(false); });
+  })();
+</script>
 {% endif %}
 {% endblock %}

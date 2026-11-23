@@ -78,7 +78,7 @@ from sqlalchemy import inspect as sa_inspect, text as sa_text
 from sqlalchemy.exc import IntegrityError
 
 from qmt import auth, config, db
-from qmt.models import SECTIONS, Base, ProgramDay, ProgramDayItem, alpha_key, fold
+from qmt.models import SECTIONS, Base, ProgramDay, ProgramDayItem, alpha_key, fold, matches
 from qmt.web.app import app
 
 PORT = 8114                      # test_copy's server is 8111, test_raspored_ui's and test_upitnik_ui's 8112, test_nav's 8113
@@ -164,9 +164,30 @@ def pairs() -> set[tuple[int, int]]:
         return {tuple(r) for r in conn.execute(sa_text("SELECT exercise_id, alternative_id FROM exercise_alternatives"))}
 
 
+# a row of the library's list: what its <a> tag holds after the class (its
+# href, its data-find and, when the search drops it, hidden) and its name; a
+# piece of the page cut after the tag (a row split off it) is its name alone
+ROW = re.compile(r'(?:<a class="ex-row"([^>]*)>\s*)?<span class="ex-name">([^<]*)</span>')
+
+
+def all_names(page: str) -> list[str]:
+    """The library list's rows, in order, the hidden ones too (since
+    23.11.2026 a ?q= page holds every row, the ones it drops `hidden`)."""
+    return [unescape(n) for _, n in ROW.findall(page)]
+
+
 def names(page: str) -> list[str]:
-    """The library list's exercises, in order."""
-    return [unescape(n) for n in re.findall(r'<span class="ex-name">([^<]*)</span>', page)]
+    """The library list's exercises a reader sees, in order: the rows not
+    `hidden` (a quoted value never counts: a name may hold the word)."""
+    return [unescape(n) for attrs, n in ROW.findall(page) if " hidden" not in re.sub(r'"[^"]*"', "", attrs)]
+
+
+def line(page: str, cls: str) -> tuple[str, bool] | None:
+    """A line of the library's page by its class, its words as read (the
+    tags in it dropped) and whether it is hidden: the count ("ex-found",
+    "2 od 4 · prikaži sve") and the none line ("ex-none"); None without one."""
+    m = re.search(rf'<p class="(?:[^"]* )?{cls}"[^>]*?( hidden)?>(.*?)</p>', page, re.S)   # (aria-live between)
+    return m and (" ".join(unescape(re.sub(r"<[^>]+>", "", m.group(2))).split()), m.group(1) is not None)
 
 
 def items_of(pid: int) -> list:
@@ -1004,12 +1025,19 @@ def test_the_list_and_its_search():
     """The list: every exercise in the alphabet's order, its tags as chips,
     "video ✓" / "bez videa", "u N programa" (one: "u 1 programu", none: "ni
     u jednom programu"; through the programmes' days). ?q= keeps those
-    whose name or tags hold it, whatever its case; blank shows all; none
-    matching says so. An empty library says "Još nema vježbi." with the
-    button."""
+    whose name or tags hold every word of it, whatever its case (since
+    23.11.2026, models.matches: "noge kuce" two tags, "goblet noge" the
+    name and a tag, "cuc plank" nothing); blank shows all; none matching
+    says so. Since the same day the search filters as it is typed (the
+    browser test below), so every row is on the page, ?q= too, the ones it
+    drops `hidden`, each with its data-find ("name · tags", the name alone
+    without tags); the count line and the none line are always there,
+    hidden while they say nothing; the input is autocomplete="off". An
+    empty library says "Još nema vježbi." with the button, and no script."""
     ct, *_ = trainer_with_clients()
     page = ct.get("/treninzi/vjezbe").text
     assert "<h1>Vježbe</h1>" in page and "Još nema vježbi." in page and 'href="/treninzi/vjezbe/nova">+ Nova vježba</a>' in page
+    assert '<p class="hint ex-found"' not in page and "a.ex-row[data-find]" not in page   # no list, no script
     assert ('<p class="hint">Baza vježbi: svaki trening slaže se od njih. Vježba ima upute, što je jedno ponavljanje, '
             'oznake i video.</p>') in page
     ids = {n: db.create_exercise(n, tags=t) for n, t in (("Plank", "core, kod kuće"), ("Goblet čučanj", "noge, bučice"),
@@ -1021,20 +1049,41 @@ def test_the_list_and_its_search():
     hold(a.id, ids["Goblet čučanj"], "zagrijavanje", day=2)                # a second day of A: still 2 programmes
     hold(db.create_program("C", None), ids["Plank"])
     page = ct.get("/treninzi/vjezbe").text
-    assert names(page) == ["Biceps pregib", "Čučanj s vlastitom težinom", "Goblet čučanj", "Plank"]
+    every = ["Biceps pregib", "Čučanj s vlastitom težinom", "Goblet čučanj", "Plank"]
+    assert names(page) == all_names(page) == every
     assert "Još nema vježbi." not in page and 'role="search"' in page and 'name="q" value=""' in page
+    assert 'aria-label="Traži vježbu po nazivu ili oznaci" autocomplete="off">' in page   # no browser history over the list
+    assert line(page, "ex-found") == ("4 od 4 · prikaži sve", True)                       # no q: there, hidden
+    assert line(page, "ex-none") == ("Nijedna vježba ne odgovara traženju „”.", True)
+    assert re.search(r'</a>\s*<p class="ex-none" hidden>[^\n]*</p>\s*</div>', page)       # the list's last child
     rows = {names(r)[0]: r for r in page.split('<a class="ex-row" ')[1:]}
+    assert 'data-find="Plank · core, kod kuće">' in rows["Plank"] and 'data-find="Biceps pregib">' in rows["Biceps pregib"]
     assert f'href="/treninzi/vjezbe/{ids["Plank"]}"' in rows["Plank"] and '<span class="has">video ✓</span>' in rows["Plank"]
     assert "<span>bez videa</span>" in rows["Goblet čučanj"] and "<span>u 2 programa</span>" in rows["Goblet čučanj"]
     assert "<span>u 1 programu</span>" in rows["Plank"] and "<span>ni u jednom programu</span>" in rows["Biceps pregib"]
     assert 'class="ex-tag"' not in rows["Biceps pregib"]
     assert names(ct.get("/treninzi/vjezbe?q=ČUČANJ").text) == ["Čučanj s vlastitom težinom", "Goblet čučanj"]
     found = ct.get("/treninzi/vjezbe?q=Kod+kuće").text
-    assert names(found) == ["Čučanj s vlastitom težinom", "Plank"] and "2 od 4" in found and 'value="Kod kuće"' in found
-    assert names(ct.get("/treninzi/vjezbe?q=+++").text) == names(page)
+    assert names(found) == ["Čučanj s vlastitom težinom", "Plank"] and 'value="Kod kuće"' in found
+    assert line(found, "ex-found") == ("2 od 4 · prikaži sve", False)
+    assert all_names(found) == every                                                      # every row, the others hidden
+    assert [n for n in all_names(found) if n not in names(found)] == ["Biceps pregib", "Goblet čučanj"]
+    assert line(found, "ex-none") == ("Nijedna vježba ne odgovara traženju „Kod kuće”.", True)
+    blank = ct.get("/treninzi/vjezbe?q=+++").text
+    assert names(blank) == every and line(blank, "ex-found")[1] and 'name="q" value=""' in blank
     none = ct.get("/treninzi/vjezbe?q=xyz").text
-    assert names(none) == [] and "Nijedna vježba ne odgovara traženju „xyz”." in none and "0 od 4" in none
+    assert names(none) == [] and all_names(none) == every
+    assert line(none, "ex-none") == ("Nijedna vježba ne odgovara traženju „xyz”.", False)
+    assert line(none, "ex-found") == ("0 od 4 · prikaži sve", False)
     assert [e.name for e, _ in db.exercises("BUČ")] == ["Goblet čučanj"]
+    # every word in the name or the tags, folded, in any order (models.matches)
+    for q, kept in (("noge kuce", ["Čučanj s vlastitom težinom"]),       # two words of its tags
+                    ("cucanj tezinom", ["Čučanj s vlastitom težinom"]),  # two of its name: not Goblet čučanj
+                    ("goblet NOGE", ["Goblet čučanj"]),                  # one of the name, one of the tags
+                    ("kuće   core", ["Plank"]), ("cuc plank", [])):       # every word on one row
+        assert names(ct.get("/treninzi/vjezbe", params={"q": q}).text) == kept, q
+        assert [e.name for e, _ in db.exercises(q)] == kept, q
+    assert matches("", "Plank") and matches("  ", "") and not matches("plank", "", "")
 
 
 def test_the_search_folds_the_croatian_letters():
@@ -2388,6 +2437,119 @@ def test_dodaj_vjezbu_filters_as_it_is_typed_on_a_phone(server):
         pg.goto(edit); pg.wait_for_load_state("networkidle")
         check(pg.is_visible("#add-ex") and pg.get_attribute("#add-ex", "required") is not None
               and pg.locator("#add-ex-q").count() == 0, "without JS the select is not the picker it was")
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+LIB = """() => {
+  const q = document.querySelector('form.ex-search input[name="q"]'), b = document.querySelector('form.ex-search button');
+  const found = document.querySelector('.ex-found'), none = document.querySelector('.ex-none');
+  const seen = el => !el.hidden && el.offsetHeight > 0;
+  return {shown: [...document.querySelectorAll('a.ex-row')].filter(seen).map(a => a.querySelector('.ex-name').textContent),
+          typed: q.value, path: location.pathname, search: location.search, traži: seen(b),
+          count: seen(found) ? found.textContent.trim().split(' · ')[0] : null,
+          none: seen(none) ? none.textContent.trim() : null,
+          focused: document.activeElement === q, stayed: window.__stayed === true};
+}"""
+
+
+def test_the_library_filters_as_it_is_typed_on_a_phone(server):
+    """The library's search filters as it is typed at 390px, touch
+    (23.11.2026, the owner: "I want this to be in real time i.e. when I
+    search the dropdown changes"): "Traži" is gone and the count line hidden
+    until the box holds text; "cuc" keeps the two squats (every word in the
+    name or the tags, folded), "2 od 4", and the address follows (?q=cuc,
+    replaced, a little after the last key, no navigation); Enter sends
+    nothing and lets the focus go (the phone's keyboard closes); "cucx" keeps none and says
+    so, „cucx”, "0 od 4"; the box emptied shows all, the count hidden, the
+    address bare; "kod kuce", two words of a tag, keeps the plank and the
+    squat; "prikaži sve" shows all in place, the address bare, the focus in
+    the box. ?q=plank opened shows the plank alone before the script (the
+    server's hidden rows) and after it, "1 od 4". The page never scrolls
+    sideways; no page errors. Without JS ?q=cuc is the form it was: the two
+    squats, "Traži", the count, no none line."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("trener@test.local", is_trainer=True)
+    for n, t in (("Plank", "core, kod kuće"), ("Goblet čučanj", "noge, bučice"),
+                 ("Čučanj s vlastitom težinom", "noge, kod kuće"), ("Biceps pregib", "")):
+        db.create_exercise(n, tags=t)
+    every = ["Biceps pregib", "Čučanj s vlastitom težinom", "Goblet čučanj", "Plank"]
+    squats = ["Čučanj s vlastitom težinom", "Goblet čučanj"]
+    lib, box = f"{server}/treninzi/vjezbe", 'form.ex-search input[name="q"]'
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx, pg, errors = _phone(browser, server, "trener@test.local")
+        pg.goto(lib); pg.wait_for_load_state("networkidle")
+        st = pg.evaluate(LIB)
+        check(st["shown"] == every and not st["traži"] and st["count"] is None and st["none"] is None,
+              f"the bare page: {st}")
+        pg.evaluate("() => { window.__stayed = true; }")                   # a navigation would drop it
+        pg.tap(box)
+        pg.keyboard.type("cuc")
+        st = pg.evaluate(LIB)
+        check(st["shown"] == squats and st["count"] == "2 od 4" and st["none"] is None and st["stayed"], f"'cuc' shows: {st}")
+        pg.wait_for_timeout(400)                                           # the address follows a little after
+        st = pg.evaluate(LIB)
+        check((st["path"], st["search"]) == ("/treninzi/vjezbe", "?q=cuc") and st["stayed"], f"'cuc' left the address: {st}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the list filtered overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.keyboard.press("Enter")                                         # the keyboard's Go: nothing sent,
+        pg.wait_for_timeout(400)                                           # the keyboard closed (the focus let go)
+        st = pg.evaluate(LIB)
+        check(st["stayed"] and st["shown"] == squats and st["typed"] == "cuc" and st["search"] == "?q=cuc"
+              and not st["focused"], f"Enter changed something: {st}")
+        pg.tap(box)
+        pg.keyboard.type("x")
+        pg.wait_for_timeout(400)
+        st = pg.evaluate(LIB)
+        check(st["shown"] == [] and st["none"] == "Nijedna vježba ne odgovara traženju „cucx”."
+              and st["count"] == "0 od 4" and st["search"] == "?q=cucx", f"'cucx' shows: {st}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the none line overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.fill(box, "")
+        pg.wait_for_timeout(400)
+        st = pg.evaluate(LIB)
+        check(st["shown"] == every and st["count"] is None and st["none"] is None
+              and (st["path"], st["search"]) == ("/treninzi/vjezbe", ""), f"the box emptied shows: {st}")
+        pg.keyboard.type("kod kuce")                                       # two words of the tag "kod kuće"
+        pg.wait_for_timeout(400)
+        st = pg.evaluate(LIB)
+        check(st["shown"] == ["Čučanj s vlastitom težinom", "Plank"] and st["count"] == "2 od 4"
+              and st["search"] == "?q=kod%20kuce", f"'kod kuce' shows: {st}")
+        pg.tap(".ex-found a")                                              # "prikaži sve": in place
+        pg.wait_for_timeout(400)
+        st = pg.evaluate(LIB)
+        check(st["stayed"] and st["shown"] == every and st["typed"] == "" and st["count"] is None
+              and (st["path"], st["search"]) == ("/treninzi/vjezbe", "") and st["focused"],
+              f"'prikaži sve' left: {st}")
+        r = pg.goto(lib + "?q=plank")
+        check(names(r.text()) == ["Plank"] and all_names(r.text()) == every, f"?q=plank as served: {names(r.text())}")
+        pg.wait_for_load_state("networkidle")
+        st = pg.evaluate(LIB)
+        check(st["shown"] == ["Plank"] and st["count"] == "1 od 4" and st["typed"] == "plank"
+              and st["search"] == "?q=plank" and not st["traži"], f"?q=plank shows: {st}")
+        check(pg.evaluate(OVERFLOW) == 0, f"?q=plank overflows by {pg.evaluate(OVERFLOW)}px")
+        problems += errors
+        ctx.close()
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, java_script_enabled=False)
+        pg = ctx.new_page()
+        pg.goto(server + "/login")
+        pg.fill("main input[name=email]", "trener@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        with pg.expect_navigation():
+            pg.click("main button[type=submit]")
+        pg.goto(lib + "?q=cuc"); pg.wait_for_load_state("networkidle")
+        shown = pg.locator("a.ex-row:visible .ex-name").all_text_contents()
+        check(shown == squats and pg.is_visible("form.ex-search button") and pg.is_visible(".ex-found")
+              and "2 od 4" in " ".join((pg.text_content(".ex-found") or "").split()) and not pg.is_visible(".ex-none"),
+              f"without JS ?q=cuc shows {shown}, Traži {pg.is_visible('form.ex-search button')}, "
+              f"the count {pg.is_visible('.ex-found')}, the none line {pg.is_visible('.ex-none')}")
         ctx.close()
         browser.close()
     print("\n".join(problems))

@@ -21,7 +21,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .. import auth, config, copy, db, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, ONLINE_TIER_SLOTS, ONLINE_TIERS, PAYMENT_METHODS, PLAN_ABBR,
                       PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, WEEKDAYS as DAY_WEEKDAYS, add_month,
-                      duration_text, plural, sub_month)
+                      duration_text, matches, plural, sub_month)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -2306,17 +2306,21 @@ def create_program(request: Request, title: str = Form(...), intro: str = Form("
 @app.get("/treninzi/vjezbe", response_class=HTMLResponse)
 def vjezbe(request: Request, q: str = ""):
     """The library: every exercise in the alphabet's order, its tags, whether
-    it has a clip and how many programmes hold it; `q` keeps those whose name
-    or tags hold it, whatever its case and the Croatian letters' marks
-    (db.exercises, models.fold)."""
+    it has a clip and how many programmes hold it. The search filters as it
+    is typed since 23.11.2026 (the owner: "I want this to be in real time
+    i.e. when I search the dropdown changes"), so every row is on the page,
+    `q` or not: each with whether `q` keeps it (models.matches: every word
+    in the name or the tags, folded), and the page's script hides the
+    others as the box changes. The server marks them `hidden` too: that is
+    the page without the script, and what a reload of the address the
+    script keeps (?q=…) opens on."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     q = " ".join(q.split())
-    every = db.exercises()
-    rows = db.exercises(q) if q else every
+    rows = [(e, n, matches(q, e.name, e.tags)) for e, n in db.exercises()]
     return templates.TemplateResponse(request, "vjezbe.html", _ctx(
-        request, user, rows=rows, q=q, total=len(every)))
+        request, user, rows=rows, q=q, found=sum(1 for *_, hit in rows if hit), total=len(rows)))
 
 
 def _exercise_page(request: Request, user, e, form: dict | None = None, error: str | None = None,

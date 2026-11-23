@@ -660,14 +660,31 @@ def fold(text: str) -> str:
     "when I start searching for an exercise starting with 'add' it shows
     the adductor exercises"): casefolded, the four Croatian letters to
     their base (_FOLD), every other mark dropped (NFKD, the combining marks
-    stripped), so "cuc" and "ČUČ" both find "Čučanj". One table, three
-    searches: db.exercises (the library's ?q=) folds with it, and
-    base.html's qmtFold, the same table, folds for the pages' filters (the
-    day editor's "Dodaj vježbu", an exercise's swaps)."""
+    stripped), so "cuc" and "ČUČ" both find "Čučanj". One table for the
+    exercise searches: db.exercises (the library's ?q=, through matches)
+    folds with it, and base.html's qmtFold, the same table, folds for the
+    pages' filters (the library's as it is typed, the day editor's "Dodaj
+    vježbu", an exercise's swaps)."""
     import unicodedata
 
     text = (text or "").casefold().translate(_FOLD)
     return "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
+
+
+def matches(q: str, *texts: str) -> bool:
+    """Whether a search keeps a row (23.11.2026, the owner on the library:
+    "I want this to be in real time i.e. when I search the dropdown
+    changes"): every word of q (a run of non-whitespace) is in one of the
+    texts, folded (fold), so "kod kuce" finds the tag "kod kuće" and
+    "hinge bucica" keeps "Adductor hinge s bučicom - bučica", not "…
+    s girjom - girja". A q with no word keeps every row. One rule for the
+    library's ?q= (db.exercises, the route's hidden rows) and its script,
+    as the day editor's "Dodaj vježbu" matches its rows (qmtFold)."""
+    words = fold(q).split()
+    if not words:
+        return True
+    hay = [fold(t) for t in texts]
+    return all(any(w in h for h in hay) for w in words)
 
 
 class Exercise(Base):

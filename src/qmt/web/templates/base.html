@@ -1749,8 +1749,9 @@
   // lower case, the four Croatian letters to their base (č ć → c, đ → d,
   // š → s, ž → z; đ has no decomposition of its own) and every other mark
   // dropped (NFD, the combining marks stripped), so "cuc" and "ČUČ" find
-  // "Čučanj". models.fold is the same table for the library's ?q=: the day
-  // editor's "Dodaj vježbu" and an exercise's swaps fold with this one.
+  // "Čučanj". models.fold is the same table for the library's ?q=: the
+  // library's live filter, the day editor's "Dodaj vježbu" and an
+  // exercise's swaps fold with this one.
   var _fold = {"č": "c", "ć": "c", "đ": "d", "š": "s", "ž": "z"};
   function qmtFold(s) {
     return String(s == null ? "" : s).toLowerCase()
