@@ -25,7 +25,7 @@ from . import config, copy, upitnik
 from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, Announcement, Base, Booking,
                      Exercise, GymCard, Membership, OnboardingResponse, Payment, Program, ProgramDay, ProgramDayItem,
                      ReminderLog, SessionTemplate, SiteCopy, TrainingLog, TrainingSession, UpitnikQuestion, User,
-                     WorkoutLog, alpha_key, exercise_alternatives)
+                     WorkoutLog, alpha_key, exercise_alternatives, fold)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -345,7 +345,8 @@ def delete_gym_card(card_id: int) -> bool:
 def set_gym_card_field(card_id: int, column: str, text: str, user_id: int | None) -> str:
     """Set one text of a card. `column` is where the row keeps it
     (copy.GYM_CARD_COLUMNS: title, lead, price, unit, year_price,
-    year_unit). The text is cleaned as copy is (copy.clean) and stored as
+    year_unit, and since 23.11.2026 base_price, base_year_price: the two
+    prices' bazna cijena). The text is cleaned as copy is (copy.clean) and stored as
     it is, an empty one too (20.10.2026, as an announcement's: its
     placeholder, copy.GYM_CARD_BLANK, comes back only when the caller
     passes it, Zadano). Returns what is stored. ValueError: not such a
@@ -1700,16 +1701,18 @@ def _holding(exercise_ids):
 def exercises(q: str = "") -> list[tuple[Exercise, int]]:
     """The library in the alphabet's order (alpha_key), each exercise with the
     number of programmes that hold it (in any of their days). With q, only
-    those whose name or tags hold it, whatever its case (the list's search);
-    every one without."""
+    those whose name or tags hold it, whatever its case and the Croatian
+    letters' marks (models.fold since 23.11.2026: "cuc" finds "Čučanj", as
+    the day editor's "Dodaj vježbu" and an exercise's swaps filter do; the
+    list's search); every one without."""
     with session_scope() as s:
         used = dict(s.execute(select(ProgramDayItem.exercise_id, func.count(func.distinct(ProgramDay.program_id)))
                               .join(ProgramDay, ProgramDay.id == ProgramDayItem.day_id)
                               .group_by(ProgramDayItem.exercise_id)).all())
         rows = list(s.scalars(select(Exercise)))
-    needle = " ".join((q or "").split()).casefold()
+    needle = fold(" ".join((q or "").split()))
     if needle:
-        rows = [e for e in rows if needle in e.name.casefold() or needle in e.tags.casefold()]
+        rows = [e for e in rows if needle in fold(e.name) or needle in fold(e.tags)]
     return [(e, used.get(e.id, 0)) for e in sorted(rows, key=lambda e: alpha_key(e.name))]
 
 

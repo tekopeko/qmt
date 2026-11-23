@@ -80,6 +80,7 @@ targets; do not introduce new uses.
 | `.field` | 14px bottom margin |
 | radio/checkbox pills | `.tiers` on /moja-clanarina (`_tiers.html`): `label:has(input:checked)` → accent border + tint, `--accent-tint-ink` text; `accent-color: var(--accent)` |
 | confirm | form with `data-confirm` / `-title` / `-cta` → `#confirmDlg` opens before submit |
+| combobox (`.cbx`, trening_day_edit.html) | a select too long to scroll, typed into instead ("Dodaj vježbu", 23.11.2026: the library, 275 exercises on prod). The page's script hides the `<select>` (it stays in the form, carries the value posted, and is the no-JS picker, `required` there) and puts in its place `.cbx` (`position: relative`), holding the app's text input (`#add-ex-q`: `role="combobox"`, `aria-expanded`, `aria-controls`, `aria-autocomplete="list"`, `aria-activedescendant`; the label's `for` moved to it; 44px on a coarse pointer, the Dio select beside it too) and `.cbx-list` (`role="listbox"`, `hidden` until the input has the focus): absolute, 4px under the input and exactly its width at every width, `z-index: 5`, at most 280px tall and scrolling, `--surface`, hairline, `--r-md`, `--shadow`, 4px padding. It lies over what follows (the Dio select, the buttons), never pushes it down. Its rows (`li[role=option]`, built from the select's options, "name · tags"): 44px at least, 8px 12px, 8px radius, the name (`.cbx-name`, 600 .95rem) over its tags (`.cbx-tags`, muted .78rem); the active one (the arrows') and the hovered one `--surface-2`. At most 60, then a muted line that is no option (`.cbx-note`: "… još N — nastavi tipkati", or "Nijedna vježba ne odgovara traženju."). It matches with `qmtFold` (base.html; `models.fold` is the same table on the server): every word typed in the name or the tags, the names that start with it first, then a word of the name that does, then the rest, the alphabet within each. ↓ / ↑ move the active row (scrolled into view), Enter picks it and never submits while the list is open, Escape and Tab close it, a tap picks (a mousedown on the list keeps the focus in the input). A pick sets the select, puts the name in the input and keeps the focus there; typing again clears the select. The script checks the submit: nothing picked, `.cbx-err` "Odaberi vježbu s popisa." under the input (.85rem 600 `--accent`, `aria-live="polite"`, `aria-invalid` on the input) and the focus back in it |
 
 ## Status text and chips
 
@@ -94,6 +95,7 @@ targets; do not introduce new uses.
 | `.u-fact` (karton, upitnik v2) | a fact from the upitnik's part 1 (the goal, "3 dana tjedno", "45-60 min", the place): a neutral pill, `--surface-2` with `--text`, 600 .78rem — facts, not state, so no razina colour |
 | `.u-flag` (karton, the trainer's view) | the upitnik's safety flags, 999px pills, 700 .78rem: `.review` "Zahtijeva pregled" (q15 Da) in `--accent-dim` / `--accent-tint-ink`; `.pain` "Bolovi N/10 · where" (q14 ≥ 4) in the karton's amber (`--warn` on `--warn-soft`, the `.act-absent` values, AA on both themes) |
 | `.u-note` (karton) | the pain sentence for a client at q14 ≥ 7 (`upitnik.pain_note`), shown to him and the trainer: `--text` on the amber tint, `--r-md`, 10px 14px |
+| `.price > .base` / `.base-l` (base.html; the landing, /moja-clanarina) | the **bazna cijena** under a price (23.11.2026, the law's base price; `_plan_price.html`'s `base`): `<small class="base">`, the last child of its `.price` block, so the Mjesečno / Godišnje switch shows and hides it with its price; a block of its own under the amount and its unit (`flex-basis: 100%` in the landing's flex row), 500 .8rem/1.3 `--muted`, 2px under the amount, tabular-nums, `overflow-wrap: anywhere`. Its words: `.base-l` "Bazna cijena:" (the `price.base_label` slot, the colon the template's), then the base slot, " €" after a number without its sign (`priced`). Only under a price that holds a number, and for a visitor only when the base holds one too (the editor's box shows as soon as the price does). In a line of prices it goes in brackets after each price instead (`base_paren`: Individualno's other plans, prehrana's MojiMakrosi line), " (Bazna cijena: 25 €)", a `span.base-paren` (an inline block in the landing's `.price-note`, as a price's `.whole` is) |
 
 ## Page conventions
 
@@ -127,7 +129,12 @@ own section and its own `aria-selected`, never the other switch's. A gym
 card a plan prices shows that plan's yearly slots (`price.<plan>.year_amount`
 / `.year_unit`, 21.10.2026), one without plans its row's. Tier prices are mostly owner-typed text, so the
 cards (tiers and gym) reserve a second price line (`min-height`, 900–1100px)
-and stay level whatever is typed. `.featured` (tier 2) is taller, not shifted
+and stay level whatever is typed. Under every price that holds a number its
+bazna cijena (`.base`, above; 23.11.2026), none under "na upit": when any
+card of a row shows one, every price of that row keeps its room (`min-height`
+adds the line, the row gap and its 2px, the number at the top:
+`.swipe-row:has(.price:not([hidden]) > .base)`), so a "na upit" beside "50 €"
+stays level; a row that shows none keeps none. `.featured` (tier 2) is taller, not shifted
 (`margin-block: -16px` + matching padding, desktop only) and carries
 `.featured-tag`; `.mine` gets the green-tinted border. **Below 900px each row
 of cards is a carousel** (`.swipe-row`, on `.offer-grid` and `.gym-grid`):
@@ -309,7 +316,10 @@ owner retypes them here — a plan's `price.<plan>.amount` / `.unit` /
 START `price.online.*`, `offer.online2/3.price` / `.unit` and
 `offer.online*.year_price` / `.year_unit` (as typed, as the landing prints
 them). A held plan's Cijena is `pp.plan_price(key)`, its monthly line and
-prehrana's hint; no note under a price since 21.10.2026. Stripe's amounts
+prehrana's hint; no note under a price since 21.10.2026. Every price line
+carries its bazna cijena under it (`.base`, above; each `pp.price` call
+passes its base's key, `base_key=BASE_OF[…]`), and prehrana's hint each
+add-on amount's in brackets. Stripe's amounts
 show only inside the forms that charge them, the
 checkout tier picker (`_tiers.html`) and the tier switch (18.10.2026). Every card carries
 `id="plan-<key>"` (`scroll-margin-top: 90px`), so `#plan-<key>` links land on
@@ -425,7 +435,8 @@ vježbu** ("Slične vježbe" until 4.11.2026, when a swap got a direction), a
 smije odraditi označene vježbe umjesto ove. Da ova vježba zamijeni neku drugu, označi
 je na stranici te vježbe."), the
 `.alt-filter` search (rendered `hidden`, the script shows it and keeps the rows
-whose name or tags hold what is typed; a row it hides keeps its tick; Enter
+whose name or tags hold what is typed, folded with `qmtFold` since 23.11.2026: "cuc"
+finds "Čučanj"; a row it hides keeps its tick; Enter
 there only filters: in the form, a phone keyboard's "Go" would save it half
 typed) and
 `.alt-list`, a 300px box that scrolls, of `label` rows (40px, a checkbox, the name
@@ -466,8 +477,8 @@ auto`: one group at the right end, wrapping under the name whole on a phone),
 `.it-acts` (↑ / ↓ / ✕, `.btn-ghost.btn-sm`, a disabled one at .35).
 
 **The programme editor (`trening_edit.html`).** The h1 "Uredi program"; its lead:
-"Program ima treninge; svaki trening ima zagrijavanje, glavni dio i istezanje, a
-vježbe biraš iz baze vježbi." (a `.tlink` to the library) and "pogledaj kako
+"Program ima treninge; svaki trening ima zagrijavanje, glavni dio A i B te istezanje, a
+vježbe biraš iz baze vježbi." (A and B since 23.11.2026) (a `.tlink` to the library) and "pogledaj kako
 polaznik vidi →" (`.act.act-quiet`). The programme's form (`.card`, 640px), then
 **Treninzi** (30.10.2026; a day reads "Trening N" since 2.11.2026): a
 `.card.it-row` per day, `id="dan-<id>"`: its label as `.it-name` (a link to the
@@ -507,8 +518,9 @@ columns on a phone (Dio, Napomena and Spremi across both), four from 600px (Dio
 and the dose on line 1, then the rest, the note over two columns and Spremi);
 every control 40px tall, 44px on a coarse pointer, so the grid is one
 footprint. "Dodaj vježbu" (`form#dodaj.card.add-ex`): `.add-fields` (Vježba iz
-baze, the library's select, name · tags; Dio, opening on Glavni dio; one column on a
-phone, the select and a 180px Dio from 600px) and `.add-row` (Dodaj
+baze, the combobox over the library's select, name · tags (Forms, above; 23.11.2026);
+Dio, opening on Glavni dio A (four options since 23.11.2026: Glavni dio B after it); one column on a phone, the combobox and a 180px Dio from
+600px) and `.add-row` (Dodaj
 `.btn.btn-sm`, "Nova vježba →" `.btn-ghost.btn-sm`, `natrag=` this editor). Last
 "Obriši trening" (`form.ex-delete`, asks first).
 

@@ -316,7 +316,8 @@ def test_dodaj_plan_shows_the_owners_prices_stripe_or_not(stripe_on, monkeypatch
     online, grupni = _card(page, "online"), _card(page, "grupni")
     assert "50 € / mjesečno" in _text(online) and ">Pretplati se karticom</button>" in online
     assert "55 €" not in page and "55,00 €" not in page             # Stripe's online price: nowhere
-    assert "60–80 € / paket na upit Satni termini" in _text(grupni)  # its slots, monthly and yearly, then its text
+    assert "60–80 € / paket Bazna cijena : 60–80 € na upit Satni termini" in _text(grupni)  # its slots, monthly
+                                                                    # (its bazna cijena under it) and yearly, then its text
     assert "8, 12 ili 16 treninga" in _text(grupni)                  # (its old note a line of it)
     for tier, key in (("start", "online"), ("pro", "online-pro"), ("elite", "online-elite")):
         form = _card(page, key)                                     # every QMove tier: its own form
@@ -325,7 +326,8 @@ def test_dodaj_plan_shows_the_owners_prices_stripe_or_not(stripe_on, monkeypatch
     assert "8, 12, 16 treninga mjesečno" not in _text(page)          # not the hint built from Stripe's tiers
     assert 'name="sessions" value="12"' in grupni and "12 treninga · 70 €" in _text(grupni)   # the picker, in the form
     assert "35 € / trening" in _text(page)
-    assert "od 3 € / mjesečno na upit 3 € uz dvoranu, 5 € uz online" in _text(page)   # prehrana: the MojiMakrosi add-on, 3 or 5 €
+    assert ("od 3 € / mjesečno Bazna cijena : od 3 € na upit 3 € uz dvoranu ( Bazna cijena : 3 &nbsp;€) , "
+            "5 € uz online ( Bazna cijena : 5 &nbsp;€)") in _text(page)   # prehrana: the MojiMakrosi add-on, 3 or 5 €
 
     monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "")   # unconfigured: the same prices, no card
     payments._price_cache = (0.0, {})

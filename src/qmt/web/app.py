@@ -77,6 +77,20 @@ templates.env.filters["program_name"] = db.program_name
 # is its plan's price.<plan>.year_amount slot since migration 6e2b9d41c7a3)
 templates.env.globals["copy_text"] = lambda key, texts: texts.get(key, copy.SLOTS[key].default)
 templates.env.tests["priced"] = lambda text: any(ch.isdigit() for ch in str(text)) and "€" not in str(text)
+
+
+def _numeric(text) -> bool:
+    """A text that holds a number at all, any digit ("50", "od 30", "60–80";
+    not "na upit"): a price whose bazna cijena prints, a base that is one
+    (23.11.2026: the Jinja test `numeric`, and copy_save's first price)."""
+    return any(ch.isdigit() for ch in str(text))
+
+
+templates.env.tests["numeric"] = _numeric
+# every price's bazna cijena (23.11.2026): a price slot's base slot, a gym
+# card's price column's base column (_plan_price.html's base, landing.html)
+templates.env.globals["BASE_OF"] = copy.BASE_OF
+templates.env.globals["GYM_BASE_OF"] = copy.GYM_CARD_BASE_OF
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 WEEKDAYS = ["Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota", "Nedjelja"]
@@ -347,7 +361,18 @@ def copy_save(request: Request, key: str, text: str = Form(""), index: str = For
         db.reset_copy(key)
         return JSONResponse({"ok": True, "text": slot.default, "default": True})
     db.set_copy(key, cleaned, user.id)      # an emptied optional text is stored as ""
-    return JSONResponse({"ok": True, "text": cleaned, "default": False})
+    answer = {"ok": True, "text": cleaned, "default": False}
+    # A price's first number is its bazna cijena too (23.11.2026): the base
+    # of a price that held none ("na upit", a new card's) starts at the price
+    # the gym owner types, the price applied on the day it is first offered.
+    # Only from a text with no number to one: after that the base is his to
+    # retype, and Zadano (above) never touches it. `also` names what changed
+    # beside the saved text, for the editor to redraw (base.html).
+    base = copy.BASE_OF.get(key)
+    if base and _numeric(cleaned) and not _numeric(db.copy_texts().get(base, copy.SLOTS[base].default)):
+        db.set_copy(base, cleaned, user.id)
+        answer["also"] = [{"key": base, "text": cleaned}]
+    return JSONResponse(answer)
 
 
 # A row's field as the editor names it: an announcement's
@@ -390,7 +415,7 @@ def _upitnik_field(key: str) -> tuple[int, str, copy.Slot | copy.ListSlot] | Non
     return _row_field(_UPITNIK_KEY, copy.UPITNIK_QUESTION_SLOTS, db.upitnik_question, key)
 
 
-def _copy_save_row(slot, text: str, reset: str, set_shown, set_text) -> JSONResponse:
+def _copy_save_row(slot, text: str, reset: str, set_shown, set_text, also=None) -> JSONResponse:
     """A row's switch or text (an announcement's, a gym card's; an upitnik
     question's text, set_shown None: its switch is POST
     /upitnik/pitanje/{id}), answered as
@@ -399,8 +424,11 @@ def _copy_save_row(slot, text: str, reset: str, set_shown, set_text) -> JSONResp
     is cleaned and capped and handed to set_text(cleaned), which stores it
     and returns what it stored: an emptied one stays empty (no row's text
     is required), and reset=1 hands it the row's placeholder, the slot's
-    default, "default": true. A setter's LookupError (the row deleted
-    meanwhile) is the caller's to answer."""
+    default, "default": true. `also` (a gym card's price, 23.11.2026)
+    takes what a text save (never reset=1) stored and returns the other
+    texts it changed with it, [{"key", "text"}], the answer's "also" when
+    there are any. A setter's LookupError (the row deleted meanwhile) is
+    the caller's to answer."""
     if isinstance(slot, copy.FlagSlot):
         if reset == "1":
             on = slot.default
@@ -416,7 +444,11 @@ def _copy_save_row(slot, text: str, reset: str, set_shown, set_text) -> JSONResp
     if len(cleaned) > slot.max:
         return JSONResponse({"ok": False, "error": f"Najviše {slot.max} znakova — ovo ih ima {len(cleaned)}."},
                             status_code=400)
-    return JSONResponse({"ok": True, "text": set_text(cleaned), "default": False})
+    answer = {"ok": True, "text": set_text(cleaned), "default": False}
+    more = also(answer["text"]) if also is not None else []
+    if more:
+        answer["also"] = more
+    return JSONResponse(answer)
 
 
 def _copy_save_announcement(key: str, ann_id: int, field: str, slot, text: str, reset: str,
@@ -463,9 +495,22 @@ def _copy_save_gym_card(card_id: int, field: str, slot, text: str, index: str, r
             items = card.list_items(field)
             return _edit_list(items, items == list(slot.default), slot, text, index,
                               lambda changed: db.set_gym_card_list(card_id, field, changed, user_id))
+        base = copy.GYM_CARD_BASE_OF.get(field)
+
+        def first_price(stored: str) -> list[dict]:
+            """The card's own price's first number is its bazna cijena too
+            (23.11.2026), as a price slot's is (copy_save): when the price
+            now holds a number and its base column none."""
+            card = db.gym_card(card_id)
+            if card is None or not _numeric(stored) or _numeric(getattr(card, base)):
+                return []
+            return [{"key": f"dvorana.{card_id}.{base}",
+                     "text": db.set_gym_card_field(card_id, copy.GYM_CARD_COLUMNS[base], stored, user_id)}]
+
         return _copy_save_row(
             slot, text, reset, lambda on: db.set_gym_card_shown(card_id, on, user_id),
-            lambda cleaned: db.set_gym_card_field(card_id, copy.GYM_CARD_COLUMNS[field], cleaned, user_id))
+            lambda cleaned: db.set_gym_card_field(card_id, copy.GYM_CARD_COLUMNS[field], cleaned, user_id),
+            also=first_price if base else None)
     except LookupError:
         return JSONResponse({"ok": False, "error": "Nepoznat tekst."}, status_code=404)
 
@@ -2262,7 +2307,8 @@ def create_program(request: Request, title: str = Form(...), intro: str = Form("
 def vjezbe(request: Request, q: str = ""):
     """The library: every exercise in the alphabet's order, its tags, whether
     it has a clip and how many programmes hold it; `q` keeps those whose name
-    or tags hold it, whatever its case."""
+    or tags hold it, whatever its case and the Croatian letters' marks
+    (db.exercises, models.fold)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect

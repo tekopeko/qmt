@@ -139,19 +139,23 @@
 <script>
   // The swaps' filter: shown once this runs (without it the box is the
   // whole list). It keeps the rows whose name or tags hold what is typed,
-  // whatever its case; a row it hides keeps its tick, and the form posts it.
+  // whatever its case and the Croatian letters' marks (qmtFold, base.html,
+  // 23.11.2026: "cuc" finds "Čučanj", as the library's search does); a row
+  // it hides keeps its tick, and the form posts it.
   (function () {
     var box = document.getElementById("altFilter"), list = document.getElementById("altList");
     if (!box || !list) return;
     box.hidden = false;
+    // each row's words folded once, not at every key
+    var rows = [].map.call(list.querySelectorAll("label[data-find]"), function (row) {
+      return [row, qmtFold(row.getAttribute("data-find"))];
+    });
     // it sits in the form: Enter (a phone keyboard's "Go") would send it and
     // save the exercise half typed, so Enter here only filters
     box.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });
     box.addEventListener("input", function () {
-      var q = box.value.trim().toLocaleLowerCase("hr");
-      [].forEach.call(list.querySelectorAll("label[data-find]"), function (row) {
-        row.hidden = !!q && row.getAttribute("data-find").indexOf(q) === -1;
-      });
+      var q = qmtFold(box.value.trim());
+      rows.forEach(function (r) { r[0].hidden = !!q && r[1].indexOf(q) === -1; });
     });
   })();
 </script>

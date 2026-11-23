@@ -564,7 +564,7 @@ def test_the_bar_the_list_and_the_dock_say_where_the_client_is():
     assert '<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span></span>' in rows[3][3]
     assert "dx-ok" not in rows[1][3] and '<span class="dx-dose">3 × 10</span>' in rows[1][3]
     assert "Odmor između serija: 60 s · 16 kg" in rows[1][3]
-    assert re.findall(r'<h3 class="dx-cap">([^<]*)</h3>', page) == ["Zagrijavanje", "Glavni dio", "Istezanje"]
+    assert re.findall(r'<h3 class="dx-cap">([^<]*)</h3>', page) == ["Zagrijavanje", "Glavni dio A", "Istezanje"]
     assert '<a class="pl-dock" href="#popis">Vježbe · 2/4 ✓</a>' in page
     assert re.search(r'<span class="pl-timer" hidden data-started="[0-9T:+-]+"', page)
     assert '<span class="pl-chip">2/4</span>' in page and '<p class="pl-dose">3 × 10</p>' in page

@@ -18,6 +18,8 @@
    amounts (hint below), the addon.* slots, which print nowhere else. The
    only Stripe amounts on the page are inside the forms that charge them:
    the tier picker (_tiers.html) and a subscriber's tier switch.
+   Under every price its bazna cijena since 23.11.2026 (base, below): each
+   price() call passes its base's slot, base_key=BASE_OF[<the amount's key>].
    Use: {% import "_plan_price.html" as pp with context %} … {{ pp.plan_price(key) }}
    (with context: the slots need the page's copy_texts and can_edit_copy) #}
 {% import "_copy.html" as c with context %}
@@ -28,18 +30,52 @@
   {{- "€" if not pr or pr.currency == "EUR" else pr.currency -}}
 {%- endmacro %}
 
-{% macro price(amount, unit, period=none, hidden=false, euro=true) -%}
-  <div class="price"{% if period %} data-period="{{ period }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ c.t(amount) }}{% if euro and copy_text(amount, copy_texts) is priced %} €{% endif %} <small>{{ c.t(unit) }}</small></div>
+{# A price's bazna cijena (23.11.2026; Croatia's Pravilnik o isticanju bazne
+   cijene proizvoda, NN 132/2026: beside each retail price its base price):
+   "Bazna cijena: 50 €" on a line of its own under the price (.price > .base,
+   base.html), the last child of the price's block, so the Mjesečno /
+   Godišnje switch shows and hides it with its price. price_key is the
+   price's slot, base_key its base's (copy.BASE_OF). It prints when the
+   price holds a number (the Jinja test `numeric`) and, for a visitor, the
+   base holds one too: never "Bazna cijena:" with nothing after it, nor
+   under "na upit"; the editor gets its box as soon as the price holds a
+   number. The words before it are the price.base_label slot, the colon
+   ours; " €" follows a base that is a number without a sign of its own
+   (`priced`), as it follows a price. #}
+{% macro base(price_key, base_key) -%}
+  {%- if copy_text(price_key, copy_texts) is numeric and (can_edit_copy or copy_text(base_key, copy_texts) is numeric) -%}
+    <small class="base"><span class="base-l">{{ c.t("price.base_label") }}:</span> {{ c.t(base_key) }}{% if copy_text(base_key, copy_texts) is priced %} €{% endif %}</small>
+  {%- endif -%}
+{%- endmacro %}
+
+{# The same in brackets after a price in a line of prices (the landing's
+   Individualno line of its other plans, prehrana's MojiMakrosi line):
+   " (Bazna cijena: 25 €)", a span.base-paren (the landing keeps it on one
+   line while it fits, as it keeps a price's .whole); the same rule for
+   when it prints. #}
+{% macro base_paren(price_key, base_key) -%}
+  {%- if copy_text(price_key, copy_texts) is numeric and (can_edit_copy or copy_text(base_key, copy_texts) is numeric) -%}
+    {{ " " }}<span class="base-paren">({{ c.t("price.base_label") }}: {{ c.t(base_key) }}{% if copy_text(base_key, copy_texts) is priced %}&nbsp;€{% endif %})</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{# base_key: the amount's base slot (BASE_OF[amount]); a parameter named
+   `base` would hide the macro above #}
+{% macro price(amount, unit, period=none, hidden=false, euro=true, base_key=none) -%}
+  <div class="price"{% if period %} data-period="{{ period }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ c.t(amount) }}{% if euro and copy_text(amount, copy_texts) is priced %} €{% endif %} <small>{{ c.t(unit) }}</small>{% if base_key %}{{ base(amount, base_key) }}{% endif %}</div>
 {%- endmacro %}
 
 {# under prehrana's price: the MojiMakrosi add-on beside a plan in the
-   dvorana and beside online ("3 € uz dvoranu, 5 € uz online"), the two
-   addon.* amounts; nothing for another plan #}
+   dvorana and beside online, the two addon.* amounts, each with its bazna
+   cijena in brackets ("3 € uz dvoranu (Bazna cijena: 3 €), 5 € uz online
+   (Bazna cijena: 5 €)"); nothing for another plan #}
 {% macro hint(key) -%}
-  {%- if key == "prehrana" %}<div class="hint price-hint">{{ c.t("addon.dvorana") }} € uz dvoranu, {{ c.t("addon.online") }} € uz online</div>{% endif -%}
+  {%- if key == "prehrana" %}<div class="hint price-hint">{{ c.t("addon.dvorana") }} € uz dvoranu{{ base_paren("addon.dvorana", BASE_OF["addon.dvorana"]) }}, {{ c.t("addon.online") }} € uz online{{ base_paren("addon.online", BASE_OF["addon.online"]) }}</div>{% endif -%}
 {%- endmacro %}
 
-{# a plan's monthly price and its hint: the Cijena fact of a plan held #}
+{# a plan's monthly price, its base under it, and its hint: the Cijena fact
+   of a plan held #}
 {% macro plan_price(key) -%}
-  {{- price("price." ~ key ~ ".amount", "price." ~ key ~ ".unit") }}{{ hint(key) -}}
+  {%- set amount = "price." ~ key ~ ".amount" -%}
+  {{- price(amount, "price." ~ key ~ ".unit", base_key=BASE_OF[amount]) }}{{ hint(key) -}}
 {%- endmacro %}

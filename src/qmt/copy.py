@@ -134,6 +134,18 @@ are REFERENCE_PRICES, YEARLY_PRICE and MOJIMAKROSI_ADDON below, the shop's
 numbers. Most of them print on two pages, the landing and /moja-clanarina,
 the only slots that do: one number, one slot, so an edit shows wherever
 that number does.
+
+Every price has its bazna cijena since 23.11.2026 (Croatia's Pravilnik o
+isticanju bazne cijene proizvoda, NN 132/2026, in force since 17.11.2026:
+beside each retail price the base price, for a service the one applied on
+10.9.2026): a slot of its own beside each price slot (BASE_OF: price key ->
+base key, price.<plan>.base / .year_base, offer.online*.base / .year_base,
+addon.*.base), a number, so required, and the words before it,
+price.base_label ("Bazna cijena"). It prints under its price, "Bazna
+cijena: 50 €", wherever the price holds a number and, for a visitor, the
+base does too. The first number typed into a price whose base holds none
+becomes its base as well (app.py, copy_save); Zadano never touches a base.
+A gym card's own prices have theirs in its row (GYM_CARD_BASE_OF).
 """
 import json
 import re
@@ -436,6 +448,29 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # card since 21.10.2026 (the gym's since 20.10.2026); numbers, so required
     "addon.online": Slot(MOJIMAKROSI_ADDON["online"], CAP, "MojiMakrosi dodatak uz online (€)", required=True),
     "addon.dvorana": Slot(MOJIMAKROSI_ADDON["dvorana"], CAP, "MojiMakrosi dodatak uz dvoranu (€)", required=True),
+    # ---- the bazna cijena beside every price (23.11.2026; BASE_OF below) ----
+    # The words printed before every base amount ("Bazna cijena: 50 €",
+    # the template puts the colon after them), then each price's base:
+    # per plan its amount's (default the amount's own) and, but for online,
+    # its yearly amount's ("na upit", as the yearly amount); each QMove
+    # tier's typed prices' ("na upit", as they are); the add-on's two
+    # amounts' (theirs). All numbers, so required: emptied, the default
+    # comes back. Migration 8a67c43d0bb4 started every base the gym owner
+    # had typed a price for at that price's text.
+    "price.base_label": Slot("Bazna cijena", CAP, "Bazna cijena: natpis uz svaku cijenu", required=True),
+    **{f"price.{plan}.{part}": Slot(text, CAP, f"Cijena · {plan}: {label}", required=True)
+       for plan, row in REFERENCE_PRICES.items()
+       for part, label, text in (("base", "bazni iznos", row[0]),
+                                 *((("year_base", "bazni godišnji iznos", YEARLY_PRICE[0]),) if plan != "online" else ()))},
+    "offer.online.year_base": Slot("na upit", CAP, "Online 1: bazna godišnja cijena", required=True),
+    "offer.online2.base": Slot("na upit", CAP, "Online 2: bazna mjesečna cijena", required=True),
+    "offer.online2.year_base": Slot("na upit", CAP, "Online 2: bazna godišnja cijena", required=True),
+    "offer.online3.base": Slot("na upit", CAP, "Online 3: bazna mjesečna cijena", required=True),
+    "offer.online3.year_base": Slot("na upit", CAP, "Online 3: bazna godišnja cijena", required=True),
+    "addon.online.base": Slot(MOJIMAKROSI_ADDON["online"], CAP, "MojiMakrosi dodatak uz online: bazna cijena (€)",
+                              required=True),
+    "addon.dvorana.base": Slot(MOJIMAKROSI_ADDON["dvorana"], CAP, "MojiMakrosi dodatak uz dvoranu: bazna cijena (€)",
+                               required=True),
     # ---- landing: aktualno: rows since 18.10.2026, not slots (ANNOUNCEMENT_* below) ----
     # ---- landing: info ----
     "info.hours.h": Slot("Radno vrijeme", CAP, "Naslov: radno vrijeme"),
@@ -517,6 +552,27 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "vodic.cta": Slot("Idemo na upitnik!", CAP, "Vodič: gumb"),
 }
 
+# Every price the site shows -> the slot of its bazna cijena (23.11.2026;
+# Croatia's Pravilnik o isticanju bazne cijene proizvoda, NN 132/2026, in
+# force since 17.11.2026: beside each retail price its base price, for a
+# service the one applied on 10.9.2026, or on the day it was first offered
+# after that). The templates look a price's base up here (a Jinja global,
+# app.py: _plan_price.html's base and base_paren) and print it under the
+# price, "Bazna cijena: 50 €"; POST /copy/{key} fills a base with its
+# price's first number (app.py, copy_save). A gym card's own prices have
+# theirs in its row (GYM_CARD_BASE_OF, below).
+BASE_OF = {
+    **{f"price.{plan}.amount": f"price.{plan}.base" for plan in REFERENCE_PRICES},
+    **{f"price.{plan}.year_amount": f"price.{plan}.year_base" for plan in REFERENCE_PRICES if plan != "online"},
+    "offer.online.year_price": "offer.online.year_base",
+    "offer.online2.price": "offer.online2.base",
+    "offer.online2.year_price": "offer.online2.year_base",
+    "offer.online3.price": "offer.online3.base",
+    "offer.online3.year_price": "offer.online3.year_base",
+    "addon.online": "addon.online.base",
+    "addon.dvorana": "addon.dvorana.base",
+}
+
 # ---- the landing's announcements (#aktualno, in the hero) ----
 # Rows of the announcements table (models.Announcement), not slots: the
 # owner's cards for the month (a new group, a course), as many as he adds, up
@@ -572,10 +628,12 @@ ANNOUNCEMENT_COLUMNS = {"tag": "tag", "title": "title", "when": "when_text", "te
 # one he adds stands for none: his own price and the contact.
 
 # a new card ("+ Dodaj karticu"): these placeholders to retype, shown, no
-# plans, no extra lines
+# plans, no extra lines, no base prices (the first number typed into a
+# price becomes its base too, app.py: 23.11.2026)
 GYM_CARD_BLANK = {"title": "Nova kartica", "lead": "Kratki opis — klikni i upiši.",
                   "points": ("Prva stavka — klikni i upiši", "Druga stavka"), "extra": (),
-                  "price": "na upit", "unit": "", "year_price": "na upit", "year_unit": ""}
+                  "price": "na upit", "unit": "", "year_price": "na upit", "year_unit": "",
+                  "base_price": "", "base_year_price": ""}
 
 # the two cards the landing shipped with (the offer.dvorana.* /
 # offer.individualno.* slots' defaults until 20.10.2026) and the plans they
@@ -583,17 +641,19 @@ GYM_CARD_BLANK = {"title": "Nova kartica", "lead": "Kratki opis — klikni i upi
 # (scripts/seed_demo.py); the migration that made them rows carries its own
 # copy. Their own price and unit are empty: a plan prices them (and since
 # 21.10.2026 their yearly price too, its price.<plan>.year_* slots: their
-# own year_price / year_unit are never printed).
+# own year_price / year_unit are never printed, nor their own bases since
+# 23.11.2026, base_price / base_year_price: a plan's are its slots').
 GYM_CARD_EXAMPLES = (
     {"title": "Dvorana", "lead": "Grupni treninzi u Dubravi.",
      "points": ("Male grupe do 8 polaznika", "8, 12 ili 16 treninga mjesečno", "Termin rezerviraš u aplikaciji"),
-     "extra": (), "price": "", "unit": "", "year_price": "na upit", "year_unit": "", "plans": "grupni"},
+     "extra": (), "price": "", "unit": "", "year_price": "na upit", "year_unit": "", "base_price": "",
+     "base_year_price": "", "plans": "grupni"},
     {"title": "Individualno", "lead": "Trener samo za tebe.",
      # their prices are the line under the card's price (landing.html,
      # .price-note), so a bullet is free text
      "points": ("Rad 1:1, po dogovoru", "U dvoje ili troje", "Rehabilitacija"),
-     "extra": (), "price": "", "unit": "", "year_price": "na upit", "year_unit": "",
-     "plans": "individualni,poluindividualni,rehabilitacija"},
+     "extra": (), "price": "", "unit": "", "year_price": "na upit", "year_unit": "", "base_price": "",
+     "base_year_price": "", "plans": "individualni,poluindividualni,rehabilitacija"},
 )
 
 # A card's fields as the editor's virtual keys name them, dvorana.<id>.<field>,
@@ -606,7 +666,9 @@ GYM_CARD_EXAMPLES = (
 # the card's number ("Kartica 2: naziv", landing.html). price / unit and
 # year_price / year_unit print only on a card that stands for no plan: a
 # plan's card prints the plan's price slots (its yearly ones since
-# 21.10.2026, price.<plan>.year_amount / .year_unit).
+# 21.10.2026, price.<plan>.year_amount / .year_unit). base_price /
+# base_year_price (23.11.2026) are those two prices' bazna cijena, under
+# them where they print (GYM_CARD_BASE_OF; the slots' BASE_OF for a plan's).
 GYM_CARD_SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
     "title": Slot(GYM_CARD_BLANK["title"], CAP, "naziv"),
     "lead": Slot(GYM_CARD_BLANK["lead"], CAP, "podnaslov"),
@@ -616,13 +678,19 @@ GYM_CARD_SLOTS: dict[str, Slot | ListSlot | FlagSlot] = {
     "unit": Slot(GYM_CARD_BLANK["unit"], CAP, "uz mjesečnu cijenu"),
     "year_price": Slot(GYM_CARD_BLANK["year_price"], CAP, "godišnja cijena"),
     "year_unit": Slot(GYM_CARD_BLANK["year_unit"], CAP, "uz godišnju cijenu"),
+    "base_price": Slot(GYM_CARD_BLANK["base_price"], CAP, "bazna mjesečna cijena"),
+    "base_year_price": Slot(GYM_CARD_BLANK["base_year_price"], CAP, "bazna godišnja cijena"),
     "show": FlagSlot(True, "prikazano"),
 }
 # where a row keeps each text (its lists, the bullets and the extra lines,
 # and the switch have setters of their own: db.set_gym_card_list, each list
 # in the column its field names, and db.set_gym_card_shown)
 GYM_CARD_COLUMNS = {"title": "title", "lead": "lead", "price": "price", "unit": "unit",
-                    "year_price": "year_price", "year_unit": "year_unit"}
+                    "year_price": "year_price", "year_unit": "year_unit",
+                    "base_price": "base_price", "base_year_price": "base_year_price"}
+# a card's own price -> the column of its bazna cijena (23.11.2026), as
+# BASE_OF maps a price slot to its base's
+GYM_CARD_BASE_OF = {"price": "base_price", "year_price": "base_year_price"}
 
 # ---- the upitnik's questions (/upitnik) ----
 # Rows of the upitnik_questions table (models.UpitnikQuestion), not slots,

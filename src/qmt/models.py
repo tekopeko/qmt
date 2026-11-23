@@ -40,14 +40,19 @@ ONLINE_TIER_SLOTS = {"start": "offer.online", "pro": "offer.online2", "elite": "
 # Post-training feedback (the Strava pattern): RPE number + how it felt.
 FEELING_LABELS = {"slabo": "Slabo", "dobro": "Dobro", "odlicno": "Odlično"}
 
-# An online programme's day (30.10.2026, ProgramDay): its three sections, in
-# the day's order (the dict's order), each item in one of them; and the
-# weekday a day suggests, 0 = ponedjeljak (a suggestion, never a gate). The
-# main section's key stays `trening` (the CHECK, the stored value); since
-# 2.11.2026 it reads "Glavni dio", the coaching term for a session's main
+# An online programme's day (30.10.2026, ProgramDay): its sections, in the
+# day's order (the dict's order), each item in one of them; and the weekday
+# a day suggests, 0 = ponedjeljak (a suggestion, never a gate). The main
+# section's key stays `trening` (the CHECK, the stored value); since
+# 2.11.2026 it read "Glavni dio", the coaching term for a session's main
 # part: a day is "Trening 1" now, and "Trening 1" holding a section called
-# "Trening" is the confusion Amir asked to remove.
-SECTIONS = {"zagrijavanje": "Zagrijavanje", "trening": "Glavni dio", "istezanje": "Istezanje"}
+# "Trening" is the confusion Amir asked to remove. Since 23.11.2026 a day
+# has two main parts (the owner, for Amir: "an option to add 'glavni dio A'
+# and 'glavni dio B', so two separate main parts of a training"):
+# `trening` reads "Glavni dio A", every item and pass already there in it,
+# and `trening_b` is "Glavni dio B" (migration dc22ce1ed7e6, the CHECK).
+SECTIONS = {"zagrijavanje": "Zagrijavanje", "trening": "Glavni dio A", "trening_b": "Glavni dio B",
+            "istezanje": "Istezanje"}
 WEEKDAYS = ("ponedjeljak", "utorak", "srijeda", "četvrtak", "petak", "subota", "nedjelja")
 
 
@@ -334,8 +339,11 @@ class GymCard(Base):
     one, its button the contact. A card with plans prints its first plan's
     yearly slots too since 21.10.2026 (price.<plan>.year_amount /
     .year_unit, migration 6e2b9d41c7a3), so its own yearly columns are not
-    read. `position` is creation order, 1-based; `shown` the switch: a
-    hidden card is on an editor's page only."""
+    read. `base_price` / `base_year_price` (23.11.2026, migration
+    8a67c43d0bb4) are the bazna cijena of its own `price` / `year_price`,
+    printed under them (copy.GYM_CARD_BASE_OF). `position` is creation
+    order, 1-based; `shown` the switch: a hidden card is on an editor's
+    page only."""
 
     __tablename__ = "gym_cards"
 
@@ -350,6 +358,8 @@ class GymCard(Base):
     unit: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     year_price: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     year_unit: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    base_price: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    base_year_price: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     plans: Mapped[str] = mapped_column(String(80), server_default=text("''"), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
                                                  onupdate=func.now())
@@ -639,6 +649,27 @@ def alpha_key(text: str) -> tuple[int, ...]:
     return tuple(key)
 
 
+# The Croatian letters with a mark of their own, as a search folds them: č
+# and ć to c, đ to d, š to s, ž to z (đ has no decomposition: NFKD leaves
+# it whole, so the table names it). Lower case only: fold() casefolds first.
+_FOLD = str.maketrans({"č": "c", "ć": "c", "đ": "d", "š": "s", "ž": "z"})
+
+
+def fold(text: str) -> str:
+    """A text as the exercise searches compare it (23.11.2026, the owner:
+    "when I start searching for an exercise starting with 'add' it shows
+    the adductor exercises"): casefolded, the four Croatian letters to
+    their base (_FOLD), every other mark dropped (NFKD, the combining marks
+    stripped), so "cuc" and "ČUČ" both find "Čučanj". One table, three
+    searches: db.exercises (the library's ?q=) folds with it, and
+    base.html's qmtFold, the same table, folds for the pages' filters (the
+    day editor's "Dodaj vježbu", an exercise's swaps)."""
+    import unicodedata
+
+    text = (text or "").casefold().translate(_FOLD)
+    return "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
+
+
 class Exercise(Base):
     """One exercise of the library (/treninzi/vjezbe, 30.10.2026; the owner:
     "We should have a database of exercises which he can choose from and add
@@ -725,7 +756,8 @@ class Program(Base):
     default exercises, nothing refilled; one with no day, or a day with no
     exercise, stays so until he changes it); no per-client hand-outs
     anywhere. Since 30.10.2026 a programme is a list of days (ProgramDay),
-    each day its exercises in three sections (ProgramDayItem).
+    each day its exercises in its sections (ProgramDayItem; SECTIONS, four
+    since 23.11.2026: two main parts).
     """
 
     __tablename__ = "programs"
@@ -812,9 +844,10 @@ class ProgramDayItem(Base):
     for now"): a library row (Exercise: the name, the instructions, what one
     rep is, the clip) and what the day asks of it.
 
-    `section` is one of SECTIONS (zagrijavanje, trening, istezanje; the
-    owner: "warm up and main", Shape's third allowed and may stay empty;
-    `trening` reads "Glavni dio" since 2.11.2026).
+    `section` is one of SECTIONS (zagrijavanje, trening, trening_b,
+    istezanje; the owner: "warm up and main", Shape's third allowed and may
+    stay empty; `trening` read "Glavni dio" from 2.11.2026, and since
+    23.11.2026 it is "Glavni dio A" beside `trening_b`, "Glavni dio B").
     `position` is unique across the day, and the day reads its items section
     by section in SECTIONS' order, each section in position order (the
     display order, ProgramDay.by_section); a gap a deleted item left does
@@ -852,7 +885,8 @@ class ProgramDayItem(Base):
         # deferred: ↑ / ↓ swap two positions, checked when the swap commits
         UniqueConstraint("day_id", "position", name="uq_program_day_items_position",
                          deferrable=True, initially="DEFERRED"),
-        CheckConstraint("section IN ('zagrijavanje', 'trening', 'istezanje')", name="ck_program_day_items_section"),
+        CheckConstraint("section IN ('zagrijavanje', 'trening', 'trening_b', 'istezanje')",
+                        name="ck_program_day_items_section"),
         CheckConstraint("reps IS NULL OR seconds IS NULL", name="ck_program_day_items_reps_or_seconds"),
     )
 

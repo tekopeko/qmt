@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Quality Movement Training — Zagreb{% endblock %}
 {% import "_copy.html" as c with context %}
+{% import "_plan_price.html" as pp with context %}
 {% from "_period.html" import period_switch %}
 {% block main_class %}full{% endblock %}
 {% block head %}
@@ -390,8 +391,23 @@
      cards are 314px inside at those widths, where the limits fit one line,
      so they do not reserve it (.offer-grid: the tiers only); three are a
      tier's width, and their prices stay level at their bottom edge. */
+  /* The bazna cijena (23.11.2026; .price > .base, base.html) is a line of
+     its own under a price that holds a number, and none under "na upit".
+     When any card of a row shows one, every price of that row keeps its
+     room (the number's line, the row gap and the base's 2px, the base's
+     line at .8rem × 1.3), the number at the top: a "na upit" beside a
+     number stays level with it, and the buttons with each other. A row that
+     shows none keeps none, its prices as they were. Between 900 and 1100px
+     the tiers' row adds the unit's second line (below). (No euro sign in
+     this comment: PUBLIC_PRICES=off keeps every one off a guest's page.) */
+  .swipe-row:has(.price:not([hidden]) > .base) > .offer .price { min-height: calc(2.1rem + 10px + 1.04rem);
+                                                                 align-content: flex-start; }
+  @media (max-width: 420px) {
+    .swipe-row:has(.price:not([hidden]) > .base) > .offer .price { min-height: calc(1.8rem + 10px + 1.04rem); }
+  }
   @media (min-width: 900px) and (max-width: 1100px) {
     .offer-grid .offer .price { min-height: calc(2.1rem + 8px + 1.1rem); align-content: flex-start; }
+    .offer-grid:has(.price:not([hidden]) > .base) > .offer .price { min-height: calc(2.1rem + 8px + 1.1rem + 10px + 1.04rem); }
   }
   @media (max-width: 420px) { .offer .price b { font-size: 1.8rem; } }
   .offer .price.quiet { font: 600 .9rem/2.1rem var(--font-body); color: var(--muted); }
@@ -416,6 +432,10 @@
      the card. (No euro sign in this comment: PUBLIC_PRICES=off keeps every
      one off a guest's page, tests/test_booking.py) */
   .offer .price-note .whole { display: inline-block; }
+  /* a price's bazna cijena in brackets after it (23.11.2026,
+     _plan_price.html's base_paren): one inline block too, so its words
+     part from their price at a break, never from each other while it fits */
+  .offer .price-note .base-paren { display: inline-block; }
   /* red only on the popular card's action; neutral beside it; green for "yours" */
   .offer .btn-sm { padding: 10px 18px; font-size: .86rem; }
   @media (pointer: coarse) { .offer .btn-sm { padding: 12px 20px; } }
@@ -626,11 +646,12 @@
     {%- endmacro %}
     {# A price that is text, not a plan's: two copy slots, the amount and the
        unit beside it. A visitor gets no unit span when the unit is empty.
-       hidden: not the price shown on load (a tier's monthly one). #}
+       hidden: not the price shown on load (a tier's monthly one). Under it
+       its bazna cijena (pp.base, 23.11.2026), as under every price. #}
     {% macro text_price(price_key, unit_key, period, hidden=false) -%}
       {%- set unit = copy_texts.get(unit_key, COPY[unit_key].default) -%}
       <div class="price" data-period="{{ period }}"{% if hidden %} hidden{% endif %}><b>{{ c.t(price_key) }}</b>
-        {%- if unit or can_edit_copy %}<span>{{ c.t(unit_key) }}</span>{% endif %}</div>
+        {%- if unit or can_edit_copy %}<span>{{ c.t(unit_key) }}</span>{% endif %}{{ pp.base(price_key, BASE_OF[price_key]) }}</div>
     {%- endmacro %}
     {# A gym card's text (a row of gym_cards, #dvorana below), printed as c.t
        prints a slot: its virtual key slot.field (slot: dvorana.<id>), what
@@ -641,10 +662,17 @@
     {%- endmacro %}
     {# A gym card's own price, as text_price prints two slots: the monthly
        (price, unit) and the yearly one (year_price, year_unit) of a card
-       that stands for no plan. #}
+       that stands for no plan. Under it its bazna cijena, the row's
+       base_price / base_year_price (GYM_BASE_OF, 23.11.2026), printed as
+       pp.base prints a slot's and by the same rule: when the price holds a
+       number and, for a visitor, the base does too. #}
     {% macro row_price(slot, card, n, amount, unit, period, hidden=false) -%}
+      {%- set base = GYM_BASE_OF[amount] -%}
       <div class="price" data-period="{{ period }}"{% if hidden %} hidden{% endif %}><b>{{ gym_field(slot, card, n, amount) }}</b>
-        {%- if card | attr(unit) or can_edit_copy %}<span>{{ gym_field(slot, card, n, unit) }}</span>{% endif %}</div>
+        {%- if card | attr(unit) or can_edit_copy %}<span>{{ gym_field(slot, card, n, unit) }}</span>{% endif %}
+        {%- if card | attr(amount) is numeric and (can_edit_copy or card | attr(base) is numeric) -%}
+          <small class="base"><span class="base-l">{{ c.t("price.base_label") }}:</span> {{ gym_field(slot, card, n, base) }}{% if card | attr(base) is priced %} €{% endif %}</small>
+        {%- endif %}</div>
     {%- endmacro %}
     {# A plan's yearly price on the gym card it prices (21.10.2026): the
        plan's own price.<plan>.year_amount / .year_unit slots, the ones its
@@ -657,7 +685,7 @@
     {% macro plan_year_price(plan, hidden=false) -%}
       {%- set amount, unit = "price." ~ plan ~ ".year_amount", "price." ~ plan ~ ".year_unit" -%}
       <div class="price" data-period="year"{% if hidden %} hidden{% endif %}><b>{{ c.t(amount) }}{% if copy_text(amount, copy_texts) is priced %} €{% endif %}</b>
-        {%- if copy_text(unit, copy_texts) or can_edit_copy %}<span>{{ c.t(unit) }}</span>{% endif %}</div>
+        {%- if copy_text(unit, copy_texts) or can_edit_copy %}<span>{{ c.t(unit) }}</span>{% endif %}{{ pp.base(amount, BASE_OF[amount]) }}</div>
     {%- endmacro %}
     {# keys: the plans a card stands for, the first one prices it. slot: the
        card's copy prefix (slot.title / .lead / .points in src/qmt/copy.py;
@@ -712,7 +740,7 @@
           {% else %}
             {% if real %}{% set plan = keys[0] %}
             <div class="price"{% if tier %} data-period="month"{% if start == "year" %} hidden{% endif %}{% endif %}><b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b>
-              {%- if copy_text("price." ~ plan ~ ".unit", copy_texts) or can_edit_copy %}<span>{{ c.t("price." ~ plan ~ ".unit") }}</span>{% endif %}</div>
+              {%- if copy_text("price." ~ plan ~ ".unit", copy_texts) or can_edit_copy %}<span>{{ c.t("price." ~ plan ~ ".unit") }}</span>{% endif %}{{ pp.base("price." ~ plan ~ ".amount", BASE_OF["price." ~ plan ~ ".amount"]) }}</div>
             {% else %}{% if card is not none %}{{ row_price(slot, card, n, "price", "unit", "month", hidden=tier and start == "year") }}{% else %}{{ text_price(slot ~ ".price", slot ~ ".unit", "month", hidden=tier and start == "year") }}{% endif %}{% endif %}
             {% if tier %}{% if card is not none and real and ("price." ~ keys[0] ~ ".year_amount") in COPY %}{{ plan_year_price(keys[0], hidden=start == "month") }}{% elif card is not none %}{{ row_price(slot, card, n, "year_price", "year_unit", "year", hidden=start == "month") }}{% else %}{{ text_price(slot ~ ".year_price", slot ~ ".year_unit", "year", hidden=start == "month") }}{% endif %}{% endif %}
             {% if note is not none %}<p class="price-note">{{ note }}</p>
@@ -790,13 +818,15 @@
    --cols-edit: every card, for edit mode; see .gym-grid). #}
 {# an emptied unit (20.10.2026) takes the space before it along: a
    visitor gets neither, the editor both in .unit, an empty .ed a box in
-   edit mode, gone outside it (.price-note .unit, above) #}
+   edit mode, gone outside it (.price-note .unit, above). After the price
+   its bazna cijena in brackets (pp.base_paren, 23.11.2026), a block of its
+   own (.base-paren): "25 € / trening (Bazna cijena: 25 €)". #}
 {% macro note_price(plan) -%}
-  {%- set unit = "price." ~ plan ~ ".unit" -%}
+  {%- set unit, amount = "price." ~ plan ~ ".unit", "price." ~ plan ~ ".amount" -%}
   <span class="whole">
-  {{- c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %}&nbsp;€{% endif %}
+  {{- c.t(amount) }}{% if copy_text(amount, copy_texts) is priced %}&nbsp;€{% endif %}
   {%- if can_edit_copy %}<span class="unit">&nbsp;{{ c.t(unit) }}</span>{% elif copy_text(unit, copy_texts) %}&nbsp;{{ c.t(unit) }}{% endif -%}
-  </span>
+  </span>{{ pp.base_paren(amount, BASE_OF[amount]) }}
 {%- endmacro %}
 {# a card's line: its plans after the first, each "<word> <price>", joined
    by " · "; the word is the plan's price.<plan>.word slot, free text the

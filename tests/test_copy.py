@@ -1286,6 +1286,11 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
     and the gym's cards' (rows, not slots) included."""
     make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
     examples(); gym_examples(); upitnik_examples()
+    # a price's bazna cijena prints once the price holds a number (23.11.2026):
+    # the prices that start as "na upit" get one, so their bases are in reach
+    for price in copy.BASE_OF:
+        if not any(ch.isdigit() for ch in copy.SLOTS[price].default):
+            db.set_copy(price, "100", None)
     t = client_for("trener@test.local"); seen: dict[str, list[str]] = {}
     for path in PAGES:
         page = t.get(path).text
@@ -1349,6 +1354,26 @@ def shown(html: str) -> str:
     """What a reader sees of some markup: tags dropped, entities read,
     whitespace (a non-breaking space too) collapsed."""
     return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html))).strip()
+
+
+# the bazna cijena under a price (23.11.2026): read() and prices() read it
+
+def read(markup: str) -> str:
+    """Some markup as one line of reading: tags dropped where they stand (a
+    base's "Bazna cijena:" keeps its colon on its word), entities read,
+    whitespace (a non-breaking space too) collapsed."""
+    return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", "", markup))).strip()
+
+
+def prices(markup: str) -> list[tuple[str, str, str | None]]:
+    """Every price in some markup (a .price block), in order: its period
+    ("" for none), its amount and unit as shown, and its base line as read,
+    None without one."""
+    out = []
+    for period, body in re.findall(r'<div class="price"(?: data-period="(\w+)")?[^>]*>(.*?)</div>', markup, re.S):
+        amount, mark, base = body.partition('<small class="base">')
+        out.append((period, shown(amount), read(base.split("</small>")[0]) if mark else None))
+    return out
 
 
 def test_the_price_slots_start_as_the_shops_prices():
@@ -1417,12 +1442,15 @@ def test_an_edited_price_shows_on_the_landing_and_on_moja_clanarina():
     dvorana, individualno = gym.split('class="card offer')[1:3]
     for c in (dvorana, individualno):                                      # no add-on line on the gym's cards
         assert 'class="addon"' not in c and '+<span class="t">4</span>' not in c
-    assert "u dvoje ili troje 28 € / trening · rehabilitacija od 30 € / dolazak" in shown(individualno)
-    assert "65 € / paket" in shown(dvorana) and "60–80" not in dvorana     # the gym's plan card: grupni's slot
+    assert ("u dvoje ili troje 28 € / trening (Bazna cijena: 25 €) · rehabilitacija od 30 € / dolazak "
+            "(Bazna cijena: od 30 €)") in read(individualno)               # a base stays as it was (23.11.2026)
+    assert prices(dvorana)[0] == ("month", "65 € / paket", "Bazna cijena: 60–80 €")   # the gym's plan card: grupni's
+                                                                            # slot (its base as it was, 23.11.2026)
     mine = client_for("ivan@test.local").get("/moja-clanarina").text
     assert "Cijena 45 € / mjesečno" in shown(card_on(mine, "online"))
-    assert "65 € / paket" in shown(card_on(mine, "grupni")) and "60–80" not in card_on(mine, "grupni")
-    assert "od 3 € / mjesečno na upit 4 € uz dvoranu, 5 € uz online" in shown(card_on(mine, "prehrana"))
+    assert prices(card_on(mine, "grupni"))[0] == ("month", "65 € / paket", "Bazna cijena: 60–80 €")
+    assert prices(card_on(mine, "prehrana")) == [("month", "od 3 € / mjesečno", "Bazna cijena: od 3 €"), ("year", "na upit", None)]
+    assert "4 € uz dvoranu (Bazna cijena: 3 €), 5 € uz online (Bazna cijena: 5 €)" in read(card_on(mine, "prehrana"))
 
     page = t.get("/").text                                                  # the editor gets them as slots
     start = page.split('id="usluge"')[1].split('class="card offer')[1]
@@ -1457,20 +1485,23 @@ def test_the_words_around_a_price_are_free_text_and_the_number_its_own_slot():
 
     def line(page: str) -> str:                     # Individualno's line, as a visitor reads it
         card = page.split('id="dvorana"')[1].split('class="card offer')[2]
-        return shown(card.split('<p class="price-note">')[1].split("</p>")[0])
+        return read(card.split('<p class="price-note">')[1].split("</p>")[0])
 
-    assert line(TestClient(app).get("/").text) == "u dvoje ili troje 25 € / trening · rehabilitacija od 30 € / tretman"
+    # each price with its bazna cijena in brackets since 23.11.2026
+    assert line(TestClient(app).get("/").text) == ("u dvoje ili troje 25 € / trening (Bazna cijena: 25 €) · "
+                                                   "rehabilitacija od 30 € / tretman (Bazna cijena: od 30 €)")
     r = t.post("/copy/price.poluindividualni.word", data={"text": "  u   paru "})
     assert r.json() == {"ok": True, "text": "u paru", "default": False}
     assert t.post("/copy/price.rehabilitacija.word", data={"text": "rehab"}).json()["text"] == "rehab"
     assert t.post("/copy/price.poluindividualni.amount", data={"text": "28"}).json()["text"] == "28"
     page = TestClient(app).get("/").text
-    assert line(page) == "u paru 28 € / trening · rehab od 30 € / tretman"
+    assert line(page) == "u paru 28 € / trening (Bazna cijena: 25 €) · rehab od 30 € / tretman (Bazna cijena: od 30 €)"
     dvorana = page.split('id="dvorana"')[1].split('class="card offer')[1]  # its room copy follows the words
     assert '<p class="price-note room" aria-hidden="true"><span class="t">u paru</span>' in dvorana
     r = t.post("/copy/price.poluindividualni.amount", data={"text": " "})  # no number: the default comes back,
     assert r.json() == {"ok": True, "text": "25", "default": True}
-    assert line(TestClient(app).get("/").text) == "u paru 25 € / trening · rehab od 30 € / tretman"
+    assert line(TestClient(app).get("/").text) == ("u paru 25 € / trening (Bazna cijena: 25 €) · "
+                                                   "rehab od 30 € / tretman (Bazna cijena: od 30 €)")
     assert "25 € / trening" in shown(card_on(client_for("ivan@test.local").get("/moja-clanarina").text, "poluindividualni"))
     individualno = t.get("/").text.split('id="dvorana"')[1].split('class="card offer')[2]   # the editor's: slots
     assert ('<span class="ed t" data-copy="price.poluindividualni.word" data-max="2000" '
@@ -1478,15 +1509,17 @@ def test_the_words_around_a_price_are_free_text_and_the_number_its_own_slot():
     assert ('<span class="ed t" data-copy="price.rehabilitacija.word" data-max="2000" '
             'data-label="Cijena · rehabilitacija: tekst ispred iznosa">rehab</span>') in individualno
     t.post("/copy/price.poluindividualni.word", data={"reset": "1"})       # Zadano: the shipped words
-    assert line(TestClient(app).get("/").text).startswith("u dvoje ili troje 25 € / trening · rehab")
+    assert line(TestClient(app).get("/").text).startswith("u dvoje ili troje 25 € / trening (Bazna cijena: 25 €) · rehab")
 
 
 # ---------- one number, one slot, on both pages (21.10.2026) ----------
 
 def price_line(card: str, period: str) -> str:
     """A card's monthly or yearly price line (data-period), as a reader
-    sees it: on the landing's cards and /moja-clanarina's alike."""
-    return shown(re.search(rf'<div class="price" data-period="{period}"[^>]*>(.*?)</div>', card, re.S).group(1))
+    sees it: on the landing's cards and /moja-clanarina's alike. The base
+    line under it (23.11.2026) is not the price's: prices() reads both."""
+    body = re.search(rf'<div class="price" data-period="{period}"[^>]*>(.*?)</div>', card, re.S).group(1)
+    return shown(body.split('<small class="base">')[0])
 
 
 def test_one_number_is_one_slot_on_the_landing_and_on_moja_clanarina():
@@ -1506,7 +1539,8 @@ def test_one_number_is_one_slot_on_the_landing_and_on_moja_clanarina():
     t = client_for("trener@test.local")
     for key, text in (("price.grupni.year_amount", "600"), ("price.grupni.year_unit", "/ godišnje"),
                       ("offer.online2.price", "60 €"), ("offer.online2.unit", "/ mjesečno")):
-        assert t.post(f"/copy/{key}", data={"text": text}).json() == {"ok": True, "text": text, "default": False}, key
+        r = t.post(f"/copy/{key}", data={"text": text}).json()             # (a first number: its base too, "also")
+        assert (r["ok"], r["text"], r["default"]) == (True, text, False), key
 
     def both() -> list[tuple[str, str]]:
         """(Dvorana's yearly line, PRO's monthly line) on the landing, then on /moja-clanarina."""
@@ -1553,7 +1587,8 @@ def test_an_emptied_text_stays_empty_and_only_a_number_gets_its_default_back():
     t = client_for("trener@test.local")
     assert {k for k, s in copy.SLOTS.items() if isinstance(s, copy.Slot) and s.required} == {
         *(f"price.{plan}.amount" for plan in PLAN_TYPES),
-        *(f"price.{plan}.year_amount" for plan in PLAN_TYPES if plan != "online"), "addon.online", "addon.dvorana"}
+        *(f"price.{plan}.year_amount" for plan in PLAN_TYPES if plan != "online"), "addon.online", "addon.dvorana",
+        *copy.BASE_OF.values(), "price.base_label"}                             # the bazna cijena's (23.11.2026)
     assert copy.clean("") == "" and copy.clean(" \n\t \n ") == ""             # what an emptied text stores
 
     def line(page: str) -> str:                     # Individualno's line, its markup
@@ -1568,14 +1603,15 @@ def test_an_emptied_text_stays_empty_and_only_a_number_gets_its_default_back():
     assert db.copy_texts() == dict.fromkeys(optional, "")                     # rows whose text is ""
     page = TestClient(app).get("/").text
     note = line(page)
-    assert shown(note) == "25 € / trening · rehabilitacija od 30 €"            # no word, no unit
+    assert read(note) == "25 € / trening (Bazna cijena: 25 €) · rehabilitacija od 30 € (Bazna cijena: od 30 €)"   # no word, no unit
     assert note.startswith(' <span class="whole">')                           # nothing before the first price but
                                                                                # a space at the line's start (never shown)
-    assert note.endswith('<span class="t">od 30</span>&nbsp;€</span>')         # nothing after the €, no space
+    assert note.endswith('<span class="t">od 30</span>&nbsp;€</span>'          # nothing after the €, no space;
+                         ' <span class="base-paren">(<span class="t">Bazna cijena</span>: <span class="t">od 30</span>&nbsp;€)</span>')   # its base
     start = tier_cards(page)[0]
-    assert '<div class="price" data-period="month" hidden><b><span class="t">50</span> €</b></div>' in start   # no unit span
+    assert '<div class="price" data-period="month" hidden><b><span class="t">50</span> €</b><small class="base">' in start   # no unit span
     mine = client_for("ivan@test.local").get("/moja-clanarina").text           # _plan_price.html copes
-    assert '<div class="price"><span class="t">od 30</span> € <small></small></div>' in card_on(mine, "rehabilitacija")
+    assert '<div class="price"><span class="t">od 30</span> € <small></small><small class="base">' in card_on(mine, "rehabilitacija")
 
     editor = t.get("/").text                                                   # the editor keeps an empty box
     assert ('<span class="unit">&nbsp;<span class="ed t" data-copy="price.rehabilitacija.unit" data-max="2000" '
@@ -1583,13 +1619,14 @@ def test_an_emptied_text_stays_empty_and_only_a_number_gets_its_default_back():
     assert ('<span class="ed t" data-copy="price.rehabilitacija.amount" data-max="2000" '
             'data-label="Cijena · rehabilitacija: iznos" data-required>od 30</span>') in line(editor)
     assert ('<span><span class="ed t" data-copy="price.online.unit" data-max="2000" '
-            'data-label="Cijena · online: jedinica"></span></span></div>') in tier_cards(editor)[0]
+            'data-label="Cijena · online: jedinica"></span></span><small class="base">') in tier_cards(editor)[0]
 
     for key in optional:                                                       # Zadano: the default, no row
         r = t.post(f"/copy/{key}", data={"text": "ignoriran", "reset": "1"})
         assert r.json() == {"ok": True, "text": copy.SLOTS[key].default, "default": True}, key
     assert db.copy_texts() == {}
-    assert shown(line(TestClient(app).get("/").text)) == "u dvoje ili troje 25 € / trening · rehabilitacija od 30 € / tretman"
+    assert read(line(TestClient(app).get("/").text)) == ("u dvoje ili troje 25 € / trening (Bazna cijena: 25 €) · "
+                                                         "rehabilitacija od 30 € / tretman (Bazna cijena: od 30 €)")
 
     for key, default in (("price.rehabilitacija.amount", "od 30"), ("addon.online", "5")):   # a number: emptied,
         assert t.post(f"/copy/{key}", data={"text": "40"}).json()["text"] == "40", key     # its default again
@@ -1678,7 +1715,8 @@ def test_the_qmove_tiers_print_no_mojimakrosi_line():
         db.set_copy(key, "off" if key.endswith("_on") else "MojiMakrosi +5", None)
     assert {who: usluge(c.get("/").text) for who, c in visitors} == before
     mine = client_for("ivan@test.local").get("/moja-clanarina").text   # the amounts: the prehrana plan's hint
-    assert "od 3 € / mjesečno na upit 3 € uz dvoranu, 5 € uz online" in shown(card_on(mine, "prehrana"))
+    assert prices(card_on(mine, "prehrana")) == [("month", "od 3 € / mjesečno", "Bazna cijena: od 3 €"), ("year", "na upit", None)]
+    assert "3 € uz dvoranu (Bazna cijena: 3 €), 5 € uz online (Bazna cijena: 5 €)" in read(card_on(mine, "prehrana"))
 
 
 # ---------- the extra lines (20.10.2026) ----------
@@ -2493,6 +2531,9 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 db.set_copy(key, copy.dump_rows([[make(min(slot.max_chars, LONG))] * 2] * min(slot.max_rows, ITEMS)), None)
             elif key.startswith("vodic."):              # the guide's texts 300 characters in three lines
                 db.set_copy(key, "\n".join([make(LONG // 3)] * 3), None)   # (span.t: the breaks show)
+            elif key in copy.BASE_OF or key in copy.BASE_OF.values():   # a price and its base (23.11.2026) hold
+                db.set_copy(key, "1 € " + make(min(slot.max, LONG) - 4), None)   # a number, so the base line prints,
+                                                        # and their sign, so the page adds none
             else:                                       # every text 300 characters
                 db.set_copy(key, make(min(slot.max, LONG)), None)
         for a in db.announcements(all=True):            # and every text of every announcement; they stay
@@ -2925,7 +2966,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             guest.goto(server + "/#dvorana"); guest.wait_for_load_state("networkidle"); guest.evaluate("document.fonts.ready")
             for who, page in (("the trainer", pg), ("a guest", guest)):
                 seen = page.evaluate(line)
-                if seen != ["u dvoje ili troje 25 € / trening · rehabilitacija od 30 €", 0, False]:
+                if seen != ["u dvoje ili troje 25 € / trening (Bazna cijena: 25 €) · rehabilitacija od 30 € (Bazna cijena: od 30 €)",
+                            0, False]:                                 # (each price's base in brackets, 23.11.2026)
                     out.append(f"{w}px: {who} out of edit mode sees (the line, px after its €, the emptied link) {seen}")
                 out += [f"{w}px {who}: {p}" for p in page.evaluate(MEASURE, True)["problems"]]
             pg.click("#copyToggle")                                    # Zadano brings it back
@@ -3397,3 +3439,172 @@ def test_an_amount_without_a_number_prints_without_the_euro_sign():
     db.set_copy("price.individualni.year_amount", "1.200 €", None)
     for page in (TestClient(app).get("/").text, client_for("ivan@test.local").get("/moja-clanarina").text):
         assert "1.200 €</span>" in page and "1.200 €</span> €" not in page
+
+
+# ---------- the bazna cijena (23.11.2026) ----------
+#
+# Croatia's Pravilnik o isticanju bazne cijene proizvoda (NN 132/2026, in
+# force since 17.11.2026): beside each retail price its bazna cijena, for a
+# service the price applied on 10.9.2026. Every price slot has a base slot
+# (copy.BASE_OF), a gym card's own prices two columns (GYM_CARD_BASE_OF);
+# "Bazna cijena: 50 €" prints under a price that holds a number, inside its
+# .price block, for a visitor only when the base holds a number too.
+
+def test_a_visitor_sees_the_bazna_cijena_under_every_price_that_is_a_number():
+    """On the landing a guest reads "Bazna cijena: <base> €" under every
+    price that holds a number, in the same .price block (the Mjesečno /
+    Godišnje switch shows it with its price): START's monthly "50 €",
+    Dvorana's and Individualno's plans' monthly prices, a gym card's own
+    typed price (as typed, its base with " €" after a number); under "na
+    upit" nothing (every tier's yearly, PRO's and ELITE's monthly, the gym
+    plans' yearly, a new card's yearly). Individualno's line of its other
+    plans says each one's base in brackets, "(Bazna cijena: 25 €)". A base
+    that is no number is the editor's box alone: a guest never gets
+    "Bazna cijena:" with nothing after it."""
+    make_user("trener@test.local", is_trainer=True)
+    gym_examples()
+    own = db.add_gym_card(None).id                                           # the editor's card: its own price
+    for column, text in (("price", "40"), ("unit", "/ mjesečno"), ("base_price", "40")):
+        db.set_gym_card_field(own, column, text, None)
+    landing = TestClient(app).get("/").text
+    start, pro, elite = (prices(card) for card in tier_cards(landing))
+    assert start == [("month", "50 € / mjesečno", "Bazna cijena: 50 €"), ("year", "na upit", None)]
+    assert pro == elite == [("month", "na upit", None), ("year", "na upit", None)]
+    dvorana, individualno, third = landing.split('id="dvorana"')[1].split('class="card offer')[1:4]
+    assert prices(dvorana) == [("month", "60–80 € / paket", "Bazna cijena: 60–80 €"), ("year", "na upit", None)]
+    assert prices(individualno) == [("month", "35 € / trening", "Bazna cijena: 35 €"), ("year", "na upit", None)]
+    assert prices(third) == [("month", "40 / mjesečno", "Bazna cijena: 40 €"), ("year", "na upit", None)]
+    assert read(individualno.split('<p class="price-note">')[1].split("</p>")[0]) == (
+        "u dvoje ili troje 25 € / trening (Bazna cijena: 25 €) · rehabilitacija od 30 € / tretman (Bazna cijena: od 30 €)")
+    db.set_copy("price.individualni.base", "na upit", None)                   # a base that is no number
+    db.set_copy("price.poluindividualni.base", "na upit", None)
+    individualno = TestClient(app).get("/").text.split('id="dvorana"')[1].split('class="card offer')[2]
+    assert prices(individualno)[0] == ("month", "35 € / trening", None)
+    assert read(individualno.split('<p class="price-note">')[1].split("</p>")[0]) == (
+        "u dvoje ili troje 25 € / trening · rehabilitacija od 30 € / tretman (Bazna cijena: od 30 €)")
+    individualno = client_for("trener@test.local").get("/").text.split('id="dvorana"')[1].split('class="card offer')[2]
+    assert prices(individualno)[0] == ("month", "35 € / trening", "Bazna cijena: na upit")   # the editor's box
+    assert 'data-copy="price.individualni.base"' in individualno and 'data-copy="price.base_label"' in individualno
+
+
+def test_moja_clanarina_prints_the_bazna_cijena_under_its_prices():
+    """/moja-clanarina's prices carry their base too: a plan held's Cijena
+    fact, the Dodaj plan cards' monthly and yearly lines (the plans', the
+    QMove tiers'; none under "na upit"), and prehrana's MojiMakrosi line,
+    each add-on amount with its base in brackets ("3 € uz dvoranu (Bazna
+    cijena: 3 €), 5 € uz online (Bazna cijena: 5 €)"), under the Cijena
+    fact of a member's own prehrana and on its card to add alike. A price
+    typed with its own sign gets no second one, nor does its base."""
+    make_user("ivan@test.local", plans=("grupni", "prehrana")); make_user("ana@test.local", plans=("grupni",))
+    page = client_for("ivan@test.local").get("/moja-clanarina").text
+    held = card_on(page, "grupni").split("<dt>Cijena</dt>")[1].split("</dd>")[0]
+    assert prices(held) == [("", "60–80 € / paket", "Bazna cijena: 60–80 €")]
+    held = card_on(page, "prehrana").split("<dt>Cijena</dt>")[1].split("</dd>")[0]
+    assert prices(held) == [("", "od 3 € / mjesečno", "Bazna cijena: od 3 €")]
+    hint = "3 € uz dvoranu (Bazna cijena: 3 €), 5 € uz online (Bazna cijena: 5 €)"
+    assert read(held.split('class="hint price-hint">')[1].split("</div>")[0]) == hint
+    assert prices(card_on(page, "individualni")) == [("month", "35 € / trening", "Bazna cijena: 35 €"),
+                                                     ("year", "na upit", None)]
+    assert prices(card_on(page, "online")) == [("month", "50 € / mjesečno", "Bazna cijena: 50 €"), ("year", "na upit", None)]
+    assert prices(card_on(page, "online-pro")) == [("month", "na upit", None), ("year", "na upit", None)]
+    prehrana = card_on(client_for("ana@test.local").get("/moja-clanarina").text, "prehrana")   # its card to add
+    assert prices(prehrana) == [("month", "od 3 € / mjesečno", "Bazna cijena: od 3 €"), ("year", "na upit", None)]
+    assert read(prehrana.split('class="hint price-hint">')[1].split("</div>")[0]) == hint
+    db.set_copy("offer.online2.year_price", "400 €", None); db.set_copy("offer.online2.year_base", "380 €", None)
+    pro = card_on(client_for("ivan@test.local").get("/moja-clanarina").text, "online-pro")
+    assert prices(pro)[1] == ("year", "400 €", "Bazna cijena: 380 €")
+
+
+def test_a_prices_first_number_is_its_bazna_cijena_too():
+    """The first number saved into a price whose base holds none
+    (price.grupni.year_amount, "na upit" both) is its base too, the same
+    text stored, and the answer says so ("also": the editor redraws it);
+    the next number leaves the base as it is, Zadano on the price never
+    touches it, and a price that is no number fills nothing. A price whose
+    base holds a number from the start (an amount's) leaves it alone. The
+    same for a gym card's own price and yearly price, on its row's base
+    columns; its unit is no price. The words before every base,
+    price.base_label, are a number's slot: emptied, "Bazna cijena" comes
+    back."""
+    make_user("trener@test.local", is_trainer=True)
+    t = client_for("trener@test.local")
+
+    def save(key: str, **data) -> dict:
+        return t.post(f"/copy/{key}", data=data).json()
+
+    assert save("price.grupni.year_amount", text="500") == {
+        "ok": True, "text": "500", "default": False, "also": [{"key": "price.grupni.year_base", "text": "500"}]}
+    assert db.copy_texts()["price.grupni.year_base"] == "500"
+    assert save("price.grupni.year_amount", text="550") == {"ok": True, "text": "550", "default": False}
+    assert save("price.grupni.year_amount", reset="1") == {"ok": True, "text": "na upit", "default": True}
+    texts = db.copy_texts()
+    assert "price.grupni.year_amount" not in texts and texts["price.grupni.year_base"] == "500"
+    assert save("price.rehabilitacija.year_amount", text="po dogovoru") == {"ok": True, "text": "po dogovoru", "default": False}
+    assert save("price.grupni.amount", text="70") == {"ok": True, "text": "70", "default": False}
+    assert not {"price.rehabilitacija.year_base", "price.grupni.base"} & set(db.copy_texts())   # left alone
+
+    card = db.add_gym_card(None).id                                          # "na upit", no base
+    assert save(f"dvorana.{card}.price", text="40") == {
+        "ok": True, "text": "40", "default": False, "also": [{"key": f"dvorana.{card}.base_price", "text": "40"}]}
+    assert save(f"dvorana.{card}.price", text="45") == {"ok": True, "text": "45", "default": False}
+    assert save(f"dvorana.{card}.price", reset="1") == {"ok": True, "text": "na upit", "default": True}
+    assert save(f"dvorana.{card}.year_price", text="400 €")["also"] == [{"key": f"dvorana.{card}.base_year_price", "text": "400 €"}]
+    assert save(f"dvorana.{card}.unit", text="/ 10 dolazaka") == {"ok": True, "text": "/ 10 dolazaka", "default": False}
+    g = db.gym_card(card)
+    assert (g.price, g.base_price, g.year_price, g.base_year_price) == ("na upit", "40", "400 €", "400 €")
+
+    assert save("price.base_label", text="") == {"ok": True, "text": "Bazna cijena", "default": True}
+    assert "price.base_label" not in db.copy_texts()
+
+
+def test_the_migration_starts_every_typed_price_as_its_own_base_and_back():
+    """8a67c43d0bb4, run for real on qmt_test as a database from before it
+    is (the gym cards without their two base columns): every card's
+    base_price and base_year_price take its price and year_price; every
+    price slot the gym owner typed gets a row for its base, the same text
+    (who and when: none and now), unless the base has a row already; a
+    price nobody typed gets none (its base's default is the price's own).
+    Its own copy of BASE_OF agrees with copy's, and both pages read what it
+    wrote. Downgrade drops the columns and every base's row, the label's
+    too, and leaves the rest."""
+    mig = _migration("8a67c43d0bb4_bazna_cijena.py")
+    assert (mig.revision, mig.down_revision) == ("8a67c43d0bb4", "45c543c860f3")
+    assert mig.BASE_OF == copy.BASE_OF and mig.LABEL in copy.SLOTS
+    for price, base in copy.BASE_OF.items():                                 # a base starts as its price
+        assert copy.SLOTS[base].default == copy.SLOTS[price].default and copy.SLOTS[base].required, base
+    uid = make_user("trener@test.local", is_trainer=True)
+    gym_examples()
+    own = db.add_gym_card(None).id
+    for column, text in (("price", "40"), ("year_price", "400 €")):
+        db.set_gym_card_field(own, column, text, uid)
+    typed = {"price.individualni.amount": "38", "offer.online2.price": "29 €", "addon.dvorana": "4",
+             "offer.online3.price": "49 €", "hero.kicker": "Ostaje kakav jest."}
+    for key, text in {**typed, "offer.online3.base": "45 €"}.items():       # a base typed already: kept
+        db.set_copy(key, text, uid)
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("ALTER TABLE gym_cards DROP COLUMN base_price, DROP COLUMN base_year_price"))
+
+    def run(step) -> None:
+        with db.engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+            step()
+
+    run(mig.upgrade)
+    with db.engine.begin() as conn:
+        rows = [tuple(r) for r in conn.execute(sa_text(
+            "SELECT price, year_price, base_price, base_year_price FROM gym_cards ORDER BY position"))]
+    assert rows == [("", "na upit", "", "na upit")] * 2 + [("40", "400 €", "40", "400 €")]
+    bases = {k: v for k, v in db.copy_texts().items() if k in copy.BASE_OF.values()}
+    assert bases == {"price.individualni.base": "38", "offer.online2.base": "29 €", "addon.dvorana.base": "4",
+                     "offer.online3.base": "45 €"}
+    with db.session_scope() as s:
+        row = s.get(SiteCopy, "price.individualni.base")
+        assert row.updated_by is None and row.updated_at is not None
+    individualno = TestClient(app).get("/").text.split('id="dvorana"')[1].split('class="card offer')[2]
+    assert prices(individualno)[0] == ("month", "38 € / trening", "Bazna cijena: 38 €")
+    pro = card_on(client_for("trener@test.local").get("/moja-clanarina").text, "online-pro")
+    assert prices(pro)[0] == ("month", "29 €", "Bazna cijena: 29 €")
+
+    db.set_copy("price.base_label", "Bazna cijena na dan 10.9.2026.", uid)
+    run(mig.downgrade)
+    assert not {"base_price", "base_year_price"} & {c["name"] for c in sa_inspect(db.engine).get_columns("gym_cards")}
+    assert db.copy_texts() == typed

@@ -409,6 +409,16 @@
     .featured-tag { position: absolute; top: 14px; right: 14px; display: inline-flex; padding: 4px 10px;
                     border-radius: 999px; background: var(--accent-dim); color: var(--accent-tint-ink);
                     font: 700 .68rem var(--font-body); letter-spacing: .08em; text-transform: uppercase; }
+    /* The bazna cijena under a price (23.11.2026; _plan_price.html's base:
+       Croatia's Pravilnik o isticanju bazne cijene proizvoda): the last
+       child of its .price block, so the Mjesečno / Godišnje switch shows
+       and hides it with its price, on a line of its own under the amount
+       and its unit (a block; flex-basis: 100% in the landing's flex row of
+       a price), small and muted, its numbers tabular. The landing and
+       /moja-clanarina print it; `.price >` wins over a page's own
+       `.price small` (/moja-clanarina's unit). */
+    .price > .base { display: block; flex-basis: 100%; font: 500 .8rem/1.3 var(--font-body); color: var(--muted);
+                     margin-top: 2px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
     /* Every text from src/qmt/copy.py prints in a span.t (_copy.html), for
        every viewer: the line breaks the owner saved (copy.clean keeps them)
@@ -1233,6 +1243,11 @@
         }
         // the same text can sit in several places (the add-on's amount on every tier)
         document.querySelectorAll('[data-copy="' + el.dataset.copy + '"]').forEach(function (x) { x.textContent = d.text; });
+        // and what was saved with it, wherever it shows: a price's first
+        // number is its bazna cijena too (23.11.2026, app.py's copy_save)
+        (d.also || []).forEach(function (a) {
+          document.querySelectorAll('[data-copy="' + a.key + '"]').forEach(function (x) { x.textContent = a.text; });
+        });
         orig = d.text; end(true);
       }).catch(function () { msg.textContent = "Nije spremljeno — provjeri vezu."; });
     }
@@ -1729,6 +1744,18 @@
     var show = i.type === "password";
     i.type = show ? "text" : "password";
     btn.setAttribute("aria-label", show ? "Sakrij lozinku" : "Prikaži lozinku");
+  }
+  // A text as the exercise searches compare it (23.11.2026), window.qmtFold:
+  // lower case, the four Croatian letters to their base (č ć → c, đ → d,
+  // š → s, ž → z; đ has no decomposition of its own) and every other mark
+  // dropped (NFD, the combining marks stripped), so "cuc" and "ČUČ" find
+  // "Čučanj". models.fold is the same table for the library's ?q=: the day
+  // editor's "Dodaj vježbu" and an exercise's swaps fold with this one.
+  var _fold = {"č": "c", "ć": "c", "đ": "d", "š": "s", "ž": "z"};
+  function qmtFold(s) {
+    return String(s == null ? "" : s).toLowerCase()
+      .replace(/[čćđšž]/g, function (ch) { return _fold[ch]; })
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
 
   // Mjesečno / Godišnje (.period, _period.html): each switch works the

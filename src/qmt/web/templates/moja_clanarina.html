@@ -295,7 +295,8 @@
    - its name: a tier's its landing card's title slot (<slot>.title,
      ONLINE_TIER_SLOTS: a rename shows on both pages), a plan's the
      plan.<plan>.name slot (this page's own);
-   - its price, a monthly and a yearly line (pp.price), the one its group
+   - its price, a monthly and a yearly line (pp.price; under each its
+     bazna cijena, 23.11.2026), the one its group
      does not open on hidden: the landing's own slots, so one number is one
      slot on both pages, printed as the landing prints each. A tier's
      monthly is START's price.online.amount / .unit (" €" after a number,
@@ -329,9 +330,11 @@
     {% for tier in add_tiers %}{% set slot = ONLINE_TIER_SLOTS[tier] %}
       <div class="card plan" id="plan-online{{ '' if tier == 'start' else '-' ~ tier }}">
         <h4 class="plan-h">{{ c.t(slot ~ ".title") }}</h4>
-        {% if tier == "start" %}{{ pp.price("price.online.amount", "price.online.unit", "month", hidden=true) }}
-        {% else %}{{ pp.price(slot ~ ".price", slot ~ ".unit", "month", hidden=true, euro=false) }}{% endif %}
-        {{ pp.price(slot ~ ".year_price", slot ~ ".year_unit", "year", euro=false) }}
+        {% if tier == "start" %}{{ pp.price("price.online.amount", "price.online.unit", "month", hidden=true,
+                                            base_key=BASE_OF["price.online.amount"]) }}
+        {% else %}{{ pp.price(slot ~ ".price", slot ~ ".unit", "month", hidden=true, euro=false,
+                              base_key=BASE_OF[slot ~ ".price"]) }}{% endif %}
+        {{ pp.price(slot ~ ".year_price", slot ~ ".year_unit", "year", euro=false, base_key=BASE_OF[slot ~ ".year_price"]) }}
         {% set text = "cjenik.online." ~ tier ~ ".text" %}
         {% if can_edit_copy or copy_text(text, copy_texts) %}<p class="plan-desc">{{ c.t(text) }}</p>{% endif %}
         {% if "online" in sellable %}
@@ -359,8 +362,9 @@
       <div class="card plan{% if key == 'grupni' %} featured{% endif %}" id="plan-{{ key }}">
         {% if key == 'grupni' %}<span class="featured-tag">Najpopularnije</span>{% endif %}
         <h4 class="plan-h">{{ c.t("plan." ~ key ~ ".name") }}</h4>
-        {{ pp.price("price." ~ key ~ ".amount", "price." ~ key ~ ".unit", "month") }}
-        {{ pp.price("price." ~ key ~ ".year_amount", "price." ~ key ~ ".year_unit", "year", hidden=true) }}
+        {{ pp.price("price." ~ key ~ ".amount", "price." ~ key ~ ".unit", "month", base_key=BASE_OF["price." ~ key ~ ".amount"]) }}
+        {{ pp.price("price." ~ key ~ ".year_amount", "price." ~ key ~ ".year_unit", "year", hidden=true,
+                    base_key=BASE_OF["price." ~ key ~ ".year_amount"]) }}
         {{ pp.hint(key) }}
         {% set text = "cjenik." ~ key ~ ".text" %}
         {% if can_edit_copy or copy_text(text, copy_texts) %}<p class="plan-desc">{{ c.t(text) }}</p>{% endif %}

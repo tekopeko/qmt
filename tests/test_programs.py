@@ -48,7 +48,9 @@ client is told what is not there yet.
 Since 2.11.2026 (Amir's wish, via the owner: "so that it is clear") a day
 reads "Trening 1 … Trening N", the programme around it "program", and the
 section `trening` "Glavni dio"; the model, the routes and the ids still say
-day.
+day. Since 23.11.2026 a day has two main parts (the owner, for Amir:
+"'glavni dio A' and 'glavni dio B'"): `trening` reads "Glavni dio A" and
+`trening_b` is "Glavni dio B" (migration dc22ce1ed7e6).
 """
 
 from __future__ import annotations
@@ -76,7 +78,7 @@ from sqlalchemy import inspect as sa_inspect, text as sa_text
 from sqlalchemy.exc import IntegrityError
 
 from qmt import auth, config, db
-from qmt.models import Base, ProgramDay, ProgramDayItem, alpha_key
+from qmt.models import SECTIONS, Base, ProgramDay, ProgramDayItem, alpha_key, fold
 from qmt.web.app import app
 
 PORT = 8114                      # test_copy's server is 8111, test_raspored_ui's and test_upitnik_ui's 8112, test_nav's 8113
@@ -368,9 +370,10 @@ def test_a_day_says_its_label_and_an_item_its_dose_and_rest():
     day.items = [ProgramDayItem(position=1, section="trening", note="a"), ProgramDayItem(position=2, section="istezanje", note="b"),
                  ProgramDayItem(position=3, section="zagrijavanje", note="c"), ProgramDayItem(position=4, section="trening", note="d")]
     assert {k: [i.note for i in v] for k, v in day.by_section.items()} == {
-        "zagrijavanje": ["c"], "trening": ["a", "d"], "istezanje": ["b"]}
-    assert list(day.by_section) == ["zagrijavanje", "trening", "istezanje"]
-    assert ProgramDay(position=1, title="").by_section == {"zagrijavanje": [], "trening": [], "istezanje": []}
+        "zagrijavanje": ["c"], "trening": ["a", "d"], "trening_b": [], "istezanje": ["b"]}
+    assert list(day.by_section) == ["zagrijavanje", "trening", "trening_b", "istezanje"]   # two main parts (23.11.2026)
+    assert ProgramDay(position=1, title="").by_section == {"zagrijavanje": [], "trening": [], "trening_b": [],
+                                                           "istezanje": []}
 
 
 def test_clients_and_guests_cannot_create_or_edit():
@@ -1034,6 +1037,28 @@ def test_the_list_and_its_search():
     assert [e.name for e, _ in db.exercises("BUČ")] == ["Goblet čučanj"]
 
 
+def test_the_search_folds_the_croatian_letters():
+    """The exercise searches fold alike since 23.11.2026 (the owner: "when I
+    start searching for an exercise starting with 'add' it shows the
+    adductor exercises"): models.fold lowers the case, takes č and ć to c,
+    đ to d, š to s and ž to z, and drops every other mark; the library's
+    ?q= matches the name and the tags with it, so "cuc", "ČUČ" and "čuč"
+    find the squat and not the plank, "kuc" its tag "kod kuće", "dacki"
+    a name with Đ. (The day editor's "Dodaj vježbu" and an exercise's swaps
+    fold with base.html's qmtFold, the same table: the browser tests.)"""
+    assert fold("Čučanj ĐŠŽĆ") == "cucanj dszc"
+    assert fold("  Crème brûlée ") == "  creme brulee " and fold("") == ""
+    ct, *_ = trainer_with_clients()
+    for n, t in (("Čučanj s vlastitom težinom", "noge, kod kuće"), ("Plank", "core"), ("Đački iskorak", "noge, bučice")):
+        db.create_exercise(n, tags=t)
+    for q in ("cuc", "ČUČ", "čuč", "Cucanj"):
+        assert names(ct.get("/treninzi/vjezbe", params={"q": q}).text) == ["Čučanj s vlastitom težinom"], q
+    assert names(ct.get("/treninzi/vjezbe", params={"q": "kuc"}).text) == ["Čučanj s vlastitom težinom"]
+    assert names(ct.get("/treninzi/vjezbe", params={"q": "dacki"}).text) == ["Đački iskorak"]
+    assert names(ct.get("/treninzi/vjezbe", params={"q": "BUCICE"}).text) == ["Đački iskorak"]
+    assert [e.name for e, _ in db.exercises("ČUČ")] == ["Čučanj s vlastitom težinom"]
+
+
 # ---------- a programme's days (stage 2) ----------
 
 def test_days_are_added_saved_moved_and_deleted():
@@ -1129,7 +1154,7 @@ def test_items_go_into_a_section_and_say_what_the_day_asks():
     def layout():
         return {k: [i.id for i in v] for k, v in db.get_day(did).by_section.items()}
 
-    assert layout() == {"zagrijavanje": [ib], "trening": [ia, ic], "istezanje": [id_]}
+    assert layout() == {"zagrijavanje": [ib], "trening": [ia, ic], "trening_b": [], "istezanje": [id_]}
     assert [i.position for i in db.get_day(did).items] == [1, 2, 3, 4]
     assert [(i.sets, i.reps, i.seconds, i.rest_seconds, i.note) for i in db.get_day(did).items] == [(None, None, None, None, "")] * 4
     for bad, section in (("", "trening"), ("abc", "trening"), ("²", "trening"), ("987654", "trening"),
@@ -1183,19 +1208,19 @@ def test_items_go_into_a_section_and_say_what_the_day_asks():
     assert ct.post(f"{base}/stavke/987654", data={"sets": "3"}).status_code == 404
 
     save(ia, section="zagrijavanje", sets="2", reps="15", rest="30")       # another section: last in it
-    assert layout() == {"zagrijavanje": [ib, ia], "trening": [ic], "istezanje": [id_]}
+    assert layout() == {"zagrijavanje": [ib, ia], "trening": [ic], "trening_b": [], "istezanje": [id_]}
     assert db.get_day_item(ia).position == 5
     r = ct.post(f"{base}/stavke/{ia}/pomak", data={"smjer": "gore"}, follow_redirects=False)
     assert r.headers["location"] == f"{base}/uredi#stavka-{ia}"
     assert layout()["zagrijavanje"] == [ia, ib]
     for item_id, smjer in ((ia, "gore"), (ib, "dolje"), (ic, "gore"), (ic, "dolje"), (id_, "gore"), (ia, "x")):
         assert not db.move_day_item(item_id, smjer), (item_id, smjer)      # never out of its section
-    assert layout() == {"zagrijavanje": [ia, ib], "trening": [ic], "istezanje": [id_]}
+    assert layout() == {"zagrijavanje": [ia, ib], "trening": [ic], "trening_b": [], "istezanje": [id_]}
     assert not db.move_day_item(987654, "gore")
 
     r = ct.post(f"{base}/stavke/{ic}/obrisi", follow_redirects=False)
     assert r.headers["location"] == f"{base}/uredi"
-    assert layout() == {"zagrijavanje": [ia, ib], "trening": [], "istezanje": [id_]}
+    assert layout() == {"zagrijavanje": [ia, ib], "trening": [], "trening_b": [], "istezanje": [id_]}
     assert db.exercise(c) is not None and not db.delete_day_item(ic)
 
 
@@ -1239,7 +1264,7 @@ def test_the_programme_editor_lists_its_days():
     pid = db.create_program("T", None, "pocetna", "cijelo")
     page = ct.get(f"/treninzi/{pid}/uredi").text
     assert "<h1>Uredi program</h1>" in page and '<h2 style="font-size:1.05rem; margin-bottom:12px;">Treninzi</h2>' in page
-    assert ('Program ima treninge; svaki trening ima zagrijavanje, glavni dio i istezanje, a vježbe biraš iz '
+    assert ('Program ima treninge; svaki trening ima zagrijavanje, glavni dio A i B te istezanje, a vježbe biraš iz '
             '<a class="tlink" href="/treninzi/vjezbe">baze vježbi</a>.') in page
     assert f'<a class="act act-quiet" href="/treninzi/{pid}">pogledaj kako polaznik vidi →</a>' in page
     assert '<p class="hint">Program još nema treninga — dodaj prvi.</p>' in page
@@ -1297,8 +1322,8 @@ def test_the_day_editor_shows_each_row_and_its_form():
     assert f'<a class="act act-quiet" href="/treninzi/{pid}/dan/{did}">pogledaj kako polaznik vidi →</a>' in page
     assert 'placeholder="npr. Cijelo tijelo"' in page and "Kratko objašnjenje treninga — polaznik ga gleda prije prve vježbe." in page
     assert re.findall(r'<h3 class="st-cap" id="dio-(\w+)">([^<]*)</h3>', page) == [
-        ("zagrijavanje", "Zagrijavanje"), ("trening", "Glavni dio"), ("istezanje", "Istezanje")]
-    assert page.count('<p class="hint st-none">Nema vježbi.</p>') == 2
+        ("zagrijavanje", "Zagrijavanje"), ("trening", "Glavni dio A"), ("trening_b", "Glavni dio B"), ("istezanje", "Istezanje")]
+    assert page.count('<p class="hint st-none">Nema vježbi.</p>') == 3
     rows = page.split('<div class="card it-row" id="stavka-')[1:]
     assert [r.split('"')[0] for r in rows] == [str(ig), str(ip)]
     assert f'<a class="it-name" href="/treninzi/vjezbe/{goblet}">Goblet čučanj</a>' in rows[0]
@@ -1309,7 +1334,8 @@ def test_the_day_editor_shows_each_row_and_its_form():
     assert f'form="st-x-{ig}" class="btn-ghost btn-sm" aria-label="Makni iz treninga: Goblet čučanj">✕</button>' in rows[0]
     form = rows[0].split('<form class="st-form"')[1].split("</form>")[0]
     assert f'action="/treninzi/{pid}/dan/{did}/stavke/{ig}"' in form
-    assert '<option value="trening" selected>Glavni dio</option>' in form and '<option value="zagrijavanje">Zagrijavanje</option>' in form
+    assert '<option value="trening" selected>Glavni dio A</option>' in form and '<option value="zagrijavanje">Zagrijavanje</option>' in form
+    assert '<option value="trening_b">Glavni dio B</option>' in form
     values = dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', form))
     assert values == {"sets": "4", "reps": "10", "seconds": "", "rest": "60", "rest_after": "90", "note": "16 kg"}
     assert 'name="sets" inputmode="numeric" min="1" max="99"' in form and 'name="reps" inputmode="numeric" min="1" max="999"' in form
@@ -1333,7 +1359,7 @@ def test_the_day_editor_shows_each_row_and_its_form():
 
 def test_the_day_editors_picker_adds_into_the_chosen_section():
     """"Dodaj vježbu" is a select of the library (name · tags, the
-    alphabet's order) and a select of the section, opening on Glavni dio,
+    alphabet's order) and a select of the section, opening on Glavni dio A,
     then Dodaj and "Nova vježba →" (back to this day's editor); the
     exercise goes into the chosen section, pointing at the library row. An
     empty library says so, with the way to make one."""
@@ -1352,7 +1378,8 @@ def test_the_day_editors_picker_adds_into_the_chosen_section():
     assert [(v, unescape(t)) for v, t in options] == [("", "Odaberi vježbu…"), (str(biceps), "Biceps pregib"),
                                                        (str(cucanj), "Čučanj s vlastitom težinom"), (str(plank), "Plank · core, kod kuće")]
     sections = re.findall(r'<option value="(\w+)"( selected)?>([^<]*)</option>', page.split('id="add-dio"')[1].split("</select>")[0])
-    assert sections == [("zagrijavanje", "", "Zagrijavanje"), ("trening", " selected", "Glavni dio"), ("istezanje", "", "Istezanje")]
+    assert sections == [("zagrijavanje", "", "Zagrijavanje"), ("trening", " selected", "Glavni dio A"),
+                        ("trening_b", "", "Glavni dio B"), ("istezanje", "", "Istezanje")]
     assert '<label for="add-ex">Vježba iz baze</label>' in page and '<label for="add-dio">Dio</label>' in page
     assert f'href="/treninzi/vjezbe/nova?natrag={edit}">Nova vježba →</a>' in page
     r = ct.post(f"/treninzi/{pid}/dan/{did}/stavke", data={"exercise_id": str(plank), "section": "istezanje"},
@@ -1463,8 +1490,8 @@ def test_the_day_page_prints_the_whole_list():
     assert '<p class="hint">Preporučeno: ponedjeljak · 3 vježbe</p>' in page
     assert '<p class="day-intro">Lagano.\nBez žurbe.</p>' in page and "Uredi trening" not in page
     assert "<title>Trening 1 · Cijelo tijelo — Tjedan 1 — QMT</title>" in page
-    assert re.findall(r'<h2 class="dx-cap" id="dio-(\w+)">([^<]*)</h2>', page) == [
-        ("zagrijavanje", "Zagrijavanje"), ("trening", "Glavni dio"), ("istezanje", "Istezanje")]
+    assert re.findall(r'<h2 class="dx-cap" id="dio-(\w+)">([^<]*)</h2>', page) == [   # none in B: no B
+        ("zagrijavanje", "Zagrijavanje"), ("trening", "Glavni dio A"), ("istezanje", "Istezanje")]
     rows = page.split('<details class="card ex">')[1:]
     heads = [re.search(r'<span class="dx-n">([^<]*)</span>\s*<span class="dx-line"><span class="dx-name">([^<]*)</span>'
                        r'(?:<span class="dx-dose">([^<]*)</span>)?</span>\s*(?:<span class="dx-sub">([^<]*)</span>)?', r).groups()
@@ -1600,6 +1627,64 @@ def test_a_days_intro_video_is_stored_replaced_removed_and_watched(monkeypatch):
     third = db.get_day(did).intro_video
     ct.post(f"/treninzi/{pid}/dan/{did}/obrisi")
     assert db.get_day(did) is None and not (config.MEDIA_DIR / third).exists()
+
+
+def test_a_day_has_two_main_parts_a_and_b():
+    """Since 23.11.2026 (the owner, for Amir: "an option to add 'glavni dio
+    A' and 'glavni dio B', so two separate main parts of a training"): a
+    day's sections are four, trening reading "Glavni dio A" (every item
+    already there in it) and trening_b, "Glavni dio B", after it.
+    add_day_item takes trening_b and refuses trening_c (None, nothing
+    added); update_day_item moves an item into B, last in it, and refuses
+    trening_c with "Odaberi dio treninga.", as a row's form does. The day's
+    page captions the parts that hold an exercise, "Glavni dio A" then
+    "Glavni dio B", counting the exercises across both, and so does the
+    player's list; the editor captions all four, and every Dio select
+    offers them, "Dodaj vježbu"'s opening on Glavni dio A."""
+    ct, ivan, _ = trainer_with_clients()
+    pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")   # ivan's: pocetna / cijelo
+    did = db.add_day(pid)
+    ex = {n: db.create_exercise(n) for n in ("Goblet čučanj", "Plank", "Sklekovi", "Iskorak")}
+    a1 = db.add_day_item(did, ex["Goblet čučanj"], "trening")
+    b1 = db.add_day_item(did, ex["Plank"], "trening_b")
+    a2 = db.add_day_item(did, ex["Sklekovi"], "trening")
+    assert None not in (a1, b1, a2)
+    assert db.add_day_item(did, ex["Iskorak"], "trening_c") is None and len(db.get_day(did).items) == 3
+
+    def layout() -> dict[str, list[str]]:
+        return {k: [i.exercise.name for i in v] for k, v in db.get_day(did).by_section.items()}
+
+    assert layout() == {"zagrijavanje": [], "trening": ["Goblet čučanj", "Sklekovi"], "trening_b": ["Plank"], "istezanje": []}
+    edit = f"/treninzi/{pid}/dan/{did}/uredi"
+    r = ct.post(f"/treninzi/{pid}/dan/{did}/stavke/{a2}", data={"section": "trening_b", "sets": "3", "reps": "10"},
+                follow_redirects=False)                                     # a row's Dio: into B, last in it
+    assert unquote(r.headers["location"]) == f"{edit}?ok=Spremljeno.&stavka={a2}#stavka-{a2}"
+    assert layout() == {"zagrijavanje": [], "trening": ["Goblet čučanj"], "trening_b": ["Plank", "Sklekovi"], "istezanje": []}
+    with pytest.raises(ValueError, match="Odaberi dio treninga."):
+        db.update_day_item(a1, "trening_c", None, None, None, None, None, "")
+    r = ct.post(f"/treninzi/{pid}/dan/{did}/stavke/{a1}", data={"section": "trening_c"}, follow_redirects=False)
+    assert unquote(r.headers["location"]) == f"{edit}?error=Odaberi dio treninga.&stavka={a1}#stavka-{a1}"
+    assert db.get_day_item(a1).section == "trening"
+
+    ci = client_for("ivan@test.local")
+    page = ci.get(f"/treninzi/{pid}/dan/{did}").text
+    assert re.findall(r'<h2 class="dx-cap" id="dio-(\w+)">([^<]*)</h2>', page) == [
+        ("trening", "Glavni dio A"), ("trening_b", "Glavni dio B")]
+    assert re.findall(r'<span class="dx-n">([^<]*)</span>\s*<span class="dx-line"><span class="dx-name">([^<]*)</span>', page) == [
+        ("Vježba 1", "Goblet čučanj"), ("Vježba 2", "Plank"), ("Vježba 3", "Sklekovi")]
+    ci.post(f"/treninzi/{pid}/dan/{did}/kreni")
+    player = ci.get(f"/treninzi/{pid}/dan/{did}/vjezba/1").text
+    assert re.findall(r'<h3 class="dx-cap">([^<]*)</h3>', player) == ["Glavni dio A", "Glavni dio B"]
+    assert re.findall(r'<span class="dx-name">([^<]*?)(?: <span|</span>)', player.split('id="popis"')[1]) == [
+        "Goblet čučanj", "Plank", "Sklekovi"]
+
+    page = ct.get(edit).text
+    assert re.findall(r'<h3 class="st-cap" id="dio-(\w+)">([^<]*)</h3>', page) == [
+        ("zagrijavanje", "Zagrijavanje"), ("trening", "Glavni dio A"), ("trening_b", "Glavni dio B"), ("istezanje", "Istezanje")]
+    for select in re.findall(r'<select id="(?:st-\d+-dio|add-dio)" name="section">(.*?)</select>', page, re.S):
+        assert re.findall(r'<option value="(\w+)"', select) == ["zagrijavanje", "trening", "trening_b", "istezanje"]
+    add = page.split('id="add-dio"')[1].split("</select>")[0]
+    assert '<option value="trening" selected>Glavni dio A</option>' in add and '<option value="trening_b">Glavni dio B</option>' in add
 
 
 # ---------- the migrations ----------
@@ -1956,6 +2041,44 @@ def test_the_cascade_migration_lets_an_exercise_go_with_its_items_and_back():
     assert [i.id for i in items_of(pid)] == [stays] and len(db.get_program(pid).days) == 1
 
 
+def test_the_two_main_parts_migration_lets_an_item_into_b_and_back():
+    """dc22ce1ed7e6, run on qmt_test as before it (the section's CHECK
+    naming three: an item put into trening_b is refused): the CHECK names
+    four, its name kept, and an item goes into trening_b; downgrade folds
+    every item of trening_b into trening, its place kept, and the CHECK
+    refuses trening_b again; a second upgrade lets it in once more."""
+    mig = _migration("dc22ce1ed7e6_two_main_parts.py")
+    assert (mig.revision, mig.down_revision) == ("dc22ce1ed7e6", "8a67c43d0bb4")
+    assert mig.SECTIONS == tuple(SECTIONS)                                  # its own copy agrees with the model's
+    pid = db.create_program("T", None, "pocetna", "cijelo")
+    a, b = hold(pid, db.create_exercise("Goblet čučanj")), hold(pid, db.create_exercise("Plank"))
+
+    def into_b(item: int) -> bool:
+        """Whether the database takes trening_b for an item."""
+        try:
+            with db.engine.begin() as conn:
+                conn.execute(sa_text("UPDATE program_day_items SET section = 'trening_b' WHERE id = :i"), {"i": item})
+            return True
+        except IntegrityError:
+            return False
+
+    def sections() -> list[tuple[int, str, int]]:
+        with db.engine.connect() as conn:
+            return [tuple(r) for r in conn.execute(sa_text("SELECT id, section, position FROM program_day_items ORDER BY id"))]
+
+    with db.engine.begin() as conn:                                         # the CHECK as before the revision
+        conn.execute(sa_text("ALTER TABLE program_day_items DROP CONSTRAINT ck_program_day_items_section, "
+                             "ADD CONSTRAINT ck_program_day_items_section "
+                             "CHECK (section IN ('zagrijavanje', 'trening', 'istezanje'))"))
+    assert not into_b(b)
+    _run(mig.upgrade)
+    assert into_b(b) and sections() == [(a, "trening", 1), (b, "trening_b", 2)]
+    _run(mig.downgrade)
+    assert sections() == [(a, "trening", 1), (b, "trening", 2)] and not into_b(a)
+    _run(mig.upgrade)
+    assert into_b(a) and sections() == [(a, "trening_b", 1), (b, "trening", 2)]
+
+
 def test_nutricionizam_links_to_mojimakrosi():
     make_user("ivan@test.local")
     c = client_for("ivan@test.local")
@@ -2062,7 +2185,10 @@ def test_the_trainer_builds_the_library_on_a_phone(server):
         check(pg.evaluate(OVERFLOW) == 0, f"the list overflows by {pg.evaluate(OVERFLOW)}px")
         pg.goto(f"{server}/treninzi/{pid}/dan/{did}/uredi"); pg.wait_for_load_state("networkidle")
         if made:
-            pg.select_option("#add-ex", str(made.id))
+            pg.tap("#add-ex-q")                    # the combobox (23.11.2026): a few letters, then a row tapped
+            pg.keyboard.type("gob")
+            pg.tap(f'#add-ex-list [role="option"][data-id="{made.id}"]')
+            check(pg.input_value("#add-ex") == str(made.id), f"the tapped row chose {pg.input_value('#add-ex')!r}")
             with pg.expect_navigation():
                 pg.tap("#dodaj button[type=submit]")
             pg.wait_for_load_state("networkidle")
@@ -2113,7 +2239,8 @@ def test_the_trainer_builds_a_day_on_a_phone(server):
         days = db.get_program(pid).days
         did = days[0].id if days else 0
         check(len(days) == 1 and pg.url == f"{server}/treninzi/{pid}/dan/{did}/uredi", f"+ Dodaj trening led to {pg.url}")
-        pg.select_option("#add-ex", str(goblet))
+        pg.fill("#add-ex-q", "goblet")             # the combobox (23.11.2026): typed, Enter picks the first row
+        pg.keyboard.press("Enter")
         pg.select_option("#add-dio", "zagrijavanje")
         with pg.expect_navigation():
             pg.tap("#dodaj button[type=submit]")
@@ -2159,6 +2286,108 @@ def test_the_trainer_builds_a_day_on_a_phone(server):
         pg.goto(f"{server}/treninzi/{pid}/dan/{did}"); pg.wait_for_load_state("networkidle")
         sees_the_row(pg, "the client")
         problems += errors
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+CBX = """() => {
+  const q = document.getElementById('add-ex-q'), l = document.getElementById('add-ex-list'), s = document.getElementById('add-ex');
+  const opts = [...l.querySelectorAll('[role="option"]')], qr = q.getBoundingClientRect(), lr = l.getBoundingClientRect();
+  return {open: !l.hidden, expanded: q.getAttribute('aria-expanded'), typed: q.value, chosen: s.value,
+          hidden: s.hidden && s.offsetHeight === 0, required: s.required,
+          label: !!document.querySelector('label[for="add-ex-q"]'), shown: opts.map(o => o.querySelector('.cbx-name').textContent),
+          active: (a => a ? a.querySelector('.cbx-name').textContent : null)(document.getElementById(q.getAttribute('aria-activedescendant') || '')),
+          focused: document.activeElement === q, error: document.getElementById('add-ex-err').textContent,
+          wide: Math.round(lr.width) === Math.round(qr.width) || l.hidden};
+}"""
+
+
+def test_dodaj_vjezbu_filters_as_it_is_typed_on_a_phone(server):
+    """"Dodaj vježbu" is a combobox at 390px, touch (23.11.2026, the owner:
+    "start typing in the exercise and then show only those"): the select
+    stays in the form, hidden and no longer required (it carries the value
+    posted), its label naming the input. A focus opens the list of every
+    exercise in the alphabet's order, as wide as the input; "cuc" keeps the
+    two squats, the one whose name starts with it first, and not the plank,
+    the first active; Enter picks it (the select's value, the name in the
+    input, the list shut, the focus kept, nothing sent). Typing again
+    clears the select; Enter picks again. Dodaj adds it to the day (its row
+    on the page). Dodaj with nothing chosen sends nothing and says
+    "Odaberi vježbu s popisa." under the input. ?vjezba=<id> (back from
+    "Nova vježba") shows that name. Without JS the select is the picker it
+    was: shown and required, no combobox."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("trener@test.local", is_trainer=True)
+    pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    ids = {n: db.create_exercise(n, tags=t) for n, t in (("Goblet čučanj", "noge, bučice"), ("Plank", "core"),
+                                                         ("Čučanj s vlastitom težinom", "noge, kod kuće"),
+                                                         ("Biceps pregib", ""))}
+    edit = f"{server}/treninzi/{pid}/dan/{did}/uredi"
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx, pg, errors = _phone(browser, server, "trener@test.local")
+        pg.goto(edit); pg.wait_for_load_state("networkidle")
+        st = pg.evaluate(CBX)
+        check(st["hidden"] and not st["required"] and st["label"] and not st["open"] and st["typed"] == "",
+              f"the combobox at load: {st}")
+        pg.tap("#dodaj button[type=submit]")                                 # nothing chosen: nothing sent
+        pg.wait_for_timeout(400)
+        st = pg.evaluate(CBX)
+        check(pg.url == edit and db.get_day(did).items == [], f"Dodaj with nothing chosen went to {pg.url}")
+        check(st["error"] == "Odaberi vježbu s popisa." and st["focused"], f"Dodaj with nothing chosen says: {st}")
+        check(pg.is_visible("#add-ex-err"), "the line under the input is not shown")
+        pg.evaluate("() => document.getElementById('add-ex-q').blur()")
+        pg.tap("#add-ex-q")
+        st = pg.evaluate(CBX)
+        check(st["open"] and st["expanded"] == "true" and st["wide"]
+              and st["shown"] == ["Biceps pregib", "Čučanj s vlastitom težinom", "Goblet čučanj", "Plank"]
+              and st["active"] is None, f"a focus does not open every exercise: {st}")
+        pg.keyboard.type("cuc")
+        st = pg.evaluate(CBX)
+        check(st["shown"] == ["Čučanj s vlastitom težinom", "Goblet čučanj"] and "Plank" not in st["shown"]
+              and st["active"] == "Čučanj s vlastitom težinom", f"'cuc' shows: {st}")
+        pg.keyboard.press("Enter")
+        pg.wait_for_timeout(300)
+        st = pg.evaluate(CBX)
+        check(st["chosen"] == str(ids["Čučanj s vlastitom težinom"]) and st["typed"] == "Čučanj s vlastitom težinom"
+              and not st["open"] and st["focused"] and st["error"] == "" and pg.url == edit, f"Enter picked: {st}")
+        pg.keyboard.press("Backspace")                                       # typing again: nothing chosen
+        st = pg.evaluate(CBX)
+        check(st["chosen"] == "" and st["open"], f"typing after a pick kept the choice: {st}")
+        pg.keyboard.type("m")
+        pg.keyboard.press("Enter")
+        check(pg.evaluate(CBX)["chosen"] == str(ids["Čučanj s vlastitom težinom"]), "Enter did not pick again")
+        with pg.expect_navigation():
+            pg.tap("#dodaj button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        check(item_names(pid) == ["Čučanj s vlastitom težinom"], f"the day holds {item_names(pid)}")
+        check(pg.is_visible(f'a.it-name[href="/treninzi/vjezbe/{ids["Čučanj s vlastitom težinom"]}"]'),
+              "the added exercise's row is not on the page")
+        check(pg.evaluate(OVERFLOW) == 0, f"the day's editor overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.goto(f"{edit}?vjezba={ids['Plank']}#dodaj"); pg.wait_for_load_state("networkidle")
+        st = pg.evaluate(CBX)
+        check(st["typed"] == "Plank" and st["chosen"] == str(ids["Plank"]), f"?vjezba= shows: {st}")
+        problems += errors
+        ctx.close()
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, java_script_enabled=False)
+        pg = ctx.new_page()
+        pg.goto(server + "/login")
+        pg.fill("main input[name=email]", "trener@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        with pg.expect_navigation():
+            pg.click("main button[type=submit]")
+        pg.goto(edit); pg.wait_for_load_state("networkidle")
+        check(pg.is_visible("#add-ex") and pg.get_attribute("#add-ex", "required") is not None
+              and pg.locator("#add-ex-q").count() == 0, "without JS the select is not the picker it was")
         ctx.close()
         browser.close()
     print("\n".join(problems))

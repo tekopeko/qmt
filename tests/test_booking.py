@@ -955,9 +955,11 @@ def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
     # the shop's reference prices as typed (the price slots' defaults), each
     # with its unit: no range cut to its floor any more ("od 60 €")
     assert "50 € / mjesečno" in shown(offer.split('class="card offer featured"')[0])   # QMove START
-    for price in ("60–80 € / paket", "35 € / trening",
-                  "u dvoje ili troje 25 € / trening · rehabilitacija od 30 € / tretman"):   # Individualno's line
+    for price in ("60–80 € / paket", "35 € / trening"):
         assert price in shown(gym), price
+    read = " ".join(unescape(re.sub(r"<[^>]+>", "", gym)).split())        # the tags dropped without a space
+    assert ("u dvoje ili troje 25 € / trening (Bazna cijena: 25 €) · rehabilitacija od 30 € / tretman "
+            "(Bazna cijena: od 30 €)") in read                            # Individualno's line, each base in brackets
     assert "od 60" not in shown(offer + gym)
     for amount, unit in (("25", "/ trening"), ("od 30", "/ tretman")):   # a price and its unit are held together
         assert f'<span class="t">{amount}</span>&nbsp;€&nbsp;<span class="t">{unit}</span>' in gym, amount
