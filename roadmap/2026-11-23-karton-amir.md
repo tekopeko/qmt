@@ -1,4 +1,4 @@
-# Karton: Amir's wish list (23.11.2026) — queued
+# Karton: Amir's wish list (23.11.2026) — built the same day (STATUS.md: the karton, parts 1 and 2)
 
 Amir's message, relayed by the owner on 23.11.2026, verbatim:
 
@@ -16,8 +16,12 @@ Amir's message, relayed by the owner on 23.11.2026, verbatim:
 > itd.
 
 The owner's decisions the same day: **height needs no history**; everything else as
-listed. **Queued behind** the tag chips / "Core" / level-only matching build of 23.11.2026;
-nothing started.
+listed. **Built and live on 23.11.2026** in two parts (STATUS.md): part 1 the exercise log on a gym
+training and a training outside a termin, with the estimated maxes; part 2 the height on the
+profile, the weight history, the limitations text and the monthly photo. The open points
+below were settled as part 1's and part 2's briefs say: a member may log a training outside a
+termin (dated); the gym log lives on the osvrt row (`TrainingLog.sets`), the maxes read it
+and the online passes; a photo is 15 MB at most, shrunk to 1600 px, one a month.
 
 ## What already exists (every member, whatever plan)
 
