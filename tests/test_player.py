@@ -866,8 +866,9 @@ def test_the_karton_lists_the_passes_among_the_termini():
     when they started, newest first (_diary_rows): the kicker "Online
     trening", the day and the programme as named when it started, "N od M
     vježbi · X min" (a day since deleted: "N vježbi"), napor and osjećaj as
-    a termin's, the comment. The client's karton has no sets; the
-    trainer's view folds them under "Serije". A pass in progress is not
+    a termin's, the comment, and its sets folded under "Serije": the
+    trainer's view's until 23.11.2026, the client's too since (Amir: "u
+    kartonu može ući u povijest svojih treninga"). A pass in progress is not
     there."""
     trainer, ivan, ana = people()
     d = build_day()
@@ -894,7 +895,8 @@ def test_the_karton_lists_the_passes_among_the_termini():
     assert '<div class="hint le-sub">Trening 1 · Cijelo tijelo — Cijelo tijelo — početna</div>' in row
     assert '<div class="hint le-sub">2 od 4 vježbe · 38 min</div>' in row
     assert '<span class="rpe">napor 7/10</span>' in row and '<span class="rpe feel ">Odlično</span>' in row
-    assert "<p>Online.</p>" in row and "Serije" not in row
+    assert "<p>Online.</p>" in row and "<summary>Serije</summary>" in row
+    assert sets_lines(row) == ["Goblet čučanj: 10 × 20 kg · 8 × 20 kg", "Plank: 40 s"]
     assert '<div class="hint le-sub">1 od 4 vježbe · 1 h 05 min</div>' in entry(page, b)
     assert '<span class="rpe feel low">Slabo</span>' in entry(page, b)
     assert "Uredi" not in row and "Obriši" not in row and "/delete" not in row   # nothing edits a pass here

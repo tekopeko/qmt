@@ -80,7 +80,7 @@ targets; do not introduce new uses.
 | `.field` | 14px bottom margin |
 | radio/checkbox pills | `.tiers` on /moja-clanarina (`_tiers.html`): `label:has(input:checked)` → accent border + tint, `--accent-tint-ink` text; `accent-color: var(--accent)` |
 | confirm | form with `data-confirm` / `-title` / `-cta` → `#confirmDlg` opens before submit |
-| combobox (`.cbx`, trening_day_edit.html) | a select too long to scroll, typed into instead ("Dodaj vježbu", 23.11.2026: the library, 275 exercises on prod). The page's script hides the `<select>` (it stays in the form, carries the value posted, and is the no-JS picker, `required` there) and puts in its place `.cbx` (`position: relative`), holding the app's text input (`#add-ex-q`: `role="combobox"`, `aria-expanded`, `aria-controls`, `aria-autocomplete="list"`, `aria-activedescendant`; the label's `for` moved to it; 44px on a coarse pointer, the Dio select beside it too) and `.cbx-list` (`role="listbox"`, `hidden` until the input has the focus): absolute, 4px under the input and exactly its width at every width, `z-index: 5`, at most 280px tall and scrolling, `--surface`, hairline, `--r-md`, `--shadow`, 4px padding. It lies over what follows (the Dio select, the buttons), never pushes it down. Its rows (`li[role=option]`, built from the select's options, "name · tags"): 44px at least, 8px 12px, 8px radius, the name (`.cbx-name`, 600 .95rem) over its tags (`.cbx-tags`, muted .78rem); the active one (the arrows') and the hovered one `--surface-2`. At most 60, then a muted line that is no option (`.cbx-note`: "… još N — nastavi tipkati", or "Nijedna vježba ne odgovara traženju."). It matches with `qmtFold` (base.html; `models.fold` is the same table on the server): every word typed in the name or the tags, the names that start with it first, then a word of the name that does, then the rest, the alphabet within each. ↓ / ↑ move the active row (scrolled into view), Enter picks it and never submits while the list is open, Escape and Tab close it, a tap picks (a mousedown on the list keeps the focus in the input). A pick sets the select, puts the name in the input and keeps the focus there; typing again clears the select. The script checks the submit: nothing picked, `.cbx-err` "Odaberi vježbu s popisa." under the input (.85rem 600 `--accent`, `aria-live="polite"`, `aria-invalid` on the input) and the focus back in it |
+| combobox (`.cbx`, base.html's `qmtCombobox(src, opts)`) | a list too long to scroll, typed into instead (23.11.2026: the library, 275 exercises on prod; the day editor's "Dodaj vježbu", and since the same day each exercise block of the karton's exercise log; the script and its look were trening_day_edit.html's until the karton needed them). Two sources: a `<select>` (the day editor: it stays in the form, carries the value posted, and is the no-JS picker, `required` there; hidden here, its options the rows), or `{rows: [{id, name, tags}], value: a hidden input}` (the karton: the library on the page once as JSON, each row folded once for every combobox over it). In the value's place `.cbx` (`position: relative`), holding the app's text input (the value's id + `-q`, `#add-ex-q` on the day editor: `role="combobox"`, `aria-expanded`, `aria-controls`, `aria-autocomplete="list"`, `aria-activedescendant`; the label's `for` moved to it; 44px on a coarse pointer, the day editor's Dio select beside it too, the karton's `.xb .cbx > input`) and `.cbx-list` (`role="listbox"`, `hidden` until the input has the focus): absolute, 4px under the input and exactly its width at every width, `z-index: 5`, at most 280px tall and scrolling, `--surface`, hairline, `--r-md`, `--shadow`, 4px padding. It lies over what follows (the Dio select, the buttons), never pushes it down. Its rows (`li[role=option]`, built from the select's options, "name · tags"): 44px at least, 8px 12px, 8px radius, the name (`.cbx-name`, 600 .95rem) over its tags (`.cbx-tags`, muted .78rem); the active one (the arrows') and the hovered one `--surface-2`. At most 60, then a muted line that is no option (`.cbx-note`: "… još N — nastavi tipkati", or "Nijedna vježba ne odgovara traženju."). It matches with `qmtFold` (base.html; `models.fold` is the same table on the server): every word typed in the name or the tags, the names that start with it first, then a word of the name that does, then the rest, the alphabet within each. ↓ / ↑ move the active row (scrolled into view), Enter picks it and never submits while the list is open, Escape and Tab close it, a tap picks (a mousedown on the list keeps the focus in the input). A pick sets the select, puts the name in the input and keeps the focus there; typing again clears the select. The ids are the value's (`-q`, `-list`, `-err`, `-o-<exercise id>`), so several live on one page. The script checks the submit: nothing picked, `.cbx-err` "Odaberi vježbu s popisa." under the input (.85rem 600 `--accent`, `aria-live="polite"`, `aria-invalid` on the input) and the focus back in it; `opts.submit: false` leaves the check to the page, with the returned `fail()` (the karton: an exercise is needed only once a set is typed, and the focus goes to the first block that lacks one). `opts.tagbar` wires the tag chips (the day editor's) |
 | tag chips (`.tagbar`, `.tag-chip`; base.html, `_tagbar.html`) | a search helper under an exercise search (23.11.2026, the owner: "search the items used in the exercise like for example 'girja'"): the library's (`vjezbe.html`, between the tools row and the count line) and the day editor's "Dodaj vježbu" (above `.add-fields`, so the combobox's open list never covers it), the same row on both, so base's. `div.tagbar` (`role="group"`, `aria-label="Oznake"`, no caption: the row explains itself): a wrapping flex row, 6px gap, never a sideways scroll. A chip per tag at least two exercises carry (`db.tag_counts`, the most used first), each a `<button type="button" class="tag-chip" data-tag>` (never a submit: the day editor's sit inside `form#dodaj`): the library's `.ex-tag` look at a tap size, `--surface-2` with `--text`, 600 .74rem, a pill, 6px 12px, 32px tall (36px on a coarse pointer), a hover a 10% `--text` wash; no count after the tag (noise). **Pressed** (`aria-pressed="true"`: every word of its tag is a word of the box) the `.period` switch's chosen side, `--accent-dim` with `--accent-tint-ink`, which a hover keeps (5.2:1 on `--bg`, 4.8:1 in a dark card). The first 12, then **"još N"** (`.tag-chip.tag-more`: no fill, a hairline, `--muted`, the text `--text` on hover; an action, not a tag), which shows the rest and goes (the focus it had moves to the first one shown, not to the page). Rendered `hidden`; `qmtTagbar(bar, box, focus)` (base.html) shows it and makes a tap toggle the tag's word(s) in the box, then fires `input` on it (the page's filter runs as for a key); `focus` leaves the focus in the box (the day editor: its combobox opens filtered), else on the chip (the library: no phone keyboard over the list). The returned function re-syncs the chips where a page sets the box itself ("prikaži sve", a pick). Without JS: the library's `<noscript>` row of `<a class="tag-chip">` links to `?q=<tag>`, every chip shown, the one that is the whole `?q=` `aria-current="true"` (the pressed look) and linking back to the whole list; the day editor's row stays hidden (the select is the picker) |
 
 ## Status text and chips
@@ -362,8 +362,45 @@ muted: a caption, not the accent's), then `.le-head` (the date, `.rpe` "napor
 7/10", `.rpe.feel` the osjećaj, grey for "Slabo"), two muted `.le-sub` lines
 (.8rem: "Trening 1 · Cijelo tijelo — Cijelo tijelo — srednja razina", the
 snapshots; "6 od 8 vježbi · 38 min", a day since deleted "6 vježbi") and the
-comment. No `.le-actions`: nothing on the karton edits or deletes a pass. The
-trainer's view adds `details.sets` "Serije" (base.html, below) under it.
+comment. No `.le-actions`: nothing on the karton edits or deletes a pass. Under
+it `details.sets` "Serije" (base.html, below): the trainer's view's only until
+23.11.2026, the client's too since.
+**A training's exercises** (23.11.2026): a written osvrt row (and a training
+outside a termin's, `.le-kicker` "Trening izvan termina" over its head, where a
+termin's row says its title) puts under its comment a muted `.le-sub.le-ex`
+("3 vježbe") and `details.sets`; both give way to the edit form while it is
+open (`.editing`), as the comment does. A row with no exercise shows neither.
+**"+ Dodaj trening izvan termina"** (`.log-new`, the client's own karton, above
+the diary's rows): an `.act` that opens its form (`qmtToggleForm`) in a hairline
+box (`--surface`, `--r-md`, 14px 12px 12px), Datum (`type=date`), Napor,
+Osjećaj, Komentar, the exercise log.
+**The exercise log in a form** (`fieldset.xl`, 23.11.2026; the same in a
+termin's osvrt, its edit and a training outside a termin): the fieldset reset
+(no border, no padding, `min-width: 0`), its legend a label's look ("Vježbe
+(neobavezno)"), `.xl-hint` (muted .82rem), then `.xb` per exercise: a hairline
+box (`--surface`, `--r-md`, 12px), the combobox (Forms, above) under the label
+"Vježba", the set log table (base.html's `.pl-sets`, the player's: SET · PON. ·
+KG, 44px inputs), then `.xb-foot` (a wrapping row, the ends apart): "+ serija"
+(`.act`) and "Ukloni vježbu" (`.act.act-quiet`); under the blocks "+ Dodaj
+vježbu" (`.act`). The page's script makes all of it: the fieldset is rendered
+`hidden` and empty (its stored log in `data-log`), a block exists only as the
+`<template id="ex-block">` it clones, and the library only as
+`#library-json`; without the script there is no exercise block at all. An
+entry whose exercise left the library comes with `.xb-gone`, a muted line
+naming it. A `<p>` inside a diary row is .92rem pre-line (`.log-entry p`), so
+the block's lines say their own size (`.xb .cbx-err`, `.xb .xb-gone`).
+**"Procijenjeni maksimumi"** (`section.card.maxes`, 23.11.2026): between the
+upitnik block and the diary grid, 720px at most like the upitnik block, 18px
+20px (16px under 600px); its h2 1.05rem, `.mx-hint` .82rem, then a compact
+table (`.maxes table`: full width, collapsed, .88rem, tabular): the header the
+set log's words (700 .7rem, .12em, uppercase, muted, never wrapped), each row
+a hairline over it and 8px above and below its text, the cells 10px apart,
+top-aligned and wrapping anywhere (no sideways scroll at 360px). Vježba (the
+row's `th`, 600), Procjena (`.mx-val`,
+700, never broken: "108 kg", "9 ponavljanja"), Iz (the set and its date each
+whole, `.nw`, then `.mx-src` "dvorana" / "online" muted; a bodyweight row the
+date and the source alone: its reps are the Procjena). Empty: the hint and
+`.mx-empty` (muted .88rem).
 
 **Upitnik (`upitnik.html`, 26.10.2026; patterns.md §7).** One `form.quiz` (640px,
 centred) holds every step; for a member the page sets `solo_page` (`not can_edit_copy`),
@@ -578,8 +615,9 @@ bottom (`.dx-hist`, 34px above): an `h2.dx-cap`, then an `ol.hist` of
 `.card.hist-row` (12px 16px, 10px apart): `.hist-line` (600, tabular: "12.11. ·
 6/8 vježbi · 38 min · napor 7 · dobro"), `.hist-note` (the comment, muted .9rem,
 `pre-line`) and `details.sets`.
-**`details.sets`** (base.html, 30.10.2026: the day's Povijest, the trainer's
-karton): a pass's sets folded under "Serije": the summary a 32px muted row (600
+**`details.sets`** (base.html, 30.10.2026: the day's Povijest, the karton's
+rows, the client's as the trainer's since 23.11.2026, a gym training's exercise
+log's too): a pass's sets folded under "Serije": the summary a 32px muted row (600
 .85rem) with a › that turns down when open, then a line per exercise
 ("<strong>Goblet čučanj:</strong> 10 × 20 kg · 10 × 20 kg", .88rem, tabular),
 each set a `.set` that never breaks across lines.
@@ -604,7 +642,7 @@ muted) with `.pl-chip` "3/8" (`--surface-2`) and `.pl-saved` "✓ Spremljeno"
 (`--good`), `h1.pl-name` (`clamp(1.35rem, 5vw, 1.9rem)`), `.pl-for` "Zamjena za:
 …" (muted), the alert, `.pl-dose` (700 1.05rem), `.pl-sub` lines (rest, note),
 `details.pl-how` "Kako se izvodi" (a 32px summary, a › that turns). The set log
-`form.pl-log`: `table.pl-sets` (rows 8px apart; `thead` SET · PON. · KG, 700
+`form.pl-log`: `table.pl-sets` (base.html's since 23.11.2026, the karton's exercise log prints it too; rows 8px apart; `thead` SET · PON. · KG, 700
 .72rem muted, the value columns centred; `tbody th` the set's number, 700 1rem,
 `tr.extra`'s muted with `.pl-x` "dodatna serija" under it; inputs 44px,
 centred, 600 tabular), then `.pl-foot`: "+" (`.btn-ghost.pl-add`, 40px round, at

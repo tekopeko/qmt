@@ -84,14 +84,9 @@
      row per set, 44px inputs; a row past the plan's says "dodatna serija";
      "+" adds one (the script), "Spremi" saves and goes on ===== */
   .pl-log { margin-top: 14px; }
-  .pl-sets { width: 100%; border-collapse: separate; border-spacing: 0 8px; margin-top: -8px; }
-  .pl-sets thead th { padding: 0 4px; text-align: left; font: 700 .72rem var(--font-body);
-                      letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-  .pl-sets thead th + th { text-align: center; }        /* over the inputs, whose numbers are centred */
-  .pl-sets tbody th { width: 1%; padding: 0 12px 0 4px; text-align: left; white-space: nowrap; vertical-align: middle;
-                      font: 700 1rem var(--font-body); font-variant-numeric: tabular-nums; color: var(--text); }
-  .pl-sets td { padding: 0 4px; }
-  .pl-sets input { height: 44px; padding: 0 10px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+  /* the table itself (.pl-sets: its header, the set's number, the 44px
+     inputs) is base.html's since 23.11.2026: the karton's exercise log
+     prints the same rows */
   .pl-sets tr.extra > th { color: var(--muted); }
   .pl-x { display: block; font: 500 .7rem var(--font-body); color: var(--muted); }
   /* the ✓ per set (30.10.2026): a column at the right, as narrow as its

@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import calendar
 import json
+import math
 import re
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from fractions import Fraction
 from typing import Iterator
 
 from sqlalchemy import and_, create_engine, delete as sa_delete, func, or_, select, text as sa_text
@@ -25,7 +28,7 @@ from . import config, copy, upitnik
 from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, Announcement, Base, Booking,
                      Exercise, GymCard, Membership, OnboardingResponse, Payment, Program, ProgramDay, ProgramDayItem,
                      ReminderLog, SessionTemplate, SiteCopy, TrainingLog, TrainingSession, UpitnikQuestion, User,
-                     WorkoutLog, alpha_key, exercise_alternatives, fold, matches)
+                     WorkoutLog, alpha_key, exercise_alternatives, fold, kg_text, matches, plural)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -1460,13 +1463,16 @@ def _log_target(s, user_id: int, session_id: int) -> TrainingSession:
 
 
 def add_session_feedback(user_id: int, session_id: int, effort: int,
-                         feeling: str | None, note: str) -> None:
-    """Feedback is tied to an ATTENDED, FINISHED termin — never free-floating."""
+                         feeling: str | None, note: str, sets: list[dict] | None = None) -> None:
+    """Feedback is tied to an ATTENDED, FINISHED termin — never free-floating.
+    `sets` is the exercises logged with it (read_log's entries; none: an
+    empty log), checked again here (_checked_log: ValueError)."""
+    log = _checked_log(sets)
     with session_scope() as s:
         sess = _log_target(s, user_id, session_id)
         s.add(TrainingLog(user_id=user_id, session_id=session_id,
                           date=sess.starts_at.astimezone(config.TZ).date(),
-                          effort=effort, feeling=feeling, note=note))
+                          effort=effort, feeling=feeling, note=note, sets=log))
 
 
 def mark_session_absent(user_id: int, session_id: int, note: str = "") -> None:
@@ -1482,21 +1488,31 @@ def mark_session_absent(user_id: int, session_id: int, note: str = "") -> None:
 
 
 def add_training_log(user_id: int, day: date, effort: int | None, note: str,
-                     feeling: str | None = None) -> int:
-    """Direct insert without a session link — seeds/legacy only; the app flow
-    goes through add_session_feedback."""
+                     feeling: str | None = None, sets: list[dict] | None = None) -> int:
+    """A diary row without a session link: a training outside a termin
+    (23.11.2026, POST /karton/trening: its date read by read_day, its
+    exercises by read_log), and the seeds' rows; a termin's osvrt goes
+    through add_session_feedback. `sets` checked again (_checked_log:
+    ValueError). Its id."""
+    log = _checked_log(sets)
     with session_scope() as s:
         entry = TrainingLog(user_id=user_id, date=day, effort=effort,
-                            feeling=feeling, note=note)
+                            feeling=feeling, note=note, sets=log)
         s.add(entry)
         s.flush()
         return entry.id
 
 
 def update_training_log(log_id: int, user_id: int, effort: int | None,
-                        feeling: str | None, note: str) -> bool:
+                        feeling: str | None, note: str, sets: list[dict] | None = None,
+                        day: date | None = None) -> bool:
     """Edit an osvrt in place. Only what the client wrote is editable — the
-    termin it hangs off, and its date, are facts and stay put."""
+    termin it hangs off, and its date, are facts and stay put. `sets`, the
+    exercises logged (read_log's entries), replaces the whole log; None
+    keeps it. `day` moves a training outside a termin to that date (read
+    by read_day); a termin's osvrt keeps its date whatever is posted, and
+    None keeps it."""
+    log = None if sets is None else _checked_log(sets)
     with session_scope() as s:
         entry = s.scalar(select(TrainingLog).where(TrainingLog.id == log_id,
                                                    TrainingLog.user_id == user_id))
@@ -1506,6 +1522,10 @@ def update_training_log(log_id: int, user_id: int, effort: int | None,
         entry.effort = effort
         entry.feeling = feeling
         entry.note = note
+        if log is not None:
+            entry.sets = log
+        if day is not None and entry.session_id is None:
+            entry.date = day
         return True
 
 
@@ -1538,6 +1558,234 @@ def booking_history(user_id: int, limit: int = 20) -> list[TrainingSession]:
             .where(Booking.user_id == user_id,
                    TrainingSession.starts_at < datetime.now(config.TZ))
             .order_by(TrainingSession.starts_at.desc()).limit(limit)))
+
+
+# ---------- the exercise log on a training (23.11.2026) ----------
+#
+# Amir: "da si on može sam upisati koji trening je radio … izračun maksova".
+# A termin's osvrt, its edit, and a training outside a termin carry the same
+# block of exercises (karton.html): ex_<n>, the exercise's id (the library's
+# select, a combobox with the script), and its sets, reps_<n>_<i> and
+# kg_<n>_<i>; n is the block, i the set, both read in their numbers' order,
+# gaps allowed (a block removed on the page leaves one). read_log turns the
+# posted form into TrainingLog.sets' entries; the writes check them again
+# (_checked_log), as save_sets checks a pass's sets.
+
+MAX_LOG_EXERCISES = 15
+NO_EXERCISE = "Odaberi vježbu s popisa."
+UNKNOWN_EXERCISE = "Nepoznata vježba."
+TOO_MANY_EXERCISES = f"Najviše {MAX_LOG_EXERCISES} vježbi."
+BAD_DAY = "Neispravan datum."
+FIRST_DAY = date(2020, 1, 1)          # a training outside a termin: no date before it
+_LOG_FIELD = re.compile(r"(ex|reps|kg)_([0-9]{1,4})(?:_([0-9]{1,4}))?")
+
+
+def read_log(form) -> list[dict]:
+    """The exercise blocks a karton form posts (`form`: its fields, a
+    mapping of name to value) as TrainingLog.sets stores them: an entry per
+    exercise in the blocks' order, {"exercise_id", "name" (the library's
+    name now, a snapshot), "sets" (read_sets', reps and kg only: a set with
+    reps and no weight is kg 0), "at" (now)}; the same exercise twice is two
+    entries. A block with no set typed is dropped, an exercise picked or
+    not. ValueError with the sentence to show: a block with sets and no
+    exercise (NO_EXERCISE, "Odaberi vježbu s popisa."), an exercise that is
+    not in the library (UNKNOWN_EXERCISE, "Nepoznata vježba."), a set's
+    number (read_sets': "Neispravan broj.", "Najviše 12 serija."), more than
+    MAX_LOG_EXERCISES exercises (TOO_MANY_EXERCISES, "Najviše 15 vježbi.").
+    The exercises are looked up in one query."""
+    blocks: dict[int, dict] = {}
+    for key in list(form.keys()):
+        m = _LOG_FIELD.fullmatch(key)
+        if m is None or (m.group(1) == "ex") != (m.group(3) is None):
+            continue
+        value = form.get(key)
+        value = value if isinstance(value, str) else ""
+        block = blocks.setdefault(int(m.group(2)), {"ex": "", "rows": {}})
+        if m.group(1) == "ex":
+            block["ex"] = value.strip()
+        else:
+            block["rows"].setdefault(int(m.group(3)), {})[m.group(1)] = value
+    logged = []
+    for n in sorted(blocks):
+        block = blocks[n]
+        rows = [block["rows"][i] for i in sorted(block["rows"])]
+        if not any((row.get(f) or "").strip() for row in rows for f in ("reps", "kg")):
+            continue                                     # no set: nothing to log
+        if not block["ex"]:
+            raise ValueError(NO_EXERCISE)
+        if not re.fullmatch(r"[0-9]{1,9}", block["ex"]):
+            raise ValueError(UNKNOWN_EXERCISE)
+        logged.append((int(block["ex"]), read_sets(rows, timed=False)))
+    if len(logged) > MAX_LOG_EXERCISES:
+        raise ValueError(TOO_MANY_EXERCISES)
+    if not logged:
+        return []
+    with session_scope() as s:
+        names = dict(s.execute(select(Exercise.id, Exercise.name)
+                               .where(Exercise.id.in_({ex for ex, _ in logged}))).all())
+    if any(ex not in names for ex, _ in logged):
+        raise ValueError(UNKNOWN_EXERCISE)
+    at = datetime.now(config.TZ).isoformat(timespec="seconds")
+    return [{"exercise_id": ex, "name": names[ex], "sets": sets, "at": at} for ex, sets in logged]
+
+
+def read_day(raw: str | None, today: date | None = None) -> date:
+    """A training outside a termin's date as its form posts it (an ISO date,
+    the date input's): not in the future, not before FIRST_DAY
+    (2020-01-01); else ValueError BAD_DAY ("Neispravan datum.")."""
+    value = (raw or "").strip()
+    try:
+        day = date.fromisoformat(value) if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) else None
+    except ValueError:
+        day = None
+    if day is None or not FIRST_DAY <= day <= (today or config.today()):
+        raise ValueError(BAD_DAY)
+    return day
+
+
+def _checked_log(entries) -> str:
+    """An exercise log (read_log's entries; None for none) checked again
+    where it is written, as the column stores it (JSON): at most
+    MAX_LOG_EXERCISES entries, each an exercise's id and name and its sets
+    (_checked_sets, reps and kg only). ValueError as read_log's."""
+    entries = list(entries or [])
+    if len(entries) > MAX_LOG_EXERCISES:
+        raise ValueError(TOO_MANY_EXERCISES)
+    clean = []
+    for e in entries:
+        ex = e.get("exercise_id") if isinstance(e, dict) else None
+        if type(ex) is not int or not isinstance(e.get("name"), str):
+            raise ValueError(UNKNOWN_EXERCISE)
+        sets = _checked_sets(e.get("sets") or [])
+        if any("seconds" in st for st in sets):
+            raise ValueError(BAD_NUMBER)
+        clean.append({"exercise_id": ex, "name": e["name"], "sets": sets,
+                      "at": str(e.get("at") or datetime.now(config.TZ).isoformat(timespec="seconds"))})
+    return json.dumps(clean, ensure_ascii=False)
+
+
+# ---------- the estimated maxes (23.11.2026) ----------
+#
+# Amir: "ako radi bench, napravi mi sa 90 kila 6 ponavljanja … da mu
+# automatski kalkulira njegov maks u benchu. Ako napravi … 9 zgib, ok". The
+# owner: "the standard Epley formula (90 kg × 6 reps gives about 108 kg),
+# best value per exercise, fed by gym logs and online passes alike;
+# bodyweight exercises show the best reps instead".
+
+EPLEY_MAX_REPS = 12                   # past it a set says little of the max: not counted
+
+
+@dataclass(frozen=True)
+class Max:
+    """One exercise's estimated max on the karton (estimated_maxes): `kind`
+    "1rm", `value` the one-rep max in kg (to the nearest 0.5) from the set
+    `kg` × `reps`, or "reps", `value` the most reps in a set with no weight
+    (`kg` 0); `on` the day of that set, `source` where it was logged, "gym"
+    (a training's osvrt) or "online" (a pass)."""
+    exercise_id: int
+    name: str
+    kind: str
+    value: float | int
+    reps: int
+    kg: float
+    on: date
+    source: str
+
+    @property
+    def value_text(self) -> str:
+        """"108 kg", "50,5 kg"; a bodyweight record "9 ponavljanja"."""
+        return f"{kg_text(self.value)} kg" if self.kind == "1rm" else _reps_text(self.reps)
+
+    @property
+    def set_text(self) -> str:
+        """The set it comes from: "90 kg × 6"; a bodyweight one "9 ponavljanja"."""
+        return f"{kg_text(self.kg)} kg × {self.reps}" if self.kind == "1rm" else _reps_text(self.reps)
+
+    @property
+    def source_text(self) -> str:
+        return "dvorana" if self.source == "gym" else "online"
+
+
+def _reps_text(n: int) -> str:
+    return f"{n} {plural(n, 'ponavljanje', 'ponavljanja', 'ponavljanja')}"
+
+
+def epley(kg: float, reps: int) -> Fraction:
+    """The one-rep max a set says, exactly (a weight is in halves of a kilo,
+    so its float is exact): Epley's kg × (1 + reps / 30) for 2 or more
+    reps, and for a single the weight itself (the formula is for r > 1: it
+    would make a lifted 100 kg a 103,5)."""
+    w = Fraction(kg)
+    return w if reps == 1 else w * (30 + reps) / 30
+
+
+def _to_half(x: Fraction) -> float:
+    """To the nearest 0.5 kg, a quarter up: 50,67 → 50,5; 50,75 → 51."""
+    return math.floor(x * 2 + Fraction(1, 2)) / 2
+
+
+def estimated_maxes(user_id: int) -> list[Max]:
+    """A client's estimated max per exercise (the karton's "Procijenjeni
+    maksimumi"), from every set he logged: each training's exercise log
+    (TrainingLog.sets, on its date) and each finished online pass's
+    (WorkoutLog.done, on the day it was started; an entry is the exercise
+    done, the similar one when it was swapped in). Set by set:
+      - a weight (kg > 0) and 1 to 12 reps: its one-rep max (epley: Epley's
+        formula; a single is its weight), the best per exercise its max;
+      - no weight (kg 0) and 1 rep or more: the most reps per exercise, a
+        bodyweight record, kept only for an exercise with no one-rep max;
+      - a weight with more than 12 reps (Epley is for low reps: past them it
+        overstates the max), a timed set (a plank's seconds), a set of 0
+        reps: not counted.
+    On a tie the later set wins (its date; on one day, a pass's over a
+    training's, then the later row's). Grouped by the exercise's id, each
+    named by the library's name now, or for one deleted since by the
+    newest name it was logged under; in the alphabet's order (alpha_key).
+    `value` is the one-rep max to the nearest 0.5 kg (_to_half), or the
+    reps."""
+    with session_scope() as s:
+        gym = s.execute(select(TrainingLog.date, TrainingLog.id, TrainingLog.sets)
+                        .where(TrainingLog.user_id == user_id)).all()
+        online = s.execute(select(WorkoutLog.started_at, WorkoutLog.id, WorkoutLog.done)
+                           .where(WorkoutLog.user_id == user_id, WorkoutLog.finished_at.is_not(None))).all()
+    found = []                       # (on, a pass after a training, the row's id, the entry's place, source, entry)
+    for on, row_id, raw in gym:
+        for k, entry in enumerate(TrainingLog.entries(raw)):
+            found.append((on, 0, row_id, k, "gym", entry))
+    for started, row_id, raw in online:
+        on = started.astimezone(config.TZ).date()
+        for k, entry in enumerate(e for e in WorkoutLog._object(raw).values() if isinstance(e, dict)):
+            found.append((on, 1, row_id, k, "online", entry))
+    found.sort(key=lambda f: f[:4])                     # oldest first: on a tie the later set wins
+    best: dict[int, tuple] = {}      # exercise id -> (one-rep max, Max fields) …
+    most: dict[int, tuple] = {}      # … and its bodyweight record (reps, Max fields)
+    snapshot: dict[int, str] = {}
+    for on, _, _, _, source, entry in found:
+        ex = entry.get("exercise_id")
+        if type(ex) is not int:
+            continue
+        if isinstance(entry.get("name"), str) and entry["name"]:
+            snapshot[ex] = entry["name"]
+        for st in entry.get("sets") if isinstance(entry.get("sets"), list) else []:
+            reps, kg = (st.get("reps"), st.get("kg") or 0) if isinstance(st, dict) else (None, 0)
+            if type(reps) is not int or reps < 1 or isinstance(kg, bool) or not isinstance(kg, (int, float)):
+                continue
+            if kg > 0 and reps <= EPLEY_MAX_REPS:
+                value = epley(kg, reps)
+                if ex not in best or value >= best[ex][0]:
+                    best[ex] = (value, reps, float(kg), on, source)
+            elif kg == 0 and (ex not in most or reps >= most[ex][0]):
+                most[ex] = (reps, reps, 0.0, on, source)
+    if not best and not most:
+        return []
+    with session_scope() as s:
+        names = dict(s.execute(select(Exercise.id, Exercise.name)
+                               .where(Exercise.id.in_(set(best) | set(most)))).all())
+    out = [Max(ex, names.get(ex) or snapshot.get(ex, ""), "1rm", _to_half(v), reps, kg, on, source)
+           for ex, (v, reps, kg, on, source) in best.items()]
+    out += [Max(ex, names.get(ex) or snapshot.get(ex, ""), "reps", v, reps, kg, on, source)
+            for ex, (v, reps, kg, on, source) in most.items() if ex not in best]
+    return sorted(out, key=lambda m: (alpha_key(m.name), m.exercise_id))
 
 
 # ---------- training programmes (treninzi) ----------

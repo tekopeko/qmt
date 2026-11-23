@@ -1807,6 +1807,18 @@ def _diary_rows(subject_id: int) -> list[dict]:
     return rows
 
 
+def _log_entries(log, held: set[int]) -> list[dict]:
+    """A training's exercise log as its edit form's script builds it (the
+    fieldset's data-log, 23.11.2026): each entry's exercise, its name as
+    logged, whether it has left the library since (`gone`: not among
+    `held`, the library's ids; its block comes with nothing picked and a
+    line naming it), and its sets, reps and kg."""
+    return [{"exercise_id": e.get("exercise_id"), "name": str(e.get("name", "")),
+             "gone": e.get("exercise_id") not in held,
+             "sets": [{"reps": st.get("reps"), "kg": st.get("kg")} for st in e.get("sets") or [] if isinstance(st, dict)]}
+            for e in log.set_items]
+
+
 def _render_karton(request: Request, viewer, subject, own: bool):
     import json
 
@@ -1836,6 +1848,15 @@ def _render_karton(request: Request, viewer, subject, own: bool):
     age = (today.year - born.year - ((today.month, today.day) < (born.month, born.day))
            if born else None)
     pending = db.pending_feedback(subject.id) if own else []
+    diary = _diary_rows(subject.id)
+    # the exercise log (23.11.2026), in the client's own forms only (the
+    # trainer's view writes nothing): the library once for the whole page,
+    # [id, name, tags] in the alphabet's order (#library-json, every
+    # block's combobox), and each written osvrt's log as its edit form's
+    # script builds it (data-log)
+    library = [e for e, _ in db.exercises()] if own else []
+    held = {e.id for e in library}
+    log_entries = {r["log"].id: _log_entries(r["log"], held) for r in diary if own and r.get("log")}
     return templates.TemplateResponse(request, "karton.html", _ctx(
         request, viewer, copy_texts=texts, subject=subject, own=own, age=age,
         can_upitnik=own and _has_online(subject),
@@ -1843,12 +1864,15 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         levels=upitnik.LEVELS, goals=upitnik.GOALS, max_score_v1=upitnik.MAX_SCORE_V1,
         u_rows=u_rows, u_chips=u_chips, u_score=u_score, pain_ask=upitnik.PAIN_ASK, pain_where=pain_where,
         pain_note=texts.get("upitnik.pain_note", copy.SLOTS["upitnik.pain_note"].default),
-        diary=_diary_rows(subject.id),
+        diary=diary,
         # just-finished termini open their osvrt form straight away; older ones
         # keep it folded so the diary stays a list, not a wall of forms
         pending_ids={x.id for x in pending},
         feelings=FEELING_LABELS,
         upcoming=db.my_upcoming(subject.id),
+        maxes=db.estimated_maxes(subject.id),
+        library_rows=[[e.id, e.name, e.tags] for e in library], log_entries=log_entries,
+        max_log=db.MAX_LOG_EXERCISES, max_sets=db.MAX_SETS, first_day=db.FIRST_DAY,
         today=config.today(), tz=config.TZ,
     ))
 
@@ -2094,23 +2118,63 @@ def upitnik_pitanje_obrisi(request: Request, question_id: int):
     return RedirectResponse("/upitnik" + (f"#step-q{near}" if near else ""), status_code=303)
 
 
+async def _posted_log(request: Request, without):
+    """The exercise log a karton form posts (db.read_log: ValueError with
+    its sentence), read only when the form says it carries one (log=1, the
+    hidden field the page's script adds where it builds the exercise
+    blocks); `without` otherwise: a form sent without the script has no
+    block, so a new osvrt or training logs none ([]) and an edit keeps the
+    log it has (None), never emptied by a page that could not show it."""
+    form = await request.form()
+    return db.read_log(form) if form.get("log") == "1" else without
+
+
 @app.post("/karton/feedback/{session_id}")
-def karton_feedback(request: Request, session_id: int, effort: int = Form(...),
-                    feeling: str = Form(""), note: str = Form("")):
+async def karton_feedback(request: Request, session_id: int, effort: int = Form(...),
+                          feeling: str = Form(""), note: str = Form("")):
     """Post-training osvrt — offered by the app after a booked termin ends,
-    never a free-floating diary entry."""
+    never a free-floating diary entry. Since 23.11.2026 with the exercises
+    done (the form's exercise blocks, _posted_log: none without the page's
+    script); a refusal stores nothing and says why (what was typed is not
+    kept)."""
+    from urllib.parse import quote
+
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if not 1 <= effort <= 10 or (feeling and feeling not in FEELING_LABELS):
         return RedirectResponse("/karton?error=Neispravan+osvrt.", status_code=303)
     try:
+        sets = await _posted_log(request, [])
         db.add_session_feedback(user.id, session_id, effort,
-                                feeling or None, note.strip())
-    except db.BookingError as e:
-        from urllib.parse import quote
+                                feeling or None, note.strip(), sets=sets)
+    except (db.BookingError, ValueError) as e:
         return RedirectResponse(f"/karton?error={quote(str(e))}", status_code=303)
     return RedirectResponse("/karton?ok=Osvrt+je+spremljen.", status_code=303)
+
+
+@app.post("/karton/trening")
+async def karton_training(request: Request, effort: int = Form(...), feeling: str = Form(""),
+                          note: str = Form(""), day: str = Form("")):
+    """A training outside a termin (23.11.2026, Amir: "da si on može sam
+    upisati koji trening je radio"): its date (db.read_day: not in the
+    future, not before 2020), napor, osjećaj, a comment and the exercises
+    done (_posted_log), a diary row of its own (db.add_training_log, no
+    termin). A refusal stores nothing and says why."""
+    from urllib.parse import quote
+
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not 1 <= effort <= 10 or (feeling and feeling not in FEELING_LABELS):
+        return RedirectResponse("/karton?error=Neispravan+osvrt.", status_code=303)
+    try:
+        when = db.read_day(day)
+        sets = await _posted_log(request, [])
+        log_id = db.add_training_log(user.id, when, effort, note.strip(), feeling=feeling or None, sets=sets)
+    except ValueError as e:
+        return RedirectResponse(f"/karton?error={quote(str(e))}", status_code=303)
+    return RedirectResponse(f"/karton?ok=Trening+je+spremljen.#log-{log_id}", status_code=303)
 
 
 @app.post("/karton/absent/{session_id}")
@@ -2130,15 +2194,28 @@ def karton_absent(request: Request, session_id: int):
 
 
 @app.post("/karton/log/{log_id}/edit")
-def karton_log_edit(request: Request, log_id: int, effort: int = Form(...),
-                    feeling: str = Form(""), note: str = Form("")):
-    """The client corrects their own osvrt — same fields, same rules as writing it."""
+async def karton_log_edit(request: Request, log_id: int, effort: int = Form(...),
+                          feeling: str = Form(""), note: str = Form(""), day: str | None = Form(None)):
+    """The client corrects their own osvrt — same fields, same rules as
+    writing it. Its exercises (_posted_log) replace the whole log; a form
+    sent without the page's script carries none and keeps it. A training
+    outside a termin's date may move too (`day`, db.read_day: the form of
+    such a row posts it), a termin's never (db.update_training_log keeps
+    it). A refusal changes nothing and says why."""
+    from urllib.parse import quote
+
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if not 1 <= effort <= 10 or (feeling and feeling not in FEELING_LABELS):
         return RedirectResponse("/karton?error=Neispravan+osvrt.", status_code=303)
-    if not db.update_training_log(log_id, user.id, effort, feeling or None, note.strip()):
+    try:
+        when = None if day is None else db.read_day(day)
+        sets = await _posted_log(request, None)
+        saved = db.update_training_log(log_id, user.id, effort, feeling or None, note.strip(), sets=sets, day=when)
+    except ValueError as e:
+        return RedirectResponse(f"/karton?error={quote(str(e))}", status_code=303)
+    if not saved:
         return RedirectResponse("/karton?error=Zapis+ne+postoji.", status_code=303)
     return RedirectResponse(f"/karton?ok=Osvrt+je+spremljen.#log-{log_id}", status_code=303)
 

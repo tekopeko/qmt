@@ -853,6 +853,47 @@
     details.sets li { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
     details.sets .set { white-space: nowrap; }
 
+    /* ===== the library as a combobox that filters as it is typed
+       (23.11.2026, qmtCombobox below: the day editor's "Dodaj vježbu"
+       over its select, the karton's exercise log over the library's JSON;
+       trening_day_edit.html's until the karton needed it): the app's text
+       input, and under it the
+       list, laid over what follows (the Dio select, the buttons, the sets)
+       rather than pushing it down, as wide as the input at every width
+       (.cbx holds the two: the list takes its width). A row is the
+       exercise's name over its tags, 44px at least, the active one (the
+       arrows', aria-activedescendant) and the hovered one in --surface-2;
+       the line under the rows (how many more, or none) is no option,
+       muted. Nothing chosen: .cbx-err under the input, a hint's size in
+       the accent (the action the page waits for). ===== */
+    .cbx { position: relative; }
+    .cbx-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 5; max-height: 280px;
+                overflow: auto; margin: 0; padding: 4px; list-style: none; background: var(--surface);
+                border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow); }
+    .cbx-list [role="option"] { min-height: 44px; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+                                display: flex; flex-direction: column; justify-content: center; line-height: 1.35; }
+    .cbx-list [role="option"]:hover, .cbx-list [role="option"].is-active { background: var(--surface-2); }
+    .cbx-name { font-weight: 600; font-size: .95rem; overflow-wrap: anywhere; }
+    .cbx-tags { color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
+    .cbx-note { padding: 8px 12px; color: var(--muted); font-size: .85rem; }
+    .cbx-err { margin-top: 6px; color: var(--accent); font-size: .85rem; font-weight: 600; }
+    .cbx-err:empty { display: none; }
+
+    /* ===== a set log's table (the player's, trening_player.html's until
+       23.11.2026, when the karton's exercise log printed the same rows):
+       SET · PON. · KG over a row per set, the set's number at the
+       left, 44px inputs, their numbers centred and tabular; rows 8px
+       apart. The player's own additions (the extra set, the ✓ column)
+       stay its page's. ===== */
+    .pl-sets { width: 100%; border-collapse: separate; border-spacing: 0 8px; margin-top: -8px; }
+    .pl-sets thead th { padding: 0 4px; text-align: left; font: 700 .72rem var(--font-body);
+                        letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+    .pl-sets thead th + th { text-align: center; }        /* over the inputs, whose numbers are centred */
+    .pl-sets tbody th { width: 1%; padding: 0 12px 0 4px; text-align: left; white-space: nowrap; vertical-align: middle;
+                        font: 700 1rem var(--font-body); font-variant-numeric: tabular-nums; color: var(--text); }
+    .pl-sets td { padding: 0 4px; }
+    .pl-sets input { height: 44px; padding: 0 10px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition: none !important; animation: none !important; }
     }
@@ -1829,6 +1870,170 @@
     bar.hidden = false;
     sync();
     return sync;
+  }
+  // The library as a combobox that filters as it is typed,
+  // window.qmtCombobox(src, opts) (23.11.2026: the day editor's "Dodaj
+  // vježbu", the owner: "start typing in the exercise and then show only
+  // those"; 275 exercises on prod; since the same day also the karton's
+  // exercise log, one per exercise block). Its rows come from one of two
+  // sources. `src` a <select> (the day editor): the select stays in its
+  // form, carries the value that is posted, and without this script it is
+  // the picker as it always was; here it is hidden, the rows its options,
+  // each "name · tags". `src` {rows: [{id, name, tags}, …], value: a hidden
+  // input} (the karton, whose library is on the page once, as JSON, and
+  // has no select): the rows as given (each folded once, whoever asks
+  // first: the objects keep their folded words, so many comboboxes over one
+  // list fold it once), the hidden input the value posted. Either way a
+  // text input and a list (role=combobox / listbox) take the value's
+  // place; their ids are its id with -q, -list, -err and -o-<exercise id>,
+  // and its label names the input. A row matches when every word typed is
+  // in its name or its tags, folded (qmtFold: "cuc" finds "Čučanj"); the
+  // rows whose name starts with what is typed come first, then those with
+  // a word of the name that does, then the rest, each group in the rows'
+  // order (the alphabet's); 60 at most, then a line saying how many more.
+  // ↓ / ↑ move the active row, Enter picks it (and never sends the form
+  // while the list is open), Escape and Tab close it, a tap picks. A pick
+  // sets the value and keeps the focus in the input; typing again clears
+  // the value, so a half-edited name never posts a stale id. A hidden
+  // value cannot say it is required, so the submit is checked here: with
+  // nothing chosen it stops, "Odaberi vježbu s popisa." under the input
+  // (opts.submit false:
+  // the page checks it itself, with the returned fail(), which says it
+  // and leaves the focus where it is: the karton, where an exercise is
+  // needed only once sets are typed). opts.form is the value's form by
+  // default; opts.tagbar, the tags' chips (qmtTagbar) that put their word
+  // in the input and take it out, the focus left there, so the list opens
+  // filtered; a pick puts the name in the input, and the chips let go.
+  // Returns {input, fail}, or null without a value or a form.
+  function qmtCombobox(src, opts) {
+    opts = opts || {};
+    var given = !!(src && Array.isArray(src.rows));            // rows given, the value a hidden input's
+    var sel = given ? src.value : src;
+    var form = opts.form || (sel && sel.form);
+    if (!sel || !form) return null;
+    var id = sel.id, MAX = 60, rows = [], byId = {};
+    if (given) src.rows.forEach(function (r) {
+      if (r.fname == null) { r.fname = qmtFold(r.name); r.ftags = qmtFold(r.tags || ""); }
+      rows.push(r); byId[r.id] = r;
+    });
+    else [].forEach.call(sel.options, function (o) {
+      if (!o.value) return;                                   // "Odaberi vježbu…"
+      var text = o.textContent, cut = text.indexOf(" · ");    // the option says "name · tags"
+      var r = {id: o.value, name: cut < 0 ? text : text.slice(0, cut), tags: cut < 0 ? "" : text.slice(cut + 3)};
+      r.fname = qmtFold(r.name); r.ftags = qmtFold(r.tags);
+      rows.push(r); byId[r.id] = r;
+    });
+    var label = document.querySelector('label[for="' + id + '"]'), wrap = document.createElement("div");
+    var input = document.createElement("input"), list = document.createElement("ul"), err = document.createElement("p");
+    wrap.className = "cbx";
+    input.type = "text"; input.id = id + "-q"; input.autocomplete = "off";
+    input.placeholder = "Upiši dio naziva ili oznaku…";
+    [["role", "combobox"], ["aria-expanded", "false"], ["aria-controls", id + "-list"],
+     ["aria-autocomplete", "list"], ["aria-describedby", id + "-err"]].forEach(function (a) { input.setAttribute(a[0], a[1]); });
+    list.id = id + "-list"; list.className = "cbx-list"; list.hidden = true;
+    list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Vježbe iz baze");
+    err.id = id + "-err"; err.className = "cbx-err"; err.setAttribute("aria-live", "polite");
+    wrap.appendChild(input); wrap.appendChild(list);
+    sel.parentNode.insertBefore(wrap, sel); sel.parentNode.insertBefore(err, sel);
+    sel.hidden = true; sel.required = false;
+    if (label) label.htmlFor = id + "-q";
+    if (byId[sel.value]) input.value = byId[sel.value].name;  // chosen already: ?vjezba=<id>, a logged exercise
+    var syncTags = qmtTagbar(opts.tagbar || null, input, true);
+
+    var active = -1, picking = false;
+    function options() { return list.querySelectorAll('[role="option"]'); }
+    // q at the start of a word of the name, past its first (after a space,
+    // a dash, a bracket: anything not a letter or a digit)
+    function wordStart(name, q) {
+      for (var i = name.indexOf(q, 1); i > 0; i = name.indexOf(q, i + 1))
+        if (!/[\p{L}\p{N}]/u.test(name.charAt(i - 1))) return true;
+      return false;
+    }
+    function setActive(i) {
+      var all = options();
+      active = i >= 0 && i < all.length ? i : -1;
+      [].forEach.call(all, function (li, k) {
+        li.classList.toggle("is-active", k === active);
+        li.setAttribute("aria-selected", k === active ? "true" : "false");
+      });
+      var li = all[active];
+      if (!li) { input.removeAttribute("aria-activedescendant"); return; }
+      input.setAttribute("aria-activedescendant", li.id);
+      if (li.offsetTop < list.scrollTop) list.scrollTop = li.offsetTop - 4;              // in view, the list's padding too
+      else if (li.offsetTop + li.offsetHeight > list.scrollTop + list.clientHeight)
+        list.scrollTop = li.offsetTop + li.offsetHeight - list.clientHeight + 4;
+    }
+    function render() {
+      var words = qmtFold(input.value).split(/\s+/).filter(Boolean), q = words.join(" "), groups = [[], [], []];
+      rows.forEach(function (r) {
+        for (var k = 0; k < words.length; k++) if (r.fname.indexOf(words[k]) < 0 && r.ftags.indexOf(words[k]) < 0) return;
+        groups[!q ? 2 : r.fname.indexOf(q) === 0 ? 0 : wordStart(r.fname, q) ? 1 : 2].push(r);
+      });
+      var found = groups[0].concat(groups[1], groups[2]);
+      list.textContent = "";
+      found.slice(0, MAX).forEach(function (r) {
+        var li = document.createElement("li"), name = document.createElement("span");
+        li.id = id + "-o-" + r.id; li.setAttribute("role", "option"); li.dataset.id = r.id;
+        name.className = "cbx-name"; name.textContent = r.name; li.appendChild(name);
+        if (r.tags) {
+          var tags = document.createElement("span");
+          tags.className = "cbx-tags"; tags.textContent = r.tags; li.appendChild(tags);
+        }
+        list.appendChild(li);
+      });
+      if (found.length > MAX || !found.length) {               // no option: what is left, or nothing at all
+        var note = document.createElement("li");
+        note.className = "cbx-note"; note.setAttribute("role", "presentation");
+        note.textContent = found.length ? "… još " + (found.length - MAX) + " — nastavi tipkati"
+                                        : "Nijedna vježba ne odgovara traženju.";
+        list.appendChild(note);
+      }
+      list.scrollTop = 0;
+      setActive(q && found.length ? 0 : -1);                   // typed: Enter picks the first
+    }
+    function open() { list.hidden = false; input.setAttribute("aria-expanded", "true"); render(); }
+    function close() { list.hidden = true; input.setAttribute("aria-expanded", "false"); setActive(-1); }
+    function pick(li) {
+      var r = byId[li.dataset.id];
+      sel.value = r.id; input.value = r.name; close(); syncTags();
+      err.textContent = ""; input.removeAttribute("aria-invalid");
+      picking = true; input.focus(); picking = false;          // the focus stays, the list stays shut
+    }
+    function fail() { err.textContent = "Odaberi vježbu s popisa."; input.setAttribute("aria-invalid", "true"); }
+    input.addEventListener("focus", function () { if (!picking) open(); });
+    input.addEventListener("click", function () { if (list.hidden) open(); });
+    input.addEventListener("input", function () { sel.value = ""; open(); });
+    input.addEventListener("blur", close);
+    input.addEventListener("keydown", function (e) {
+      var down = e.key === "ArrowDown";
+      if (down || e.key === "ArrowUp") {
+        e.preventDefault();
+        var shut = list.hidden;
+        if (shut) open();
+        var n = options().length;
+        if (n) setActive(shut ? (down ? 0 : n - 1) : down ? (active + 1) % n : (active <= 0 ? n - 1 : active - 1));
+      } else if (e.key === "Enter" && !list.hidden) {
+        e.preventDefault();                                    // the list is open: Enter picks, never sends
+        var li = options()[active];
+        if (li) pick(li);
+      } else if (e.key === "Escape" && !list.hidden) {
+        e.preventDefault(); close();
+      } else if (e.key === "Tab") close();
+    });
+    // a press on the list never takes the focus from the input (so it does
+    // not close before the click lands); a click on a row picks it
+    list.addEventListener("mousedown", function (e) { e.preventDefault(); });
+    list.addEventListener("click", function (e) {
+      var li = e.target.closest('[role="option"]');
+      if (li) pick(li);
+    });
+    if (opts.submit !== false) form.addEventListener("submit", function (e) {
+      if (sel.value) return;
+      e.preventDefault();
+      fail();
+      input.focus();
+    });
+    return {input: input, fail: fail};
   }
 
   // Mjesečno / Godišnje (.period, _period.html): each switch works the

@@ -579,9 +579,20 @@ class TrainingLog(Base):
 
     Created by the FEEDBACK flow, not free-form: once a booked termin ends,
     the karton prompts "Kako je bilo?" for exactly that session (the Strava
-    pattern) — effort (RPE 1–10), feeling, optional comment. `session_id`
-    stays nullable for legacy/manual rows; at most one feedback per
-    (user, session).
+    pattern) — effort (RPE 1–10), feeling, optional comment. At most one
+    feedback per (user, session). `session_id` NULL is a training outside a
+    termin (23.11.2026, Amir: "da si on može sam upisati koji trening je
+    radio"; POST /karton/trening, its date the member's), and the seeds'
+    and legacy rows.
+
+    `sets` (23.11.2026, migration f43e976906a1) is the exercises logged
+    with it, a JSON array in the order logged, one entry per exercise:
+    {"exercise_id": 12, "name": "Goblet čučanj" (the library's name when
+    logged, a snapshot as a pass's), "sets": [{"reps": 10, "kg": 20.0}, …]
+    (db.read_sets' shape, reps and kg only: a set with no weight is kg 0),
+    "at": "<iso>"}; the same exercise may be in it twice. Written by db.py
+    only (db.read_log builds it), read through set_items; the karton's
+    estimated maxes read it (db.estimated_maxes).
     """
 
     __tablename__ = "training_logs"
@@ -597,12 +608,42 @@ class TrainingLog(Base):
     # "nisam bio/la" — the client's OWN absence, recorded instead of an osvrt.
     # Never TrainingSession.canceled: that termin belongs to seven other people.
     absent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    sets: Mapped[str] = mapped_column(Text, server_default=text("'[]'"), default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("user_id", "session_id", name="uq_training_log_user_session"),)
 
     user: Mapped[User] = relationship()
     session: Mapped[TrainingSession | None] = relationship()
+
+    @staticmethod
+    def entries(raw: str | None) -> list[dict]:
+        """A stored `sets` read: its entries in the order logged; an entry
+        that is no object is left out, and text that is no array is none."""
+        try:
+            data = json.loads(raw or "[]")
+        except ValueError:
+            return []
+        return [e for e in data if isinstance(e, dict)] if isinstance(data, list) else []
+
+    @property
+    def set_items(self) -> list[dict]:
+        """The exercises logged, in the order logged (the entries above)."""
+        return self.entries(self.sets)
+
+    @property
+    def exercise_count(self) -> int:
+        return len(self.set_items)
+
+    def lines(self) -> list[tuple[str, list[str]]]:
+        """Each exercise logged, (its name, its sets as the history says
+        them: ["10 × 20 kg", "10"]), in the order logged: the karton's
+        "Serije", as an online pass's (WorkoutLog.lines)."""
+        out = []
+        for e in self.set_items:
+            sets = e.get("sets") if isinstance(e.get("sets"), list) else []
+            out.append((str(e.get("name", "")), [set_text(s) for s in sets if isinstance(s, dict)]))
+        return out
 
 
 # A swap a client may make in the player (the spec's stage 3, "Zamijeni

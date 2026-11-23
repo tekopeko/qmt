@@ -1,22 +1,54 @@
 """Karton: access control, the upitnik's gate on online treninzi, diary
 ownership. The upitnik itself (its scoring, its route, its block on the
-karton) is tests/test_upitnik.py."""
+karton) is tests/test_upitnik.py.
+
+Since 23.11.2026 (Amir: "da si on može sam upisati koji trening je radio …
+izračun maksova, na primjer ako radi bench, napravi mi sa 90 kila 6
+ponavljanja … da mu automatski kalkulira njegov maks u benchu"; the owner's
+decisions the same day) a training's osvrt carries the exercises done
+(TrainingLog.sets, migration f43e976906a1, run for real on qmt_test there and
+back): picked from the library with the day editor's combobox, then sets
+with reps and kilograms, several exercises per training. The same block is
+in the osvrt of a termin, in its edit, and in a training outside a termin
+(dated by the member). The page's script builds every block: the library is
+on the page once, as JSON, and a stored log is its form's data; without the
+script there is no block, and the routes read the blocks only with the log=1
+the script adds (db.read_log), so an edit sent without it keeps its log. The
+diary shows how many exercises and their sets ("Serije", the online passes'
+too, the client's as the trainer's). The karton estimates each exercise's
+max (db.estimated_maxes: Epley's formula over the best set, gym and online
+alike, a bodyweight exercise's most reps). The browser half fills the osvrt
+on a phone, with the script and without it."""
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import os
-from datetime import datetime, timedelta
+import pathlib
+import re
+import threading
+import time
+from datetime import date, datetime, timedelta
+from html import unescape
+from urllib.parse import unquote
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
 os.environ["ALLOWED_EMAILS"] = "ivan@test.local,ana@test.local"
 os.environ["OWNER_EMAIL"] = "trener@test.local"
 
+import httpx
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect as sa_inspect, text as sa_text
 
 from qmt import auth, config, copy, db
 from qmt.models import Base, Booking, User
 from qmt.web.app import app
+
+PORT = 8116    # test_copy's server is 8111, test_raspored_ui's and test_upitnik_ui's 8112, test_nav's 8113, test_programs' 8114, test_player's 8115
 
 
 @pytest.fixture(autouse=True)
@@ -346,3 +378,805 @@ def test_feedback_delete_own_only():
     assert r.status_code == 303
     assert db.training_logs(ivan) == []
     assert [s.id for s in db.pending_feedback(ivan)] == [sid]   # prompt returns
+
+
+# ---------- the exercise log on a training (23.11.2026) ----------
+
+def library(*rows) -> dict[str, int]:
+    """Exercises made in the library, each a name or (name, tags): name -> id."""
+    out = {}
+    for row in rows:
+        name, tags = (row, "") if isinstance(row, str) else row
+        out[name] = db.create_exercise(name, tags=tags)
+    return out
+
+
+def block(n: int, exercise: int | str, *sets: tuple) -> dict[str, str]:
+    """An exercise block as a karton form posts it: ex_<n> and a row per set,
+    reps_<n>_<i> / kg_<n>_<i> (i from 1), each set (reps, kg) as typed."""
+    form = {f"ex_{n}": str(exercise)}
+    for i, (reps, kg) in enumerate(sets, start=1):
+        form[f"reps_{n}_{i}"], form[f"kg_{n}_{i}"] = str(reps), str(kg)
+    return form
+
+
+def logged(exercise_id: int, name: str, *sets: tuple) -> dict:
+    """A log's entry as db.read_log builds it: sets (reps, kg)."""
+    return {"exercise_id": exercise_id, "name": name, "sets": [{"reps": r, "kg": float(k)} for r, k in sets],
+            "at": datetime.now(config.TZ).isoformat(timespec="seconds")}
+
+
+# what the page's script adds to a form whose exercise blocks it built: the
+# routes read the blocks only with it (without the script there are none)
+LOG = {"log": "1"}
+HINT = "Upiši vježbe i serije — iz njih se računaju tvoji maksimumi. Sekunde (plank i slično) upiši u komentar."
+
+
+def library_json(page: str) -> list:
+    """The library the page carries once for the exercise log (#library-json),
+    parsed; its raw text must hold no "</" (nothing can close the script)."""
+    raw = page.split('<script type="application/json" id="library-json">')[1].split("</script>")[0]
+    assert "</" not in raw and "<" not in raw
+    return json.loads(raw)
+
+
+def data_log(page: str, fid: str) -> list:
+    """A form's stored exercise log as its fieldset carries it (data-log), parsed."""
+    m = re.search(rf'<fieldset class="xl" data-xl="{fid}" data-log=\'([^\']*)\' hidden>', page)
+    assert m, f"no fieldset {fid}"
+    return json.loads(unescape(m.group(1)))
+
+
+def refused(form: dict) -> str | None:
+    """read_log's sentence for a form it refuses; None when it takes it."""
+    try:
+        db.read_log(form)
+    except ValueError as err:
+        return str(err)
+    return None
+
+
+def location(r) -> str:
+    """A redirect's location as a person reads it ("+" a space)."""
+    return unquote(r.headers["location"]).replace("+", " ")
+
+
+def entry(page: str, log_id: int) -> str:
+    """A diary row of the page, a training's (log-<id>), to the next row."""
+    return page.split(f'id="log-{log_id}"')[1].split('<div class="log-entry')[0]
+
+
+def read_part(row: str) -> str:
+    """A row's reading half (its edit form cut off)."""
+    return row.split('<form class="le-edit"')[0]
+
+
+def sets_lines(chunk: str) -> list[str]:
+    """The "Serije" lines of a piece of a page: "Potisak s klupe: 6 × 90 kg · …"."""
+    return [unescape(re.sub(r"<[^>]+>", "", li)) for li in re.findall(r"<li><strong>.*?</li>", chunk, re.S)]
+
+
+def stored(user_id: int) -> list[tuple]:
+    """A client's training logs: (session, date, effort, feeling, note, [(exercise, name, sets)])."""
+    return [(x.session_id, x.date, x.effort, x.feeling, x.note,
+             [(e["exercise_id"], e["name"], e["sets"]) for e in x.set_items]) for x in db.training_logs(user_id)]
+
+
+def test_read_log_keeps_the_blocks_with_sets_in_their_order():
+    """db.read_log reads the blocks in their numbers' order (n 0, 4, 9, 10:
+    numbers, not text; a gap is fine), each block's sets in theirs (i 2, 10),
+    and keeps a block only when a set is typed: one with no exercise and no
+    set, and one with an exercise and no set, are dropped. A set with reps
+    and no weight is a bodyweight set, kg 0. The same exercise twice is two
+    entries. Each entry snapshots the library's name (renamed later, the
+    entry keeps it) and the moment it was logged. Fields that are no block's
+    are ignored."""
+    ex = library(("Potisak s klupe", "prsa, šipka"), ("Zgibovi", "leđa"), ("Goblet čučanj", "noge"))
+    bench, pull, goblet = ex["Potisak s klupe"], ex["Zgibovi"], ex["Goblet čučanj"]
+    form = {**block(0, bench, (6, "90"), (5, "92,5"), ("", "")),
+            "ex_1": "", "reps_1_1": "", "kg_1_1": " ",                    # nothing at all: dropped
+            **block(10, bench, (6, "85")),                                # after 9: numbers, not text
+            **block(4, pull, (9, "")),                                    # a bodyweight set: kg 0
+            "ex_9": str(goblet), "reps_9_10": "8", "kg_9_10": "20", "reps_9_2": "10", "kg_9_2": "16",
+            **block(7, goblet, ("", ""), ("", "")),                       # an exercise and no set: dropped
+            "effort": "7", "note": "x", "ex_x": "1", "reps_3": "5", "kg_2_1_1": "5"}
+    entries = db.read_log(form)
+    assert [(e["exercise_id"], e["name"], e["sets"]) for e in entries] == [
+        (bench, "Potisak s klupe", [{"reps": 6, "kg": 90.0}, {"reps": 5, "kg": 92.5}]),
+        (pull, "Zgibovi", [{"reps": 9, "kg": 0.0}]),
+        (goblet, "Goblet čučanj", [{"reps": 10, "kg": 16.0}, {"reps": 8, "kg": 20.0}]),
+        (bench, "Potisak s klupe", [{"reps": 6, "kg": 85.0}])]
+    assert len({e["at"] for e in entries}) == 1 and datetime.fromisoformat(entries[0]["at"]).tzinfo is not None
+    db.update_exercise(bench, "Bench press", "", "", "prsa")              # a snapshot: the name when logged
+    assert entries[0]["name"] == "Potisak s klupe" and db.read_log(block(0, bench, (5, 80)))[0]["name"] == "Bench press"
+    assert db.read_log({}) == [] and db.read_log({"ex_0": str(bench)}) == [] and db.read_log({"effort": "7"}) == []
+
+
+def test_read_log_refuses_what_it_cannot_store():
+    """Sets with no exercise ("Odaberi vježbu s popisa.", the block's select
+    empty or not posted at all), an exercise that is not in the library, or
+    no number ("Nepoznata vježba."), a set's number read_sets refuses
+    ("Neispravan broj."), more than 12 sets in a block ("Najviše 12
+    serija."), more than 15 exercises ("Najviše 15 vježbi."; 15 go)."""
+    ex = library("Potisak s klupe")
+    bench = ex["Potisak s klupe"]
+    assert refused({"ex_0": "", "reps_0_1": "8", "kg_0_1": ""}) == "Odaberi vježbu s popisa."
+    assert refused({"reps_3_1": "", "kg_3_1": "20"}) == "Odaberi vježbu s popisa."
+    assert refused({**block(0, bench, (5, 80)), **block(1, "", (5, 80))}) == "Odaberi vježbu s popisa."
+    assert refused(block(0, bench + 1000, (8, 20))) == "Nepoznata vježba."
+    assert refused(block(0, "abc", (8, 20))) == "Nepoznata vježba."
+    assert refused(block(0, "1e3", (8, 20))) == "Nepoznata vježba."
+    for reps, kg in (("-1", ""), ("8", "20,3"), ("8", "501"), ("1000", ""), ("osam", ""), ("8", "2.25")):
+        assert refused(block(0, bench, (reps, kg))) == "Neispravan broj.", (reps, kg)
+    assert refused(block(0, bench, *[(5, 20)] * 13)) == "Najviše 12 serija."
+    assert len(db.read_log(block(0, bench, *[(5, 20)] * 12))[0]["sets"]) == 12
+    fifteen = {k: v for n in range(15) for k, v in block(n, bench, (5, 20)).items()}
+    assert len(db.read_log(fifteen)) == 15
+    assert refused({**fifteen, **block(15, bench, (5, 20))}) == "Najviše 15 vježbi."
+    assert len(db.read_log({**fifteen, **block(15, bench, ("", ""))})) == 15      # an empty sixteenth is dropped
+
+
+def test_an_osvrt_logs_its_exercises_for_the_client_and_the_trainer():
+    """"Ispuni osvrt" with two exercises: stored with the osvrt, in their
+    order; the client's diary row says "2 vježbe" under the comment and
+    folds their sets under "Serije" ("Potisak s klupe: 6 × 90 kg · 5 × 92,5
+    kg", "Zgibovi: 9"), the trainer's view too. The form carries its
+    exercise log empty and hidden (the script builds its blocks: no select,
+    no row on the page), and the page the library once, as JSON in the
+    alphabet's order ([id, name, tags], escaped: a name with </script> in
+    it closes nothing), and the block the script clones, with no library in
+    it. The trainer's view has none of it."""
+    ivan = make_user("ivan@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    ex = library(("Zgibovi", "leđa"), ("Potisak s klupe", "prsa, šipka"), ("Čučanj </script><b> 'x' & \"y\"", "noge"))
+    bench, pull, odd = ex["Potisak s klupe"], ex["Zgibovi"], ex["Čučanj </script><b> 'x' & \"y\""]
+    sid = attended_session(ivan)
+    ci = client_for("ivan@test.local")
+    page = ci.get("/karton").text
+    form = page.split(f'action="/karton/feedback/{sid}"')[1].split("</form>")[0]
+    assert (f'<fieldset class="xl" data-xl="fb-{sid}" data-log=\'[]\' hidden>' in form
+            and "<legend>Vježbe (neobavezno)</legend>" in form and HINT in form
+            and '<div class="xl-blocks"></div>' in form
+            and '<button type="button" class="act xl-add">+ Dodaj vježbu</button>' in form)
+    assert not re.search(r'name="(ex|reps|kg)_', form) and 'name="log"' not in form    # no block, no log=1
+    assert {n for n in re.findall(r'<select id="[^"]+" name="([^"]+)"', page)} == {"effort", "feeling"}
+    assert library_json(page) == [[odd, "Čučanj </script><b> 'x' & \"y\"", "noge"],
+                                  [bench, "Potisak s klupe", "prsa, šipka"], [pull, "Zgibovi", "leđa"]]
+    template = page.split('<template id="ex-block">')[1].split("</template>")[0]
+    assert "<select" not in template and "<option" not in template and "Potisak" not in template
+    assert '<input type="hidden" value="">' in template and '<p class="xb-gone" hidden></p>' in template
+    assert template.count('data-f="reps"') == 3 and template.count('data-f="kg"') == 3
+
+    r = ci.post(f"/karton/feedback/{sid}", data={"effort": "7", "feeling": "dobro", "note": "Dobar dan.", **LOG,
+                                                  **block(0, bench, (6, "90"), (5, "92,5")), **block(1, pull, (9, ""))},
+                follow_redirects=False)
+    assert location(r) == "/karton?ok=Osvrt je spremljen."
+    assert [x[5] for x in stored(ivan)] == [[(bench, "Potisak s klupe", [{"reps": 6, "kg": 90.0}, {"reps": 5, "kg": 92.5}]),
+                                             (pull, "Zgibovi", [{"reps": 9, "kg": 0.0}])]]
+    [log] = db.training_logs(ivan)
+    assert log.exercise_count == 2 and log.lines() == [("Potisak s klupe", ["6 × 90 kg", "5 × 92,5 kg"]), ("Zgibovi", ["9"])]
+    trainer = client_for("trener@test.local").get(f"/karton/{ivan}").text
+    for page in (ci.get("/karton").text, trainer):
+        row = read_part(entry(page, log.id))
+        assert "<p>Dobar dan.</p>" in row and '<div class="hint le-sub le-ex">2 vježbe</div>' in row
+        assert row.index("<p>Dobar dan.</p>") < row.index("2 vježbe") < row.index("<summary>Serije</summary>")
+        assert sets_lines(row) == ["Potisak s klupe: 6 × 90 kg · 5 × 92,5 kg", "Zgibovi: 9"]
+        assert "Trening izvan termina" not in row and "Grupni trening ·" in row
+    assert ("<fieldset" not in trainer and 'id="library-json"' not in trainer        # he writes nothing here
+            and '<template id="ex-block">' not in trainer)
+
+
+def test_the_edit_carries_its_log_as_data_and_replaces_it():
+    """An osvrt's edit form carries its exercises as data for the script to
+    build its blocks (data-log: each exercise's id, its name as logged,
+    `gone` false, its sets), not as markup: no block is rendered. Saving
+    with log=1 (what the script posts) replaces the whole log: a block
+    removed is gone, a set changed is changed. A termin's date stays
+    whatever is posted. An exercise deleted from the library since is
+    `gone` (its block: nothing picked, a line naming it); saved as the
+    script would post it (no exercise, its sets) it is refused and the log
+    stays. log=1 with no block empties the log, and the row then shows
+    neither the count nor "Serije"."""
+    ivan = make_user("ivan@test.local")
+    ex = library("Potisak s klupe", "Zgibovi", "Iskorak 'stražnji' </b>")
+    bench, pull, lunge = ex["Potisak s klupe"], ex["Zgibovi"], ex["Iskorak 'stražnji' </b>"]
+    sid = attended_session(ivan, hours_ago=30)
+    db.add_session_feedback(ivan, sid, 7, None, "Prvi.",
+                            sets=[logged(bench, "Potisak s klupe", (6, 90), (5, 92.5)), logged(pull, "Zgibovi", (9, 0))])
+    [log] = db.training_logs(ivan)
+    ci = client_for("ivan@test.local")
+    page = ci.get("/karton").text
+    assert data_log(page, f"ed-{log.id}") == [
+        {"exercise_id": bench, "name": "Potisak s klupe", "gone": False, "sets": [{"reps": 6, "kg": 90.0}, {"reps": 5, "kg": 92.5}]},
+        {"exercise_id": pull, "name": "Zgibovi", "gone": False, "sets": [{"reps": 9, "kg": 0.0}]}]
+    form = page.split(f'action="/karton/log/{log.id}/edit"')[1].split("</form>")[0]
+    assert not re.search(r'name="(ex|reps|kg)_', form) and 'name="day"' not in form   # no block; a termin's date is a fact
+
+    r = ci.post(f"/karton/log/{log.id}/edit", data={"effort": "8", "note": "Drugi.", "day": "2024-01-01", **LOG,
+                                                     **block(1, pull, (10, ""), (8, "5"))}, follow_redirects=False)
+    assert location(r) == f"/karton?ok=Osvrt je spremljen.#log-{log.id}"
+    assert stored(ivan) == [(sid, log.date, 8, None, "Drugi.", [(pull, "Zgibovi", [{"reps": 10, "kg": 0.0}, {"reps": 8, "kg": 5.0}])])]
+
+    db.update_training_log(log.id, ivan, 8, None, "Drugi.", sets=[logged(lunge, "Iskorak 'stražnji' </b>", (10, 20))])
+    db.delete_exercise(lunge)
+    page = ci.get("/karton").text
+    assert data_log(page, f"ed-{log.id}") == [
+        {"exercise_id": lunge, "name": "Iskorak 'stražnji' </b>", "gone": True, "sets": [{"reps": 10, "kg": 20.0}]}]
+    r = ci.post(f"/karton/log/{log.id}/edit", data={"effort": "8", "note": "Drugi.", **LOG, **block(0, "", (10, "20"))},
+                follow_redirects=False)
+    assert location(r) == "/karton?error=Odaberi vježbu s popisa."
+    assert stored(ivan)[0][5] == [(lunge, "Iskorak 'stražnji' </b>", [{"reps": 10, "kg": 20.0}])]    # the log stays
+    row = read_part(entry(ci.get("/karton").text, log.id))
+    assert sets_lines(row) == ["Iskorak 'stražnji' </b>: 10 × 20 kg"]                       # the snapshot's name
+    r = ci.post(f"/karton/log/{log.id}/edit", data={"effort": "8", "note": "Drugi.", **LOG}, follow_redirects=False)
+    assert "ok=" in r.headers["location"] and stored(ivan)[0][5] == []
+    row = read_part(entry(ci.get("/karton").text, log.id))
+    assert "le-ex" not in row and "Serije" not in row
+
+
+def test_a_form_without_the_script_logs_no_exercise_and_keeps_a_log():
+    """Without the page's script there is no exercise block and no log=1,
+    and the routes read no block, whatever the form holds: a termin's osvrt
+    and a training outside a termin are stored with no exercise (their
+    blocks ignored, even one the log would refuse), and an edit changes
+    napor, osjećaj and komentar and keeps the log it has (a page that could
+    not show the log never empties it)."""
+    ivan = make_user("ivan@test.local")
+    ex = library("Potisak s klupe")
+    bench = ex["Potisak s klupe"]
+    sid = attended_session(ivan)
+    ci = client_for("ivan@test.local")
+    r = ci.post(f"/karton/feedback/{sid}", data={"effort": "6", "note": "Bez skripte.",
+                                                  **block(0, bench, (8, "20")), **block(1, "", (5, "x"))},
+                follow_redirects=False)
+    assert location(r) == "/karton?ok=Osvrt je spremljen."
+    r = ci.post("/karton/trening", data={"effort": "5", "day": config.today().isoformat(), **block(0, bench, (8, "20"))},
+                follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    assert sorted((x[0] is None, x[5]) for x in stored(ivan)) == [(False, []), (True, [])]
+    osvrt = next(x for x in db.training_logs(ivan) if x.session_id == sid)
+    db.update_training_log(osvrt.id, ivan, 6, None, "Bez skripte.", sets=[logged(bench, "Potisak s klupe", (6, 90))])
+    r = ci.post(f"/karton/log/{osvrt.id}/edit", data={"effort": "9", "feeling": "odlicno", "note": "Promijenjeno.",
+                                                       **block(0, bench, (1, "200"))}, follow_redirects=False)
+    assert location(r) == f"/karton?ok=Osvrt je spremljen.#log-{osvrt.id}"
+    assert [x for x in stored(ivan) if x[0] == sid] == [
+        (sid, osvrt.date, 9, "odlicno", "Promijenjeno.", [(bench, "Potisak s klupe", [{"reps": 6, "kg": 90.0}])])]
+
+
+def test_a_training_outside_a_termin():
+    """"+ Dodaj trening izvan termina": a form above the diary's rows (the
+    date today by default, never after it, not before 2020), napor (needed),
+    osjećaj, a comment and the exercises; POST /karton/trening stores a row
+    with no termin on that date and comes back to it. A date in the future,
+    before 2020-01-01, empty or no date stores nothing ("Neispravan
+    datum."). Its row says "Trening izvan termina" where a termin's title
+    would be, its exercises as any osvrt's, for the client and the trainer;
+    its edit form moves its date (by the same rules) and replaces its log;
+    it is deleted as any osvrt. The termin owed an osvrt is still owed."""
+    ivan = make_user("ivan@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    ex = library("Potisak s klupe", "Zgibovi")
+    bench, pull = ex["Potisak s klupe"], ex["Zgibovi"]
+    sid = attended_session(ivan)
+    ci = client_for("ivan@test.local")
+    today = config.today()
+    earlier = today - timedelta(days=22)
+    page = ci.get("/karton").text
+    new = " ".join(page.split('<div class="log-new" id="trening-novi">')[1].split("</form>")[0].split())
+    assert page.index('id="trening-novi"') < page.index('class="log-entry')         # above the diary's rows
+    assert ('<button type="button" class="act" onclick="qmtToggleForm(\'trening-novi\')">+ Dodaj trening izvan termina'
+            '</button>') in new
+    assert '<form class="le-edit" method="post" action="/karton/trening">' in new
+    assert (f'<input id="nt-day" type="date" name="day" value="{today.isoformat()}" '
+            f'min="2020-01-01" max="{today.isoformat()}" required>') in new
+    assert '<select id="nt-effort" name="effort" required>' in new
+    assert '<fieldset class="xl" data-xl="nt" data-log=\'[]\' hidden>' in new
+
+    for day in ((today + timedelta(days=1)).isoformat(), "2019-12-31", "", "23.11.2026", "2026-02-30"):
+        r = ci.post("/karton/trening", data={"effort": "6", "day": day, **LOG, **block(0, bench, (8, 80))},
+                    follow_redirects=False)
+        assert location(r) == "/karton?error=Neispravan datum.", day
+    r = ci.post("/karton/trening", data={"effort": "6", **LOG, **block(0, bench, (8, 80))}, follow_redirects=False)
+    assert location(r) == "/karton?error=Neispravan datum."
+    r = ci.post("/karton/trening", data={"effort": "6", "day": earlier.isoformat(), **LOG, **block(0, "", (8, 80))},
+                follow_redirects=False)
+    assert location(r) == "/karton?error=Odaberi vježbu s popisa."
+    r = ci.post("/karton/trening", data={"effort": "11", "day": earlier.isoformat()}, follow_redirects=False)
+    assert location(r) == "/karton?error=Neispravan osvrt."
+    assert db.training_logs(ivan) == []
+
+    r = ci.post("/karton/trening", data={"effort": "6", "feeling": "dobro", "note": "Sam u teretani.",
+                                          "day": "2020-01-01", **LOG, **block(0, bench, (8, "80"))}, follow_redirects=False)
+    [log] = db.training_logs(ivan)
+    assert location(r) == f"/karton?ok=Trening je spremljen.#log-{log.id}"
+    assert stored(ivan) == [(None, date(2020, 1, 1), 6, "dobro", "Sam u teretani.",
+                             [(bench, "Potisak s klupe", [{"reps": 8, "kg": 80.0}])])]
+    assert [x.id for x in db.pending_feedback(ivan)] == [sid]
+    for page in (ci.get("/karton").text, client_for("trener@test.local").get(f"/karton/{ivan}").text):
+        row = read_part(entry(page, log.id))
+        assert row.index('<div class="le-kicker">Trening izvan termina</div>') < row.index('<span class="when">')
+        assert '<span class="when">sri 1.1.2020.</span>' in row and "Grupni trening" not in row
+        assert '<div class="hint le-sub le-ex">1 vježba</div>' in row and sets_lines(row) == ["Potisak s klupe: 8 × 80 kg"]
+    edit = " ".join(entry(ci.get("/karton").text, log.id).split('<form class="le-edit"')[1].split())
+    assert (f'<input id="ed-day-{log.id}" type="date" name="day" value="2020-01-01" '
+            f'min="2020-01-01" max="{today.isoformat()}" required>') in edit
+    assert 'data-confirm-title="Obrisati trening?"' in entry(ci.get("/karton").text, log.id)
+
+    r = ci.post(f"/karton/log/{log.id}/edit", data={"effort": "6", "day": "2030-01-01", **LOG, **block(0, bench, (8, 80))},
+                follow_redirects=False)
+    assert location(r) == "/karton?error=Neispravan datum." and stored(ivan)[0][1] == date(2020, 1, 1)
+    r = ci.post(f"/karton/log/{log.id}/edit", data={"effort": "5", "day": earlier.isoformat(), "note": "Pomaknut.",
+                                                     **LOG, **block(0, pull, (9, ""))}, follow_redirects=False)
+    assert "ok=" in r.headers["location"]
+    assert stored(ivan) == [(None, earlier, 5, None, "Pomaknut.", [(pull, "Zgibovi", [{"reps": 9, "kg": 0.0}])])]
+    r = ci.post(f"/karton/log/{log.id}/delete", follow_redirects=False)
+    assert location(r) == "/karton?ok=Zapis je obrisan." and db.training_logs(ivan) == []
+    assert [x.id for x in db.pending_feedback(ivan)] == [sid]
+
+
+def test_a_refused_log_stores_nothing():
+    """A refusal comes back to the karton with its sentence and stores
+    nothing, the osvrt's fields included: sets with no exercise, an
+    exercise not in the library, a bad number; the termin is still owed its
+    osvrt. Refused on an edit, the osvrt stays as it was."""
+    ivan = make_user("ivan@test.local")
+    ex = library("Potisak s klupe")
+    bench = ex["Potisak s klupe"]
+    sid = attended_session(ivan)
+    ci = client_for("ivan@test.local")
+    for form, sentence in ((block(0, "", (8, "20")), "Odaberi vježbu s popisa."),
+                           (block(0, bench + 99, (8, "20")), "Nepoznata vježba."),
+                           (block(0, bench, (8, "20,25")), "Neispravan broj.")):
+        r = ci.post(f"/karton/feedback/{sid}", data={"effort": "7", "note": "Ne sprema se.", **LOG, **form},
+                    follow_redirects=False)
+        assert location(r) == f"/karton?error={sentence}"
+    assert db.training_logs(ivan) == [] and [x.id for x in db.pending_feedback(ivan)] == [sid]
+    ci.post(f"/karton/feedback/{sid}", data={"effort": "7", "note": "Prvi.", **LOG, **block(0, bench, (8, "20"))})
+    [log] = db.training_logs(ivan)
+    before = stored(ivan)
+    r = ci.post(f"/karton/log/{log.id}/edit", data={"effort": "3", "note": "Drugi.", **LOG, **block(0, bench, (8, "x"))},
+                follow_redirects=False)
+    assert location(r) == "/karton?error=Neispravan broj." and stored(ivan) == before
+
+
+# ---------- the estimated maxes (23.11.2026) ----------
+
+def test_epley_and_the_half_kilo():
+    """Epley's formula, kg × (1 + reps / 30), worked exactly: 90 × 6 = 108;
+    a single is its weight, 100 × 1 = 100 (the formula is for two reps or
+    more). The value shown is to the nearest 0.5 kg, a quarter rounded up:
+    40 × 8 = 50,67 → 50,5; 22,5 × 9 = 29,25 → 29,5; 20 × 10 = 26,67 → 26,5;
+    10 × 10 = 13,33 → 13,5."""
+    for kg, reps, exact, shown in ((90, 6, 108, 108.0), (100, 1, 100, 100.0), (40, 8, 50.666, 50.5),
+                                   (22.5, 9, 29.25, 29.5), (20, 10, 26.666, 26.5), (10, 10, 13.333, 13.5),
+                                   (40, 12, 56, 56.0), (100, 2, 106.666, 106.5)):
+        assert abs(float(db.epley(kg, reps)) - exact) < 0.001, (kg, reps)
+        assert db._to_half(db.epley(kg, reps)) == shown, (kg, reps)
+
+
+def online_pass(uid: int, exercises: dict[str, int], days_ago: int) -> int:
+    """A finished online pass of uid's, `days_ago` days back: its day holds
+    Goblet čučanj (swapped for Prednji čučanj, one of its swaps: 8 × 30 kg
+    saved under the swap), Čučanj (15 reps, no weight) and Plank (60 s).
+    Its id."""
+    pid = db.create_program("Online", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    goblet, squat, plank = (db.add_day_item(did, exercises[n], "trening") for n in ("Goblet čučanj", "Čučanj", "Plank"))
+    db.update_exercise(exercises["Goblet čučanj"], "Goblet čučanj", "", "", "", {exercises["Prednji čučanj"]})
+    log = db.start_pass(uid, db.get_program(pid), db.get_day(did))
+    db.swap_exercise(log.id, uid, db.get_day_item(goblet), exercises["Prednji čučanj"])
+    db.save_sets(log.id, uid, db.get_day_item(goblet), [{"reps": 8, "kg": 30.0}], db.exercise(exercises["Prednji čučanj"]))
+    db.save_sets(log.id, uid, db.get_day_item(squat), [{"reps": 15, "kg": 0.0}], db.exercise(exercises["Čučanj"]))
+    db.save_sets(log.id, uid, db.get_day_item(plank), [{"seconds": 60}], db.exercise(exercises["Plank"]))
+    db.finish_pass(log.id, uid, 6, None, "")
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("UPDATE workout_logs SET started_at = started_at - make_interval(days => :d), "
+                             "finished_at = finished_at - make_interval(days => :d) WHERE id = :i"),
+                     {"d": days_ago, "i": log.id})
+    return log.id
+
+
+def test_estimated_maxes_best_set_per_exercise_gym_and_online():
+    """db.estimated_maxes over a client's gym logs and finished online
+    passes, set by set: the best one-rep max per exercise (Epley; a single
+    its weight), on a tie the later day; a weight with more than 12 reps is
+    not counted (Potisak's 80 × 15 would be 120), nor a timed set (Plank),
+    nor a pass in progress (Potisak's 200 × 5), nor another client's sets;
+    an exercise with only such sets has no max (Veslanje). A set with no
+    weight is a bodyweight record, the most reps (Zgibovi: 11), kept only
+    for an exercise with no one-rep max (Sklek's 10 × 10 kg beats its 20
+    bodyweight reps). An online entry counts under the exercise done: the
+    swapped one (Prednji čučanj), never the planned one (Goblet čučanj keeps
+    its gym max). Named as the library names the exercise now (renamed:
+    the new name), or, deleted, as it was logged; in the alphabet's order
+    (Čučanj between Biceps and Dizanje, not after Zgibovi)."""
+    ivan = make_user("ivan@test.local")
+    ana = make_user("ana@test.local")
+    ex = library("Potisak s klupe", "Rameni potisak", "Zgibovi", "Sklek", "Veslanje", "Goblet čučanj", "Prednji čučanj",
+                 "Plank", "Biceps pregib", "Čučanj", "Dizanje na prste", "Mrtvo dizanje")
+    assert db.estimated_maxes(ivan) == []
+    today = config.today()
+    db.add_training_log(ivan, today - timedelta(days=10), 6, "", sets=[
+        logged(ex["Potisak s klupe"], "Potisak s klupe", (6, 90), (1, 100), (15, 80)),
+        logged(ex["Rameni potisak"], "Rameni potisak", (8, 40)),
+        logged(ex["Zgibovi"], "Zgibovi", (9, 0)),
+        logged(ex["Sklek"], "Sklek", (20, 0)),
+        logged(ex["Veslanje"], "Veslanje", (15, 30)),
+        logged(ex["Goblet čučanj"], "Goblet čučanj", (10, 20)),
+        logged(ex["Mrtvo dizanje"], "Mrtvo dizanje", (1, 100), (0, 120))])
+    sid = attended_session(ivan, hours_ago=3 * 24)
+    db.add_session_feedback(ivan, sid, 7, None, "", sets=[
+        logged(ex["Rameni potisak"], "Rameni potisak", (8, 40)),                       # a tie: the later day wins
+        logged(ex["Zgibovi"], "Zgibovi", (7, 0), (11, 0)),
+        logged(ex["Sklek"], "Sklek", (10, 10)),
+        logged(ex["Biceps pregib"], "Biceps pregib", (9, 22.5)),
+        logged(ex["Dizanje na prste"], "Dizanje na prste", (12, 40))])
+    termin_day = db.training_logs(ivan)[0].date
+    pass_id = online_pass(ivan, ex, days_ago=5)
+    pass_day = db.get_pass(pass_id, ivan).date
+    pid = db.create_program("Snaga", None, "pocetna", "cijelo")                         # a pass in progress: not counted
+    did = db.add_day(pid)
+    it = db.add_day_item(did, ex["Potisak s klupe"], "trening")
+    open_one = db.start_pass(ivan, db.get_program(pid), db.get_day(did))
+    db.save_sets(open_one.id, ivan, db.get_day_item(it), [{"reps": 5, "kg": 200.0}], db.exercise(ex["Potisak s klupe"]))
+    db.add_training_log(ana, today, 9, "", sets=[logged(ex["Potisak s klupe"], "Potisak s klupe", (5, 150))])
+    db.update_exercise(ex["Rameni potisak"], "Rameni potisak s bučicama", "", "", "")
+    db.delete_exercise(ex["Biceps pregib"])
+
+    got = [(m.name, m.kind, m.value, m.reps, m.kg, m.on, m.source) for m in db.estimated_maxes(ivan)]
+    assert got == [
+        ("Biceps pregib", "1rm", 29.5, 9, 22.5, termin_day, "gym"),
+        ("Čučanj", "reps", 15, 15, 0.0, pass_day, "online"),
+        ("Dizanje na prste", "1rm", 56.0, 12, 40.0, termin_day, "gym"),
+        ("Goblet čučanj", "1rm", 26.5, 10, 20.0, today - timedelta(days=10), "gym"),
+        ("Mrtvo dizanje", "1rm", 100.0, 1, 100.0, today - timedelta(days=10), "gym"),
+        ("Potisak s klupe", "1rm", 108.0, 6, 90.0, today - timedelta(days=10), "gym"),
+        ("Prednji čučanj", "1rm", 38.0, 8, 30.0, pass_day, "online"),
+        ("Rameni potisak s bučicama", "1rm", 50.5, 8, 40.0, termin_day, "gym"),
+        ("Sklek", "1rm", 13.5, 10, 10.0, termin_day, "gym"),
+        ("Zgibovi", "reps", 11, 11, 0.0, termin_day, "gym")]
+    words = {m.name: (m.value_text, m.set_text, m.source_text) for m in db.estimated_maxes(ivan)}
+    assert words["Potisak s klupe"] == ("108 kg", "90 kg × 6", "dvorana")
+    assert words["Rameni potisak s bučicama"] == ("50,5 kg", "40 kg × 8", "dvorana")
+    assert words["Biceps pregib"] == ("29,5 kg", "22,5 kg × 9", "dvorana")
+    assert words["Zgibovi"] == ("11 ponavljanja", "11 ponavljanja", "dvorana")
+    assert words["Čučanj"] == ("15 ponavljanja", "15 ponavljanja", "online")
+    assert [m.name for m in db.estimated_maxes(ana)] == ["Potisak s klupe"]
+
+
+def maxes_section(page: str) -> str:
+    return page.split('<section class="card maxes" aria-labelledby="maxes-h">')[1].split("</section>")[0]
+
+
+def maxes_rows(page: str) -> list[tuple[str, str, str]]:
+    """The maxes table's rows as a reader reads them: (Vježba, Procjena, Iz)."""
+    rows = re.findall(r'<tr>\s*<th scope="row">([^<]*)</th>\s*<td class="mx-val">([^<]*)</td>\s*<td>(.*?)</td>\s*</tr>',
+                      maxes_section(page), re.S)
+    return [(unescape(a), unescape(b), unescape(re.sub(r"<[^>]+>", "", c))) for a, b, c in rows]
+
+
+def test_the_karton_shows_the_maxes_to_the_client_and_the_trainer():
+    """"Procijenjeni maksimumi", a card between the upitnik block and the
+    diary, for the client and the trainer alike: the hint (the formula, to
+    12 reps, the bodyweight rule), then Vježba · Procjena · Iz ("90 kg × 6 ·
+    12.11.2026. dvorana"; a bodyweight row's reps are its estimate, its Iz
+    the date and the source alone, "12.11.2026. dvorana"). With no set logged:
+    the hint and "Još nema serija — upiši vježbe uz osvrt treninga." (the
+    client), "Još nema serija." (the trainer)."""
+    ivan = make_user("ivan@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    ex = library("Potisak s klupe", "Zgibovi")
+    ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
+    hint = ('<p class="hint mx-hint">Iz najbolje serije svake vježbe, Epleyevom formulom (kg × (1 + ponavljanja / 30)), '
+            'do 12 ponavljanja. Vježbe bez utega: najviše ponavljanja.</p>')
+    for page, empty in ((ci.get("/karton").text, "Još nema serija — upiši vježbe uz osvrt treninga."),
+                        (ct.get(f"/karton/{ivan}").text, "Još nema serija.")):
+        section = maxes_section(page)
+        assert '<h2 id="maxes-h">Procijenjeni maksimumi</h2>' in section and hint in section
+        assert f'<p class="mx-empty">{empty}</p>' in section and "<table>" not in section
+        assert page.index('<section class="upitnik') < page.index('class="card maxes"') < page.index('class="karton-grid"')
+    day = date(2026, 11, 12)
+    db.add_training_log(ivan, day, 7, "", sets=[logged(ex["Zgibovi"], "Zgibovi", (9, 0)),
+                                                logged(ex["Potisak s klupe"], "Potisak s klupe", (6, 90), (8, 80))])
+    expected = [("Potisak s klupe", "108 kg", "90 kg × 6 · 12.11.2026. dvorana"),
+                ("Zgibovi", "9 ponavljanja", "12.11.2026. dvorana")]
+    for page in (ci.get("/karton").text, ct.get(f"/karton/{ivan}").text):
+        assert maxes_rows(page) == expected
+        section = maxes_section(page)
+        assert ('<thead><tr><th scope="col">Vježba</th><th scope="col">Procjena</th><th scope="col">Iz</th></tr></thead>'
+                in section and "mx-empty" not in section)
+
+
+# ---------- the migration ----------
+
+def _migration(file: str):
+    path = pathlib.Path(__file__).parents[1] / "alembic" / "versions" / file
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return mod
+
+
+def _run(step) -> None:
+    """A revision's upgrade() or downgrade(), run for real on qmt_test."""
+    with db.engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        step()
+
+
+def _schema_diffs(table: str) -> list:
+    """What compare_metadata finds between qmt_test and the models about one table."""
+    from alembic.autogenerate import compare_metadata
+
+    def about(d):
+        d = d[0] if isinstance(d, list) else d
+        kind, obj = d[0], d[1]
+        if kind.startswith("modify_") or kind in ("add_column", "remove_column"):
+            return d[2]
+        if kind in ("add_table", "remove_table"):
+            return obj.name
+        if kind in ("add_fk", "remove_fk"):
+            return obj.parent.name
+        return obj.table.name
+
+    with db.engine.connect() as conn:
+        diffs = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+    return [d for d in diffs if about(d) == table]
+
+
+def _columns() -> dict[str, dict]:
+    return {c["name"]: c for c in sa_inspect(db.engine).get_columns("training_logs")}
+
+
+def test_the_sets_migration_adds_the_column_and_takes_it_away():
+    """f43e976906a1, run on qmt_test as before it (training_logs without
+    sets, an osvrt in it): the column as the model has it, Text, NOT NULL,
+    '[]' by default; the osvrt already there has an empty log, a row
+    inserted without one too, and a log is stored; downgrade drops the
+    column, the osvrt staying, and a second upgrade adds it again, empty."""
+    mig = _migration("f43e976906a1_training_logs_sets.py")
+    assert (mig.revision, mig.down_revision) == ("f43e976906a1", "dc22ce1ed7e6")
+    ivan = make_user("ivan@test.local")
+    ex = library("Potisak s klupe")
+    log_id = db.add_training_log(ivan, date(2026, 11, 20), 6, "Prije.")
+    with db.engine.begin() as conn:                                          # the table as before the revision
+        conn.execute(sa_text("ALTER TABLE training_logs DROP COLUMN sets"))
+    assert "sets" not in _columns()
+    _run(mig.upgrade)
+    assert _schema_diffs("training_logs") == []
+    col = _columns()["sets"]
+    assert not col["nullable"] and col["default"] == "'[]'::text"
+    assert stored(ivan) == [(None, date(2026, 11, 20), 6, None, "Prije.", [])]
+    with db.engine.begin() as conn:                                          # its default, a row as bare as can be
+        assert conn.execute(sa_text("INSERT INTO training_logs (user_id, date, note) VALUES (:u, '2026-11-21', '') "
+                                    "RETURNING sets"), {"u": ivan}).scalar_one() == "[]"
+    db.update_training_log(log_id, ivan, 6, None, "Prije.", sets=[logged(ex["Potisak s klupe"], "Potisak s klupe", (6, 90))])
+    assert db.estimated_maxes(ivan)[0].value == 108.0
+    _run(mig.downgrade)
+    assert "sets" not in _columns()
+    with db.engine.connect() as conn:
+        assert conn.execute(sa_text("SELECT effort, note FROM training_logs WHERE id = :i"), {"i": log_id}).one() == (6, "Prije.")
+    _run(mig.upgrade)
+    assert _schema_diffs("training_logs") == [] and [x[5] for x in stored(ivan)] == [[], []]
+
+
+# ---------- in a browser, on a phone ----------
+
+@pytest.fixture(scope="module")
+def server():
+    import uvicorn
+    srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="warning"))
+    th = threading.Thread(target=srv.run, daemon=True); th.start()
+    for _ in range(100):
+        try:
+            if httpx.get(f"http://127.0.0.1:{PORT}/healthz", timeout=1).status_code == 200:
+                break
+        except Exception:
+            time.sleep(0.1)
+    yield f"http://127.0.0.1:{PORT}"
+    srv.should_exit = True; th.join(timeout=5)
+
+
+OVERFLOW = "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
+# a form's exercise blocks as the page holds them: each block's number, the
+# combobox's text, the exercise picked (the hidden ex_<n>) and its name,
+# its rows' fields as name=value, whether "+ serija" shows, the list open,
+# the focus in the combobox, the line under it, a gone exercise's line
+BLOCKS = """form => [...document.querySelector(form).querySelectorAll('.xb')].map(b => {
+  const q = b.querySelector('[role="combobox"]'), l = b.querySelector('.cbx-list'), v = b.querySelector('input[type="hidden"]');
+  const gone = b.querySelector('.xb-gone');
+  return {n: b.dataset.n, typed: q ? q.value : null, chosen: v.value, field: v.name,
+          rows: [...b.querySelectorAll('tbody input')].map(i => i.name + '=' + i.value), more: !b.querySelector('.xb-add').hidden,
+          open: l ? !l.hidden : false, focused: document.activeElement === q,
+          error: (b.querySelector('.cbx-err') || {}).textContent || '', gone: gone.hidden ? '' : gone.textContent};
+})"""
+# a form's exercise log as a reader meets it: shown, "+ Dodaj vježbu" shown, log=1 in it
+XL = """form => { const xl = document.querySelector(form + ' fieldset.xl'), add = xl.querySelector('.xl-add');
+  return {shown: !xl.hidden && xl.offsetHeight > 0, add: !add.hidden && add.offsetHeight > 0,
+          log: (xl.querySelector('input[name="log"]') || {}).value || null}; }"""
+
+
+def _phone(browser, server: str, email: str):
+    """A 390px touch phone logged in as `email`: (context, page, errors)."""
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    pg = ctx.new_page(); errors: list[str] = []
+    pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
+    pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
+    pg.goto(server + "/login")
+    pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+    pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
+    pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+    return ctx, pg, errors
+
+
+def test_the_exercise_log_on_a_phone(server):
+    """At 390px, touch, ivan opens "Ispuni osvrt" on a finished termin: its
+    exercise log is shown by the script, empty, log=1 in it. "+ Dodaj
+    vježbu" adds a block, its combobox focused and its list open: "pot" and
+    Enter pick Potisak s klupe, two sets typed; a second block is added and
+    taken away ("Ukloni vježbu", the focus back on "+ Dodaj vježbu"); a
+    third (numbered 2: the gap stays) gets "zgib", Enter and "+ serija", a
+    fourth row. Spremi osvrt: the row says "2 vježbe", its "Serije" open on
+    a tap, the maxes say 108 kg and 10 ponavljanja (its Iz the date and
+    "dvorana" alone), beside the older osvrt's Iskorak, gone from the
+    library, under the name it was logged with. "Uredi" on that row builds
+    its blocks from the data:
+    each exercise in its box, its sets in the rows; the first taken away and
+    a set changed, Spremi replaces the log. An older osvrt whose exercise
+    has left the library builds its block with nothing picked and the line
+    naming it; its Spremi stops at "Odaberi vježbu s popisa.". A training
+    outside a termin with a set typed and no exercise is not sent either.
+    The page never scrolls sideways; no page errors. Without JavaScript
+    there is no exercise block (no select of the library on the page): an
+    osvrt's edit sends napor and komentar, and its log stays as it was."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    ivan = make_user("ivan@test.local")
+    ex = library(("Potisak s klupe", "prsa, šipka"), ("Zgibovi", "leđa, bodyweight"), ("Goblet čučanj", "noge, girja"),
+                 ("Plank", "core"), ("Iskorak", "noge"))
+    sid = attended_session(ivan)
+    older = attended_session(ivan, hours_ago=2 * 24)
+    db.add_session_feedback(ivan, older, 5, None, "Staro.", sets=[logged(ex["Iskorak"], "Iskorak", (10, 20))])
+    old_log = next(x.id for x in db.training_logs(ivan) if x.session_id == older)
+    db.delete_exercise(ex["Iskorak"])
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx, pg, errors = _phone(browser, server, "ivan@test.local")
+        pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle")
+        check(pg.evaluate(OVERFLOW) == 0, f"the karton overflows by {pg.evaluate(OVERFLOW)}px")
+        check(pg.locator("select:not([name=effort]):not([name=feeling])").count() == 0, "a select of the library is on the page")
+        form = f"#s-{sid} form.le-edit"
+        pg.tap(f"#s-{sid} button.act:has-text('Ispuni osvrt')")
+        check(pg.is_visible(form), "Ispuni osvrt did not open the form")
+        xl = pg.evaluate(XL, form)
+        check(xl == {"shown": True, "add": True, "log": "1"} and pg.evaluate(BLOCKS, form) == [],
+              f"the form's log at first: {xl}, {pg.evaluate(BLOCKS, form)}")
+        pg.select_option(f"#fb-effort-{sid}", "8")
+        pg.tap(f"{form} .xl-add")
+        st = pg.evaluate(BLOCKS, form)
+        check(len(st) == 1 and st[0]["n"] == "0" and st[0]["field"] == "ex_0" and st[0]["focused"] and st[0]["open"]
+              and st[0]["more"] and st[0]["rows"] == ["reps_0_1=", "kg_0_1=", "reps_0_2=", "kg_0_2=", "reps_0_3=", "kg_0_3="],
+              f"+ Dodaj vježbu added: {st}")
+        pg.keyboard.type("pot")
+        pg.keyboard.press("Enter")
+        st = pg.evaluate(BLOCKS, form)
+        check(st[0]["chosen"] == str(ex["Potisak s klupe"]) and st[0]["typed"] == "Potisak s klupe" and not st[0]["open"],
+              f"'pot' and Enter picked: {st[0]}")
+        pg.fill(f"{form} input[name=reps_0_1]", "6"); pg.fill(f"{form} input[name=kg_0_1]", "90")
+        pg.fill(f"{form} input[name=reps_0_2]", "5"); pg.fill(f"{form} input[name=kg_0_2]", "92.5")
+        pg.tap(f"{form} .xl-add")
+        pg.tap(f"{form} .xl-hint")                                          # a tap outside its open list shuts it …
+        pg.tap(f'{form} .xb[data-n="1"] .xb-x')                             # … and the block is taken away again
+        check([b["n"] for b in pg.evaluate(BLOCKS, form)] == ["0"]
+              and pg.evaluate(f"() => document.activeElement === document.querySelector('{form} .xl-add')"),
+              f"Ukloni vježbu left: {pg.evaluate(BLOCKS, form)}")
+        pg.tap(f"{form} .xl-add")
+        pg.keyboard.type("zgib")
+        pg.keyboard.press("Enter")
+        pg.tap(f'{form} .xb[data-n="2"] .xb-add')
+        st = pg.evaluate(BLOCKS, form)
+        check([b["n"] for b in st] == ["0", "2"] and st[1]["chosen"] == str(ex["Zgibovi"])
+              and st[1]["rows"][-2:] == ["reps_2_4=", "kg_2_4="], f"zgib, Enter and + serija: {st}")
+        pg.fill(f"{form} input[name=reps_2_1]", "9"); pg.fill(f"{form} input[name=reps_2_4]", "10")
+        pg.evaluate("() => document.activeElement.blur()")
+        check(pg.evaluate(OVERFLOW) == 0, f"the open form overflows by {pg.evaluate(OVERFLOW)}px")
+        with pg.expect_navigation():
+            pg.tap(f"{form} button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        logs = {x.session_id: x for x in db.training_logs(ivan)}
+        new = logs.get(sid)
+        check(new is not None and new.lines() == [("Potisak s klupe", ["6 × 90 kg", "5 × 92,5 kg"]), ("Zgibovi", ["9", "10"])],
+              f"stored: {new and new.lines()}")
+        if new:
+            row = f"#log-{new.id}"
+            check((pg.text_content(f"{row} .le-ex") or "").strip() == "2 vježbe", "the row does not say 2 vježbe")
+            pg.tap(f"{row} details.sets > summary")
+            pg.wait_for_timeout(200)
+            lines = pg.locator(f"{row} details.sets li").all_text_contents()
+            check(pg.locator(f"{row} details.sets").evaluate("d => d.open")
+                  and lines == ["Potisak s klupe: 6 × 90 kg · 5 × 92,5 kg", "Zgibovi: 9 · 10"], f"Serije: {lines}")
+            mx = pg.evaluate("() => [...document.querySelectorAll('.maxes tbody tr')].map(tr => [...tr.cells].map(c => c.textContent.replace(/\\s+/g, ' ').trim()))")
+            day = new.date.strftime("%-d.%-m.%Y.")
+            gone_day = next(x.date for x in db.training_logs(ivan) if x.id == old_log).strftime("%-d.%-m.%Y.")
+            check(mx == [["Iskorak", "26,5 kg", f"20 kg × 10 · {gone_day} dvorana"],          # gone from the library: as logged
+                         ["Potisak s klupe", "108 kg", f"90 kg × 6 · {day} dvorana"], ["Zgibovi", "10 ponavljanja", f"{day} dvorana"]],
+                  f"the maxes: {mx}")
+            check(pg.evaluate(OVERFLOW) == 0, f"the karton with the log overflows by {pg.evaluate(OVERFLOW)}px")
+            # its edit: the blocks built from the data, the exercise in the box, the sets in the rows
+            edit = f"{row} form.le-edit"
+            pg.tap(f"{row} button.act:has-text('Uredi')")
+            st = pg.evaluate(BLOCKS, edit)
+            check([(b["n"], b["typed"], b["chosen"], b["rows"]) for b in st] == [
+                ("0", "Potisak s klupe", str(ex["Potisak s klupe"]),
+                 ["reps_0_1=6", "kg_0_1=90", "reps_0_2=5", "kg_0_2=92.5", "reps_0_3=", "kg_0_3="]),
+                ("1", "Zgibovi", str(ex["Zgibovi"]), ["reps_1_1=9", "kg_1_1=", "reps_1_2=10", "kg_1_2=", "reps_1_3=", "kg_1_3="])]
+                  and pg.evaluate(XL, edit)["log"] == "1", f"the edit's blocks: {st}")
+            pg.tap(f'{edit} .xb[data-n="0"] .xb-x')
+            pg.fill(f"{edit} input[name=reps_1_1]", "12")
+            with pg.expect_navigation():
+                pg.tap(f"{edit} button[type=submit]")
+            pg.wait_for_load_state("networkidle")
+            saved = next((x for x in db.training_logs(ivan) if x.session_id == sid), None)
+            check(saved is not None and saved.lines() == [("Zgibovi", ["12", "10"])], f"the edit stored {saved and saved.lines()}")
+        # an exercise gone from the library: nothing picked, the line naming it, Spremi stops
+        old = f"#log-{old_log} form.le-edit"
+        pg.tap(f"#log-{old_log} button.act:has-text('Uredi')")
+        st = pg.evaluate(BLOCKS, old)
+        check(len(st) == 1 and st[0]["chosen"] == "" and st[0]["typed"] == "" and st[0]["rows"][:2] == ["reps_0_1=10", "kg_0_1=20"]
+              and st[0]["gone"] == "„Iskorak” više nije u bazi vježbi — odaberi drugu vježbu ili ukloni ovu.",
+              f"the gone exercise's block: {st}")
+        url = pg.url
+        pg.tap(f"{old} button[type=submit]")
+        pg.wait_for_timeout(400)
+        st = pg.evaluate(BLOCKS, old)
+        check(pg.url == url and st[0]["error"] == "Odaberi vježbu s popisa." and st[0]["focused"],
+              f"Spremi with the gone exercise: {pg.url}, {st}")
+        check([x.lines() for x in db.training_logs(ivan) if x.id == old_log] == [[("Iskorak", ["10 × 20 kg"])]],
+              "the gone exercise's log changed")
+        pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle")
+        pg.tap("#trening-novi > button.act")
+        pg.select_option("#nt-effort", "5")
+        pg.tap("#trening-novi .xl-add")
+        pg.fill("#trening-novi input[name=reps_0_1]", "8")
+        url = pg.url
+        pg.tap("#trening-novi button[type=submit]")
+        pg.wait_for_timeout(400)
+        st = pg.evaluate(BLOCKS, "#trening-novi form")
+        check(pg.url == url and len(db.training_logs(ivan)) == 2, f"a set with no exercise was sent: {pg.url}")
+        check(st[0]["error"] == "Odaberi vježbu s popisa." and st[0]["focused"], f"no word at Spremi: {st}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the training outside a termin overflows by {pg.evaluate(OVERFLOW)}px")
+        problems += errors
+        ctx.close()
+
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, java_script_enabled=False)
+        pg = ctx.new_page()
+        pg.goto(server + "/login")
+        pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        with pg.expect_navigation():
+            pg.click("main button[type=submit]")
+        pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle")
+        saved = next((x for x in db.training_logs(ivan) if x.session_id == sid), None)
+        if saved:
+            edit = f"#log-{saved.id} form.le-edit"
+            pg.evaluate(f"() => document.getElementById('log-{saved.id}').classList.add('editing')")   # as its toggle opens it
+            check(pg.is_visible(edit) and not pg.is_visible(f"{edit} fieldset.xl") and pg.locator(f"{edit} .xb").count() == 0
+                  and pg.locator("select:not([name=effort]):not([name=feeling])").count() == 0
+                  and pg.locator(f'{edit} input[name="log"]').count() == 0, "without JS an exercise block or log=1 is there")
+            pg.select_option(f"#ed-effort-{saved.id}", "3")
+            pg.fill(f"#ed-note-{saved.id}", "Bez skripte.")
+            check(pg.evaluate(OVERFLOW) == 0, f"without JS the edit overflows by {pg.evaluate(OVERFLOW)}px")
+            # the keyboard sends it: the focus on Spremi, Enter (no pointer waits on a page without JS)
+            pg.focus(f"{edit} button[type=submit]")
+            with pg.expect_navigation():
+                pg.keyboard.press("Enter")
+            after = next((x for x in db.training_logs(ivan) if x.session_id == sid), None)
+            check(after is not None and (after.effort, after.note, after.lines()) == (3, "Bez skripte.", [("Zgibovi", ["12", "10"])]),
+                  f"without JS the edit stored {after and (after.effort, after.note, after.lines())}")
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"

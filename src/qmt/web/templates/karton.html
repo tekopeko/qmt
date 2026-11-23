@@ -132,6 +132,10 @@
                           color:var(--muted); margin-bottom:2px; }
   .log-entry .le-sub { font-size:.8rem; margin-top:2px; overflow-wrap:anywhere; }
   .le-edit { display:none; padding-top:10px; }
+  /* a form's two-column line (Napor beside Osjećaj): a label its column
+     cannot hold on one line wraps, and each field's control sits at its
+     bottom, so the line's controls stay level (the day editor's rule) */
+  .le-edit .field { display:flex; flex-direction:column; justify-content:flex-end; }
   .log-entry.editing .le-edit { display:block; }
   .log-entry.editing .le-read p { display:none; }
 
@@ -148,8 +152,131 @@
                    color:var(--text); font-size:.88rem; }
   .termini .empty { font-size:.85rem; color:var(--muted); padding:6px 4px; }
   .termini .more { margin-top:12px; }
+
+  /* ===== the estimated maxes (23.11.2026, Amir: "izračun maksova"): a
+     card between the upitnik block and the diary, as wide as the upitnik
+     block; a compact table, the karton's sizes (.88rem rows, the set log's
+     header words: .7rem uppercase muted), numbers tabular. Vježba · Procjena
+     · Iz: the estimate bold and never broken, "Iz" the set and its date,
+     each whole (.nw), the source a muted word after them. On a phone the
+     cells wrap, the name anywhere: never a sideways scroll. */
+  .maxes { max-width:720px; margin-bottom:26px; padding:18px 20px 14px; }
+  @media (max-width: 600px) { .maxes { padding:16px 16px 12px; } }
+  .maxes h2 { font-size:1.05rem; margin-bottom:4px; }
+  .maxes .mx-hint { font-size:.82rem; margin-bottom:10px; overflow-wrap:anywhere; }
+  .maxes table { width:100%; border-collapse:collapse; font-size:.88rem; font-variant-numeric:tabular-nums; }
+  .maxes thead th { padding:0 10px 6px 0; text-align:left; font:700 .7rem var(--font-body); letter-spacing:.12em;
+                    text-transform:uppercase; color:var(--muted); white-space:nowrap; }
+  .maxes tbody :is(th, td) { padding:8px 10px 8px 0; text-align:left; vertical-align:top;
+                             border-top:1px solid var(--line); overflow-wrap:anywhere; }
+  .maxes :is(th, td):last-child { padding-right:0; }
+  .maxes tbody th { font-weight:600; }
+  .maxes .mx-val { font-weight:700; white-space:nowrap; }
+  .maxes .nw { white-space:nowrap; }
+  .maxes .mx-src { color:var(--muted); }
+  .maxes .mx-empty { font-size:.88rem; color:var(--muted); }
+
+  /* a training's exercises in the diary (23.11.2026): the count under the
+     comment ("3 vježbe", .le-sub), then base.html's details.sets "Serije";
+     both give way to the edit form while it is open, as the comment does */
+  .log-entry.editing .le-read :is(.le-ex, details.sets) { display:none; }
+
+  /* "+ Dodaj trening izvan termina" above the diary's rows (23.11.2026):
+     its form, a training outside a termin, opens under it in a hairline
+     box (qmtToggleForm, as a row's) */
+  .log-new { margin-bottom:10px; }
+  .log-new .le-edit { margin-top:10px; padding:14px 12px 12px; background:var(--surface);
+                      border:1px solid var(--line); border-radius:var(--r-md); }
+  .log-new.editing .le-edit { display:block; }
+  .le-edit input[type="date"] { min-width:0; }
+
+  /* ===== the exercise log in a form (23.11.2026): "Vježbe (neobavezno)"
+     (a label's look), its hint, then a block per exercise in a hairline
+     box: the library's combobox (base.html's qmtCombobox over the page's
+     one #library-json, a hidden ex_<n> its value), the player's set log
+     table (base.html's .pl-sets: SET · PON. · KG, 44px inputs), then "+
+     serija" and "Ukloni vježbu"; "+ Dodaj vježbu" under the blocks. All of
+     it the page's script's: the fieldset comes hidden and empty, and
+     without the script there is no block. A <p> in a diary row is pre-line
+     .92rem (.log-entry p): the block's own lines say their size. */
+  .xl { border:0; padding:0; margin:0 0 14px; min-width:0; }
+  .xl legend { font:600 .76rem var(--font-body); text-transform:uppercase; letter-spacing:.06em;
+               color:var(--muted); margin-bottom:5px; padding:0; }
+  .xl-hint { color:var(--muted); font-size:.82rem; margin-bottom:10px; overflow-wrap:anywhere; }
+  .xb { border:1px solid var(--line); border-radius:var(--r-md); padding:12px 12px 10px; margin-bottom:10px;
+        background:var(--surface); }
+  .xb .field { margin-bottom:10px; }
+  .xb .cbx-err { margin-top:6px; font-size:.85rem; white-space:normal; }
+  .xb .xb-gone { margin:-4px 0 8px; font-size:.82rem; color:var(--muted); white-space:normal; overflow-wrap:anywhere; }
+  .xb-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; }
+  @media (pointer: coarse) { .xb .cbx > input { min-height:44px; } }
 </style>
 {% endblock %}
+
+{# A training's sets folded under "Serije" (base.html's details.sets): an
+   online pass's (WorkoutLog.lines) and, since 23.11.2026, a training's
+   exercise log (TrainingLog.lines), for the client and the trainer alike #}
+{% macro serije(lines) -%}
+<details class="sets">
+  <summary>Serije</summary>
+  <ul>{% for name, sets in lines %}<li><strong>{{ name }}:</strong> {% for s in sets %}<span class="set">{{ s }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</li>{% endfor %}</ul>
+</details>
+{%- endmacro %}
+
+{# One exercise block of a form's exercise log (23.11.2026), as the page's
+   script clones it from <template id="ex-block">, the only place it is
+   written: the label "Vježba" over a hidden input (ex_<n>, the exercise's
+   id, which base.html's qmtCombobox types into over the library the page
+   carries once, #library-json: no select of the library anywhere), the
+   line a logged exercise gone from the library says (the script's, for
+   such an entry), SET · PON. · KG and three rows of reps_<n>_<i> /
+   kg_<n>_<i> (the script names them), then "+ serija" and "Ukloni
+   vježbu". No library in it: the page weighs what one exercise list
+   weighs, whatever its forms. #}
+{% macro ex_block() -%}
+<div class="xb">
+  <div class="field"><label>Vježba</label>
+    <input type="hidden" value=""></div>
+  <p class="xb-gone" hidden></p>
+  <table class="pl-sets">
+    <thead><tr><th scope="col">Set</th><th scope="col">Pon.</th><th scope="col">Kg</th></tr></thead>
+    <tbody>
+      {%- for i in range(1, 4) %}
+      <tr>
+        <th scope="row">{{ i }}</th>
+        <td><input type="number" data-f="reps" inputmode="numeric" min="0" max="999" step="1" aria-label="Serija {{ i }}: ponavljanja"></td>
+        <td><input type="number" data-f="kg" inputmode="decimal" min="0" max="500" step="0.5" aria-label="Serija {{ i }}: kilogrami"></td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  <div class="xb-foot">
+    <button type="button" class="act xb-add">+ serija</button>
+    <button type="button" class="act act-quiet xb-x">Ukloni vježbu</button>
+  </div>
+</div>
+{%- endmacro %}
+
+{# A form's exercise log (23.11.2026, the same in all three forms: a
+   termin's osvrt, an osvrt's edit, a training outside a termin), rendered
+   hidden and empty: the script shows it and builds its blocks, one per
+   entry of data-log (`entries`: the log stored, an edit's, as
+   app._log_entries words it, `gone` for an exercise that has left the
+   library; [] for a new osvrt or training: no block until "+ Dodaj
+   vježbu"), and adds the hidden log=1 that tells the routes to read the
+   blocks. Without JavaScript there is no exercise block: napor, osjećaj
+   and komentar are the form, and an edit keeps the log as it was.
+   data-xl is the form's prefix for the blocks' ids; data-log is JSON in
+   single quotes (tojson escapes the quote, <, > and &). #}
+{% macro ex_log(fid, entries=[]) -%}
+<fieldset class="xl" data-xl="{{ fid }}" data-log='{{ entries|tojson }}' hidden>
+  <legend>Vježbe (neobavezno)</legend>
+  <div class="xl-hint">Upiši vježbe i serije — iz njih se računaju tvoji maksimumi. Sekunde (plank i slično) upiši u komentar.</div>
+  <div class="xl-blocks"></div>
+  <button type="button" class="act xl-add">+ Dodaj vježbu</button>
+</fieldset>
+{%- endmacro %}
+
 {% block content %}
 {% if not own %}
 <nav class="crumbs" aria-label="Putanja"><a href="/clanarine">Trenutne članarine</a><span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
@@ -237,6 +364,33 @@
 </section>
 {% endif %}
 
+{# The estimated maxes (23.11.2026, db.estimated_maxes): each exercise's
+   best one-rep max by Epley's formula from the sets logged with a gym
+   training and in the online passes, the set it comes from, its day and
+   where; or a bodyweight exercise's most reps, its day and where (the
+   reps are the estimate: not said twice). The client's and the trainer's
+   alike. #}
+<section class="card maxes" aria-labelledby="maxes-h">
+  <h2 id="maxes-h">Procijenjeni maksimumi</h2>
+  <p class="hint mx-hint">Iz najbolje serije svake vježbe, Epleyevom formulom (kg × (1 + ponavljanja / 30)), do 12 ponavljanja. Vježbe bez utega: najviše ponavljanja.</p>
+  {% if maxes %}
+  <table>
+    <thead><tr><th scope="col">Vježba</th><th scope="col">Procjena</th><th scope="col">Iz</th></tr></thead>
+    <tbody>
+      {%- for m in maxes %}
+      <tr>
+        <th scope="row">{{ m.name }}</th>
+        <td class="mx-val">{{ m.value_text }}</td>
+        <td>{% if m.kind == "1rm" %}<span class="nw">{{ m.set_text }}</span> · {% endif %}<span class="nw">{{ m.on.strftime("%-d.%-m.%Y.") }}</span> <span class="mx-src">{{ m.source_text }}</span></td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="mx-empty">{% if own %}Još nema serija — upiši vježbe uz osvrt treninga.{% else %}Još nema serija.{% endif %}</p>
+  {% endif %}
+</section>
+
 <div class="karton-grid">
   <div class="k-sec">
     <h2 id="osvrti">Dnevnik treninga</h2>
@@ -245,6 +399,40 @@
       ili označi da nisi bio/la.
       {% else %}Odrađeni termini i osvrti.{% endif %}
     </p>
+    {% if own %}
+    {# a training done outside a termin (23.11.2026, Amir: "da si on može sam
+       upisati koji trening je radio"): dated by the member (today by
+       default, never in the future), then the osvrt's fields and its
+       exercises; a diary row of its own #}
+    <div class="log-new" id="trening-novi">
+      <button type="button" class="act" onclick="qmtToggleForm('trening-novi')">+ Dodaj trening izvan termina</button>
+      <form class="le-edit" method="post" action="/karton/trening">
+        <p style="margin:0 0 8px;"><strong>Trening izvan termina</strong></p>
+        <div class="field"><label for="nt-day">Datum</label>
+          <input id="nt-day" type="date" name="day" value="{{ today.isoformat() }}"
+                 min="{{ first_day.isoformat() }}" max="{{ today.isoformat() }}" required></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="field"><label for="nt-effort">Napor (1 lagano – 10 maksimalno)</label>
+            <select id="nt-effort" name="effort" required>
+              <option value="" disabled selected>—</option>
+              {% for i in range(1, 11) %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+            </select></div>
+          <div class="field"><label for="nt-feeling">Osjećaj</label>
+            <select id="nt-feeling" name="feeling">
+              <option value="">—</option>
+              {% for k, l in feelings.items() %}<option value="{{ k }}">{{ l }}</option>{% endfor %}
+            </select></div>
+        </div>
+        <div class="field"><label for="nt-note">Komentar (neobavezno)</label>
+          <textarea id="nt-note" name="note" rows="2"></textarea></div>
+        {{ ex_log("nt") }}
+        <div style="display:flex; gap:9px;">
+          <button type="submit" class="btn-sm btn-signal">Spremi trening</button>
+          <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('trening-novi')">Odustani</button>
+        </div>
+      </form>
+    </div>
+    {% endif %}
     {% for row in diary %}
     {% set log = row.log %}{% set s = row.session %}
 
@@ -253,7 +441,9 @@
        started (the snapshots), the exercises it saved of the day's as it is
        now (row.done: one deleted since is not counted; a day gone, or
        holding no exercise now, counts them all) and how long it took, the
-       osvrt; nothing here edits or deletes it #}
+       osvrt, its sets under "Serije" (the trainer's until 23.11.2026, the
+       client's too since: Amir, "u kartonu može ući u povijest svojih
+       treninga"); nothing here edits or deletes it #}
     <div class="log-entry online" id="pass-{{ w.id }}">
       <div class="le-kicker">Online trening</div>
       <div class="le-head">
@@ -264,18 +454,20 @@
       <div class="hint le-sub">{{ w.day_label }} — {{ w.program_title }}</div>
       <div class="hint le-sub">{% if row.size is not none %}{{ row.done }} od {{ row.size }} {{ plural(row.size, "vježbe", "vježbe", "vježbi") }}{% else %}{{ w.done_text }}{% endif %}{% if w.elapsed_text %} · {{ w.elapsed_text }}{% endif %}</div>
       {% if w.note %}<p>{{ w.note }}</p>{% endif %}
-      {% if not own %}{% set lines = w.lines() %}{% if lines %}
-      <details class="sets">
-        <summary>Serije</summary>
-        <ul>{% for name, sets in lines %}<li><strong>{{ name }}:</strong> {% for s in sets %}<span class="set">{{ s }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</li>{% endfor %}</ul>
-      </details>
-      {% endif %}{% endif %}
+      {% set lines = w.lines() %}{% if lines %}
+      {{ serije(lines) }}
+      {% endif %}
     </div>
 
     {% elif log and not log.absent %}
-    {# written up: the osvrt reads first, editable in place #}
+    {# written up: the osvrt reads first, editable in place. Without a
+       termin it is a training outside one (23.11.2026; the seeds' rows
+       too): a kicker says so where a termin row says its title. Its
+       exercises (23.11.2026), how many and their sets folded, under the
+       comment. #}
     <div class="log-entry" id="log-{{ log.id }}">
       <div class="le-read">
+        {% if not s %}<div class="le-kicker">Trening izvan termina</div>{% endif %}
         <div class="le-head">
           <span class="when">{{ weekdays_short[row.at.weekday()] }} {{ row.at.strftime("%-d.%-m.%Y.") }}</span>
           {% if log.effort %}<span class="rpe">napor {{ log.effort }}/10</span>{% endif %}
@@ -283,22 +475,43 @@
           {% if own %}
           <span class="le-actions">
             <button type="button" class="act act-quiet" onclick="qmtToggleForm('log-{{ log.id }}')">Uredi</button>
+            {% if s %}
             <form method="post" action="/karton/log/{{ log.id }}/delete"
                   data-confirm-title="Obrisati osvrt?"
-                  data-confirm="Napor, osjećaj i komentar bit će trajno obrisani. Termin ostaje u dnevniku i osvrt možeš ispuniti ponovno."
+                  data-confirm="Napor, osjećaj, komentar i vježbe bit će trajno obrisani. Termin ostaje u dnevniku i osvrt možeš ispuniti ponovno."
                   data-confirm-cta="Obriši osvrt">
               <button type="submit" class="act act-quiet">Obriši</button>
             </form>
+            {% else %}
+            <form method="post" action="/karton/log/{{ log.id }}/delete"
+                  data-confirm-title="Obrisati trening?"
+                  data-confirm="Trening izvan termina bit će trajno obrisan: datum, napor, osjećaj, komentar i vježbe."
+                  data-confirm-cta="Obriši trening">
+              <button type="submit" class="act act-quiet">Obriši</button>
+            </form>
+            {% endif %}
           </span>
           {% endif %}
         </div>
         {% if s %}<div class="hint" style="font-size:.8rem; margin-top:2px;">{{ s.title }} · {{ s.starts_at.astimezone(tz).strftime("%H:%M") }}</div>{% endif %}
         {% if log.note %}<p>{{ log.note }}</p>{% endif %}
+        {% set lines = log.lines() %}{% if lines %}
+        <div class="hint le-sub le-ex">{{ lines|length }} {{ plural(lines|length, "vježba", "vježbe", "vježbi") }}</div>
+        {{ serije(lines) }}
+        {% endif %}
       </div>
       {% if own %}
       {# same fields as writing it, pre-filled — the termin it hangs off is a
-         fact, so only napor/osjećaj/komentar are editable #}
+         fact, so only napor/osjećaj/komentar and the exercises are editable
+         (the exercises logged, each block its exercise picked and its sets
+         in the inputs; saving replaces the whole log); a training outside a
+         termin's date is the member's, so it may move too #}
       <form class="le-edit" method="post" action="/karton/log/{{ log.id }}/edit">
+        {% if not s %}
+        <div class="field"><label for="ed-day-{{ log.id }}">Datum</label>
+          <input id="ed-day-{{ log.id }}" type="date" name="day" value="{{ log.date.isoformat() }}"
+                 min="{{ first_day.isoformat() }}" max="{{ today.isoformat() }}" required></div>
+        {% endif %}
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div class="field"><label for="ed-effort-{{ log.id }}">Napor (1 lagano – 10 maksimalno)</label>
             <select id="ed-effort-{{ log.id }}" name="effort" required>
@@ -316,6 +529,7 @@
         </div>
         <div class="field"><label for="ed-note-{{ log.id }}">Komentar</label>
           <textarea id="ed-note-{{ log.id }}" name="note" rows="3">{{ log.note or "" }}</textarea></div>
+        {{ ex_log("ed-" ~ log.id, log_entries.get(log.id, [])) }}
         <div style="display:flex; gap:9px;">
           <button type="submit" class="btn-sm btn-signal">Spremi</button>
           <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('log-{{ log.id }}')">Odustani</button>
@@ -390,6 +604,7 @@
         <div class="field"><label for="fb-note-{{ s.id }}">Komentar (neobavezno)</label>
           <textarea id="fb-note-{{ s.id }}" name="note" rows="2"
                     placeholder="npr. kilaže, što je išlo dobro/loše"></textarea></div>
+        {{ ex_log("fb-" ~ s.id) }}
         <div style="display:flex; gap:9px;">
           <button type="submit" class="btn-sm btn-signal">Spremi osvrt</button>
           <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('s-{{ s.id }}')">Odustani</button>
@@ -417,15 +632,151 @@
     {% if own %}<a class="act act-quiet more" href="/raspored">Otvori raspored →</a>{% endif %}
   </aside>
 </div>
+{% if own %}
+{# the exercise log's library, once for the whole page (23.11.2026): [id,
+   name, tags] in the alphabet's order, JSON (tojson escapes <, > and &,
+   so no text of it can close the script), which every exercise block's
+   combobox lists; and an exercise block as the script clones it (inert
+   until then) #}
+<script type="application/json" id="library-json">{{ library_rows|tojson }}</script>
+<template id="ex-block">{{ ex_block() }}</template>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>
   // rows read first, write on demand: one toggle drives both the osvrt form on
-  // an open termin and the edit form on a written one
+  // an open termin and the edit form on a written one (and since 23.11.2026
+  // the form of a training outside a termin)
   function qmtToggleForm(id) {
     var row = document.getElementById(id);
     if (!row) return;
     if (row.classList.toggle("editing")) row.querySelector("select, textarea").focus();
   }
+
+{% if own %}
+  // The exercise log in every form of the page (23.11.2026: a termin's
+  // osvrt, an osvrt's edit, a training outside a termin; one script for
+  // all). The library is on the page once (#library-json: [id, name,
+  // tags], the alphabet's order), and every block's combobox (base.html's
+  // qmtCombobox, its rows that one list, its value the block's hidden
+  // ex_<n>) lists it. Each form's fieldset[data-xl] (its prefix for the
+  // blocks' ids) is shown here, its stored entries (data-log) built into
+  // blocks from <template id="ex-block">: the exercise in the box, its
+  // sets in the rows (three at least, a weight with no kilo empty); an
+  // exercise gone from the library comes with nothing picked and a line
+  // naming it, so saving it unchanged stops at "Odaberi vježbu s popisa.".
+  // A hidden log=1 is added to the fieldset: the routes read the blocks
+  // only when it is there, so a form without this script (no block at all)
+  // never empties a stored log. "+ serija" adds a row (12 at most),
+  // "Ukloni vježbu" takes the block away (the focus to "+ Dodaj vježbu"),
+  // "+ Dodaj vježbu" adds a block (15 at most) numbered past the highest
+  // of its form (a gap a removed block leaves stays: the server reads what
+  // is there), the focus in its combobox, whose list opens. Spremi checks
+  // the blocks: one with a set typed and no exercise picked stops it,
+  // "Odaberi vježbu s popisa." under its input (each such block), the
+  // focus in the first; a block with nothing typed the server drops.
+  (function () {
+    var tpl = document.getElementById("ex-block"), lib = document.getElementById("library-json");
+    if (!tpl || !lib || !window.qmtCombobox) return;
+    var MAX_EX = {{ max_log }}, MAX_SETS = {{ max_sets }}, rows = [];
+    try {
+      rows = JSON.parse(lib.textContent).map(function (x) { return {id: String(x[0]), name: x[1], tags: x[2] || ""}; });
+    } catch (e) { return; }
+    function typed(block) {
+      return [].some.call(block.querySelectorAll("tbody input"), function (i) { return i.value.trim() !== ""; });
+    }
+    // a block's rows named and numbered by their place: reps_<n>_<i>, kg_<n>_<i>
+    function number(block) {
+      var n = block.getAttribute("data-n");
+      [].forEach.call(block.querySelector("tbody").rows, function (row, k) {
+        var i = k + 1;
+        row.querySelector("th").textContent = String(i);
+        [].forEach.call(row.querySelectorAll("input"), function (inp) {
+          inp.name = inp.getAttribute("data-f") + "_" + n + "_" + i;
+          inp.setAttribute("aria-label", inp.getAttribute("aria-label").replace(/^Serija \d+/, "Serija " + i));
+        });
+      });
+    }
+    function addRow(block) {
+      var body = block.querySelector("tbody"), row = body.rows[body.rows.length - 1].cloneNode(true);
+      [].forEach.call(row.querySelectorAll("input"), function (inp) { inp.value = ""; });
+      body.appendChild(row);
+      number(block);
+      return row;
+    }
+    [].forEach.call(document.querySelectorAll("fieldset[data-xl]"), function (xl) {
+      var form = xl.closest("form"), box = xl.querySelector(".xl-blocks"), add = xl.querySelector(".xl-add");
+      var prefix = xl.getAttribute("data-xl"), next = 0, log = [];
+      if (!form || !box || !add) return;
+      try { log = JSON.parse(xl.getAttribute("data-log") || "[]"); } catch (e) { log = []; }
+      function count() { return box.querySelectorAll(".xb").length; }
+      function fit() { add.hidden = count() >= MAX_EX; }
+      // a block in the form: a logged entry's (its exercise and sets), or an empty one
+      function build(entry) {
+        var block = tpl.content.firstElementChild.cloneNode(true), n = next++;
+        var value = block.querySelector('input[type="hidden"]'), body = block.querySelector("tbody");
+        var more = block.querySelector(".xb-add"), x = block.querySelector(".xb-x");
+        block.setAttribute("data-n", String(n));
+        value.id = prefix + "-ex-" + n; value.name = "ex_" + n;
+        block.querySelector("label").htmlFor = value.id;
+        number(block);
+        if (entry) {
+          var sets = (entry.sets || []).slice(0, MAX_SETS);
+          while (body.rows.length < sets.length) addRow(block);
+          sets.forEach(function (st, k) {
+            var cells = body.rows[k].querySelectorAll("input");
+            cells[0].value = st.reps == null ? "" : String(st.reps);
+            cells[1].value = st.kg ? String(st.kg) : "";          // no weight: empty, as typed
+          });
+          if (entry.gone) {
+            var gone = block.querySelector(".xb-gone");
+            gone.textContent = "„" + entry.name + "” više nije u bazi vježbi — odaberi drugu vježbu ili ukloni ovu.";
+            gone.hidden = false;
+          } else {
+            value.value = String(entry.exercise_id);
+          }
+        }
+        box.appendChild(block);
+        block.qmtCbx = qmtCombobox({rows: rows, value: value}, {form: form, submit: false});
+        function fitRows() { more.hidden = body.rows.length >= MAX_SETS; }
+        more.addEventListener("click", function () {
+          if (body.rows.length >= MAX_SETS) return;
+          addRow(block).querySelector("input").focus();
+          fitRows();
+        });
+        x.addEventListener("click", function () {
+          block.remove();
+          fit();
+          add.focus();
+        });
+        fitRows();
+        return block;
+      }
+      log.slice(0, MAX_EX).forEach(function (entry) { build(entry); });
+      add.addEventListener("click", function () {
+        if (count() >= MAX_EX) return;
+        var block = build(null);
+        fit();
+        if (block.qmtCbx) block.qmtCbx.input.focus();
+      });
+      var mark = document.createElement("input");
+      mark.type = "hidden"; mark.name = "log"; mark.value = "1";
+      xl.appendChild(mark);
+      xl.hidden = false;
+      fit();
+      form.addEventListener("submit", function (e) {
+        var first = null;
+        [].forEach.call(box.querySelectorAll(".xb"), function (block) {
+          if (!block.qmtCbx || !typed(block) || block.querySelector('input[type="hidden"]').value) return;
+          block.qmtCbx.fail();
+          first = first || block;
+        });
+        if (!first) return;
+        e.preventDefault();
+        first.qmtCbx.input.focus();
+      });
+    });
+  })();
+{% endif %}
 </script>
 {% endblock %}
