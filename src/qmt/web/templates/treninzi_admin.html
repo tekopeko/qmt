@@ -3,10 +3,10 @@
 {% block content %}
 <h1>Online treninzi</h1>
 <p class="hint">
-  Sve je automatski: upitnik svrsta polaznika u razinu i cilj, a on odmah vidi programe
-  označene tom kombinacijom — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku
-  kombinaciju koju nudiš napravi program pa mu dodaj treninge i vježbe. Kombinacija bez programa
-  polazniku kaže da se program još priprema.
+  Sve je automatski: upitnik svrsta polaznika u razinu, a on odmah vidi sve programe te razine,
+  po tipu treninga — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku razinu napravi
+  programe po tipu pa im dodaj treninge i vježbe. Razina bez programa polazniku kaže da se
+  programi još pripremaju.
 </p>
 
 <h2 style="font-size:1.05rem; margin-bottom:12px;">Programi po razinama</h2>
@@ -14,7 +14,7 @@
 <table style="width:100%; border-collapse:collapse; font-size:.92rem;">
   <thead>
     <tr style="border-bottom:2px solid var(--line); text-align:left;">
-      <th style="padding:8px 6px;">Cilj</th><th>Program</th><th>Treninzi</th><th>Vježbe</th><th>Zadnja izmjena</th><th></th>
+      <th style="padding:8px 6px;">Tip</th><th>Program</th><th>Treninzi</th><th>Vježbe</th><th>Zadnja izmjena</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -44,7 +44,7 @@
     <tr>
       <td colspan="6" style="padding:14px 6px 7px; background:var(--surface-2);
           font:700 .76rem var(--font-display); text-transform:uppercase; letter-spacing:.08em;
-          color:var(--muted); border-bottom:1px solid var(--line);">Bez kombinacije — nevidljivo polaznicima</td>
+          color:var(--muted); border-bottom:1px solid var(--line);">Bez razine — nevidljivo polaznicima</td>
     </tr>
     {% for p, nd, ni in untagged %}
     <tr style="border-bottom:1px solid var(--line); opacity:.6;">
@@ -68,7 +68,7 @@
   <div class="field"><label for="np-title">Naziv</label>
     <input id="np-title" type="text" name="title" placeholder="npr. Gornji dio tijela — tjedan 2" required></div>
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-    <div class="field"><label for="np-goal">Cilj</label>
+    <div class="field"><label for="np-goal">Tip treninga</label>
       <select id="np-goal" name="goal" required>
         {% for k, l in goals.items() %}<option value="{{ k }}">{{ l }}</option>{% endfor %}
       </select></div>

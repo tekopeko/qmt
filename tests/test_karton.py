@@ -103,7 +103,7 @@ def test_programs_hidden_until_upitnik_filled():
     assert "Ispuni upitnik" in page
     assert ci.get(f"/treninzi/{pid}").status_code == 403   # direct URL too
 
-    # a low score -> pocetna; the goal is always cijelo -> the combo above matches automatically
+    # a low score -> pocetna: the programme of that razina opens automatically (by razina alone since 23.11.2026)
     ci.post("/upitnik", data=filled_upitnik(), follow_redirects=False)
     page = ci.get("/treninzi").text
     assert "Online blok A" in page

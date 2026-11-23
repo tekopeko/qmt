@@ -2,7 +2,7 @@
 {% block title %}Online treninzi — QMT{% endblock %}
 {% block content %}
 <h1>Moji online treninzi</h1>
-<p class="hint">Program prilagođen tvojoj razini i cilju — određuje ih upitnik.</p>
+<p class="hint">Programi tvoje razine — određuje je upitnik.</p>
 
 {% if not has_plan %}
 <div class="card" style="padding:34px; text-align:center; max-width:640px;">
@@ -14,7 +14,7 @@
                          display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
   <div>
     <strong>Ispuni upitnik za online trening</strong>
-    <p class="hint" style="margin-top:2px;">Prema odgovorima te svrstavamo u razinu (početna / srednja / napredna) i cilj — program se otvara odmah.</p>
+    <p class="hint" style="margin-top:2px;">Prema odgovorima te svrstavamo u razinu (početna / srednja / napredna) — programi se otvaraju odmah.</p>
   </div>
   <a class="btn-sm btn-signal" href="/upitnik">Ispuni upitnik</a>
 </div>
@@ -22,24 +22,36 @@
 <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:18px;">
   <span style="font:700 .78rem var(--font-display); text-transform:uppercase; letter-spacing:.07em;
                background:var(--accent-dim); color:var(--accent-tint-ink); border-radius:8px; padding:4px 10px;">
-    {{ levels[onboarding.level] }} · {{ goals[onboarding.goal] }}</span>
+    {{ levels[onboarding.level] }}</span>
   <a class="act act-quiet" href="/upitnik">promijeni (ispuni upitnik ponovno)</a>
 </div>
 
-<div style="display:flex; flex-direction:column; gap:12px; max-width:640px;">
-  {% for p in programs %}
-  <a class="card" href="/treninzi/{{ p.id }}"
-     style="padding:16px 20px; text-decoration:none; display:flex; gap:16px; align-items:center;">
-    <div style="flex:1; min-width:0;">
-      <strong>{{ p.title }}</strong>
-      {% set n = p.days|length %}
-      <div class="hint">{{ n }} {{ plural(n, "trening", "treninga", "treninga") }}{% if p.intro %} · {{ p.intro | truncate(60) }}{% endif %}</div>
+{# Every programme of his razina, whatever its type (23.11.2026): a group
+   per type that has one, in the types' order (upitnik.GOALS), its label
+   over its cards in the day page's section caption (.dx-cap); one of a
+   type not among them (none can be made) last, under no label, a
+   caption's room above it. #}
+<div style="max-width:640px;">
+  {% for key, label, rows in groups %}
+  <section{% if label %} aria-labelledby="tip-{{ key }}"{% else %} style="margin-top:26px;"{% endif %}>
+    {% if label %}<h2 class="dx-cap" id="tip-{{ key }}">{{ label }}</h2>{% endif %}
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      {% for p in rows %}
+      <a class="card" href="/treninzi/{{ p.id }}"
+         style="padding:16px 20px; text-decoration:none; display:flex; gap:16px; align-items:center;">
+        <div style="flex:1; min-width:0;">
+          <strong>{{ p.title }}</strong>
+          {% set n = p.days|length %}
+          <div class="hint">{{ n }} {{ plural(n, "trening", "treninga", "treninga") }}{% if p.intro %} · {{ p.intro | truncate(60) }}{% endif %}</div>
+        </div>
+        <span style="color:var(--accent); font-weight:700;">→</span>
+      </a>
+      {% endfor %}
     </div>
-    <span style="color:var(--accent); font-weight:700;">→</span>
-  </a>
+  </section>
   {% else %}
   <div class="card" style="padding:34px; text-align:center;">
-    <p style="margin-bottom:6px;"><strong>Program za tvoju kombinaciju još se priprema.</strong></p>
+    <p style="margin-bottom:6px;"><strong>Programi za tvoju razinu još se pripremaju.</strong></p>
     <p class="hint">Trener slaže sadržaj — provjeri uskoro.</p>
   </div>
   {% endfor %}

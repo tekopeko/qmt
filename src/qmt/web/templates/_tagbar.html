@@ -1,0 +1,43 @@
+{# The tags under an exercise search, as chips (23.11.2026, the owner: "a
+   search helper where we can search the items used in the exercise like
+   for example 'girja' and then show all exercises with 'girja' in the
+   dropdown"): the library's search (vjezbe.html) and the day editor's
+   "Dodaj vježbu" (trening_day_edit.html), the same row on both. `tags` are
+   the chips' words, the most used first (app._tag_chips over
+   db.tag_counts: a tag one exercise carries is no chip, prod's typos). The
+   first `shown` show, the rest `hidden` behind "još N" (.tag-more), which
+   shows them. Rendered hidden: base.html's qmtTagbar shows the row and
+   makes a chip toggle its word in the search box (aria-pressed). Its look
+   is base.html's (.tagbar), its place each page's. #}
+{% macro tagbar(tags, shown=12) %}
+{%- if tags %}
+<div class="tagbar" role="group" aria-label="Oznake" hidden>
+  {%- for t in tags %}
+  <button type="button" class="tag-chip" data-tag="{{ t }}" aria-pressed="false"{% if loop.index > shown %} hidden{% endif %}>{{ t }}</button>
+  {%- endfor %}
+  {%- if tags|length > shown %}
+  <button type="button" class="tag-chip tag-more">još {{ tags|length - shown }}</button>
+  {%- endif %}
+</div>
+{%- endif %}
+{% endmacro %}
+
+{# The library's chips without JavaScript (vjezbe.html, in a <noscript>):
+   each a link to the list filtered by its tag (the server's ?q=), every
+   one shown (no "još N": nothing to reveal it). The one whose tag is the
+   whole of ?q= (`on`, folded alike: the route's) is pressed
+   (aria-current) and links back to the whole list, as its second tap
+   would. #}
+{% macro tag_links(tags, on="") %}
+{%- if tags %}
+<div class="tagbar" role="group" aria-label="Oznake">
+  {%- for t in tags %}
+  {%- if t == on %}
+  <a class="tag-chip" href="/treninzi/vjezbe" aria-current="true">{{ t }}</a>
+  {%- else %}
+  <a class="tag-chip" href="/treninzi/vjezbe?q={{ t|urlencode }}">{{ t }}</a>
+  {%- endif %}
+  {%- endfor %}
+</div>
+{%- endif %}
+{% endmacro %}

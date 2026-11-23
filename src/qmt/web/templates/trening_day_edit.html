@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_tagbar.html" import tagbar %}
 {% block title %}Uredi: Trening {{ day.position }} — {{ p.title }} — QMT{% endblock %}
 {% block head %}
 <style>
@@ -72,6 +73,12 @@
   .cbx-err { margin-top: 6px; color: var(--accent); font-size: .85rem; font-weight: 600; }
   .cbx-err:empty { display: none; }
   @media (pointer: coarse) { .add-fields :is(#add-ex-q, select) { min-height: 44px; } }
+  /* the library's tags as chips ABOVE the fields (23.11.2026, base.html's
+     .tagbar): a tap puts its word in the combobox and opens its list, which
+     lies over what follows the input, never over the chips, so a second
+     chip is a tap away while the list shows. Without JS the row stays
+     hidden: the select is the picker there */
+  .add-ex .tagbar { margin: 0 0 14px; }
 </style>
 {% endblock %}
 {# A row's save comes back with ?stavka=<id> (the row's id) beside ?ok= or
@@ -200,6 +207,7 @@
 {% set natrag = "/treninzi/" ~ p.id ~ "/dan/" ~ day.id ~ "/uredi" %}
 <form id="dodaj" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke" class="card add-ex">
   {% if choices %}
+  {{ tagbar(tags) }}
   <div class="add-fields">
     <div class="field"><label for="add-ex">Vježba iz baze</label>
       <select id="add-ex" name="exercise_id" required>
@@ -249,7 +257,11 @@
   // typing again clears the select, so a half-edited name never posts a
   // stale id. A hidden select cannot say it is required, so the submit is
   // checked here: with nothing chosen it stops, "Odaberi vježbu s popisa."
-  // under the input.
+  // under the input. The tags' chips above the fields (23.11.2026,
+  // base.html's qmtTagbar) put their word in the input and take it out, the
+  // focus left there, so the list opens filtered (under the input: the
+  // chips stay in reach); a pick puts the name in the input, and the chips
+  // let go.
   (function () {
     var sel = document.getElementById("add-ex"), form = document.getElementById("dodaj");
     if (!sel || !form) return;
@@ -276,6 +288,7 @@
     sel.hidden = true; sel.required = false;
     if (label) label.htmlFor = "add-ex-q";
     if (byId[sel.value]) input.value = byId[sel.value].name;  // ?vjezba=<id>: back from "Nova vježba"
+    var syncTags = qmtTagbar(form.querySelector(".tagbar"), input, true);
 
     var active = -1, picking = false;
     function opts() { return list.querySelectorAll('[role="option"]'); }
@@ -332,7 +345,7 @@
     function close() { list.hidden = true; input.setAttribute("aria-expanded", "false"); setActive(-1); }
     function pick(li) {
       var r = byId[li.dataset.id];
-      sel.value = r.id; input.value = r.name; close();
+      sel.value = r.id; input.value = r.name; close(); syncTags();
       err.textContent = ""; input.removeAttribute("aria-invalid");
       picking = true; input.focus(); picking = false;          // the focus stays, the list stays shut
     }

@@ -19,7 +19,7 @@
 
 <form method="post" action="/treninzi/{{ p.id }}/edit" class="card" style="max-width:640px; padding:18px 20px; margin-bottom:30px;">
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-    <div class="field"><label for="pe-goal">Cilj</label>
+    <div class="field"><label for="pe-goal">Tip treninga</label>
       <select id="pe-goal" name="goal" required>
         {% for k, l in goals.items() %}<option value="{{ k }}" {% if k == p.goal %}selected{% endif %}>{{ l }}</option>{% endfor %}
       </select></div>

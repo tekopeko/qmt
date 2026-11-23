@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_tagbar.html" import tagbar, tag_links %}
 {% block title %}Vježbe — QMT{% endblock %}
 {% block head %}
 <style>
@@ -11,6 +12,9 @@
   .ex-search { display: flex; align-items: stretch; gap: 8px; flex: 1 1 260px; min-width: 0; margin: 0; }
   .ex-search input { flex: 1 1 auto; min-width: 0; }
   .ex-search button, .ex-tools > .btn { white-space: nowrap; }
+  /* the tags as chips (23.11.2026, base.html's .tagbar), under the search
+     they fill, the list's width */
+  .tagbar { max-width: 860px; margin: -6px 0 16px; }
   .ex-found { margin: -6px 0 12px; }
   /* ONE card of rows, a hairline between them. A row is a link to the
      exercise's page, whole: the tap target is the row (52px at least, as the
@@ -52,6 +56,8 @@
   </form>
   <a class="btn btn-sm" href="/treninzi/vjezbe/nova">+ Nova vježba</a>
 </div>
+{{ tagbar(tags) }}
+<noscript>{{ tag_links(tags, tag_on) }}</noscript>
 <p class="hint ex-found" aria-live="polite"{% if not q %} hidden{% endif %}><span class="ex-n">{{ found }}</span> od {{ total }} · <a class="tlink" href="/treninzi/vjezbe">prikaži sve</a></p>
 <div class="card ex-list">
   {% for e, n, hit in rows %}
@@ -90,6 +96,9 @@
   // list. "Traži" goes and Enter sends nothing: the list is what a submit
   // would fetch. "prikaži sve" clears the box here, in place. The count
   // line is aria-live: a screen reader hears "2 od 14" as the list changes.
+  // The tags' chips under the box (23.11.2026, base.html's qmtTagbar) put
+  // their word in it and take it out, and follow it: a tap is an input
+  // event, so the list and the address follow as for a key.
   (function () {
     var form = document.querySelector("form.ex-search"), list = document.querySelector(".ex-list");
     var box = form && form.querySelector('input[name="q"]'), count = document.querySelector(".ex-found");
@@ -100,6 +109,7 @@
       return [a, qmtFold(a.getAttribute("data-find"))];
     });
     form.querySelector('button[type="submit"]').hidden = true;
+    var syncTags = qmtTagbar(document.querySelector(".tagbar"), box);   // (the <noscript> one is no element here)
     function filter(follow) {
       var typed = box.value.trim(), words = qmtFold(typed).split(/\s+/).filter(Boolean), kept = 0;
       rows.forEach(function (r) {
@@ -128,13 +138,13 @@
     form.addEventListener("submit", function (e) { e.preventDefault(); box.blur(); });
     count.querySelector("a").addEventListener("click", function (e) {
       e.preventDefault();
-      box.value = ""; filter(true); box.focus();
+      box.value = ""; filter(true); syncTags(); box.focus();
     });
     // the box and the rows agree at load (a ?q= page: the server's rows,
     // the same rule) and when Back or Forward brings the page out of the
     // browser's cache
     filter(false);
-    window.addEventListener("pageshow", function (e) { if (e.persisted) filter(false); });
+    window.addEventListener("pageshow", function (e) { if (e.persisted) { filter(false); syncTags(); } });
   })();
 </script>
 {% endif %}

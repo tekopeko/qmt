@@ -198,7 +198,7 @@
   <div class="ramp" aria-hidden="true">
     {% for i in range(3) %}<span class="{% if i < rung %}on{% endif %}"></span>{% endfor %}
   </div>
-  <p class="ramp-note">Razina {{ rung }} od 3 — programi na /treninzi prate ovu razinu{% if not v2 %} i cilj{% endif %}.</p>
+  <p class="ramp-note">Razina {{ rung }} od 3 — programi na /treninzi prate ovu razinu.</p>
   {% if v2 and onboarding.pain_high and pain_note %}<p class="u-note">{{ pain_note }}</p>{% endif %}
   {% if not v2 %}<p class="u-old">Stari upitnik{% if own %} — <a class="tlink" href="/upitnik">ispuni novi</a>{% endif %}.</p>{% endif %}
   {% if not own %}
@@ -220,7 +220,7 @@
     <div>
       <span class="eyebrow">Online trening — upitnik</span>
       <h2 style="font-size:1.15rem; margin-top:6px;">Upitnik još nije ispunjen</h2>
-      <p class="hint" style="margin-top:4px;">Prema odgovorima te svrstavamo u razinu i biramo programe za tvoj cilj.</p>
+      <p class="hint" style="margin-top:4px;">Prema odgovorima te svrstavamo u razinu — programi se otvaraju odmah.</p>
     </div>
     <a class="btn-sm btn-signal" href="/upitnik">Ispuni upitnik</a>
   </div>

@@ -157,7 +157,9 @@ def fill_bookings() -> None:
 # The demo's nine programmes, one per (razina × cilj), as the app made them
 # for itself until 30.10.2026 (db.ensure_online_skeletons, gone that day:
 # since then nothing in the app makes, fills or refills a programme, every
-# one is Amir's), so the dev demo stays what it was. Its exercises are
+# one is Amir's), so the dev demo stays what it was. Core, the fourth type
+# since 23.11.2026, has none: DEMO_EXERCISES holds one core exercise
+# (Plank), not enough for a programme of its own. Its exercises are
 # library rows, one per name, reused by every programme that holds them;
 # their instructions are the technique cues alone, never a dose (one row
 # serves every razina).
@@ -252,8 +254,9 @@ DAYS = [
 
 
 def seed_program() -> None:
-    """The 9 combo programmes (DEMO_PROGRAMS), each with its Trening 1 of the
-    demo exercises in section trening (library rows, DEMO_EXERCISES: the
+    """The 9 demo programmes (DEMO_PROGRAMS: each razina × its three
+    types), each with its Trening 1 of the demo exercises in section
+    trening (library rows, DEMO_EXERCISES: the
     cues; each item its razina's dose, DEMO_REST seconds of rest between its
     sets and DEMO_REST_AFTER after it), then the library's demo (LIBRARY)
     and the days' demo (DAYS, ivan's programme). A dev RESET: the library
@@ -270,10 +273,10 @@ def seed_program() -> None:
     ids = {name: db.create_exercise(name, cue) for name, cue in DEMO_EXERCISES.items()}
     made = made_items = 0
     for level, level_label in LEVELS.items():
-        for goal, goal_label in GOALS.items():
-            pid = db.create_program(f"{goal_label} — {level_label.lower()}", DEMO_INTRO, level, goal)
+        for goal, plan in DEMO_PROGRAMS.items():
+            pid = db.create_program(f"{GOALS[goal]} — {level_label.lower()}", DEMO_INTRO, level, goal)
             day_id = db.add_day(pid)
-            for name, doses in DEMO_PROGRAMS[goal]:
+            for name, doses in plan:
                 sets, reps, seconds, note = doses[level]
                 item_id = db.add_day_item(day_id, ids[name], "trening")
                 db.update_day_item(item_id, "trening", sets, reps, seconds, DEMO_REST, DEMO_REST_AFTER, note)
@@ -293,7 +296,7 @@ def seed_program() -> None:
         for name, section, sets, reps, seconds, rest, note in items:
             item_id = db.add_day_item(day_id, ids[name], section)
             db.update_day_item(item_id, section, sets, reps, seconds, rest, DEMO_REST_AFTER, note)
-    print(f"  {made} demo programa (razina × cilj), svaki s Treningom 1 ({made_items} stavki u svima); "
+    print(f"  {made} demo programa (razina × tip), svaki s Treningom 1 ({made_items} stavki u svima); "
           f"{len(ids)} vježbi u bazi; srednja × cijelo: {len(DAYS)} dana, sva tri dijela")
 
 

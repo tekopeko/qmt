@@ -609,7 +609,7 @@ def test_a_plan_card_is_its_name_its_prices_and_one_text():
     assert copy.SLOTS["cjenik.individualni.text"].default == "Rad 1:1 s trenerom, termini po dogovoru.\n" + end
     for n, tier in enumerate(("start", "pro", "elite"), start=1):   # each tier starts with the online plan's lines
         assert copy.SLOTS[f"cjenik.online.{tier}.text"] == copy.Slot(
-            "Programi po tvojoj razini i cilju, s video uputama — gdje god jesi.\n" + end, copy.CAP,
+            "Programi po tvojoj razini, s video uputama — gdje god jesi.\n" + end, copy.CAP,
             f"Članarina: tekst plana · online {n}")
     t = client_for("trener@test.local")
     for key in gone:

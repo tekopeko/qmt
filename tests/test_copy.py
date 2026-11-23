@@ -1888,8 +1888,11 @@ def test_the_migration_makes_each_plan_card_one_text_and_carries_the_yearly_pric
     mig = _migration("6e2b9d41c7a3_clanarina_texts.py")
     assert (mig.revision, mig.down_revision) == ("6e2b9d41c7a3", "c138157ff6bb")
     for plan in mig.OLD_LEADS:                                              # its own copy of the old defaults
-        for key in mig.text_keys(plan):                                     # agrees with the new slots'
-            assert copy.SLOTS[key].default == mig.default_text(plan), key
+        for key in mig.text_keys(plan):                                     # agrees with the new slots' (online's
+            then = mig.default_text(plan)                                   # lead lost " i cilju" on 23.11.2026, when
+            now = then.replace(" i cilju", "") if plan == "online" else then   # the type stopped gating: the one drift)
+            assert copy.SLOTS[key].default == now and then != now or plan != "online", key
+            assert copy.SLOTS[key].default == now, key
     for plan in mig.GYM_PLANS:
         assert (copy.SLOTS[f"price.{plan}.year_amount"].default, copy.SLOTS[f"price.{plan}.year_unit"].default) == mig.YEAR_DEFAULT
     assert (copy.GYM_CARD_BLANK["year_price"], copy.GYM_CARD_BLANK["year_unit"]) == mig.YEAR_DEFAULT

@@ -764,11 +764,12 @@ Index("uq_exercises_name", func.lower(Exercise.name), unique=True)
 
 
 class Program(Base):
-    """An online course variant: tagged with a (razina × cilj) combo,
-    matched, not assigned.
+    """An online course variant: tagged with a razina and a type (`goal`,
+    upitnik.GOALS: "Tip treninga" on its forms), matched, not assigned.
 
-    The online side is AUTOMATED — the upitnik routes a client into a razina
-    and a cilj, and they see exactly the programmes tagged with that combo.
+    The online side is AUTOMATED — the upitnik routes a client into a razina,
+    and he sees every programme of that razina, whatever its type (since
+    23.11.2026, db.programs_for_level; until then its razina × cilj combo).
     Every programme is the trainer's own (30.10.2026: no default slots, no
     default exercises, nothing refilled; one with no day, or a day with no
     exercise, stays so until he changes it); no per-client hand-outs

@@ -201,7 +201,7 @@ class ImageSlot:
 
 
 # the online tiers' bullets: tier 1's own defaults, and placeholders for 2 and 3
-ONLINE_POINTS = ("Program po tvojoj razini i cilju", "Video upute za svaku vježbu",
+ONLINE_POINTS = ("Program po tvojoj razini", "Video upute za svaku vježbu",
                  "Mjesečni Zoom poziv ili susret s trenerom")
 
 # Reference prices from the owner's Shopify shop (read 6.9.2026). Units are
@@ -245,7 +245,7 @@ PLAN_TEXTS = {
     "individualni": ("Rad 1:1 s trenerom, termini po dogovoru.",),
     "poluindividualni": ("Trening u dvoje ili troje — pola puta između grupe i 1:1.",),
     "rehabilitacija": ("Programi povratka nakon ozljede, 1:1 stručno vođeni.", "paketi od 5 i 10 tretmana"),
-    "online": ("Programi po tvojoj razini i cilju, s video uputama — gdje god jesi.",),
+    "online": ("Programi po tvojoj razini, s video uputama — gdje god jesi.",),
     "prehrana": ("Vođenje prehrane uz aplikaciju MojiMakrosi i zdrave recepte.",),
 }
 PLAN_TEXT_END = ("Za upis se javi treneru u dvorani.", "Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.")

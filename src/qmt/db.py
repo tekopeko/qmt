@@ -19,13 +19,13 @@ from typing import Iterator
 from sqlalchemy import and_, create_engine, delete as sa_delete, func, or_, select, text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, aliased, joinedload, selectinload, sessionmaker
+from sqlalchemy.orm import Session, aliased, joinedload, load_only, selectinload, sessionmaker
 
 from . import config, copy, upitnik
 from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, Announcement, Base, Booking,
                      Exercise, GymCard, Membership, OnboardingResponse, Payment, Program, ProgramDay, ProgramDayItem,
                      ReminderLog, SessionTemplate, SiteCopy, TrainingLog, TrainingSession, UpitnikQuestion, User,
-                     WorkoutLog, alpha_key, exercise_alternatives, matches)
+                     WorkoutLog, alpha_key, exercise_alternatives, fold, matches)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -1542,22 +1542,30 @@ def booking_history(user_id: int, limit: int = 20) -> list[TrainingSession]:
 
 # ---------- training programmes (treninzi) ----------
 
-def programs_for_combo(level: str, goal: str) -> list[Program]:
-    """The client's automatic programme(s): whatever is tagged with their
-    upitnik combo. No hand-outs — matching IS the access. Each with its days
-    and their items loaded (the list says how many days)."""
+def programs_for_level(level: str) -> list[Program]:
+    """The client's automatic programmes: every one of the razina his
+    upitnik gave him, whatever its type (23.11.2026, the owner: "I want to
+    allow the users to be able to access all types of training. The
+    questionnaire only determines the level of fitness and the trainings
+    are available for everybody."; until then a programme's cilj had to
+    match his too). No hand-outs — matching IS the access. In GOALS' order
+    (cijelo, gornji, donji, core; a type not among them last), each type by
+    title; each with its days and their items loaded (the list says how
+    many days)."""
     with session_scope() as s:
-        return list(s.scalars(
-            select(Program).where(Program.level == level, Program.goal == goal)
+        rows = list(s.scalars(
+            select(Program).where(Program.level == level)
             .options(selectinload(Program.days).selectinload(ProgramDay.items))
             .order_by(Program.title)))
+    order = list(upitnik.GOALS)
+    return sorted(rows, key=lambda p: order.index(p.goal) if p.goal in upitnik.GOALS else len(order))
 
 
 def client_can_view(program: Program, user_id: int) -> bool:
-    """A client sees a programme iff its (razina, cilj) matches their upitnik."""
+    """A client sees a programme iff it is of the razina his upitnik gave
+    him, whatever its type (since 23.11.2026: programs_for_level)."""
     onb = get_onboarding(user_id)
-    return (onb is not None and program.level is not None
-            and program.level == onb.level and program.goal == onb.goal)
+    return onb is not None and program.level is not None and program.level == onb.level
 
 
 # ---------- the library of exercises (/treninzi/vjezbe, 30.10.2026) ----------
@@ -1713,6 +1721,34 @@ def exercises(q: str = "") -> list[tuple[Exercise, int]]:
         rows = list(s.scalars(select(Exercise)))
     rows = [e for e in rows if matches(q, e.name, e.tags)]
     return [(e, used.get(e.id, 0)) for e in sorted(rows, key=lambda e: alpha_key(e.name))]
+
+
+def tag_counts() -> list[tuple[str, int]]:
+    """Every tag of the library with the number of exercises that carry it
+    (23.11.2026: the chips under both exercise searches, the library's and
+    the day editor's "Dodaj vježbu"; the owner: "search the items used in
+    the exercise like for example 'girja'"). Counted folded (models.fold:
+    "TRX" and "trx" are one tag, "Leđa" and "leđa" one; an exercise counts a
+    tag once), each shown in its most frequent spelling (a tie: the first in
+    the alphabet's order, alpha_key, then the code points', so the answer
+    never depends on the rows' order); the most used first, then the
+    alphabet's order. One query, the exercises' tags (Exercise.tag_items)."""
+    with session_scope() as s:
+        rows = list(s.scalars(select(Exercise).options(load_only(Exercise.tags))))
+    carried: dict[str, int] = {}                     # a folded tag -> how many exercises carry it
+    spelled: dict[str, dict[str, int]] = {}          # a folded tag -> each spelling -> how many
+    for e in rows:
+        seen: set[str] = set()
+        for tag in e.tag_items:
+            key = fold(tag)
+            if key in seen:
+                continue
+            seen.add(key)
+            carried[key] = carried.get(key, 0) + 1
+            ways = spelled.setdefault(key, {})
+            ways[tag] = ways.get(tag, 0) + 1
+    shown = {key: min(ways, key=lambda t: (-ways[t], alpha_key(t), t)) for key, ways in spelled.items()}
+    return sorted(((shown[key], n) for key, n in carried.items()), key=lambda r: (-r[1], alpha_key(r[0]), r[0]))
 
 
 def program_name(p: Program) -> str:

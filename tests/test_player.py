@@ -97,9 +97,11 @@ def clean_db(tmp_path, monkeypatch):
     yield
 
 
-def make_user(email: str, is_trainer: bool = False, goal: str = "cijelo") -> int:
+def make_user(email: str, is_trainer: bool = False, level: str = "pocetna") -> int:
     """An account; a client gets the online plan and an old upitnik (version
-    1, all zero: početna) whose goal is `goal`, as tests/test_programs.py's."""
+    1, all zero, its goal cijelo) whose razina is `level`, as
+    tests/test_programs.py's: since 23.11.2026 a client sees every programme
+    of his razina, whatever its type."""
     import json
     from datetime import date
 
@@ -113,7 +115,7 @@ def make_user(email: str, is_trainer: bool = False, goal: str = "cijelo") -> int
     else:
         db.record_payment(u.id, "online")
         picked = {q["key"]: 0 for q in upitnik.QUESTIONS_V1}
-        db.save_onboarding(u.id, json.dumps(picked), 0, "pocetna", goal, version=1, pain_level=None,
+        db.save_onboarding(u.id, json.dumps(picked), 0, level, "cijelo", version=1, pain_level=None,
                            pain_high=False, needs_review=False, consented_at=None)
     return u.id
 
@@ -126,14 +128,14 @@ def client_for(email: str) -> TestClient:
 
 
 def people():
-    """(trainer's id, ivan's, ana's): ivan početna × cijelo (the day's), ana
-    početna × gornji (not his programme)."""
+    """(trainer's id, ivan's, ana's): ivan početna (the day's razina), ana
+    srednja (another razina: his programme is not hers)."""
     return (make_user("trener@test.local", is_trainer=True), make_user("ivan@test.local"),
-            make_user("ana@test.local", goal="gornji"))
+            make_user("ana@test.local", level="srednja"))
 
 
 def build_day(title: str = "Cijelo tijelo — početna", level: str | None = "pocetna", goal: str | None = "cijelo"):
-    """A programme (ivan's combo by default) and its Trening 1 "Cijelo
+    """A programme (ivan's razina by default) and its Trening 1 "Cijelo
     tijelo", in the day's display order:
       1 Čučanj s vlastitom težinom (zagrijavanje, 2 × 15, rest 30)
       2 Goblet čučanj (trening, 3 × 10, rest 60, "16 kg"; its swaps, one
@@ -805,7 +807,7 @@ def test_the_day_page_lists_the_last_five_passes_with_their_sets():
     newest = finished(ivan, d, {3: [{"seconds": 40}, {"seconds": 40}], 2: [{"reps": 10, "kg": 20.0}, {"reps": 8, "kg": 20.0}],
                                 1: [{"reps": 15, "kg": 0.0}, {"reps": 15, "kg": 2.5}]},
                       effort=7, feeling="odlicno", note="Lakše nego prošli put.", days_ago=2, minutes=38)
-    finished(ana, build_day("Gornji", "pocetna", "gornji"), {1: [{"reps": 1, "kg": 0.0}]})
+    finished(ana, build_day("Gornji", "srednja", "gornji"), {1: [{"reps": 1, "kg": 0.0}]})
     page = ci.get(d.base).text
     day = (datetime.now(config.TZ) - timedelta(days=2)).date()
     lines = hist_lines(page)
@@ -847,7 +849,7 @@ def test_the_programme_page_says_each_days_state(monkeypatch):
                      ("Trening 4", "1 vježba · nedovršen")]
     assert db.day_states(ivan, [d.did, d2, d3])[d.did]["count"] == 2 and d2 not in db.day_states(ivan, [d2])
     assert re.findall(r'<span class="hint">([^<]*)</span>', client_for("ana@test.local").get(
-        f"/treninzi/{build_day('Njen', 'pocetna', 'gornji').pid}").text) == ["Preporučeno: ponedjeljak · 4 vježbe"]
+        f"/treninzi/{build_day('Njen', 'srednja', 'gornji').pid}").text) == ["Preporučeno: ponedjeljak · 4 vježbe"]
 
 
 def attended_session(uid: int, starts: datetime) -> int:

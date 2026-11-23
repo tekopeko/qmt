@@ -1611,7 +1611,9 @@ def test_an_old_rows_block_reads_its_old_answers_and_asks_for_the_new_one():
     """A version-1 row (five questions and a goal) shows its level, goal
     and points of 14 as before, its answers through QUESTIONS_V1 for the
     trainer, and "Stari upitnik — ispuni novi." with the link for the
-    client. It still counts as filled: its programmes stay open."""
+    client. It still counts as filled: its programmes stay open, and since
+    23.11.2026 they follow its razina alone, as a new row's ("programi na
+    /treninzi prate ovu razinu.", no "i cilj")."""
     uid = make_user("ivan@test.local")
     make_user("trener@test.local", is_trainer=True)
     db.save_onboarding(uid, json.dumps({"staz": 2, "tjedno": 2, "sklekovi": 1, "cucanj": 2, "ozljede": 2}), 9,
@@ -1621,7 +1623,8 @@ def test_an_old_rows_block_reads_its_old_answers_and_asks_for_the_new_one():
     c = client_for("ivan@test.local")
     block = upitnik_block(c.get("/karton").text)
     assert ">Srednja razina</h2>" in block and '<span class="u-pill">Gornji dio tijela</span>' in block
-    assert '<span class="u-score">9/14 bodova</span>' in block and "i cilj." in block
+    assert '<span class="u-score">9/14 bodova</span>' in block and "i cilj" not in block
+    assert '<p class="ramp-note">Razina 2 od 3 — programi na /treninzi prate ovu razinu.</p>' in block
     assert 'Stari upitnik — <a class="tlink" href="/upitnik">ispuni novi</a>.' in block
     assert "u-fact" not in block
     assert "Gornji blok" in c.get("/treninzi").text and c.get(f"/treninzi/{pid}").status_code == 200

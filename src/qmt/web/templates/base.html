@@ -736,6 +736,29 @@
     .it-video { color: var(--muted); font-size: .82rem; white-space: nowrap; }
     .it-video.has { color: var(--good); font-weight: 600; }
     .it-acts { display: inline-flex; gap: 6px; }
+    /* The tags under an exercise search, as chips (23.11.2026, the owner:
+       "a search helper where we can search the items used in the exercise
+       like for example 'girja'"; _tagbar.html): the library's search
+       (vjezbe.html) and the day editor's "Dodaj vježbu"
+       (trening_day_edit.html) carry the same row, so its look is base's
+       (its place each page's). A wrapping row, 6px apart, never scrolling
+       sideways. A chip is the library's .ex-tag (--surface-2, a pill, 600
+       .74rem) at a tap size, 32px tall (36px on a coarse pointer), on
+       <button> and <a> alike (the library's no-JS links); pressed (its
+       word in the box, aria-pressed; the no-JS link of the whole ?q=,
+       aria-current) the period switch's chosen side, --accent-dim with
+       --accent-tint-ink, which a hover keeps. "još N" (.tag-more) shows the
+       rest: no fill, a hairline, muted (an action, not a tag). */
+    .tagbar { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag-chip { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 12px;
+                border: 1px solid transparent; border-radius: 999px; background: var(--surface-2); color: var(--text);
+                box-shadow: none; text-decoration: none; font: 600 .74rem/1.2 var(--font-body);
+                overflow-wrap: anywhere; transition: background .15s, color .15s; }
+    .tag-chip:hover { transform: none; background: color-mix(in srgb, var(--text) 10%, var(--surface-2)); }
+    .tag-chip:is([aria-pressed="true"], [aria-current="true"]) { background: var(--accent-dim); color: var(--accent-tint-ink); }
+    .tag-chip.tag-more { background: none; border-color: var(--line); color: var(--muted); }
+    .tag-chip.tag-more:hover { color: var(--text); border-color: color-mix(in srgb, var(--text) 40%, transparent); }
+    @media (pointer: coarse) { .tag-chip { min-height: 36px; } }
 
     /* ===== a choice and yes / no: Shape's rows, a letter badge at the left =====
        (upitnik.html's until 30.10.2026, when the online trening's finish
@@ -1757,6 +1780,55 @@
     return String(s == null ? "" : s).toLowerCase()
       .replace(/[čćđšž]/g, function (ch) { return _fold[ch]; })
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+  // The tags as chips under an exercise search (23.11.2026, _tagbar.html),
+  // window.qmtTagbar(bar, box, focus): the library's and the day editor's.
+  // A tap on a chip toggles ITS word(s) in the search box: not pressed, the
+  // tag joins the box's words at the end ("hinge" and girja: "hinge girja",
+  // the every-word rule narrowing; a two-word tag as its two words);
+  // pressed, its words leave the box (whole words, folded: qmtFold). Then
+  // the search runs as if typed: an input event on the box (the library's
+  // filter, the combobox's list). The chips follow the box: a chip is
+  // pressed (aria-pressed) while every word of its tag is a word of the
+  // box, asked again at every input event and by the function returned,
+  // which the page calls where it sets the box itself ("prikaži sve", a
+  // pick). "još N" shows the rest and goes. With `focus` a tap leaves the
+  // focus in the box (the day editor: its list opens there); without it
+  // the chip keeps it (the library: a phone's keyboard stays shut over
+  // the list). The row is rendered hidden and shown here.
+  function qmtTagbar(bar, box, focus) {
+    if (!bar || !box) return function () {};
+    var chips = [].slice.call(bar.querySelectorAll(".tag-chip[data-tag]"));
+    function words(s) { return qmtFold(s).split(/\s+/).filter(Boolean); }
+    function sync() {
+      var have = words(box.value);
+      chips.forEach(function (c) {
+        var on = words(c.dataset.tag).every(function (w) { return have.indexOf(w) >= 0; });
+        c.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    bar.addEventListener("click", function (e) {
+      var more = e.target.closest(".tag-more"), chip = e.target.closest(".tag-chip[data-tag]");
+      if (more) {
+        var first = chips.filter(function (c) { return c.hidden; })[0];
+        chips.forEach(function (c) { c.hidden = false; });
+        if (first && document.activeElement === more) first.focus();     // the focus it had goes on, not to the page
+        more.remove();
+        return;
+      }
+      if (!chip) return;
+      var tag = words(chip.dataset.tag), kept = box.value.split(/\s+/).filter(Boolean);
+      kept = chip.getAttribute("aria-pressed") === "true"
+        ? kept.filter(function (w) { return tag.indexOf(qmtFold(w)) < 0; })
+        : kept.concat(chip.dataset.tag.split(/\s+/).filter(Boolean));
+      box.value = kept.join(" ");
+      if (focus) box.focus();
+      box.dispatchEvent(new Event("input", {bubbles: true}));
+    });
+    box.addEventListener("input", sync);
+    bar.hidden = false;
+    sync();
+    return sync;
   }
 
   // Mjesečno / Godišnje (.period, _period.html): each switch works the

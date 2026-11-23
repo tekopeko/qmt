@@ -69,11 +69,15 @@ first (pain_high, upitnik.pain_note); the injuries question's yes flags
 the profile for the trainer to look at (needs_review).
 
 The questionnaire decides the LEVEL only (the owner: "The questionnaire will
-only determine the difficulty level of the trainings … for now"): every
-response's goal, the column the programmes are matched on (db.programs_for_
-combo, db.client_can_view), is GOAL, "cijelo", so a client gets the level's
-whole-body programmes until the "type of training" step comes. q1's goal is
-kept in the answers and shown on the karton; it routes nothing yet.
+only determine the difficulty level of the trainings … for now"), and since
+23.11.2026 the level is all a programme is matched on (db.programs_for_level,
+db.client_can_view; the owner: "I want to allow the users to be able to
+access all types of training. The questionnaire only determines the level of
+fitness and the trainings are available for everybody."): a client gets
+every programme of his level, whatever its type (GOALS, the programme's
+"Tip treninga"). Every version-2 response still stores GOAL, "cijelo", as
+its goal; it gates nothing. q1's goal is kept in the answers and shown on
+the karton; it routes nothing yet.
 
 Answers are stored as JSON (models.OnboardingResponse.answers), keyed by the
 question's row: "q<id>" (the fifteen kept their ids when they became rows,
@@ -91,8 +95,8 @@ its question), or under "(pitanje uklonjeno)" when the row is gone
 Version 1 (3.9. – 26.10.2026: five scored questions and a goal, points per
 option, the goal routing too) stays readable: QUESTIONS_V1 renders an old
 row's answers on the karton (OnboardingResponse.version 1). Such a row
-still counts as a filled upitnik, its level and goal still route, until
-the client fills the new one.
+still counts as a filled upitnik, its level still routes (its goal no longer
+does, since 23.11.2026), until the client fills the new one.
 """
 
 from __future__ import annotations
@@ -109,16 +113,21 @@ LEVELS = {
     "napredna": "Napredna razina",
 }
 
-# The programmes' cilj (models.Program.goal: the nine razina × cilj slots).
-# A version-2 response's goal is always GOAL; version 1 asked for one.
+# The programmes' types (models.Program.goal, "Tip treninga" on the
+# programme's forms; "core" the fourth since 23.11.2026, the owner: "we need
+# 'cijelo tijelo' 'gornji dio tijela' 'donji dio tijela', but also 'core'").
+# A client sees every type of his level (db.programs_for_level), grouped
+# under these labels in this order. A version-2 response's goal is always
+# GOAL; version 1 asked for one of the first three.
 GOALS = {
     "cijelo": "Cijelo tijelo",
     "gornji": "Gornji dio tijela",
     "donji": "Donji dio tijela",
+    "core": "Core",
 }
 
 VERSION = 2          # OnboardingResponse.version of a response to these questions
-GOAL = "cijelo"      # every version-2 response's goal (above)
+GOAL = "cijelo"      # every version-2 response's stored goal; it gates nothing since 23.11.2026 (above)
 
 PARTS = (1, 2, 3, 4)                   # a question's part: the heading above it, upitnik.part<n>.h
 # What a question asks, as the editor's select names it ("Više odgovora":

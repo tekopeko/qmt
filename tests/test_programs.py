@@ -63,7 +63,7 @@ import re
 import threading
 import time
 from html import unescape
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
 os.environ["ALLOWED_EMAILS"] = "ivan@test.local,ana@test.local"
@@ -110,7 +110,7 @@ def clean_db(tmp_path, monkeypatch):
         conn.execute(sa_text("DROP TABLE IF EXISTS program_items CASCADE"))
 
 
-def make_user(email: str, is_trainer: bool = False, goal: str = "cijelo") -> int:
+def make_user(email: str, is_trainer: bool = False, level: str = "pocetna") -> int:
     from datetime import date
 
     u = db.create_user(email, email.split("@")[0], auth.hash_password("lozinka123"))
@@ -122,14 +122,15 @@ def make_user(email: str, is_trainer: bool = False, goal: str = "cijelo") -> int
         # online treninzi are gated on the `online` plan + a filled upitnik;
         # these tests exercise programme mechanics, so clients get both
         # (the gates have their own tests). An old upitnik (version 1),
-        # all-zero answers -> pocetna: its goal is its own, which is what
-        # these tests vary (a version-2 response's goal is always cijelo).
+        # all-zero answers, its goal cijelo, its razina `level`, which is
+        # what these tests vary: since 23.11.2026 a client sees every
+        # programme of his razina, whatever its type (db.programs_for_level).
         import json
 
         from qmt import upitnik
         db.record_payment(u.id, "online")
         picked = {q["key"]: 0 for q in upitnik.QUESTIONS_V1}
-        db.save_onboarding(u.id, json.dumps(picked), 0, "pocetna", goal, version=1, pain_level=None,
+        db.save_onboarding(u.id, json.dumps(picked), 0, level, "cijelo", version=1, pain_level=None,
                            pain_high=False, needs_review=False, consented_at=None)
     return u.id
 
@@ -143,8 +144,8 @@ def client_for(email: str) -> TestClient:
 
 def trainer_with_clients():
     make_user("trener@test.local", is_trainer=True)
-    ivan = make_user("ivan@test.local")                 # pocetna / cijelo
-    ana = make_user("ana@test.local", goal="gornji")    # pocetna / gornji
+    ivan = make_user("ivan@test.local")                 # pocetna
+    ana = make_user("ana@test.local", level="srednja")  # another razina: ivan's programmes are not hers
     return client_for("trener@test.local"), ivan, ana
 
 
@@ -230,29 +231,61 @@ def admin_row(page: str, title: str) -> tuple[str, str, bool] | None:
 
 # ---------- programmes: matching, gates, order ----------
 
-def test_program_visible_only_by_matching_combo():
+def client_groups(page: str) -> list[tuple[str, list[str]]]:
+    """A client's /treninzi as he reads it (since 23.11.2026): each group's
+    caption, its type's label ("" for a group under none), and the titles
+    of the programmes under it, in order."""
+    main = page.split("<main", 1)[1].split("</main>", 1)[0]
+    groups = []
+    for sec in main.split("<section")[1:]:
+        sec = sec.split("</section>", 1)[0]
+        cap = re.search(r'<h2 class="dx-cap" id="tip-[a-z]+">([^<]*)</h2>', sec)
+        groups.append((unescape(cap.group(1)) if cap else "",
+                       [unescape(t) for t in re.findall(r"<strong>([^<]*)</strong>", sec)]))
+    return groups
+
+
+def test_a_client_sees_every_programme_of_his_razina_whatever_its_type():
+    """Matching IS the access, and since 23.11.2026 by razina alone (the
+    owner: "I want to allow the users to be able to access all types of
+    training. The questionnaire only determines the level of fitness and
+    the trainings are available for everybody."): ivan (početna, his v1
+    goal cijelo) sees a početna programme of every type, Core among them,
+    each type's under its caption in the types' order (Cijelo tijelo,
+    Gornji dio tijela, Donji dio tijela, Core), each type's by title, and
+    opens each; ana (srednja) sees none of them and is refused each. The
+    head pill says his razina alone. Re-tagging a programme's razina moves
+    its audience at once; a programme with no razina is staff's only."""
     ct, ivan, ana = trainer_with_clients()
     r = ct.post("/treninzi", data={"title": "Tjedan 1", "level": "pocetna",
                                    "goal": "cijelo"}, follow_redirects=False)
     assert "/uredi" in r.headers["location"]
     pid = int(r.headers["location"].split("/")[2])
+    others = [db.create_program(title, None, "pocetna", goal)
+              for title, goal in (("Core B", "core"), ("Noge", "donji"), ("Core A", "core"), ("Gornji blok", "gornji"))]
+    ci, ca = client_for("ivan@test.local"), client_for("ana@test.local")
 
-    # matching IS the access: ivan (pocetna/cijelo) sees it automatically...
-    ci = client_for("ivan@test.local")
-    assert "Tjedan 1" in ci.get("/treninzi").text
-    assert ci.get(f"/treninzi/{pid}").status_code == 200
-    # ...ana (pocetna/gornji) does not
-    ca = client_for("ana@test.local")
-    assert "Tjedan 1" not in ca.get("/treninzi").text
-    assert ca.get(f"/treninzi/{pid}").status_code == 403
+    page = ci.get("/treninzi").text
+    assert client_groups(page) == [("Cijelo tijelo", ["Tjedan 1"]), ("Gornji dio tijela", ["Gornji blok"]),
+                                   ("Donji dio tijela", ["Noge"]), ("Core", ["Core A", "Core B"])]
+    assert '<section aria-labelledby="tip-core">\n    <h2 class="dx-cap" id="tip-core">Core</h2>' in page
+    assert re.search(r'padding:4px 10px;">\s*Početna razina</span>', page) and "· Cijelo tijelo" not in page
+    assert [p.title for p in db.programs_for_level("pocetna")] == ["Tjedan 1", "Gornji blok", "Noge", "Core A", "Core B"]
+    for p in (pid, *others):
+        assert ci.get(f"/treninzi/{p}").status_code == 200 and db.client_can_view(db.get_program(p), ivan), p
+        assert ca.get(f"/treninzi/{p}").status_code == 403 and not db.client_can_view(db.get_program(p), ana), p
+    ana_page = ca.get("/treninzi").text
+    assert client_groups(ana_page) == [] and "Programi za tvoju razinu još se pripremaju." in ana_page
 
-    # re-tagging the combo instantly moves the audience — no hand-outs anywhere
-    ct.post(f"/treninzi/{pid}/edit", data={"title": "Tjedan 1", "level": "pocetna",
+    # re-tagging the razina instantly moves the audience — no hand-outs anywhere
+    ct.post(f"/treninzi/{pid}/edit", data={"title": "Tjedan 1", "level": "srednja",
                                            "goal": "gornji"}, follow_redirects=False)
     assert ca.get(f"/treninzi/{pid}").status_code == 200
     assert ci.get(f"/treninzi/{pid}").status_code == 403
+    assert client_groups(ca.get("/treninzi").text) == [("Gornji dio tijela", ["Tjedan 1"])]
+    assert client_groups(ci.get("/treninzi").text)[0] == ("Gornji dio tijela", ["Gornji blok"])
 
-    # a programme with no combo is trainer-only
+    # a programme with no razina is trainer-only
     bare = db.create_program("Skica", None)
     assert ci.get(f"/treninzi/{bare}").status_code == 403
 
@@ -330,35 +363,56 @@ def test_a_day_whose_last_exercise_is_removed_stays_empty():
 
 
 def test_a_client_is_told_what_is_not_there_yet():
-    """A client whose combination has no programme (another combination's
-    is not his): "Program za tvoju kombinaciju još se priprema."; one whose
+    """A client whose razina has no programme (another razina's is not
+    his): "Programi za tvoju razinu još se pripremaju." (since 23.11.2026;
+    "Program za tvoju kombinaciju još se priprema." until then); one whose
     programme has no day sees it listed, "0 treninga", and its page says
-    "Program još nema treninga.". What he opens makes nothing either."""
+    "Program još nema treninga.". What he opens makes nothing either. The
+    page's lead says what the upitnik decides: "Programi tvoje razine —
+    određuje je upitnik."."""
     trainer_with_clients()
-    db.create_program("Gornji blok", None, "pocetna", "gornji")             # ana's combination
-    ci = client_for("ivan@test.local")                                      # pocetna / cijelo
+    db.create_program("Srednji blok", None, "srednja", "cijelo")            # ana's razina
+    ci = client_for("ivan@test.local")                                      # pocetna
     page = ci.get("/treninzi").text
-    assert '<p style="margin-bottom:6px;"><strong>Program za tvoju kombinaciju još se priprema.</strong></p>' in page
-    assert "Gornji blok" not in page and stored_counts() == (1, 0, 0, 0)
-    pid = db.create_program("Tjedan 1", None, "pocetna", "cijelo")
+    assert ('<p style="margin-bottom:6px;"><strong>Programi za tvoju razinu još se pripremaju.</strong></p>\n'
+            '    <p class="hint">Trener slaže sadržaj — provjeri uskoro.</p>') in page
+    assert '<p class="hint">Programi tvoje razine — određuje je upitnik.</p>' in page
+    assert "kombinacij" not in page and "cilj" not in page
+    assert "Srednji blok" not in page and stored_counts() == (1, 0, 0, 0)
+    pid = db.create_program("Tjedan 1", None, "pocetna", "gornji")
     page = ci.get("/treninzi").text
     assert "još se priprema" not in page and f'href="/treninzi/{pid}"' in page and '<div class="hint">0 treninga</div>' in page
+    assert client_groups(page) == [("Gornji dio tijela", ["Tjedan 1"])]
     assert '<p class="hint">Program još nema treninga.</p>' in ci.get(f"/treninzi/{pid}").text
     assert stored_counts() == (2, 0, 0, 0)
 
 
+def test_a_client_without_the_upitnik_is_told_it_decides_his_razina():
+    """A client with the online plan and no upitnik gets its card, whose
+    line says the upitnik places him in a razina and the programmes open at
+    once (since 23.11.2026, no cilj: the razina is all it decides)."""
+    make_user("trener@test.local", is_trainer=True)
+    uid = make_user("ivan@test.local")
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("DELETE FROM onboarding_responses WHERE user_id = :u"), {"u": uid})
+    page = client_for("ivan@test.local").get("/treninzi").text
+    assert ('<p class="hint" style="margin-top:2px;">Prema odgovorima te svrstavamo u razinu '
+            '(početna / srednja / napredna) — programi se otvaraju odmah.</p>') in page
+    assert "Ispuni upitnik" in page and "<section" not in page.split("<main", 1)[1]
+
+
 def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
-    """The lead says what is automatic (the matching) and what is his (the
-    programmes, their days and exercises), and what a combination with no
-    programme tells its client; the form is "Novi program", its button
-    "Kreiraj i dodaj treninge", which opens the new programme's editor, the
-    programme with no day."""
+    """The lead says what is automatic (the matching, by razina since
+    23.11.2026, every type of it) and what is his (the programmes, their
+    days and exercises), and what a razina with no programme tells its
+    client; the form is "Novi program", its button "Kreiraj i dodaj
+    treninge", which opens the new programme's editor, the programme with
+    no day."""
     ct, *_ = trainer_with_clients()
     page = ct.get("/treninzi").text
-    lead = ("Sve je automatski: upitnik svrsta polaznika u razinu i cilj, a on odmah vidi programe označene tom "
-            "kombinacijom — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku kombinaciju koju nudiš "
-            "napravi program pa mu dodaj treninge i vježbe. Kombinacija bez programa polazniku kaže da se program "
-            "još priprema.")
+    lead = ("Sve je automatski: upitnik svrsta polaznika u razinu, a on odmah vidi sve programe te razine, po tipu "
+            "treninga — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku razinu napravi programe po tipu "
+            "pa im dodaj treninge i vježbe. Razina bez programa polazniku kaže da se programi još pripremaju.")
     assert f'<p class="hint"> {lead} </p>' in " ".join(page.split())
     assert '<h2 style="font-size:1.05rem; margin-bottom:12px;">Novi program</h2>' in page
     assert '<button type="submit">Kreiraj i dodaj treninge</button>' in page
@@ -368,6 +422,70 @@ def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
     r = ct.post("/treninzi", data={"title": "Tjedan 1", "level": "srednja", "goal": "donji"}, follow_redirects=False)
     pid = db.all_programs()[0][0].id
     assert r.headers["location"] == f"/treninzi/{pid}/uredi" and stored_counts() == (1, 0, 0, 0)
+
+
+def test_a_programme_is_one_of_four_types_core_last():
+    """A programme's type ("Tip treninga" on both its forms, "Cilj" until
+    23.11.2026; the column stays `goal`) is one of four since 23.11.2026
+    (the owner: "we need 'cijelo tijelo' 'gornji dio tijela' 'donji dio
+    tijela', but also 'core'"), Core last, in "Novi program" and "Uredi
+    program" alike; staff's table names it under "Tip", a razina's
+    programmes in the types' order (Core fourth). A type or a razina that
+    is none is refused on both routes, "Odaberi razinu i tip treninga.",
+    nothing stored or changed."""
+    ct, *_ = trainer_with_clients()
+    types = [("cijelo", "Cijelo tijelo"), ("gornji", "Gornji dio tijela"), ("donji", "Donji dio tijela"),
+             ("core", "Core")]
+    page = ct.get("/treninzi").text
+    assert '<div class="field"><label for="np-goal">Tip treninga</label>' in page and ">Cilj<" not in page
+    assert '<th style="padding:8px 6px;">Tip</th><th>Program</th>' in page
+    new = page.split('id="np-goal"')[1].split("</select>")[0]
+    assert re.findall(r'<option value="(\w+)">([^<]*)</option>', new) == types
+    r = ct.post("/treninzi", data={"title": "Core 1", "level": "srednja", "goal": "core"}, follow_redirects=False)
+    pid = int(r.headers["location"].split("/")[2])
+    p = db.get_program(pid)
+    assert (p.title, p.level, p.goal) == ("Core 1", "srednja", "core")
+    for title, goal in (("Gornji", "gornji"), ("Cijelo", "cijelo"), ("Donji", "donji")):
+        db.create_program(title, None, "srednja", goal)
+    table = ct.get("/treninzi").text
+    srednja = table.split("Srednja razina</td>")[1].split("Napredna razina</td>")[0]
+    assert re.findall(r'<td style="padding:9px 6px; white-space:nowrap;">([^<]*)</td>', srednja) == [l for _, l in types]
+    edit = ct.get(f"/treninzi/{pid}/uredi").text
+    assert '<div class="field"><label for="pe-goal">Tip treninga</label>' in edit and ">Cilj<" not in edit
+    sel = edit.split('id="pe-goal"')[1].split("</select>")[0]
+    assert re.findall(r'<option value="(\w+)" (?:selected)?>([^<]*)</option>', sel) == types
+    assert '<option value="core" selected>Core</option>' in sel
+    for bad in ({"level": "srednja", "goal": "ruke"}, {"level": "x", "goal": "core"}):
+        r = ct.post("/treninzi", data={"title": "X", **bad}, follow_redirects=False)
+        assert location(r) == "/treninzi?error=Odaberi razinu i tip treninga.", bad
+        r = ct.post(f"/treninzi/{pid}/edit", data={"title": "X", **bad}, follow_redirects=False)
+        assert location(r) == f"/treninzi/{pid}/uredi?error=Odaberi razinu i tip treninga.", bad
+    p = db.get_program(pid)
+    assert stored_counts()[0] == 4 and (p.title, p.level, p.goal) == ("Core 1", "srednja", "core")
+
+
+def test_the_demo_seed_makes_its_nine_programmes_none_of_them_core():
+    """scripts/seed_demo.py's programmes walk its DEMO_PROGRAMS (since
+    23.11.2026, not upitnik.GOALS, which holds Core now: the demo's
+    exercises hold one core exercise, so Core has no demo programme), so
+    the dev reset still makes its nine, a razina × its three types, each
+    titled by its type and razina, each with a Trening 1; a client of
+    srednja (the demo's ivan) sees that razina's three, Cijelo tijelo
+    first."""
+    from qmt import upitnik
+
+    path = pathlib.Path(__file__).parents[1] / "scripts" / "seed_demo.py"
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    seed = importlib.util.module_from_spec(spec); spec.loader.exec_module(seed)
+    assert list(seed.DEMO_PROGRAMS) == ["cijelo", "gornji", "donji"] and list(upitnik.GOALS) == [
+        "cijelo", "gornji", "donji", "core"]
+    seed.seed_program()
+    rows = [(p.level, p.goal, p.title, nd) for p, nd, _ in db.all_programs()]
+    assert sorted((lv, g) for lv, g, *_ in rows) == sorted((lv, g) for lv in upitnik.LEVELS for g in seed.DEMO_PROGRAMS)
+    assert all(nd >= 1 for *_, nd in rows) and len(rows) == 9
+    assert ("napredna", "donji", "Donji dio tijela — napredna razina") in [r[:3] for r in rows]
+    assert [p.title for p in db.programs_for_level("srednja")] == [
+        "Cijelo tijelo — srednja razina", "Gornji dio tijela — srednja razina", "Donji dio tijela — srednja razina"]
 
 
 def test_a_day_says_its_label_and_an_item_its_dose_and_rest():
@@ -996,7 +1114,8 @@ def test_a_clip_is_stored_replaced_and_removed(monkeypatch):
 
 def test_a_clip_is_watched_by_staff_and_matched_clients_only():
     """/media serves a clip to the trainer and the owner whatever holds it,
-    to a client only through a programme matched to him, a day of it
+    to a client only through a programme matched to him (his razina,
+    whatever its type since 23.11.2026: a Core one here), a day of it
     holding the exercise (his online plan running); a guest goes to log in;
     a name no exercise holds is 404, a path never reaches storage."""
     ct, ivan, ana = trainer_with_clients()
@@ -1007,7 +1126,7 @@ def test_a_clip_is_watched_by_staff_and_matched_clients_only():
     assert ct.get(f"/media/{name}").status_code == 200
     assert ci.get(f"/media/{name}").status_code == 403                     # in no programme yet
     assert db.video_programs(name) == []
-    pid = db.create_program("S videom", None, "pocetna", "cijelo")          # ivan's combo
+    pid = db.create_program("S videom", None, "pocetna", "core")            # ivan's razina, a Core programme
     hold(pid, eid, "istezanje", day=2)
     assert [p.id for p in db.video_programs(name)] == [pid]
     assert ci.get(f"/media/{name}").status_code == 200 and ci.get(f"/media/{name}").content == MP4
@@ -1106,6 +1225,125 @@ def test_the_search_folds_the_croatian_letters():
     assert names(ct.get("/treninzi/vjezbe", params={"q": "dacki"}).text) == ["Đački iskorak"]
     assert names(ct.get("/treninzi/vjezbe", params={"q": "BUCICE"}).text) == ["Đački iskorak"]
     assert [e.name for e, _ in db.exercises("ČUČ")] == ["Čučanj s vlastitom težinom"]
+
+
+# ---------- the library's tags as chips (23.11.2026) ----------
+# The owner: "Can we also add a search helper where we can search the items
+# used in the exercise like for example 'girja' and then show all exercises
+# with 'girja' in the dropdown?" Under both exercise searches, the library's
+# and the day editor's "Dodaj vježbu", a row of chips, one per tag Amir uses.
+
+def test_tag_counts_count_each_tag_folded_in_its_most_frequent_spelling():
+    """db.tag_counts: every tag of the library with how many exercises
+    carry it, counted folded ("TRX" and "trx" one tag, "Leđa" and "leđa"
+    one; an exercise counts a tag once, whatever it repeats), each in its
+    most frequent spelling (a tie: the first in the alphabet's order,
+    "bucica" before "bučica"; spellings the alphabet cannot part, upper
+    case first, "TRX" before "trx"), the most used first, then the
+    alphabet's order; a tag one exercise carries is there, with 1; an
+    exercise with no tags adds nothing."""
+    assert db.tag_counts() == []
+    for name, tags in (("A", "trx, Leđa, girja"), ("B", "TRX, leđa"), ("C", "trx, leđa, TRX"), ("D", "girja, bučica"),
+                       ("E", "leđa, hip thurst"), ("F", ""), ("G", "bucica")):
+        db.create_exercise(name, tags=tags)
+    assert db.tag_counts() == [("leđa", 4), ("trx", 3), ("bucica", 2), ("girja", 2), ("hip thurst", 1)]
+    db.create_exercise("H", tags="TRX, BUČICA")                            # trx 2, TRX 2; a third way of bučica
+    assert db.tag_counts() == [("leđa", 4), ("TRX", 4), ("bucica", 3), ("girja", 2), ("hip thurst", 1)]
+    db.create_exercise("I", tags="trx")                                    # 3 trx to 2 TRX
+    assert db.tag_counts()[:2] == [("trx", 5), ("leđa", 4)]
+
+
+# the tags' row as served (_tagbar.html): a button per chip, its tag (its
+# words the same) and whether it is hidden; "još N" a button of its own
+CHIP = re.compile(r'<button type="button" class="tag-chip" data-tag="([^"]*)" aria-pressed="false"( hidden)?>([^<]*)</button>')
+MORE = re.compile(r'<button type="button" class="tag-chip tag-more">([^<]*)</button>')
+TAGBAR = '<div class="tagbar" role="group" aria-label="Oznake" hidden>'
+
+
+def tag_row(page: str) -> tuple[list[tuple[str, bool]], str | None] | None:
+    """The page's row of chips (the one outside any <noscript>): each
+    chip's tag and whether it is hidden, and "još N"'s words (None without
+    one); None without a row."""
+    page = re.sub(r"<noscript>.*?</noscript>", "", page, flags=re.S)
+    m = re.search(re.escape(TAGBAR) + r"(.*?)</div>", page, re.S)
+    if not m:
+        return None
+    chips = CHIP.findall(m.group(1))
+    assert all(tag == words for tag, _, words in chips), chips
+    more = MORE.search(m.group(1))
+    return [(unescape(t), bool(h)) for t, h, _ in chips], more and more.group(1)
+
+
+def tag_links(page: str) -> list[tuple[str, str, bool]]:
+    """The library's <noscript> row: each link's words, its href and
+    whether it is pressed (aria-current)."""
+    m = re.search(r"<noscript>(.*?)</noscript>", page, re.S)
+    return [(unescape(t), unescape(h), bool(on)) for h, on, t in
+            re.findall(r'<a class="tag-chip" href="([^"]*)"( aria-current="true")?>([^<]*)</a>', m.group(1))] if m else []
+
+
+# tag -> how many exercises carry it: 15 tags at least two exercises carry
+# and a typo one carries (tag_library())
+TAG_USES = {"girja": 6, "bučica": 5, "bodyweight": 5, "trx": 4, "iskorak": 4, "noge": 4, "core": 3, "hinge": 3,
+            "leđa": 3, "horizontalni potisak": 3, "čučanj": 2, "sklek": 2, "most": 2, "rame": 2, "antirotacija": 2,
+            "hip thurst": 1}
+TAG_ORDER = ["girja", "bodyweight", "bučica", "iskorak", "noge", "trx", "core", "hinge", "horizontalni potisak",
+             "leđa", "antirotacija", "čučanj", "most", "rame", "sklek"]          # the most used first, then the alphabet's
+
+
+def tag_library() -> None:
+    """Six exercises carrying TAG_USES: exercise n every tag more than n-1
+    exercises carry."""
+    for n in range(1, 7):
+        db.create_exercise(f"Vježba {n}", tags=", ".join(t for t, k in TAG_USES.items() if k >= n))
+
+
+def test_the_tags_are_chips_under_both_searches():
+    """Under the library's search and in the day editor's "Dodaj vježbu"
+    the library's tags as chips, the same row on both (_tagbar.html): a
+    group labelled "Oznake", rendered hidden (the script shows it), a
+    button per tag at least two exercises carry (a tag one carries is no
+    chip: the typos), the most used first, each type="button" (none sends a
+    form) and not pressed; the first 12 shown, the rest hidden behind "još
+    N". On the library the row stands between the search and the count
+    line, and a browser without JavaScript gets a <noscript> row of links
+    instead, every chip shown, each to the list filtered by its tag (the
+    server's ?q=), the one that is the whole of ?q= (folded) pressed
+    (aria-current) and linking back to the whole list. In the day editor
+    the row stands inside "Dodaj vježbu"'s form, above its fields (the
+    combobox's open list, under the input, never covers it), with no links
+    (the select is the picker without JS). No tag
+    carried twice: no row on either page."""
+    ct, *_ = trainer_with_clients()
+    pid = db.create_program("T", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    edit = f"/treninzi/{pid}/dan/{did}/uredi"
+    db.create_exercise("Plank", tags="core, hip thurst")                    # every tag carried once: no chip
+    for page in (ct.get("/treninzi/vjezbe").text, ct.get(edit).text):
+        assert tag_row(page) is None and 'class="tag-chip' not in page
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("DELETE FROM exercises"))
+    tag_library()
+    assert db.tag_counts() == [(t, TAG_USES[t]) for t in TAG_ORDER] + [("hip thurst", 1)]
+
+    lib = ct.get("/treninzi/vjezbe").text
+    assert tag_row(lib) == ([(t, i >= 12) for i, t in enumerate(TAG_ORDER)], "još 3")
+    assert re.search(r'</div>\s*' + re.escape(TAGBAR) + r'.*?</div>\s*<noscript>.*?</noscript>\s*<p class="hint ex-found"',
+                     lib.split('<div class="ex-tools">')[1].split("</form>", 1)[1], re.S)
+    assert tag_links(lib) == [(t, "/treninzi/vjezbe?q=" + quote(t), False) for t in TAG_ORDER]
+    assert 'data-tag="hip thurst"' not in lib and "q=hip" not in lib           # its exercise's row keeps it as a tag
+    on = ct.get("/treninzi/vjezbe", params={"q": "GIRJA"}).text           # the whole of ?q=, folded
+    assert [(t, on) for t, _, on in tag_links(on) if on] == [("girja", True)]
+    assert '<a class="tag-chip" href="/treninzi/vjezbe" aria-current="true">girja</a>' in on
+    two = ct.get("/treninzi/vjezbe", params={"q": "horizontalni   potisak"}).text
+    assert [t for t, _, on in tag_links(two) if on] == ["horizontalni potisak"]
+    assert not any(on for *_, on in tag_links(ct.get("/treninzi/vjezbe", params={"q": "girja noge"}).text))
+    assert tag_row(on) == tag_row(lib)                                    # the script presses them: none served pressed
+
+    day = ct.get(edit).text
+    assert tag_row(day) == tag_row(lib) and tag_links(day) == [] and "<noscript>" not in day.split('id="dodaj"')[1]
+    form = day.split('<form id="dodaj"')[1].split("</form>")[0]
+    assert re.search(r'class="card add-ex">\s*' + re.escape(TAGBAR) + r'.*?</div>\s*<div class="add-fields">', form, re.S)   # above the fields
 
 
 # ---------- a programme's days (stage 2) ----------
@@ -1297,7 +1535,7 @@ def test_a_foreign_day_or_item_is_404():
         assert ct.get(path).status_code == 404, path
     assert [(d.id, d.title) for d in db.get_program(a).days] == [(da, "")] and len(db.get_program(b).days) == 1
     assert [(i.id, i.sets) for i in items_of(a)] == [(ia, None)]
-    ca = client_for("ana@test.local")                                        # pocetna / gornji: A is not hers
+    ca = client_for("ana@test.local")                                        # srednja: A is not hers
     assert ca.get(f"/treninzi/{a}/dan/{da}").status_code == 403
 
 
@@ -2550,6 +2788,210 @@ def test_the_library_filters_as_it_is_typed_on_a_phone(server):
               and "2 od 4" in " ".join((pg.text_content(".ex-found") or "").split()) and not pg.is_visible(".ex-none"),
               f"without JS ?q=cuc shows {shown}, Traži {pg.is_visible('form.ex-search button')}, "
               f"the count {pg.is_visible('.ex-found')}, the none line {pg.is_visible('.ex-none')}")
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+# the browser tests' library for the chips: 13 exercises whose tags make 14
+# chips (noge 5; bodyweight, bučica, girja, hinge, horizontalni potisak 3;
+# antirotacija, chest, glute, iskorak, leđa, most, rame, TRX 2: "TRX" and
+# "trx" one tag) and three tags carried once (čučanj, core, horizontalno
+# povlačenje: no chip)
+CHIP_LIBRARY = (("Goblet čučanj", "čučanj, noge, girja"), ("Swing", "hinge, girja"),
+                ("Mrtvo dizanje s girjom", "hinge, noge, girja"), ("Rumunjsko mrtvo dizanje", "hinge, noge, bučica"),
+                ("Sklek", "horizontalni potisak, bodyweight"), ("Potisak s bučicama", "horizontalni potisak, bučica"),
+                ("TRX veslanje", "horizontalno povlačenje, TRX"), ("TRX sklek", "horizontalni potisak, trx"),
+                ("Plank", "core, bodyweight"), ("Iskorak", "iskorak, noge, bodyweight"),
+                ("Iskorak s bučicama", "iskorak, noge, bučica"),
+                ("Vježba A", "rame, most, glute, chest, leđa, antirotacija"),
+                ("Vježba B", "rame, most, glute, chest, leđa, antirotacija"))
+CHIP_ORDER = ["noge", "bodyweight", "bučica", "girja", "hinge", "horizontalni potisak", "antirotacija", "chest", "glute",
+              "iskorak", "leđa", "most", "rame", "TRX"]
+# the tags' row as a reader sees it: shown, the chips shown, the pressed
+# ones, "još N", the box's text and focus, the chips' lowest height
+TAGS = """() => {
+  const bar = document.querySelector('.tagbar'), box = document.querySelector('form.ex-search input[name="q"], #add-ex-q');
+  const seen = el => !el.hidden && el.offsetHeight > 0, chips = [...bar.querySelectorAll('.tag-chip[data-tag]')];
+  const more = bar.querySelector('.tag-more');
+  return {row: seen(bar), chips: chips.filter(seen).map(c => c.textContent),
+          pressed: chips.filter(c => c.getAttribute('aria-pressed') === 'true').map(c => c.textContent),
+          more: more && seen(more) ? more.textContent : null, typed: box.value, focused: document.activeElement === box,
+          low: Math.min(...chips.filter(seen).map(c => c.getBoundingClientRect().height))};
+}"""
+
+
+def test_a_tag_chip_filters_the_library_on_a_phone(server):
+    """The library's chips at 390px, touch (23.11.2026): the script shows
+    the row, the first 12 chips and "još 2", each 36px at least. A tap on
+    "girja" puts it in the box, presses the chip and filters the list
+    ("3 od 13"), the address following (?q=girja), the focus kept off the
+    box (no phone keyboard over the list); a tap on "hinge" adds its word
+    ("girja hinge") and narrows; a second tap on "girja" takes its word out
+    ("hinge") and releases it. The ✕ in the box empties it: every chip
+    released, every row back. A tag typed by hand presses its chip once its
+    word is whole ("nog" none, "NOGE" noge), and a chip tapped then joins
+    the typed words ("NOGE bučica"); "prikaži sve" releases them. A two-word
+    tag goes in and out as its two words. "još 2" shows the rest and goes;
+    "TRX" keeps both spellings' exercises. The page never scrolls sideways;
+    no page errors. Without JS the <noscript> row of links is the helper:
+    "girja" opens ?q=girja, its link pressed."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("trener@test.local", is_trainer=True)
+    for name, tags in CHIP_LIBRARY:
+        db.create_exercise(name, tags=tags)
+    lib, box = f"{server}/treninzi/vjezbe", 'form.ex-search input[name="q"]'
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    def chip(tag: str) -> str:
+        return f'.tagbar .tag-chip[data-tag="{tag}"]'
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx, pg, errors = _phone(browser, server, "trener@test.local")
+        pg.goto(lib); pg.wait_for_load_state("networkidle")
+        st = pg.evaluate(TAGS)
+        check(st["row"] and st["chips"] == CHIP_ORDER[:12] and st["more"] == "još 2" and st["pressed"] == []
+              and st["low"] >= 36, f"the row at load: {st}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the library with its chips overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.tap(chip("girja"))
+        st, rows = pg.evaluate(TAGS), pg.evaluate(LIB)
+        check(st["typed"] == "girja" and st["pressed"] == ["girja"] and not st["focused"]
+              and rows["shown"] == ["Goblet čučanj", "Mrtvo dizanje s girjom", "Swing"] and rows["count"] == "3 od 13",
+              f"a tap on girja: {st}, {rows}")
+        pg.wait_for_timeout(400)
+        check(pg.evaluate(LIB)["search"] == "?q=girja", f"the address after girja: {pg.evaluate(LIB)}")
+        pg.tap(chip("hinge"))
+        st, rows = pg.evaluate(TAGS), pg.evaluate(LIB)
+        check(st["typed"] == "girja hinge" and st["pressed"] == ["girja", "hinge"]
+              and rows["shown"] == ["Mrtvo dizanje s girjom", "Swing"], f"girja, then hinge: {st}, {rows}")
+        pg.tap(chip("girja"))                                              # pressed: its word goes
+        st, rows = pg.evaluate(TAGS), pg.evaluate(LIB)
+        check(st["typed"] == "hinge" and st["pressed"] == ["hinge"]
+              and rows["shown"] == ["Mrtvo dizanje s girjom", "Rumunjsko mrtvo dizanje", "Swing"],
+              f"girja tapped again: {st}, {rows}")
+        pg.focus(box)                                                      # the ✕ at the box's right end
+        r = pg.locator(box).bounding_box()
+        pg.touchscreen.tap(r["x"] + r["width"] - 18, r["y"] + r["height"] / 2)
+        pg.wait_for_timeout(300)
+        st, rows = pg.evaluate(TAGS), pg.evaluate(LIB)
+        check(st["typed"] == "" and st["pressed"] == [] and len(rows["shown"]) == 13 and rows["count"] is None,
+              f"the ✕: {st}, {rows}")
+        pg.focus(box)
+        pg.keyboard.type("nog")
+        check(pg.evaluate(TAGS)["pressed"] == [], f"'nog' pressed {pg.evaluate(TAGS)['pressed']}")
+        pg.fill(box, "NOGE")
+        st, rows = pg.evaluate(TAGS), pg.evaluate(LIB)
+        check(st["pressed"] == ["noge"] and len(rows["shown"]) == 5, f"'NOGE' typed: {st}, {rows}")
+        pg.tap(chip("bučica"))
+        st, rows = pg.evaluate(TAGS), pg.evaluate(LIB)
+        check(st["typed"] == "NOGE bučica" and st["pressed"] == ["noge", "bučica"]
+              and rows["shown"] == ["Iskorak s bučicama", "Rumunjsko mrtvo dizanje"], f"NOGE, then bučica: {st}, {rows}")
+        pg.tap(".ex-found a")                                              # "prikaži sve"
+        st = pg.evaluate(TAGS)
+        check(st["typed"] == "" and st["pressed"] == [], f"'prikaži sve': {st}")
+        pg.tap(chip("horizontalni potisak"))
+        st, rows = pg.evaluate(TAGS), pg.evaluate(LIB)
+        check(st["typed"] == "horizontalni potisak" and st["pressed"] == ["horizontalni potisak"]
+              and rows["shown"] == ["Potisak s bučicama", "Sklek", "TRX sklek"], f"a two-word tag: {st}, {rows}")
+        pg.tap(chip("horizontalni potisak"))
+        check(pg.evaluate(TAGS)["typed"] == "", f"a two-word tag tapped again: {pg.evaluate(TAGS)}")
+        pg.tap(".tagbar .tag-more")
+        st = pg.evaluate(TAGS)
+        check(st["chips"] == CHIP_ORDER and st["more"] is None and pg.locator(".tagbar .tag-more").count() == 0,
+              f"'još 2': {st}")
+        check(pg.evaluate(OVERFLOW) == 0, f"every chip shown overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.tap(chip("TRX"))
+        st, rows = pg.evaluate(TAGS), pg.evaluate(LIB)
+        check(st["pressed"] == ["TRX"] and rows["shown"] == ["TRX sklek", "TRX veslanje"], f"TRX: {st}, {rows}")
+        problems += errors
+        ctx.close()
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, java_script_enabled=False)
+        pg = ctx.new_page()
+        pg.goto(server + "/login")
+        pg.fill("main input[name=email]", "trener@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        with pg.expect_navigation():
+            pg.click("main button[type=submit]")
+        pg.goto(lib); pg.wait_for_load_state("networkidle")
+        links = pg.locator("a.tag-chip:visible").all_text_contents()
+        check(links == CHIP_ORDER and pg.locator("button.tag-chip:visible").count() == 0,
+              f"without JS the links are {links}")
+        with pg.expect_navigation():
+            pg.click('a.tag-chip:visible >> text="girja"')
+        shown = pg.locator("a.ex-row:visible .ex-name").all_text_contents()
+        check(pg.url.endswith("/treninzi/vjezbe?q=girja") and shown == ["Goblet čučanj", "Mrtvo dizanje s girjom", "Swing"]
+              and pg.get_attribute('a.tag-chip[aria-current="true"]', "href") == "/treninzi/vjezbe",
+              f"without JS girja led to {pg.url}, {shown}")
+        check(pg.evaluate(OVERFLOW) == 0, f"without JS the links overflow by {pg.evaluate(OVERFLOW)}px")
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+def test_a_tag_chip_opens_dodaj_vjezbu_filtered_on_a_phone(server):
+    """The day editor's chips at 390px, touch (23.11.2026): the script
+    shows the row under the fields (12 chips and "još 2"); a tap on "girja"
+    puts it in the combobox's input, leaves the focus there and opens its
+    list with the girja exercises, the chip pressed; a pick puts the
+    exercise's name in the input and releases the chip; Dodaj adds it. No
+    sideways scroll, no page errors. Without JS the row stays hidden (the
+    select is the picker)."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("trener@test.local", is_trainer=True)
+    pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    ids = {name: db.create_exercise(name, tags=tags) for name, tags in CHIP_LIBRARY}
+    edit = f"{server}/treninzi/{pid}/dan/{did}/uredi"
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx, pg, errors = _phone(browser, server, "trener@test.local")
+        pg.goto(edit); pg.wait_for_load_state("networkidle")
+        st = pg.evaluate(TAGS)
+        check(st["row"] and st["chips"] == CHIP_ORDER[:12] and st["more"] == "još 2" and st["low"] >= 36,
+              f"the row at load: {st}")
+        bar, q = pg.locator(".tagbar").bounding_box(), pg.locator("#add-ex-q").bounding_box()
+        go = pg.locator("#dodaj button[type=submit]").bounding_box()
+        check(bar["y"] + bar["height"] <= q["y"] and q["y"] + q["height"] <= go["y"],
+              f"the row is not above the fields (the open list must never cover it): {bar}, {q}, {go}")
+        pg.tap('.tagbar .tag-chip[data-tag="girja"]')
+        st, cbx = pg.evaluate(TAGS), pg.evaluate(CBX)
+        check(st["typed"] == "girja" and st["focused"] and st["pressed"] == ["girja"], f"a tap on girja: {st}")
+        check(cbx["open"] and cbx["expanded"] == "true" and cbx["chosen"] == ""
+              and cbx["shown"] == ["Goblet čučanj", "Mrtvo dizanje s girjom", "Swing"], f"the list after girja: {cbx}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the day's editor overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.tap('#add-ex-list [role="option"] >> text="Swing"')
+        st, cbx = pg.evaluate(TAGS), pg.evaluate(CBX)
+        check(st["typed"] == "Swing" and st["pressed"] == [] and cbx["chosen"] == str(ids["Swing"]) and not cbx["open"],
+              f"a pick: {st}, {cbx}")
+        with pg.expect_navigation():
+            pg.tap("#dodaj button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        check(item_names(pid) == ["Swing"], f"the day holds {item_names(pid)}")
+        problems += errors
+        ctx.close()
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, java_script_enabled=False)
+        pg = ctx.new_page()
+        pg.goto(server + "/login")
+        pg.fill("main input[name=email]", "trener@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        with pg.expect_navigation():
+            pg.click("main button[type=submit]")
+        pg.goto(edit); pg.wait_for_load_state("networkidle")
+        check(pg.locator(".tagbar").count() == 1 and not pg.is_visible(".tagbar") and pg.is_visible("#add-ex"),
+              "without JS the day editor's chips show")
         ctx.close()
         browser.close()
     print("\n".join(problems))

@@ -21,7 +21,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .. import auth, config, copy, db, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, ONLINE_TIER_SLOTS, ONLINE_TIERS, PAYMENT_METHODS, PLAN_ABBR,
                       PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, WEEKDAYS as DAY_WEEKDAYS, add_month,
-                      duration_text, matches, plural, sub_month)
+                      duration_text, fold, matches, plural, sub_month)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -2276,12 +2276,20 @@ def treninzi(request: Request):
     onboarding = db.get_onboarding(user.id) if has_plan else None
     # gates stack: no `online` plan -> only the gate card; with a plan but no
     # upitnik -> only the prompt; then the matched programmes render — the
-    # whole online side is automatic, nothing is handed out per client
-    programs = (db.programs_for_combo(onboarding.level, onboarding.goal)
-                if onboarding else [])
+    # whole online side is automatic, nothing is handed out per client.
+    # Since 23.11.2026 every programme of his razina, whatever its type, one
+    # group per type that has one, in GOALS' order under its label; one of a
+    # type not among them (none can be made: both forms require a type)
+    # last, under no label
+    programs = db.programs_for_level(onboarding.level) if onboarding else []
+    groups = [(key, label, [p for p in programs if p.goal == key]) for key, label in upitnik.GOALS.items()]
+    groups = [g for g in groups if g[2]]
+    untyped = [p for p in programs if p.goal not in upitnik.GOALS]
+    if untyped:
+        groups.append(("", "", untyped))
     return templates.TemplateResponse(request, "treninzi.html", _ctx(
-        request, user, programs=programs, onboarding=onboarding,
-        has_plan=has_plan, levels=upitnik.LEVELS, goals=upitnik.GOALS))
+        request, user, groups=groups, onboarding=onboarding,
+        has_plan=has_plan, levels=upitnik.LEVELS))
 
 
 @app.post("/treninzi")
@@ -2294,7 +2302,7 @@ def create_program(request: Request, title: str = Form(...), intro: str = Form("
     if not title:
         return RedirectResponse("/treninzi?error=Naziv+je+obavezan.", status_code=303)
     if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
-        return RedirectResponse("/treninzi?error=Odaberi+razinu+i+cilj.", status_code=303)
+        return RedirectResponse("/treninzi?error=Odaberi+razinu+i+tip+treninga.", status_code=303)
     pid = db.create_program(title, intro.strip() or None, level, goal)
     return RedirectResponse(f"/treninzi/{pid}/uredi", status_code=303)
 
@@ -2302,6 +2310,18 @@ def create_program(request: Request, title: str = Form(...), intro: str = Form("
 # ---------- the library of exercises (Amir's, 30.10.2026) ----------
 # Declared before /treninzi/{program_id}: that path would take "vjezbe" for a
 # programme's id.
+
+# The tags under both exercise searches (23.11.2026: _tagbar.html): a tag at
+# least this many exercises carry is a chip; one carried by a single
+# exercise is not (on prod those are typos: "hip thurst", "bučice").
+TAG_CHIP_MIN = 2
+
+
+def _tag_chips() -> list[str]:
+    """The library's tags that are chips, the most used first, each in its
+    most frequent spelling (db.tag_counts)."""
+    return [t for t, n in db.tag_counts() if n >= TAG_CHIP_MIN]
+
 
 @app.get("/treninzi/vjezbe", response_class=HTMLResponse)
 def vjezbe(request: Request, q: str = ""):
@@ -2313,14 +2333,19 @@ def vjezbe(request: Request, q: str = ""):
     in the name or the tags, folded), and the page's script hides the
     others as the box changes. The server marks them `hidden` too: that is
     the page without the script, and what a reload of the address the
-    script keeps (?q=…) opens on."""
+    script keeps (?q=…) opens on. Under the search the tags as chips
+    (23.11.2026, _tag_chips): without the script each links to its ?q=,
+    the one that is the whole of `q` (`tag_on`, folded) pressed."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     q = " ".join(q.split())
     rows = [(e, n, matches(q, e.name, e.tags)) for e, n in db.exercises()]
+    tags = _tag_chips()
+    tag_on = next((t for t in tags if fold(t) == fold(q)), "") if q else ""
     return templates.TemplateResponse(request, "vjezbe.html", _ctx(
-        request, user, rows=rows, q=q, found=sum(1 for *_, hit in rows if hit), total=len(rows)))
+        request, user, rows=rows, q=q, found=sum(1 for *_, hit in rows if hit), total=len(rows),
+        tags=tags, tag_on=tag_on))
 
 
 def _exercise_page(request: Request, user, e, form: dict | None = None, error: str | None = None,
@@ -2913,7 +2938,7 @@ def program_edit(request: Request, program_id: int, title: str = Form(...),
     if redirect:
         return redirect
     if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
-        return RedirectResponse(f"/treninzi/{program_id}/uredi?error=Odaberi+razinu+i+cilj.",
+        return RedirectResponse(f"/treninzi/{program_id}/uredi?error=Odaberi+razinu+i+tip+treninga.",
                                 status_code=303)
     db.update_program(program_id, title.strip() or "Program", intro.strip() or None,
                       level, goal)
@@ -2983,14 +3008,15 @@ def day_edit_page(request: Request, program_id: int, day_id: int, vjezba: str = 
     """A day's editor: its title, weekday and intro, its intro video, then
     its exercises per section, each with its own form, and the picker, which
     offers the whole library, the exercise `vjezba` chosen (one just made
-    through "Nova vježba →")."""
+    through "Nova vježba →"), the library's tags as chips under it
+    (23.11.2026, _tag_chips)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     p, day = _program_day(program_id, day_id)
     return templates.TemplateResponse(request, "trening_day_edit.html", _ctx(
         request, user, p=p, day=day, choices=[e for e, _ in db.exercises()], chosen=_id(vjezba),
-        video_max_mb=config.VIDEO_MAX_MB))
+        tags=_tag_chips(), video_max_mb=config.VIDEO_MAX_MB))
 
 
 @app.post("/treninzi/{program_id}/dan/{day_id}")
