@@ -83,7 +83,7 @@ from sqlalchemy import inspect as sa_inspect, text as sa_text
 from sqlalchemy.exc import IntegrityError
 
 from qmt import auth, config, db
-from qmt.models import Base, Booking, WorkoutLog
+from qmt.models import Base, Booking, WorkoutLog, set_text
 from qmt.web import app as web
 from qmt.web.app import app
 
@@ -1407,6 +1407,333 @@ def test_staleness_is_counted_from_the_last_activity(monkeypatch):
     assert hist_lines(ci.get(d.base).text)[0].endswith(" · 0/4 vježbe · 1 min · napor 4")
 
 
+# ---------- a part done as a circuit (24.11.2026, kružni trening) ----------
+
+def build_circuit(rounds: int = 3, rest: int | None = 120, title: str = "Kružni — početna"):
+    """A programme of ivan's razina whose Trening 1 does its Glavni dio A as
+    a circuit of `rounds` rounds, `rest` seconds between them, in the day's
+    display order:
+      Zagrijavanje (normal): Čučanj s vlastitom težinom (2 × 15, rest 30, 20 after it)
+      Glavni dio A (the circuit): Goblet čučanj (3 × 10, rest 60, 15 after
+        it, "16 kg"; its swap, one way: Iskorak unatrag), Plank (3 × 40 s,
+        25 after it)
+      Glavni dio B (normal): Sklekovi (3 × 10, rest 60, 90 after it)
+    so its steps are the warm-up, then `rounds` × (Goblet, Plank), then
+    Sklekovi: 8 for three rounds."""
+    names = ("Čučanj s vlastitom težinom", "Goblet čučanj", "Plank", "Sklekovi", "Iskorak unatrag")
+    existing = {e.name: e.id for e, _ in db.exercises()}
+    ex = {n: existing.get(n) or db.create_exercise(n) for n in names}
+    db.update_exercise(ex["Goblet čučanj"], "Goblet čučanj", "", "", "", {ex["Iskorak unatrag"]})
+    pid = db.create_program(title, None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    db.update_day(did, "Kružni", 0, "")
+    ids = {}
+    for name, section, sets, reps, seconds, between, after, note in (
+            ("Čučanj s vlastitom težinom", "zagrijavanje", 2, 15, None, 30, 20, ""),
+            ("Goblet čučanj", "trening", 3, 10, None, 60, 15, "16 kg"),
+            ("Plank", "trening", 3, None, 40, None, 25, ""),
+            ("Sklekovi", "trening_b", 3, 10, None, 60, 90, "")):
+        ids[name] = db.add_day_item(did, ex[name], section)
+        db.update_day_item(ids[name], section, sets, reps, seconds, between, after, note)
+    db.set_circuit(did, "trening", rounds, rest)
+    return SimpleNamespace(pid=pid, did=did, ids=ids, ex=ex, base=f"/treninzi/{pid}/dan/{did}",
+                           warm=ids["Čučanj s vlastitom težinom"], goblet=ids["Goblet čučanj"], plank=ids["Plank"],
+                           skl=ids["Sklekovi"])
+
+
+def save_round(uid: int, log_id: int, item_id: int, rnd: int, one_set: dict):
+    it = db.get_day_item(item_id)
+    swapped = db.get_pass(log_id, uid).swap_items.get(it.id)
+    return db.save_round(log_id, uid, it, rnd, one_set, db.exercise(swapped) if swapped else it.exercise)
+
+
+def list_rows(page: str) -> list[tuple[str, str, str, str]]:
+    """The player's list: (" is-cur" or "", its link, its aria-current, its inside), in order."""
+    return re.findall(r'<li><a class="card pl-row( is-cur)?" href="([^"]+)"( aria-current="step")?>(.*?)</a></li>', page, re.S)
+
+
+def test_the_steps_walk_a_circuit_round_by_round():
+    """app._steps (24.11.2026): the day's display order, a normal part one
+    step per item, a circuit part its rounds × its items, round by round
+    (round 1: every item of the part in order; round 2: again; …), each
+    circuit step its round, its part's circuit and whether it is the
+    round's last: a day of a warm-up (normal), A (a circuit of 3 rounds × 2)
+    and B (normal) is 1 + 6 + 1 = 8 steps. A day with no circuit is
+    exactly its items, a step each, none with a round; a circuit on a part
+    of one item is that item a round at a time, each step the round's last,
+    and one on a part with none adds nothing."""
+    trainer, ivan, ana = people()
+    c = build_circuit()
+    day = db.get_day(c.did)
+    steps = web._steps(day, web._day_items(day))
+    name = {v: k for k, v in c.ids.items()}
+    assert [(name[s.item.id], s.round, s.last) for s in steps] == [
+        ("Čučanj s vlastitom težinom", None, False),
+        ("Goblet čučanj", 1, False), ("Plank", 1, True), ("Goblet čučanj", 2, False), ("Plank", 2, True),
+        ("Goblet čučanj", 3, False), ("Plank", 3, True), ("Sklekovi", None, False)]
+    assert {s.circuit.rounds for s in steps if s.round} == {3} and all(s.circuit is None for s in steps if not s.round)
+    d = build_day()
+    plain = db.get_day(d.did)
+    steps = web._steps(plain, web._day_items(plain))
+    assert [s.item.id for s in steps] == d.items and {(s.round, s.circuit, s.last) for s in steps} == {(None, None, False)}
+    db.set_circuit(d.did, "istezanje", 2, None)                             # one item: a round at a time
+    db.set_circuit(d.did, "trening_b", 4, 30)                               # none: nothing
+    plain = db.get_day(d.did)
+    assert [(s.item.id, s.round, s.last) for s in web._steps(plain, web._day_items(plain))] == [
+        (d.items[0], None, False), (d.items[1], None, False), (d.items[2], None, False),
+        (d.items[3], 1, True), (d.items[3], 2, True)]
+
+
+def test_a_circuit_is_walked_round_by_round():
+    """The player through its routes (24.11.2026): k counts steps. A
+    circuit step says "Krug 2 od 3" beside "k/8", the dose of a round, the
+    rest after it ("Odmor nakon vježbe: 15 s"; the round's last "Odmor nakon
+    kruga: 120 s"), and logs ONE row (its SET cell the round, the round
+    hidden in the form, no "+", no ✓ column, no rest between sets),
+    prefilled with the plan's reps and the weight of this pass's round
+    before, else the last log's set of the round's place. Each save goes on
+    with the rest after it, inside the round the item's, at the round's end
+    the circuit's (the final round's too), none to the finish screen. A
+    round saved again replaces itself alone, the sets sorted by round; a
+    `round` that is not the step's (none, another; a normal step's any) is
+    refused as a changed day is, nothing saved. Kreni / Nastavi lands on the
+    first step not saved. The list: the circuit's caption "Glavni dio A ·
+    kružno · 3 kruga", each row a link to its first step not saved, the item
+    on screen ringed, a circuit's marks "1/3" then "✓", its rows the round's
+    dose and the rest after it; the dock and the finish screen count
+    exercises (one with any round counts). The swap holds every round. The
+    history's Serije are in round order."""
+    trainer, ivan, ana = people()
+    c = build_circuit()
+    ci = client_for("ivan@test.local")
+    old = db.start_pass(ivan, db.get_program(c.pid), db.get_day(c.did))   # a finished pass: Goblet at 16, 18, 20 kg
+    for rnd, kg in ((1, 16.0), (2, 18.0), (3, 20.0)):
+        save_round(ivan, old.id, c.goblet, rnd, {"reps": 10, "kg": kg})
+    db.finish_pass(old.id, ivan, 6, None, "")
+    assert ci.post(f"{c.base}/kreni", follow_redirects=False).headers["location"] == f"{c.base}/vjezba/1"
+    log_id = db.open_pass(ivan, c.did).id
+
+    def post(k: int, item: int, rnd: int | None, **sets):
+        data = {"rows": "1", "item": str(item), **({"round": str(rnd)} if rnd else {}), **sets}
+        return ci.post(f"{c.base}/vjezba/{k}", data=data, follow_redirects=False)
+
+    def entry(item: int):
+        return db.get_pass(log_id, ivan).done_items.get(item)
+
+    page = ci.get(f"{c.base}/vjezba/1").text                               # the warm-up: a normal step, as ever
+    assert '<span class="pl-chip">1/8</span>' in page and 'class="pl-round"' not in page and 'name="round"' not in page
+    assert 'id="plAdd"' in page and 'data-rest="30"' in form_tag(page) and page.count('<td class="pl-tick" hidden>') == 3
+    page = ci.get(f"{c.base}/vjezba/2").text                               # Goblet čučanj, round 1
+    assert re.search(r'<span class="pl-chip">2/8</span>\s*<span class="pl-round">Krug 1 od 3</span></p>', page)
+    assert '<p class="pl-dose">10 ponavljanja</p>' in page
+    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', page) == ["Odmor nakon vježbe: 15 s", "16 kg"]
+    assert '<thead><tr><th scope="col">Set</th><th scope="col">Pon.</th><th scope="col">Kg</th></tr></thead>' in page
+    assert re.findall(r'<th scope="row">([^<]*)</th>', page) == ["1"] and 'aria-label="Krug 1: kilogrami"' in page
+    assert inputs(page) == [("reps", "1", "10"), ("kg", "1", "16")]        # the last pass's round 1
+    assert '<input type="hidden" name="rows" value="1">' in page and '<input type="hidden" name="round" value="1">' in page
+    assert 'id="plAdd"' not in page and 'class="pl-tick"' not in page and "data-rest" not in form_tag(page)
+    assert "dodatna serija" not in page.split('id="plLog"')[1].split("</form>")[0]
+
+    r = post(2, c.goblet, 1, reps_1="10", kg_1="20")
+    assert r.headers["location"] == f"{c.base}/vjezba/3?odmor=15"           # inside the round: its own short rest
+    assert entry(c.goblet)["sets"] == [{"reps": 10, "kg": 20.0, "round": 1}]
+    assert (entry(c.goblet)["name"], entry(c.goblet)["section"]) == ("Goblet čučanj", "trening")
+    page = ci.get(f"{c.base}/vjezba/3?odmor=15").text                      # Plank, round 1: the round's last
+    assert 'data-odmor="15"' in form_tag(page) and "Krug 1 od 3" in page and '<p class="pl-dose">40 s</p>' in page
+    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', page) == ["Odmor nakon kruga: 120 s"]
+    assert '<thead><tr><th scope="col">Set</th><th scope="col">Sek.</th></tr></thead>' in page
+    assert inputs(page) == [("sec", "1", "40")]
+    assert post(3, c.plank, 1, sec_1="40").headers["location"] == f"{c.base}/vjezba/4?odmor=120"   # the round's end
+    page = ci.get(f"{c.base}/vjezba/4").text                               # Goblet, round 2
+    assert "Krug 2 od 3" in page and re.findall(r'<th scope="row">([^<]*)</th>', page) == ["2"]
+    assert inputs(page) == [("reps", "1", "10"), ("kg", "1", "20")]        # this pass's round 1
+    assert ('<div class="pl-segs" aria-hidden="true"><span></span><span class="done"></span><span class="done"></span>'
+            '<span class="cur"></span><span></span><span></span><span></span><span></span></div>') in page
+    rows = list_rows(page)
+    assert [(cur, href, aria) for cur, href, aria, _ in rows] == [
+        ("", f"{c.base}/vjezba/1", ""), (" is-cur", f"{c.base}/vjezba/4", ' aria-current="step"'),
+        ("", f"{c.base}/vjezba/5", ""), ("", f"{c.base}/vjezba/8", "")]
+    assert ('<span class="dx-dose"><span class="dx-rounds" role="img" aria-label="spremljeno 1 od 3 kruga">1/3</span> '
+            '10 ponavljanja</span>') in rows[1][3]
+    assert '<span class="dx-rounds" role="img" aria-label="spremljeno 1 od 3 kruga">1/3</span> 40 s' in rows[2][3]
+    assert '<span class="dx-sub">Odmor nakon vježbe: 15 s · 16 kg</span>' in rows[1][3]
+    assert '<span class="dx-sub">Odmor nakon vježbe: 25 s</span>' in rows[2][3]       # never the rest between sets
+    assert '<span class="dx-sub">Odmor između serija: 30 s · Odmor nakon vježbe: 20 s</span>' in rows[0][3]
+    assert re.findall(r'<h3 class="dx-cap">([^<]*)</h3>', page) == [
+        "Zagrijavanje", "Glavni dio A · kružno · 3 kruga", "Glavni dio B"]
+    assert '<a class="pl-dock" href="#popis">Vježbe · 2/4 ✓</a>' in page and "✓ Spremljeno" not in page
+
+    for k, item, rnd in ((4, c.goblet, 1), (4, c.goblet, None), (4, c.goblet, 3), (1, c.warm, 1)):   # not the step's round
+        r = post(k, item, rnd, reps_1="10", kg_1="22")
+        assert r.status_code == 400 and alert(r.text) == [web.DAY_CHANGED], (k, rnd)
+        assert inputs(r.text) == [("reps", "1", "10"), ("kg", "1", "22")]
+    assert entry(c.goblet)["sets"] == [{"reps": 10, "kg": 20.0, "round": 1}] and entry(c.warm) is None
+    r = post(4, c.goblet, 2, reps_1="x", kg_1="22")                          # a number refused: the screen, the round's
+    assert r.status_code == 400 and alert(r.text) == ["Neispravan broj."] and "Krug 2 od 3" in r.text
+    assert inputs(r.text) == [("reps", "1", "x"), ("kg", "1", "22")] and re.findall(r'<th scope="row">([^<]*)</th>', r.text) == ["2"]
+
+    assert post(6, c.goblet, 3, reps_1="10", kg_1="24").headers["location"] == f"{c.base}/vjezba/7?odmor=15"
+    assert post(4, c.goblet, 2, reps_1="10", kg_1="22").headers["location"] == f"{c.base}/vjezba/5?odmor=15"
+    post(2, c.goblet, 1, reps_1="9", kg_1="21")                              # round 1 again: itself alone
+    assert entry(c.goblet)["sets"] == [{"reps": 9, "kg": 21.0, "round": 1}, {"reps": 10, "kg": 22.0, "round": 2},
+                                       {"reps": 10, "kg": 24.0, "round": 3}]
+    assert '<span class="pl-saved">✓ Spremljeno</span>' in ci.get(f"{c.base}/vjezba/4").text
+    assert ci.post(f"{c.base}/kreni", follow_redirects=False).headers["location"] == f"{c.base}/vjezba/1"   # the warm-up
+    assert post(1, c.warm, None, rows="3", reps_1="15", reps_2="15").headers["location"] == f"{c.base}/vjezba/2?odmor=20"
+    assert ci.post(f"{c.base}/kreni", follow_redirects=False).headers["location"] == f"{c.base}/vjezba/5"   # Plank, round 2
+    page = ci.get(f"{c.base}/vjezba/5").text
+    goblet_row = list_rows(page)[1]
+    assert goblet_row[1] == f"{c.base}/vjezba/2" and '<span class="dx-ok" role="img" aria-label="spremljeno">✓</span> 10 ponavljanja' in goblet_row[3]
+    assert list_rows(page)[2][:3] == (" is-cur", f"{c.base}/vjezba/5", ' aria-current="step"')
+
+    ci.post(f"{c.base}/vjezba/5/zamjena", data={"exercise_id": str(c.ex["Iskorak unatrag"])}, follow_redirects=False)
+    assert "Iskorak unatrag" not in ci.get(f"{c.base}/vjezba/5").text.split('id="pl-name"')[1][:40]   # Plank: not swapped
+    ci.post(f"{c.base}/vjezba/6/zamjena", data={"exercise_id": str(c.ex["Iskorak unatrag"])})        # Goblet, every round
+    for k in (2, 4, 6):
+        assert '<h1 class="pl-name" id="pl-name">Iskorak unatrag</h1>' in ci.get(f"{c.base}/vjezba/{k}").text, k
+    ci.post(f"{c.base}/vjezba/6/zamjena", data={"vrati": "1"})
+    assert '<h1 class="pl-name" id="pl-name">Goblet čučanj</h1>' in ci.get(f"{c.base}/vjezba/2").text
+
+    assert post(5, c.plank, 2, sec_1="35").headers["location"] == f"{c.base}/vjezba/6?odmor=120"
+    page = ci.get(f"{c.base}/kraj").text                                    # by exercise: Sklekovi not yet
+    assert re.search(r'<p class="kr-sum">3 od 4 vježbe · \d+ min</p>', page)
+    assert f'<a class="act act-quiet" href="{c.base}/vjezba/8">Natrag na vježbe</a>' in page   # the last step
+    assert post(7, c.plank, 3, sec_1="30").headers["location"] == f"{c.base}/vjezba/8?odmor=120"   # the final round too
+    page = ci.get(f"{c.base}/vjezba/8").text
+    assert ">Spremi i završi</button>" in page and '<span class="pl-chip">8/8</span>' in page
+    assert post(8, c.skl, None, rows="1", reps_1="10", kg_1="").headers["location"] == f"{c.base}/kraj"   # no rest to the end
+    ci.post(f"{c.base}/kraj", data={"effort": "7"})
+    first = ci.get(c.base).text.split('<li class="card hist-row">')[1]
+    assert sets_lines(first) == ["Čučanj s vlastitom težinom: 15 · 15", "Goblet čučanj: 9 × 21 kg · 10 × 22 kg · 10 × 24 kg",
+                                 "Plank: 40 s · 35 s · 30 s", "Sklekovi: 10"]
+    assert hist_lines(ci.get(c.base).text)[0].split(" · ")[1] == "4/4 vježbe"
+
+
+def test_the_rest_after_a_round_falls_back_to_the_exercises():
+    """The rest after a round's last exercise (24.11.2026) is the circuit's
+    rest between rounds; a circuit with none (NULL) falls back to the
+    exercise's own rest after it, said so on its screen ("Odmor nakon
+    vježbe: 25 s"), and with neither the next step comes plainly; a
+    circuit's rest of 0 is none, and no fallback."""
+    trainer, ivan, ana = people()
+    c = build_circuit(rounds=2, rest=None)
+    ci = client_for("ivan@test.local")
+    ci.post(f"{c.base}/kreni")
+    data = {"rows": "1", "item": str(c.plank), "round": "1", "sec_1": "40"}
+    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', ci.get(f"{c.base}/vjezba/3").text) == ["Odmor nakon vježbe: 25 s"]
+    assert ci.post(f"{c.base}/vjezba/3", data=data, follow_redirects=False).headers["location"] == f"{c.base}/vjezba/4?odmor=25"
+    db.update_day_item(c.plank, "trening", 3, None, 40, None, None, "")    # neither: plainly
+    assert ci.post(f"{c.base}/vjezba/3", data=data, follow_redirects=False).headers["location"] == f"{c.base}/vjezba/4"
+    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', ci.get(f"{c.base}/vjezba/3").text) == []
+    db.update_day_item(c.plank, "trening", 3, None, 40, None, 25, "")
+    db.set_circuit(c.did, "trening", 2, 0)                                  # 0 between rounds: none, no fallback
+    assert ci.post(f"{c.base}/vjezba/3", data=data, follow_redirects=False).headers["location"] == f"{c.base}/vjezba/4"
+    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', ci.get(f"{c.base}/vjezba/3").text) == ["Odmor nakon kruga: 0 s"]
+    db.set_circuit(c.did, "trening", 2, 45)
+    assert ci.post(f"{c.base}/vjezba/3", data=data, follow_redirects=False).headers["location"] == f"{c.base}/vjezba/4?odmor=45"
+    assert web._step_rest(web.Step(db.get_day_item(c.goblet))) == 15                     # a normal step's: the item's
+
+
+def test_the_bar_is_one_track_past_forty_steps():
+    """The bar over the player (24.11.2026): one segment per step while the
+    day has at most 40 (19 rounds × 2 and two normal steps: 40 segments),
+    past that one track (.pl-track, no segment) whose fill is the share of
+    the steps saved (3 of 42: 7.14 %)."""
+    trainer, ivan, ana = people()
+    c = build_circuit(rounds=19, title="Devetnaest")
+    ci = client_for("ivan@test.local")
+    ci.post(f"{c.base}/kreni")
+    page = ci.get(f"{c.base}/vjezba/1").text
+    assert page.split('<div class="pl-segs" aria-hidden="true">')[1].split("</div>")[0].count("<span") == 40
+    assert 'class="pl-track"' not in page and '<span class="pl-chip">1/40</span>' in page
+    big = build_circuit(rounds=20, title="Dvadeset")
+    ci.post(f"{big.base}/kreni")
+    log_id = db.open_pass(ivan, big.did).id
+    save(ivan, log_id, SimpleNamespace(items=[big.warm]), 1, [{"reps": 15, "kg": 0.0}])
+    save_round(ivan, log_id, big.goblet, 1, {"reps": 10, "kg": 16.0})
+    save_round(ivan, log_id, big.plank, 20, {"seconds": 40})
+    page = ci.get(f"{big.base}/vjezba/2").text
+    assert '<div class="pl-track" aria-hidden="true"><span style="width: 7.14%"></span></div>' in page
+    assert 'class="pl-segs"' not in page.split("<main")[1] and '<span class="pl-chip">2/42</span>' in page
+    assert ci.get(f"{big.base}/vjezba/42").status_code == 200 and "Krug" not in ci.get(f"{big.base}/vjezba/42").text.split("<main")[1].split('id="popis"')[0]
+    assert ci.get(f"{big.base}/vjezba/43", follow_redirects=False).headers["location"] == f"{big.base}/vjezba/42"
+
+
+def test_two_rounds_saved_at_once_keep_both():
+    """Rounds 1, 2 and 3 of one exercise saved at once (three tabs): each
+    db.save_round takes the pass's row first, so none overwrites another's
+    round; the entry holds the three, sorted by round."""
+    trainer, ivan, ana = people()
+    c = build_circuit()
+    log = db.start_pass(ivan, db.get_program(c.pid), db.get_day(c.did))
+    it, errors = db.get_day_item(c.goblet), []
+
+    def go(rnd):
+        try:
+            db.save_round(log.id, ivan, it, rnd, {"reps": 10, "kg": float(10 + rnd)}, it.exercise)
+        except Exception as e:                                              # pragma: no cover
+            errors.append(e)
+
+    threads = [threading.Thread(target=go, args=(rnd,)) for rnd in (3, 1, 2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors and db.get_pass(log.id, ivan).done_items[c.goblet]["sets"] == [
+        {"reps": 10, "kg": 11.0, "round": 1}, {"reps": 10, "kg": 12.0, "round": 2}, {"reps": 10, "kg": 13.0, "round": 3}]
+
+
+def test_a_rounds_set_is_checked_and_read_as_any_other(monkeypatch):
+    """A set may carry its round (24.11.2026: db.save_round), an integer
+    1–99, on any of the three shapes, kept after its fields; anything else
+    there is "Neispravan broj.". save_round refuses as save_sets does (a
+    pass finished, open too long, an exercise neither the item's nor its
+    swap; another day's item is False), and a set of a normal save in the
+    entry is no round's: it goes. The history (set_text), the karton and
+    the estimated maxes read a round's set as any other."""
+    monkeypatch.setattr(config, "PASS_STALE_HOURS", 2)
+    trainer, ivan, ana = people()
+    c = build_circuit()
+    checked = db._checked_sets([{"reps": 10, "kg": 20.0, "round": 2}, {"seconds": 30, "round": 1},
+                                {"reps": 5, "seconds": 30, "round": 99}, {"reps": 6, "kg": 0.0}])
+    assert checked == [{"reps": 10, "kg": 20.0, "round": 2}, {"seconds": 30, "round": 1},
+                       {"reps": 5, "seconds": 30, "round": 99}, {"reps": 6, "kg": 0.0}]
+    for bad in (0, 100, -1, True, 1.0, "2", None):
+        with pytest.raises(ValueError, match="^Neispravan broj.$"):
+            db._checked_sets([{"reps": 10, "kg": 20.0, "round": bad}])
+    with pytest.raises(ValueError, match="^Neispravan broj.$"):
+        db._checked_sets([{"round": 1}])
+    assert [set_text(s) for s in checked] == ["10 × 20 kg", "30 s", "5 × 30 s", "6"]
+
+    log = db.start_pass(ivan, db.get_program(c.pid), db.get_day(c.did))
+    goblet = db.get_day_item(c.goblet)
+    db.save_sets(log.id, ivan, goblet, [{"reps": 8, "kg": 20.0}, {"reps": 8, "kg": 20.0}], goblet.exercise)
+    assert save_round(ivan, log.id, c.goblet, 2, {"reps": 6, "kg": 90.0})
+    assert db.get_pass(log.id, ivan).done_items[c.goblet]["sets"] == [{"reps": 6, "kg": 90.0, "round": 2}]
+    for one, sentence in (({"reps": 1000, "kg": 0.0}, "Neispravan broj."), ({"reps": 5}, "Neispravan broj.")):
+        with pytest.raises(ValueError, match=f"^{sentence}$"):
+            save_round(ivan, log.id, c.goblet, 1, one)
+    with pytest.raises(ValueError, match="^Neispravan broj.$"):
+        save_round(ivan, log.id, c.goblet, 100, {"reps": 5, "kg": 0.0})
+    with pytest.raises(ValueError, match=f"^{db.NOT_SIMILAR}$"):
+        db.save_round(log.id, ivan, goblet, 1, {"reps": 5, "kg": 0.0}, db.exercise(c.ex["Sklekovi"]))
+    other = build_day()
+    assert not db.save_round(log.id, ivan, db.get_day_item(other.items[0]), 1, {"reps": 5, "kg": 0.0},
+                             db.get_day_item(other.items[0]).exercise)                # another day's item
+    assert not db.save_round(log.id, ana, goblet, 1, {"reps": 5, "kg": 0.0}, goblet.exercise)   # another's pass
+    db.finish_pass(log.id, ivan, 7, None, "")
+    with pytest.raises(ValueError, match=f"^{db.PASS_FINISHED}$"):
+        save_round(ivan, log.id, c.goblet, 1, {"reps": 5, "kg": 0.0})
+    maxes = {m.name: m.value_text for m in db.estimated_maxes(ivan)}
+    assert maxes == {"Goblet čučanj": "108 kg"}                             # 90 kg × 6, a round's set as any
+    karton = client_for("ivan@test.local").get("/karton").text.split(f'id="pass-{log.id}"')[1].split('<div class="log-entry')[0]
+    assert sets_lines(karton) == ["Goblet čučanj: 6 × 90 kg"]
+    stale = db.start_pass(ivan, db.get_program(c.pid), db.get_day(c.did))
+    age(stale.id, 3)
+    with pytest.raises(ValueError, match=f"^{db.PASS_STALE}$"):
+        save_round(ivan, stale.id, c.goblet, 1, {"reps": 5, "kg": 0.0})
+
+
 # ---------- the migration ----------
 
 def _migration(file: str):
@@ -1822,6 +2149,93 @@ def test_leaving_the_player_on_a_phone(server):
         pg.wait_for_timeout(500)
         check(types == ["beforeunload"] and pg.url == kraj, f"leaving by script: dialogs {types}, the page {pg.url}")
         check(db.open_pass(ivan, did) is not None, "the pass is not open after staying")
+        problems += errors
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+def test_a_circuit_on_a_phone(server):
+    """At 390px, touch (24.11.2026, kružni trening): ivan walks a day whose
+    one part is a circuit of 2 rounds × 2 exercises (Goblet čučanj, Plank;
+    10 s after each, 30 s between rounds) to its finish screen. The day's
+    page says the part's line; Kreni lands on "Krug 1 od 2" with a one-row
+    set log (no ✓ column, no "+"); each Spremi goes on with the rest bar
+    counting the short rest inside the round and, after the round's last
+    exercise, the rest between rounds (data-odmor 30, "0:30", the dock
+    hidden), the list's marks "1/2" then a ✓; "Spremi i završi" leads to the
+    finish screen, "2 od 2 vježbe". No screen is wider than the phone; no
+    page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    ivan = make_user("ivan@test.local")
+    pid = db.create_program("Kružni — početna", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    db.update_day(did, "Kružni", 0, "")
+    for name, sets, reps, seconds in (("Goblet čučanj", 3, 10, None), ("Plank", 3, None, 40)):
+        iid = db.add_day_item(did, db.create_exercise(name), "trening")
+        db.update_day_item(iid, "trening", sets, reps, seconds, 60, 10, "")
+    db.set_circuit(did, "trening", 2, 30)
+    base = f"/treninzi/{pid}/dan/{did}"
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    def spremi(pg, to: str) -> None:
+        """Skip a rest that runs (its bar lies over the column's foot), then Spremi."""
+        if pg.is_visible("#plRest"):
+            pg.tap(".pl-rest-skip")
+        with pg.expect_navigation():
+            pg.tap(".pl-save")
+        pg.wait_for_load_state("networkidle")
+        check(pg.url == f"{server}{base}{to}", f"Spremi led to {pg.url}, not {to}")
+        check(pg.evaluate(OVERFLOW) == 0, f"{to} overflows by {pg.evaluate(OVERFLOW)}px")
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        pg = ctx.new_page(); errors: list[str] = []
+        pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
+        pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
+        pg.goto(server + "/login")
+        pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        pg.goto(server + base); pg.wait_for_load_state("networkidle")
+        check(pg.text_content(".dx-circ") == "Kružno · 2 kruga · odmor između krugova 30 s",
+              f"the day's circuit line: {pg.text_content('.dx-circ')}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the day's page overflows by {pg.evaluate(OVERFLOW)}px")
+        with pg.expect_navigation():
+            pg.tap(".dx-start .go button")
+        pg.wait_for_load_state("networkidle")
+        check(pg.url == f"{server}{base}/vjezba/1", f"Kreni led to {pg.url}")
+        check(pg.is_visible(".pl-round") and pg.text_content(".pl-round") == "Krug 1 od 2", "no 'Krug 1 od 2' chip")
+        check(pg.locator(".pl-sets tbody tr").count() == 1 and pg.locator("#plAdd").count() == 0
+              and pg.locator(".pl-tick").count() == 0, "the round's log is not one row without + and ✓")
+        check(pg.evaluate(OVERFLOW) == 0, f"the player overflows by {pg.evaluate(OVERFLOW)}px")
+        pg.fill("input[name=kg_1]", "16")
+        spremi(pg, "/vjezba/2?odmor=10")                                    # inside the round: the short rest
+        check(pg.get_attribute("#plLog", "data-odmor") == "10" and pg.is_visible("#plRest"), "no short rest after Goblet")
+        check(pg.text_content(".pl-round") == "Krug 1 od 2" and pg.text_content("h1.pl-name") == "Plank", "step 2 is not Plank, round 1")
+        spremi(pg, "/vjezba/3?odmor=30")                                    # the round's end: the rest between rounds
+        bar = (pg.is_visible("#plRest"), pg.text_content(".pl-rest-t"), pg.is_visible(".pl-dock"))
+        check(bar[0] and bar[1] in ("0:30", "0:29") and not bar[2], f"the rest between rounds: {bar}")
+        check(pg.get_attribute("#plLog", "data-odmor") == "30", "the rest between rounds is not on the form")
+        check(pg.text_content(".pl-round") == "Krug 2 od 2" and pg.input_value("input[name=kg_1]") == "16",
+              f"round 2: {pg.text_content('.pl-round')}, kg {pg.input_value('input[name=kg_1]')}")
+        check(pg.locator("#popis .dx-rounds").all_text_contents() == ["1/2", "1/2"],
+              f"the list's marks: {pg.locator('#popis .dx-rounds').all_text_contents()}")
+        spremi(pg, "/vjezba/4?odmor=10")
+        check(pg.locator("#popis .dx-ok").count() == 1 and pg.locator("#popis .dx-rounds").all_text_contents() == ["1/2"],
+              "Goblet's ✓ / Plank's 1/2 not in the list")
+        check(pg.text_content(".pl-save") == "Spremi i završi", f"the last step's button: {pg.text_content('.pl-save')}")
+        spremi(pg, "/kraj")
+        check("2 od 2 vježbe" in (pg.text_content(".kr-sum") or ""), f"the finish screen says {pg.text_content('.kr-sum')}")
+        sets = db.open_pass(ivan, did).done_items
+        check(sorted(len(e["sets"]) for e in sets.values()) == [2, 2], f"the pass saved {sets}")
         problems += errors
         ctx.close()
         browser.close()

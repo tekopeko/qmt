@@ -10,8 +10,57 @@
      sees where things go), each exercise a base.html .it-row whose second
      line is its own form. */
   .st-sec { max-width: 760px; }
+  /* #dio-<key> is where a part's "Kružno" save comes back: clear of the pill */
   .st-cap { font: 700 .78rem var(--font-display); text-transform: uppercase; letter-spacing: .14em;
-            color: var(--muted); margin: 20px 0 10px; }
+            color: var(--muted); margin: 20px 0 10px; scroll-margin-top: 90px; }
+  /* A part as a circuit (24.11.2026, kružni trening): under each caption a
+     native <details class="st-circ"> (it opens without JS). Its summary
+     says the part's state in a pill with a › that turns down when open:
+     "Kružno: isključeno" muted on a hairline (the player's swap summary's
+     size), or, when the part is one, "Kružno · 3 kruga · odmor između
+     krugova 120 s" in the accent's tint and its ink (.on: the pressed tag
+     chip's pair, which a hover keeps). Open, ONE form in a hairline box
+     (--r-md): "Kružni dio" a whole-row checkbox (44px), then Krugova and
+     "Odmor između krugova (s)" side by side, each control at its field's
+     bottom (a label that wraps keeps the two level) and Spremi across
+     both on a phone; from 600px the two and Spremi on one line. In a
+     circuit part a muted hint follows it, and each row's form drops
+     Serije and Odmor (s) (.st-form's grid as it is, two fields fewer). */
+  .st-circ { margin: 0 0 10px; }
+  .st-circ > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+                       min-height: 32px; padding: 5px 13px; border: 1px solid var(--line); border-radius: 999px;
+                       color: var(--muted); font: 600 .8rem/1.3 var(--font-body); cursor: pointer;
+                       overflow-wrap: anywhere; transition: color .15s, border-color .15s; }
+  .st-circ > summary::-webkit-details-marker { display: none; }
+  .st-circ > summary::before { content: "›"; content: "›" / ""; flex: none; display: inline-block; font-size: 1.05rem;
+                               line-height: 1; transition: transform .2s; }
+  .st-circ[open] > summary::before { transform: rotate(90deg); }
+  .st-circ > summary:hover { color: var(--text); border-color: color-mix(in srgb, var(--text) 40%, transparent); }
+  .st-circ.on > summary, .st-circ.on > summary:hover { background: var(--accent-dim); color: var(--accent-tint-ink);
+                                                       border-color: transparent; }
+  .st-circ > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (pointer: coarse) { .st-circ > summary { padding: 8px 15px; } }
+  .st-circ-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; margin-top: 10px;
+                  padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+  .st-circ-form > div { display: flex; flex-direction: column; justify-content: flex-end; }
+  .st-circ-form label { margin-bottom: 3px; }
+  .st-circ-form input[type=number] { height: 40px; padding: 0 10px; }
+  .st-circ-form .st-go .btn { width: 100%; height: 40px; }
+  .st-circ-form :is(.st-check, .st-go) { grid-column: 1 / -1; }
+  /* "Kružni dio": a whole-row label (the global label is an uppercase caption) */
+  .st-circ-form .st-check { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 0;
+                            font: 500 .92rem var(--font-body); text-transform: none; letter-spacing: 0;
+                            color: var(--text); cursor: pointer; }
+  .st-check input { flex: none; width: 20px; height: 20px; margin: 0; padding: 0; accent-color: var(--accent-fill); }
+  @media (pointer: coarse) {
+    .st-circ-form input[type=number], .st-circ-form .st-go .btn { height: 44px; }
+  }
+  @media (min-width: 600px) {
+    .st-circ-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .st-circ-form .st-go { grid-column: auto; }
+  }
+  .st-circ-hint { margin: -2px 0 10px; overflow-wrap: anywhere; }
+  .st-sec > .st-alert { margin: 0 0 10px; }
   .st-rows { display: flex; flex-direction: column; gap: 10px; }
   .st-none { padding: 2px 0 4px; }
   /* A row's form, line 2: a compact grid of labelled fields, two columns on
@@ -65,11 +114,14 @@
 {# A row's save comes back with ?stavka=<id> (the row's id) beside ?ok= or
    ?error=: that row prints the alert, and the page's top prints none. A
    stavka that names no row of the day (deleted meanwhile): the top, as
-   usual. #}
+   usual. A part's "Kružno" save (24.11.2026) the same with ?dio=<key>: that
+   part prints it, under its caption, and opens its form after a refusal. #}
 {% set focus = request.query_params.get("stavka") %}
 {% set in_row = focus in day.items|map(attribute="id")|map("string")|list %}
-{% block error_alert %}{% if not in_row %}{{ super() }}{% endif %}{% endblock %}
-{% block ok_alert %}{% if not in_row %}{{ super() }}{% endif %}{% endblock %}
+{% set focus_dio = request.query_params.get("dio") %}
+{% set in_dio = not in_row and focus_dio in SECTIONS %}
+{% block error_alert %}{% if not in_row and not in_dio %}{{ super() }}{% endif %}{% endblock %}
+{% block ok_alert %}{% if not in_row and not in_dio %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}/uredi">{{ p.title }}</a><span class="sep">/</span><span class="here">Trening {{ day.position }}</span></nav>
 <h1>Trening {{ day.position }}</h1>
@@ -77,6 +129,7 @@
   Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja, sekunde, odmor i napomena.
   Ponavljanja i sekunde mogu zajedno: 5 ponavljanja po 30 s.
   „Odmor (s)” je odmor između serija, a „Nakon vježbe (s)” odmor prije sljedeće vježbe: polaznik za oba dobiva odbrojavanje koje može preskočiti.
+  Svaki dio može biti kružni: vježbe idu jedna za drugom, s odmorom između krugova.
   <a class="act act-quiet" href="/treninzi/{{ p.id }}/dan/{{ day.id }}">pogledaj kako polaznik vidi →</a>
 </p>
 
@@ -123,9 +176,33 @@
    section) and ✕ (out of the day, it stays in the library); under them the
    row's own form, what the day asks of it. Its ↑ / ↓ / ✕ name forms that
    stand after the list (form=): a form holds no form. #}
-{% for key, label in SECTIONS.items() %}{% set rows = day.by_section[key] %}
+{# Each part's "Kružno" (24.11.2026, kružni trening): a <details> whose
+   summary says the part's state and whose one form makes it a circuit or a
+   normal part again (POST …/dio/<key>/krug). In a circuit part the hint
+   says what changes, and the rows' forms ask no Serije and no Odmor (s):
+   they post `circuit`, so the route keeps the item's stored ones. #}
+{% for key, label in SECTIONS.items() %}{% set rows = day.by_section[key] %}{% set circ = day.circuit(key) %}
+{% set here = in_dio and focus_dio == key %}
 <section class="st-sec" aria-labelledby="dio-{{ key }}">
   <h3 class="st-cap" id="dio-{{ key }}">{{ label }}</h3>
+  {% if here %}
+    {% if request.query_params.get("error") %}<div class="alert st-alert" role="alert"><span>{{ request.query_params.get("error") }}</span></div>
+    {% elif request.query_params.get("ok") %}<div class="alert ok st-alert" role="status">{{ request.query_params.get("ok") }}</div>{% endif %}
+  {% endif %}
+  <details class="st-circ{% if circ %} on{% endif %}"{% if here and request.query_params.get("error") %} open{% endif %}>
+    <summary>{{ circ.line if circ else "Kružno: isključeno" }}</summary>
+    <form class="st-circ-form" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/dio/{{ key }}/krug">
+      <label class="st-check"><input type="checkbox" name="circuit" value="1"{% if circ %} checked{% endif %}> Kružni dio</label>
+      <div><label for="krug-{{ key }}-rounds">Krugova</label>
+        <input id="krug-{{ key }}-rounds" type="number" name="rounds" inputmode="numeric" min="2" max="20"
+               value="{{ circ.rounds if circ else 3 }}"></div>
+      <div><label for="krug-{{ key }}-rest">Odmor između krugova (s)</label>
+        <input id="krug-{{ key }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600"
+               value="{{ circ.rest_seconds if circ and circ.rest_seconds is not none else '' }}"></div>
+      <div class="st-go"><button type="submit" class="btn btn-sm">Spremi</button></div>
+    </form>
+  </details>
+  {% if circ %}<p class="hint st-circ-hint">U kružnom dijelu svaka vježba ide jednom po krugu: upiši ponavljanja ili sekunde, a „Nakon vježbe (s)” je kratka pauza do sljedeće vježbe.</p>{% endif %}
   <div class="st-rows">
     {% for it in rows %}{% set ex = it.exercise %}
     <div class="card it-row" id="stavka-{{ it.id }}">
@@ -145,22 +222,27 @@
         {% elif request.query_params.get("ok") %}<div class="alert ok st-alert" role="status">{{ request.query_params.get("ok") }}</div>{% endif %}
       {% endif %}
       <form class="st-form" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}">
+        {% if circ %}<input type="hidden" name="circuit" value="1">{% endif %}
         <div class="st-dio"><label for="st-{{ it.id }}-dio">Dio</label>
           <select id="st-{{ it.id }}-dio" name="section">
             {% for k, l in SECTIONS.items() %}<option value="{{ k }}"{% if k == it.section %} selected{% endif %}>{{ l }}</option>{% endfor %}
           </select></div>
+        {% if not circ %}
         <div><label for="st-{{ it.id }}-sets">Serije</label>
           <input id="st-{{ it.id }}-sets" type="number" name="sets" inputmode="numeric" min="1" max="99"
                  value="{{ it.sets if it.sets is not none else '' }}"></div>
+        {% endif %}
         <div><label for="st-{{ it.id }}-reps">Ponavljanja</label>
           <input id="st-{{ it.id }}-reps" type="number" name="reps" inputmode="numeric" min="1" max="999"
                  value="{{ it.reps if it.reps is not none else '' }}"></div>
         <div><label for="st-{{ it.id }}-secs">Sekunde</label>
           <input id="st-{{ it.id }}-secs" type="number" name="seconds" inputmode="numeric" min="1" max="3600"
                  value="{{ it.seconds if it.seconds is not none else '' }}"></div>
+        {% if not circ %}
         <div><label for="st-{{ it.id }}-rest">Odmor (s)</label>
           <input id="st-{{ it.id }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600"
                  value="{{ it.rest_seconds if it.rest_seconds is not none else '' }}"></div>
+        {% endif %}
         <div><label for="st-{{ it.id }}-after">Nakon vježbe (s)</label>
           <input id="st-{{ it.id }}-after" type="number" name="rest_after" inputmode="numeric" min="0" max="3600"
                  value="{{ it.rest_after_seconds if it.rest_after_seconds is not none else '' }}"></div>

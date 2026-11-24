@@ -572,7 +572,8 @@ auto`: one group at the right end, wrapping under the name whole on a phone),
 **The programme editor (`trening_edit.html`).** The h1 "Uredi program" (a dvoranski
 programme's followed by `.venue-chip` "dvoranski", 24.11.2026); its lead:
 "Program ima treninge; svaki trening ima zagrijavanje, glavni dio A i B te istezanje, a
-vježbe biraš iz baze vježbi." (A and B since 23.11.2026) (a `.tlink` to the library) and "pogledaj kako
+vježbe biraš iz baze vježbi." (A and B since 23.11.2026) (a `.tlink` to the library), since 24.11.2026 "Svaki
+dio može biti kružni: vježbe idu jedna za drugom, s odmorom između krugova.", and "pogledaj kako
 polaznik vidi →" (`.act.act-quiet`). The programme's form (`.card`, 640px: Tip treninga,
 Razina and since 24.11.2026 Vrsta, Online / Dvoranski, three selects in one grid,
 `repeat(auto-fit, minmax(160px, 1fr))`, `gap: 0 12px`: a row where they fit, one under
@@ -594,7 +595,8 @@ vježbama; …").
 **The day editor (`trening_day_edit.html`, 30.10.2026).** Crumbs Treninzi / the
 programme (its editor) / Trening N, the h1 "Trening N", the lead ("Naslov, preporučeni dan
 u tjednu i uvod; ispod toga vježbe po dijelovima — …", since 24.11.2026 "Ponavljanja i
-sekunde mogu zajedno: 5 ponavljanja po 30 s." after it, + "pogledaj kako polaznik
+sekunde mogu zajedno: 5 ponavljanja po 30 s." after it and, after the rests' sentence,
+"Svaki dio može biti kružni: vježbe idu jedna za drugom, s odmorom između krugova.", + "pogledaj kako polaznik
 vidi →" to the day's page). Card 1, `.card.ex-card`: Naslov ("npr. Cijelo
 tijelo"), Preporučeni dan (a select: "Bez preporuke", then the weekdays
 capitalised), Uvod, Spremi (`.btn.btn-sm`). Card 2, **Uvodni video**: the
@@ -603,8 +605,27 @@ exercise page's video card (`section.ex-video`, `#video`) with its own hint firs
 (`controls playsinline preload="metadata"`, not muted: it speaks), the file input,
 the iPhone hint, "Dodaj / Zamijeni video" and "Ukloni video" (`form=`, asks
 first). Then **Vježbe**: each section (`SECTIONS`, in their order) an `h3.st-cap`
-(PT Sans 700 .78rem, letter-spaced .14em, muted) and its rows, or a muted "Nema
-vježbi." (`.st-none`). A row is `.card.it-row`, `id="stavka-<id>"`: line 1 the
+(PT Sans 700 .78rem, letter-spaced .14em, muted; `scroll-margin-top: 90px`, the anchor
+`#dio-<key>`) and its rows, or a muted "Nema
+vježbi." (`.st-none`). **Under each caption its "Kružno"** (24.11.2026, kružni trening):
+`details.st-circ` (native: it opens without JS), its summary a pill stating the part's
+state with a › that turns down when open (the player's swap summary's size: 32px, 5px
+13px, 600 .8rem; 8px 15px on a coarse pointer): "Kružno: isključeno" muted on a
+hairline (hover: `--text`, its border at 40%), or, `.on`, "Kružno · 3 kruga · odmor
+između krugova 120 s" in `--accent-tint-ink` on `--accent-dim` with no border (the
+pressed tag chip's pair, which a hover keeps: the part's state, not decoration). Open,
+ONE `form.st-circ-form` in a hairline box (`--line`, `--r-md`, `--surface`, 12px 14px,
+10px under the summary): `label.st-check` "Kružni dio" (a whole-row label, 44px, Inter
+500 .92rem, its checkbox 20px in `--accent-fill`), then Krugova and "Odmor između
+krugova (s)" side by side (two columns at every width below 600px, each control at its
+field's bottom so a label that wraps keeps the two level; 40px inputs, 44px on a coarse
+pointer) and Spremi (`.btn.btn-sm`) across both; from 600px three columns, the two and
+Spremi on one line. A save's alert (`?dio=<key>`) stands between the caption and the
+summary (`.st-sec > .st-alert`), the details open again after a refusal. In a circuit
+part a muted `.hint.st-circ-hint` under the details ("U kružnom dijelu svaka vježba ide
+jednom po krugu: …"), and each row's form drops Serije and Odmor (s): the same grid, two
+fields fewer, Dio | Ponavljanja, Sekunde | Nakon vježbe (s), Napomena, Spremi on a
+phone, its lines level at 360 and 390 px (measured). A row is `.card.it-row`, `id="stavka-<id>"`: line 1 the
 exercise's `.it-name` (to its library page), `.it-video`, ↑ / ↓ (within its
 section; disabled at the section's ends) / ✕ — buttons naming forms that stand
 after the list (`form="st-gore-<id>"`, `st-dolje-`, `st-x-` with `data-confirm`
@@ -650,7 +671,16 @@ videa.", "Jedno ponavljanje: …" and the instructions (`pre-line`). Native
 `<details>`: it opens without JS. A day with no item says "Trening još nema vježbi."
 (the trainer: "… — dodaj ih u uređivanju."). The row's words (`.dx-cap`,
 `.dx-list`, `.dx-n`, `.dx-line`, `.dx-name`, `.dx-dose`, `.dx-sub`) are base.html's
-since 30.10.2026: the player's list is the same rows.
+since 30.10.2026: the player's list is the same rows. **A circuit part** (24.11.2026,
+kružni trening): its caption followed by `p.dx-circ`, one muted line in the `.dx-sub`
+size (.85rem), pulled 6px up to the caption, 10px above the list ("Kružno · 3 kruga ·
+odmor između krugova 120 s", the rest only when set); its rows the dose of a round
+("10 ponavljanja", "40 s", "5 × 30 s") and in `.dx-sub` the rest after the exercise and
+the note, never a rest between sets. A day with one says "· kružni trening" in its muted
+lines (the lead under the h1, the programme page's day card). While a pass is open a
+circuit row's dose starts with `.dx-ok` once every round is saved, and with
+`.dx-rounds` "2/3" (base.html: `--muted` in the dose's tabular 700; `role="img"`,
+`aria-label` "spremljeno 2 od 3 kruga") while some are.
 **The way into the player (30.10.2026, stage 3).** A day card's muted line ends
 with the viewer's state ("… · odrađen 2×", "… · u tijeku"; nothing for a day never
 done). The day's page: under the lead `.dx-state`, one muted 600 .92rem line
@@ -678,8 +708,12 @@ each set a `.set` that never breaks across lines.
 layout (`solo_page = not user.is_trainer`). `.pl`: 640px, centred; from 1000px
 1044px with `.pl-grid`, two columns (`minmax(0, 640px) minmax(0, 380px)`, 24px
 apart: the list keeps 380px, the player takes the rest), the dock hidden. On top
-`.pl-segs`: a 4px segment per exercise, 4px apart in a rounded track, `.done`
-`--accent`, `.cur` `--text` at 60%, the rest `--surface-2`; under it `.pl-line`:
+`.pl-segs`: a 4px segment per step (an exercise; in a circuit part one round of it,
+24.11.2026), 4px apart in a rounded track, `.done`
+`--accent`, `.cur` `--text` at 60%, the rest `--surface-2`; past 40 steps (a circuit's
+rounds multiply them) `.pl-track` instead: one track, the segments' 4px and 999px radius,
+`--surface-2`, its span an `--accent` fill as wide as the share of the steps saved (an
+inline `width`), `aria-hidden` as the segments; under it `.pl-line`:
 "← Natrag" (`.act.act-quiet`) · `.pl-timer` (a `--surface-2` pill, a 14px clock,
 600 .82rem tabular "0:18"; rendered `hidden`, the script counts from
 `data-started`) · "Završi trening" (`.act.pl-end`, at the right). `.pl-stage`: the
@@ -689,7 +723,11 @@ its edges (`--surface` at 90% with a hairline and the shadow, `--text`), links;
 a 60px sideways swipe on the stage or the card does the same (the script; not
 from inside the form, the swap list or "Kako se izvodi"). `.card.pl-card` (18px
 16px, 22px 24px from 600px): `.pl-eyebrow` "TRENUTNA VJEŽBA" (700 .74rem, .16em,
-muted) with `.pl-chip` "3/8" (`--surface-2`) and `.pl-saved` "✓ Spremljeno"
+muted) with `.pl-chip` "3/8" (`--surface-2`; k of the day's steps), on a circuit's
+step `.pl-round` "Krug 2 od 3" after it (24.11.2026: a pill in `--accent-dim` with
+`--accent-tint-ink`, the pressed chip's pair, PT Sans 700 .78rem capitals, .06em, never
+broken; at 360px it wraps under the kicker, the eyebrow being a wrapping row) and
+`.pl-saved` "✓ Spremljeno"
 (`--good`), `h1.pl-name` (`clamp(1.35rem, 5vw, 1.9rem)`), `.pl-for` "Zamjena za:
 …" (muted), the alert, `.pl-dose` (700 1.05rem), `.pl-sub` lines (rest, note),
 `details.pl-how` "Kako se izvodi" (a 32px summary, a › that turns). The set log
@@ -708,16 +746,24 @@ under `--good-ink` (hover `--good-strong`), its row `tr.is-done`, the set's numb
 `.pl-sr` "Odrađena serija", screen-reader text that is NOT the usual 1px box (its
 text overflows that box, which the audit's element-overflow check fails): the
 text at its own width, `clip-path: inset(50%)`, set against its cell's right edge
-(the `th` is `position: relative`). `.pl-more`: "Preskoči →"
+(the `th` is `position: relative`). **A circuit's step** (24.11.2026, kružni trening)
+logs ONE row, its round's set: the same `table.pl-sets` with no ✓ column (no rest
+between sets there) and no "+" (neither rendered), its `tbody th` the round's number,
+its inputs "Krug n: ponavljanja" for a screen reader; its `.pl-dose` the dose of a
+round and its `.pl-sub` "Odmor nakon vježbe: 15 s" or, on the round's last exercise,
+"Odmor nakon kruga: 120 s". `.pl-more`: "Preskoči →"
 (`.act.act-quiet`) and `details.swap` (its summary the same quiet pill "⇄
 Zamijeni vježbu"; open, it takes the line: `.swap-h` "Slične vježbe", `.swap-row`s
 (a hairline row, the name 600 and `.swap-tags` muted, an `.act` ⇄), "Vrati …"
 first when swapped). `aside.pl-side#popis`: `h2` "Vježbe", the sections'
-`h3.dx-cap`, `ol.dx-list` of `a.card.pl-row` (56px, the day page's row words; the
-current one `.is-cur`, a 2px inset `--accent` ring and `aria-current="step"`; a
-swapped one's name with `.pl-swapped` "(zamjena)" muted; a saved one `.dx-ok`).
+`h3.dx-cap` (a circuit part's "Glavni dio A · kružno · 3 kruga", 24.11.2026), `ol.dx-list` of `a.card.pl-row` (56px, the day page's row words; the
+current one `.is-cur`, a 2px inset `--accent` ring and `aria-current="step"`: the
+exercise on screen, whichever round; a
+swapped one's name with `.pl-swapped` "(zamjena)" muted; a saved one `.dx-ok`, a
+circuit's once every round is, `.dx-rounds` "2/3" while some are; each a link to its
+first step not saved).
 `.pl-dock` (phones): a fixed dark pill, the topbar's glass (theme-free), 48px,
-700 .9rem tabular "Vježbe · 3/8 ✓" → `#popis`, centred 12px over
+700 .9rem tabular "Vježbe · 3/8 ✓" (by exercise) → `#popis`, centred 12px over
 `env(safe-area-inset-bottom)`, 70px when staff's ✎ pill is on the page; `.pl`
 keeps 56px under it. **`.pl-rest`, the rest bar** (30.10.2026; the rest between
 sets after a ✓, the rest between exercises on the next screen): `role="timer"`,

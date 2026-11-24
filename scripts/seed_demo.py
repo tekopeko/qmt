@@ -9,7 +9,8 @@ Idempotent — safe to re-run. Passwords are for LOCAL DEV ONLY.
 
 Also the upitnik's questions (the gym owner's fifteen, ids 1–15, and the two
 asked after the safety questions, 16 and 17) and ivan's answers to them, and
-(30.10.2026, the player) ivan's two finished passes of his Trening 1.
+(30.10.2026, the player) ivan's two finished passes of his Trening 1, whose
+Glavni dio A is done as a circuit since 24.11.2026 (DEMO_CIRCUIT).
 """
 
 from __future__ import annotations
@@ -254,6 +255,13 @@ DAYS = [
                        ("Veslanje u pretklonu", "trening", 3, 12, None, 60, "2 × 10 kg"),
                        ("Plank", "trening", 3, None, 40, 45, "")]),
 ]
+# The circuit's demo (24.11.2026, kružni trening): ivan's Trening 1 does its
+# Glavni dio A (Goblet čučanj, Sklekovi, Veslanje u pretklonu, Plank) as a
+# circuit, so the day's page, its editor and the player the audit walks show
+# one: (the part, its rounds, the rest between two rounds, each of its
+# exercises' rest after it, the short pause to the next). Their rest between
+# sets (DEMO_REST) stays stored and does not apply there.
+DEMO_CIRCUIT = ("trening", 2, 90, 15)
 
 
 def seed_program() -> None:
@@ -262,9 +270,10 @@ def seed_program() -> None:
     trening (library rows, DEMO_EXERCISES: the
     cues; each item its razina's dose, DEMO_REST seconds of rest between its
     sets and DEMO_REST_AFTER after it), then the library's demo (LIBRARY)
-    and the days' demo (DAYS, ivan's programme). A dev RESET: the library
-    goes with the programmes (their clips' files are left alone: the dev
-    .env may point storage at R2)."""
+    and the days' demo (DAYS, ivan's programme), whose Trening 1 does one
+    part as a circuit (DEMO_CIRCUIT). A dev RESET: the library goes with
+    the programmes (their clips' files are left alone: the dev .env may
+    point storage at R2)."""
     from sqlalchemy import delete, select
 
     from qmt.models import Exercise, Program
@@ -299,8 +308,14 @@ def seed_program() -> None:
         for name, section, sets, reps, seconds, rest, note in items:
             item_id = db.add_day_item(day_id, ids[name], section)
             db.update_day_item(item_id, section, sets, reps, seconds, rest, DEMO_REST_AFTER, note)
+    section, rounds, rest, short = DEMO_CIRCUIT
+    first = db.get_program(pid).days[0]
+    for it in first.by_section[section]:
+        db.update_day_item(it.id, section, it.sets, it.reps, it.seconds, it.rest_seconds, short, it.note)
+    db.set_circuit(first.id, section, rounds, rest)
     print(f"  {made} demo programa (razina × tip), svaki s Treningom 1 ({made_items} stavki u svima); "
-          f"{len(ids)} vježbi u bazi; srednja × cijelo: {len(DAYS)} dana, sva tri dijela")
+          f"{len(ids)} vježbi u bazi; srednja × cijelo: {len(DAYS)} dana, sva tri dijela, "
+          f"Glavni dio A Treninga 1 kružno ({rounds} {db.plural(rounds, 'krug', 'kruga', 'krugova')})")
 
 
 def seed_announcements() -> None:
@@ -392,7 +407,8 @@ def seed_karton() -> None:
 # his Trening 1 (srednja × cijelo, "Cijelo tijelo"), days ago, each pass's sets
 # per exercise of the day by name: (reps or None, kg, seconds or None) per set,
 # the first pass's then the second's. Goblet čučanj went from 16 to 20 kg, so
-# the next pass prefills 20.
+# the next pass prefills 20. The circuit's four (Glavni dio A, DEMO_CIRCUIT:
+# 24.11.2026) have a set per round, saved carrying its round.
 PASSES = [
     # (days ago, start "HH:MM", minutes, napor, osjećaj, comment)
     (7, "18:00", 41, 6, "dobro", ""),
@@ -400,10 +416,10 @@ PASSES = [
 ]
 PASS_SETS = {
     "Čučanj s vlastitom težinom": ([(15, 0, None)] * 2, [(15, 0, None)] * 2),
-    "Goblet čučanj": ([(10, 16, None)] * 4, [(10, 20, None)] * 3 + [(8, 20, None)]),
-    "Sklekovi": ([(10, 0, None), (10, 0, None), (8, 0, None)], [(10, 0, None)] * 3),
-    "Veslanje u pretklonu": ([(12, 10, None)] * 3, [(12, 10, None)] * 3),
-    "Plank": ([(None, 0, 40)] * 3, [(None, 0, 40)] * 3),
+    "Goblet čučanj": ([(10, 16, None)] * 2, [(10, 20, None), (8, 20, None)]),
+    "Sklekovi": ([(10, 0, None), (8, 0, None)], [(10, 0, None)] * 2),
+    "Veslanje u pretklonu": ([(12, 10, None)] * 2, [(12, 10, None)] * 2),
+    "Plank": ([(None, 0, 40)] * 2, [(None, 0, 40)] * 2),
     "Istezanje stražnje lože": ([(None, 0, 30)] * 2, [(None, 0, 30)] * 2),
 }
 
@@ -435,6 +451,9 @@ def seed_passes() -> None:
             for i, it in enumerate(items):
                 sets = [{"seconds": sec} if sec is not None else {"reps": reps, "kg": float(kg)}
                         for reps, kg, sec in PASS_SETS[it.exercise.name][n]]
+                circ = day.circuit(it.section)
+                if circ is not None:             # a circuit's exercise: a set per round, as db.save_round writes it
+                    sets = [{**st, "round": r} for r, st in zip(range(1, circ.rounds + 1), sets)]
                 done[str(it.id)] = {"exercise_id": it.exercise_id, "name": it.exercise.name, "section": it.section,
                                     "sets": sets,
                                     "at": (started + timedelta(minutes=5 + i * 6)).isoformat(timespec="seconds")}

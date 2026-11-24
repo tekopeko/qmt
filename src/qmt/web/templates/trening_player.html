@@ -17,7 +17,10 @@
    and the rest bar (30.10.2026: the rest between sets after a ✓, the rest
    between exercises on the next exercise's screen, each skippable). Leaving
    the pass asks first (31.10.2026, _pass_leave.html: #leaveDlg, finish or
-   discard). #}
+   discard). Since 24.11.2026 a screen is a step (app._steps): an exercise,
+   in a circuit part (kružni trening) one round of it, "Krug 2 od 3" beside
+   the counter, one row in its set log; the bar a single track past 40
+   steps. #}
 {% set solo_page = not user.is_trainer %}
 {% block title %}{{ ex.name }} — {{ day.label }} — QMT{% endblock %}
 {% block head %}
@@ -32,6 +35,11 @@
   .pl-segs > span { flex: 1 1 0; height: 4px; background: var(--surface-2); }
   .pl-segs > .done { background: var(--accent); }
   .pl-segs > .cur { background: color-mix(in srgb, var(--text) 60%, transparent); }
+  /* past 40 steps (24.11.2026: a circuit's rounds multiply the steps, and
+     sixty segments do not fit a phone) the bar is ONE track, the segments'
+     height and radius, its accent fill the share of the steps saved */
+  .pl-track { height: 4px; margin: 2px 0 10px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
+  .pl-track > span { display: block; height: 100%; background: var(--accent); }
   .pl-line { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
   .pl-line .pl-end { margin-left: auto; }
   /* the training's time since "Kreni" (the script counts it; none without it) */
@@ -63,6 +71,13 @@
                 font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
   .pl-chip { padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--text);
              letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+  /* a circuit's step (24.11.2026, kružni trening): "Krug 2 od 3" after the
+     counter, the round the client is in: a pill in the accent's tint and
+     its ink (the pressed chip's pair), the display font in capitals at the
+     captions' size (.dx-cap's .78rem), never broken */
+  .pl-round { padding: 2px 9px; border-radius: 999px; background: var(--accent-dim); color: var(--accent-tint-ink);
+              font: 700 .78rem/1.35 var(--font-display); letter-spacing: .06em; text-transform: uppercase;
+              font-variant-numeric: tabular-nums; white-space: nowrap; }
   .pl-saved { color: var(--good); letter-spacing: .02em; text-transform: none; font-size: .8rem; }
   .pl-name { font-size: clamp(1.35rem, 5vw, 1.9rem); line-height: 1.15; margin: 8px 0 6px; overflow-wrap: anywhere; }
   .pl-for { color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
@@ -204,12 +219,17 @@
 {# a refusal's sentence stands under the exercise's name (below), not over the page #}
 {% block error_alert %}{% endblock %}
 {% block content %}
-{% set last = n_items %}
+{# k counts steps (24.11.2026): an exercise, in a circuit part one round of it #}
+{% set last = n_steps %}
 <div class="pl">
   <div class="pl-top">
+    {% if segments %}
     <div class="pl-segs" aria-hidden="true">
-      {%- for x in items %}<span{% if loop.index == k %} class="cur"{% elif x.id in done %} class="done"{% endif %}></span>{% endfor -%}
+      {%- for s in step_saved %}<span{% if loop.index == k %} class="cur"{% elif s %} class="done"{% endif %}></span>{% endfor -%}
     </div>
+    {% else %}
+    <div class="pl-track" aria-hidden="true"><span style="width: {{ track }}%"></span></div>
+    {% endif %}
     <div class="pl-line">
       <a class="act act-quiet" href="{{ base }}">← Natrag</a>
       <span class="pl-timer" hidden data-started="{{ log.started_at.isoformat(timespec='seconds') }}" title="Vrijeme treninga">
@@ -231,13 +251,16 @@
 
       <section class="card pl-card" id="plCard" aria-labelledby="pl-name">
         <p class="pl-eyebrow"><span>Trenutna vježba</span> <span class="pl-chip">{{ k }}/{{ last }}</span>
+          {%- if step.round %} <span class="pl-round">Krug {{ step.round }} od {{ step.circuit.rounds }}</span>{% endif %}
           {%- if saved %} <span class="pl-saved">✓ Spremljeno</span>{% endif %}</p>
         <h1 class="pl-name" id="pl-name">{{ ex.name }}</h1>
         {% if swapped %}<p class="pl-for">Zamjena za: {{ planned.name }}</p>{% endif %}
         {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
-        {% if it.dose %}<p class="pl-dose">{{ it.dose }}</p>{% endif %}
-        {% set rests = [it.rest_text and "Odmor između serija: " ~ it.rest_text, it.rest_after_text and "Odmor nakon vježbe: " ~ it.rest_after_text]|select|list %}
-        {% if rests %}<p class="pl-sub">{{ rests|join(" · ") }}</p>{% endif %}
+        {# the dose (a circuit's step: of one round, round_dose), then the
+           rests (_player's rest_line: a circuit's step the rest after the
+           exercise, "Odmor nakon kruga" on the round's last) and the note #}
+        {% if dose %}<p class="pl-dose">{{ dose }}</p>{% endif %}
+        {% if rest_line %}<p class="pl-sub">{{ rest_line }}</p>{% endif %}
         {% if it.note %}<p class="pl-sub">{{ it.note }}</p>{% endif %}
         {% if ex.rep_note or ex.instructions %}
         <details class="pl-how">
@@ -256,35 +279,40 @@
            The ✓ column (the script's) marks a set done and starts the rest
            between sets, data-rest (the plan's, none when it has none or 0);
            data-odmor is the rest before this exercise, which the script
-           counts down at load (the previous exercise's save: ?odmor=) #}
+           counts down at load (the previous exercise's save: ?odmor=).
+           A circuit's step (24.11.2026) logs ONE row, its round's set (the
+           SET cell its round's number, `round` naming it), with no "+" and
+           no ✓ column: no rest between sets applies there #}
         <form class="pl-log" id="plLog" method="post" action="{{ base }}/vjezba/{{ k }}" data-max="{{ max_sets }}"
-              {%- if it.rest_seconds %} data-rest="{{ it.rest_seconds }}"{% endif %}{% if odmor %} data-odmor="{{ odmor }}"{% endif %}>
+              {%- if it.rest_seconds and not step.round %} data-rest="{{ it.rest_seconds }}"{% endif %}{% if odmor %} data-odmor="{{ odmor }}"{% endif %}>
           <input type="hidden" name="rows" value="{{ rows|length }}">
           {# the exercise this page was drawn for: a save after the day
-             changed under it is refused, not put into another's (4.11.2026) #}
+             changed under it is refused, not put into another's (4.11.2026);
+             a circuit's step its round too (24.11.2026) #}
           <input type="hidden" name="item" value="{{ it.id }}">
+          {% if step.round %}<input type="hidden" name="round" value="{{ step.round }}">{% endif %}
           <table class="pl-sets">
-            <thead><tr><th scope="col">Set</th>{% if "reps" in fields %}<th scope="col">Pon.</th>{% endif %}{% if "kg" in fields %}<th scope="col">Kg</th>{% endif %}{% if "seconds" in fields %}<th scope="col">Sek.</th>{% endif %}<th scope="col" class="pl-tick" hidden><span aria-hidden="true">✓</span><span class="pl-sr">Odrađena serija</span></th></tr></thead>
+            <thead><tr><th scope="col">Set</th>{% if "reps" in fields %}<th scope="col">Pon.</th>{% endif %}{% if "kg" in fields %}<th scope="col">Kg</th>{% endif %}{% if "seconds" in fields %}<th scope="col">Sek.</th>{% endif %}{% if not step.round %}<th scope="col" class="pl-tick" hidden><span aria-hidden="true">✓</span><span class="pl-sr">Odrađena serija</span></th>{% endif %}</tr></thead>
             <tbody>
-              {% for r in rows %}{% set n = loop.index %}
+              {% for r in rows %}{% set n = loop.index %}{% set who = ("Krug " ~ step.round) if step.round else ("Serija " ~ n) %}
               <tr{% if r.extra %} class="extra"{% endif %}>
-                <th scope="row">{{ n }}{% if r.extra %}<span class="pl-x">dodatna serija</span>{% endif %}</th>
+                <th scope="row">{{ step.round or n }}{% if r.extra %}<span class="pl-x">dodatna serija</span>{% endif %}</th>
                 {% if "reps" in fields %}
-                <td><input type="number" name="reps_{{ n }}" value="{{ r.reps }}" inputmode="numeric" min="0" max="999" step="1" aria-label="Serija {{ n }}: ponavljanja"></td>
+                <td><input type="number" name="reps_{{ n }}" value="{{ r.reps }}" inputmode="numeric" min="0" max="999" step="1" aria-label="{{ who }}: ponavljanja"></td>
                 {% endif %}
                 {% if "kg" in fields %}
-                <td><input type="number" name="kg_{{ n }}" value="{{ r.kg }}" inputmode="decimal" min="0" max="500" step="0.5" aria-label="Serija {{ n }}: kilogrami"></td>
+                <td><input type="number" name="kg_{{ n }}" value="{{ r.kg }}" inputmode="decimal" min="0" max="500" step="0.5" aria-label="{{ who }}: kilogrami"></td>
                 {% endif %}
                 {% if "seconds" in fields %}
-                <td><input type="number" name="sec_{{ n }}" value="{{ r.sec }}" inputmode="numeric" min="0" max="3600" step="1" aria-label="Serija {{ n }}: sekunde"></td>
+                <td><input type="number" name="sec_{{ n }}" value="{{ r.sec }}" inputmode="numeric" min="0" max="3600" step="1" aria-label="{{ who }}: sekunde"></td>
                 {% endif %}
-                <td class="pl-tick" hidden><button type="button" class="pl-done" aria-pressed="false" aria-label="Serija {{ n }} odrađena">✓</button></td>
+                {% if not step.round %}<td class="pl-tick" hidden><button type="button" class="pl-done" aria-pressed="false" aria-label="Serija {{ n }} odrađena">✓</button></td>{% endif %}
               </tr>
               {% endfor %}
             </tbody>
           </table>
           <div class="pl-foot">
-            <button type="button" class="btn-ghost pl-add" id="plAdd" aria-label="Dodaj seriju" hidden>+</button>
+            {% if not step.round %}<button type="button" class="btn-ghost pl-add" id="plAdd" aria-label="Dodaj seriju" hidden>+</button>{% endif %}
             <button type="submit" class="btn pl-save">{{ "Spremi i završi" if k == last else "Spremi" }}</button>
           </div>
         </form>
@@ -321,20 +349,23 @@
       </section>
     </div>
 
-    {# the day's whole list, each row a link to its exercise #}
+    {# the day's whole list, each row a link to its exercise (its first step
+       not saved: a circuit's exercise has one per round, 24.11.2026), the
+       one on screen ringed; a circuit part's caption says so, its rows the
+       dose of a round and their mark the rounds saved ("2/3") #}
     <aside class="pl-side" id="popis" aria-labelledby="popis-h">
       <h2 class="pl-side-h" id="popis-h">Vježbe</h2>
       {% set ns = namespace(n=0) %}
       {% for key, label in SECTIONS.items() %}{% set section_items = day.by_section[key] %}
-      {% if section_items %}
-      <h3 class="dx-cap">{{ label }}</h3>
+      {% if section_items %}{% set circ = day.circuit(key) %}
+      <h3 class="dx-cap">{{ label }}{% if circ %} · kružno · {{ circ.rounds_text }}{% endif %}</h3>
       <ol class="dx-list pl-rows">
-        {% for x in section_items %}{% set ns.n = ns.n + 1 %}
-        <li><a class="card pl-row{% if ns.n == k %} is-cur{% endif %}" href="{{ base }}/vjezba/{{ ns.n }}"{% if ns.n == k %} aria-current="step"{% endif %}>
+        {% for x in section_items %}{% set ns.n = ns.n + 1 %}{% set mark = marks.get(x.id) %}{% set xdose = x.round_dose if circ else x.dose %}
+        <li><a class="card pl-row{% if x.id == it.id %} is-cur{% endif %}" href="{{ base }}/vjezba/{{ links[x.id] }}"{% if x.id == it.id %} aria-current="step"{% endif %}>
           <span class="dx-n">Vježba {{ ns.n }}</span>
           <span class="dx-line"><span class="dx-name">{{ swap_names.get(x.id, x.exercise.name) }}{% if x.id in swap_names %} <span class="pl-swapped">(zamjena)</span>{% endif %}</span>
-            {%- if x.id in done %}<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span>{% if x.dose %} {{ x.dose }}{% endif %}</span>{% elif x.dose %}<span class="dx-dose">{{ x.dose }}</span>{% endif %}</span>
-          {% set sub = [x.rest_text and "Odmor između serija: " ~ x.rest_text, x.rest_after_text and "Odmor nakon vježbe: " ~ x.rest_after_text, x.note]|select|list %}
+            {%- if mark and mark.full %}<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span>{% if xdose %} {{ xdose }}{% endif %}</span>{% elif mark %}<span class="dx-dose"><span class="dx-rounds" role="img" aria-label="{{ mark.label }}">{{ mark.text }}</span>{% if xdose %} {{ xdose }}{% endif %}</span>{% elif xdose %}<span class="dx-dose">{{ xdose }}</span>{% endif %}</span>
+          {% set sub = ([x.rest_after_text and "Odmor nakon vježbe: " ~ x.rest_after_text, x.note] if circ else [x.rest_text and "Odmor između serija: " ~ x.rest_text, x.rest_after_text and "Odmor nakon vježbe: " ~ x.rest_after_text, x.note])|select|list %}
           {% if sub %}<span class="dx-sub">{{ sub|join(" · ") }}</span>{% endif %}
         </a></li>
         {% endfor %}
@@ -344,7 +375,8 @@
     </aside>
   </div>
 </div>
-<a class="pl-dock" href="#popis">Vježbe · {{ done_n }}/{{ last }} ✓</a>
+{# counted by exercise: one counts once it has any entry (a circuit's after one round) #}
+<a class="pl-dock" href="#popis">Vježbe · {{ done_n }}/{{ n_items }} ✓</a>
 {# the rest bar: shown by the script for a rest (a ✓ with data-rest, or
    data-odmor at load), counted down, skippable #}
 <div class="pl-rest" id="plRest" role="timer" hidden>

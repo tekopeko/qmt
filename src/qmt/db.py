@@ -26,8 +26,9 @@ from sqlalchemy.orm import Session, aliased, joinedload, load_only, selectinload
 
 from . import config, copy, upitnik
 from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, Announcement, Base, Booking,
-                     Exercise, GymCard, Membership, OnboardingResponse, Payment, Program, ProgramDay, ProgramDayItem,
-                     ProgressPhoto, ReminderLog, SessionTemplate, SiteCopy, TrainingLog, TrainingSession,
+                     Exercise, GymCard, Membership, OnboardingResponse, Payment, Program, ProgramDay,
+                     ProgramDayCircuit, ProgramDayItem, ProgressPhoto, ReminderLog, SessionTemplate, SiteCopy,
+                     TrainingLog, TrainingSession,
                      UpitnikQuestion, User, Weight, WorkoutLog, alpha_key, exercise_alternatives, fold, kg_text,
                      matches, plural)
 
@@ -1995,11 +1996,12 @@ def programs_for_level(level: str) -> list[Program]:
     the trainer's own plan for the gym, Program.venue). No hand-outs —
     matching IS the access. In GOALS' order (cijelo, gornji, donji, core; a
     type not among them last), each type by title; each with its days and
-    their items loaded (the list says how many days)."""
+    their items loaded (the list says how many days), and their circuits."""
     with session_scope() as s:
         rows = list(s.scalars(
             select(Program).where(Program.level == level, Program.venue == "online")
-            .options(selectinload(Program.days).selectinload(ProgramDay.items))
+            .options(selectinload(Program.days).options(selectinload(ProgramDay.items),
+                                                        selectinload(ProgramDay.circuits)))
             .order_by(Program.title)))
     order = list(upitnik.GOALS)
     return sorted(rows, key=lambda p: order.index(p.goal) if p.goal in upitnik.GOALS else len(order))
@@ -2321,10 +2323,11 @@ def create_program(title: str, intro: str | None,
 
 def get_program(program_id: int) -> Program | None:
     """A programme with its days and their items, each item with its
-    exercise (ProgramDayItem's joined load)."""
+    exercise (ProgramDayItem's joined load), and the days' circuits."""
     with session_scope() as s:
         return s.scalar(select(Program).where(Program.id == program_id)
-                        .options(selectinload(Program.days).selectinload(ProgramDay.items)))
+                        .options(selectinload(Program.days).options(selectinload(ProgramDay.items),
+                                                                    selectinload(ProgramDay.circuits))))
 
 
 def update_program(program_id: int, title: str, intro: str | None,
@@ -2410,11 +2413,12 @@ def add_day(program_id: int) -> int | None:
 
 
 def get_day(day_id: int) -> ProgramDay | None:
-    """A day with its programme and its items, each with its exercise,
-    loaded (usable once the session is closed)."""
+    """A day with its programme, its items, each with its exercise, and its
+    circuits loaded (usable once the session is closed)."""
     with session_scope() as s:
         return s.scalar(select(ProgramDay).where(ProgramDay.id == day_id)
-                        .options(selectinload(ProgramDay.items), joinedload(ProgramDay.program)))
+                        .options(selectinload(ProgramDay.items), selectinload(ProgramDay.circuits),
+                                 joinedload(ProgramDay.program)))
 
 
 def update_day(day_id: int, title: str, weekday: int | None, intro: str) -> bool:
@@ -2542,17 +2546,19 @@ def update_day_item(item_id: int, section: str, sets: int | None, reps: int | No
     """Save what a day asks of an exercise: its section, sets, reps and
     seconds (either or both since 24.11.2026: "5 ponavljanja po 30 s"),
     the rest between sets, the rest after it (before the next exercise)
-    and a note (stripped); None for a number not set. An item moved to
-    another section goes last in it. False for an item that is gone.
-    ValueError with the sentence to show: a number out of ITEM_LIMITS
-    ("Neispravan broj."), a note past ITEM_NOTE_MAX, a section that is
-    none."""
+    and a note (stripped); None for a number not set. `sets` or
+    `rest_seconds` given as KEEP (24.11.2026: a circuit part's row form
+    asks neither, they do not apply there) stays what it is, read under
+    the lock. An item moved to another section goes last in it. False for
+    an item that is gone. ValueError with the sentence to show: a number
+    out of ITEM_LIMITS ("Neispravan broj."), a note past ITEM_NOTE_MAX, a
+    section that is none."""
     if section not in SECTIONS:
         raise ValueError("Odaberi dio treninga.")
     for field, value in (("sets", sets), ("reps", reps), ("seconds", seconds), ("rest_seconds", rest_seconds),
                          ("rest_after_seconds", rest_after_seconds)):
         least, most = ITEM_LIMITS[field]
-        if value is not None and not least <= value <= most:
+        if value is not None and value is not KEEP and not least <= value <= most:
             raise ValueError(BAD_NUMBER)
     note = (note or "").strip()
     if len(note) > ITEM_NOTE_MAX:
@@ -2566,8 +2572,71 @@ def update_day_item(item_id: int, section: str, sets: int | None, reps: int | No
             it.section = section
             it.position = s.scalar(select(func.max(ProgramDayItem.position))
                                    .where(ProgramDayItem.day_id == day.id)) + 1
-        it.sets, it.reps, it.seconds, it.rest_seconds, it.note = sets, reps, seconds, rest_seconds, note
+        if sets is not KEEP:
+            it.sets = sets
+        if rest_seconds is not KEEP:
+            it.rest_seconds = rest_seconds
+        it.reps, it.seconds, it.note = reps, seconds, note
         it.rest_after_seconds = rest_after_seconds
+        p.updated_at = func.now()
+        return True
+
+
+# ---------- a part of a day done as a circuit (24.11.2026, kružni trening) ----------
+# The owner: "Amir wants a new type of training called 'kružni trening' where
+# he has sections of multiple exercises with no pause or a very short pause
+# between them and then a longer pause between these multiple sets."
+# models.ProgramDayCircuit: a row per part done as a circuit, its rounds and
+# its rest between rounds. Written under _day_locked, as every write to a
+# day: the programme's row, then the day's.
+
+CIRCUIT_LIMITS = {"rounds": (2, 20), "rest_seconds": (0, 3600)}
+NO_SECTION = "Odaberi dio treninga."
+
+
+def set_circuit(day_id: int, section: str, rounds: int | None, rest_seconds: int | None) -> bool:
+    """Make a part of a day a circuit (SECTIONS' key `section`): `rounds`
+    rounds (2–20), `rest_seconds` between two rounds (0–3600; None for
+    none); a part that is one already takes the new numbers. False for a
+    day that is gone. ValueError with the sentence to show: NO_SECTION
+    ("Odaberi dio treninga.") for a section that is none, BAD_NUMBER
+    ("Neispravan broj.") for rounds outside 2–20 (or none) or a rest
+    outside 0–3600."""
+    if section not in SECTIONS:
+        raise ValueError(NO_SECTION)
+    (least, most), (rest_least, rest_most) = CIRCUIT_LIMITS["rounds"], CIRCUIT_LIMITS["rest_seconds"]
+    if type(rounds) is not int or not least <= rounds <= most:
+        raise ValueError(BAD_NUMBER)
+    if rest_seconds is not None and (type(rest_seconds) is not int or not rest_least <= rest_seconds <= rest_most):
+        raise ValueError(BAD_NUMBER)
+    with session_scope() as s:
+        found = _day_locked(s, day_id)
+        if found is None:
+            return False
+        p, day = found
+        row = s.get(ProgramDayCircuit, (day_id, section))
+        if row is None:
+            s.add(ProgramDayCircuit(day_id=day_id, section=section, rounds=rounds, rest_seconds=rest_seconds))
+        else:
+            row.rounds, row.rest_seconds = rounds, rest_seconds
+        p.updated_at = func.now()
+        return True
+
+
+def clear_circuit(day_id: int, section: str) -> bool:
+    """Make a part of a day a normal one again (its items' sets and rests
+    between sets, kept all along, apply again); nothing to do for a part
+    that is no circuit. False for a day that is gone. ValueError NO_SECTION
+    for a section that is none."""
+    if section not in SECTIONS:
+        raise ValueError(NO_SECTION)
+    with session_scope() as s:
+        found = _day_locked(s, day_id)
+        if found is None:
+            return False
+        p, day = found
+        s.execute(sa_delete(ProgramDayCircuit).where(ProgramDayCircuit.day_id == day_id,
+                                                    ProgramDayCircuit.section == section))
         p.updated_at = func.now()
         return True
 
@@ -2622,6 +2691,7 @@ def move_day_item(item_id: int, direction: str) -> bool:
 # what a logged set's numbers may be, (least, most); else BAD_NUMBER. A weight
 # goes in steps of half a kilo.
 SET_LIMITS = {"reps": (0, 999), "kg": (0, 500), "seconds": (0, 3600)}
+ROUND_LIMITS = (1, 99)           # a circuit's set's round (24.11.2026: save_round), (least, most)
 MAX_SETS = 12
 NO_SET = "Upiši bar jednu seriju."
 TOO_MANY_SETS = f"Najviše {MAX_SETS} serija."
@@ -2698,14 +2768,19 @@ def read_sets(rows: list[dict[str, str]], fields: tuple[str, ...]) -> list[dict]
 def _checked_sets(sets: list[dict]) -> list[dict]:
     """Sets as stored (read_sets'), checked again where they are written:
     each holds the fields of one of SET_SHAPES, each number within
-    SET_LIMITS, whole (a weight in halves of a kilo)."""
+    SET_LIMITS, whole (a weight in halves of a kilo). Any of them may carry
+    its round (24.11.2026, a circuit's: save_round), an integer within
+    ROUND_LIMITS, which is kept, after the fields."""
     if not sets:
         raise ValueError(NO_SET)
     if len(sets) > MAX_SETS:
         raise ValueError(TOO_MANY_SETS)
     clean = []
     for st in sets:
-        fields = next((shape for shape in SET_SHAPES if set(st) == set(shape)), None)
+        if not isinstance(st, dict):
+            raise ValueError(BAD_NUMBER)
+        body = {k: v for k, v in st.items() if k != "round"}
+        fields = next((shape for shape in SET_SHAPES if set(body) == set(shape)), None)
         if fields is None:
             raise ValueError(BAD_NUMBER)
         for f in fields:
@@ -2715,7 +2790,12 @@ def _checked_sets(sets: list[dict]) -> list[dict]:
                 raise ValueError(BAD_NUMBER)
             if f != "kg" and v != int(v) or f == "kg" and (v * 2) % 1:
                 raise ValueError(BAD_NUMBER)
-        clean.append({f: float(st[f]) if f == "kg" else int(st[f]) for f in fields})
+        out = {f: float(st[f]) if f == "kg" else int(st[f]) for f in fields}
+        if "round" in st:
+            if type(st["round"]) is not int or not ROUND_LIMITS[0] <= st["round"] <= ROUND_LIMITS[1]:
+                raise ValueError(BAD_NUMBER)
+            out["round"] = st["round"]
+        clean.append(out)
     return clean
 
 
@@ -2780,6 +2860,45 @@ def save_sets(log_id: int, user_id: int, item: ProgramDayItem, sets: list[dict],
         done = WorkoutLog._object(log.done)
         done[str(item.id)] = {"exercise_id": exercise.id, "name": exercise.name, "section": item.section,
                               "sets": sets, "at": datetime.now(config.TZ).isoformat()}
+        log.done = _json(done)
+        return True
+
+
+def save_round(log_id: int, user_id: int, item: ProgramDayItem, round: int, one_set: dict,
+               exercise: Exercise) -> bool:
+    """Write one round of a circuit's exercise into a pass in progress
+    (24.11.2026, kružni trening: the player saves a circuit round by round,
+    one set per exercise per round): `item`'s entry keeps its sets of the
+    other rounds and gets `one_set` as round `round`'s (a set carrying its
+    round, {"reps": 10, "kg": 20.0, "round": 2}; one of that round saved
+    before is replaced), its sets sorted by round; the entry names the
+    exercise done, its name as it is now and the item's section, stamped
+    now, as save_sets writes it (a set with no round, saved while the part
+    was a normal one, is not of a round: it goes). Under the pass's row
+    lock, as save_sets: two rounds saved at once keep both. False for no
+    such pass of this client, or an item of another day. ValueError as
+    save_sets': the set's sentences (_checked_sets; a round outside
+    ROUND_LIMITS BAD_NUMBER), PASS_FINISHED, PASS_STALE, NOT_SIMILAR."""
+    if not isinstance(one_set, dict):
+        raise ValueError(BAD_NUMBER)
+    [st] = _checked_sets([{**one_set, "round": round}])
+    with session_scope() as s:
+        log = _pass_row(s, log_id, user_id)
+        if log is None or log.day_id != item.day_id:
+            return False
+        if log.finished_at is not None:
+            raise ValueError(PASS_FINISHED)
+        if log.stale():
+            raise ValueError(PASS_STALE)
+        if exercise.id != item.exercise_id and log.swap_items.get(item.id) != exercise.id:
+            raise ValueError(NOT_SIMILAR)
+        done = WorkoutLog._object(log.done)
+        old = done.get(str(item.id))
+        old_sets = old.get("sets") if isinstance(old, dict) and isinstance(old.get("sets"), list) else []
+        kept = [x for x in old_sets if isinstance(x, dict) and type(x.get("round")) is int and x["round"] != st["round"]]
+        done[str(item.id)] = {"exercise_id": exercise.id, "name": exercise.name, "section": item.section,
+                              "sets": sorted(kept + [st], key=lambda x: x["round"]),
+                              "at": datetime.now(config.TZ).isoformat()}
         log.done = _json(done)
         return True
 

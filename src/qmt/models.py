@@ -937,7 +937,12 @@ class ProgramDay(Base):
     (storage.py, served only by the auth-gated /media, as an exercise's),
     NULL for none: "always watch the intro video first", the guide says.
     The spec's full training video is left out (a file over VIDEO_MAX_MB
-    cannot pass Cloudflare)."""
+    cannot pass Cloudflare).
+
+    `circuits` (24.11.2026, kružni trening: ProgramDayCircuit) are the parts
+    of the day done as a circuit, a row per such part; a part with none is a
+    normal one. Loaded with the day wherever its items are (db.get_day,
+    db.get_program, db.programs_for_level)."""
 
     __tablename__ = "program_days"
 
@@ -960,11 +965,27 @@ class ProgramDay(Base):
     items: Mapped[list["ProgramDayItem"]] = relationship(
         back_populates="day", cascade="all, delete-orphan", order_by="ProgramDayItem.position"
     )
+    # the parts done as a circuit; the database's CASCADE deletes them with the day
+    circuits: Mapped[list["ProgramDayCircuit"]] = relationship(cascade="all, delete-orphan", passive_deletes=True)
 
     @property
     def label(self) -> str:
         """"Trening 1", or "Trening 1 · Cijelo tijelo" with a title."""
         return f"Trening {self.position}" + (f" · {self.title}" if self.title else "")
+
+    def circuit(self, section: str) -> "ProgramDayCircuit | None":
+        """The part `section` as a circuit (its rounds, its rest between
+        rounds), None for a normal part."""
+        return next((c for c in self.circuits if c.section == section), None)
+
+    @property
+    def has_circuit(self) -> bool:
+        """Whether a part of the day that holds an exercise is a circuit:
+        the day's "kružni trening" (the programme's day card, the day's
+        lead). A circuit on a part with no exercise does not count: nothing
+        of it is done."""
+        held = {it.section for it in self.items}
+        return any(c.section in held for c in self.circuits)
 
     @property
     def by_section(self) -> dict[str, list["ProgramDayItem"]]:
@@ -1058,6 +1079,19 @@ class ProgramDayItem(Base):
         return ""
 
     @property
+    def round_dose(self) -> str:
+        """The dose without its sets, what one round of a circuit asks
+        (24.11.2026, kružni trening: an exercise is done once per round, its
+        sets do not apply): "10 ponavljanja", "30 s", "5 × 30 s" (reps and
+        seconds), "" for none."""
+        reps, seconds = self.reps, self.seconds
+        if reps is not None and seconds is not None:
+            return f"{reps} × {seconds} s"
+        if reps is not None:
+            return f"{reps} {plural(reps, 'ponavljanje', 'ponavljanja', 'ponavljanja')}"
+        return "" if seconds is None else f"{seconds} s"
+
+    @property
     def rest_text(self) -> str:
         """The rest between sets, "60 s" (always seconds), "" when not set."""
         return "" if self.rest_seconds is None else f"{self.rest_seconds} s"
@@ -1069,6 +1103,55 @@ class ProgramDayItem(Base):
         return "" if self.rest_after_seconds is None else f"{self.rest_after_seconds} s"
 
 
+class ProgramDayCircuit(Base):
+    """A part of a day done as a circuit (24.11.2026, kružni trening; the
+    owner: "Amir wants a new type of training called 'kružni trening' where
+    he has sections of multiple exercises with no pause or a very short
+    pause between them and then a longer pause between these multiple
+    sets"; migration fc1840b0a981). A row means: that part (`section`, a
+    SECTIONS key, which db.py checks) of that day is a circuit. Its
+    exercises are done back to back, each once per round, `rounds` rounds
+    (2–20, a CHECK); the short pause between two exercises is each
+    exercise's own rest after it (ProgramDayItem.rest_after_seconds), and
+    `rest_seconds` (0–3600, a CHECK; NULL for none) is the longer one
+    between two rounds, after the round's last exercise. In such a part an
+    item's `sets` and `rest_seconds` (between sets) do not apply; they stay
+    stored and apply again once the circuit is switched off. One row per
+    part (the primary key); a day deleted takes its circuits (CASCADE).
+    Written by db.set_circuit / db.clear_circuit only; the player walks such
+    a part round by round (app._steps)."""
+
+    __tablename__ = "program_day_circuits"
+
+    day_id: Mapped[int] = mapped_column(ForeignKey("program_days.id", ondelete="CASCADE"), primary_key=True,
+                                        autoincrement=False)
+    section: Mapped[str] = mapped_column(String(12), primary_key=True)
+    rounds: Mapped[int] = mapped_column(Integer)
+    rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("rounds BETWEEN 2 AND 20", name="ck_program_day_circuits_rounds"),
+        CheckConstraint("rest_seconds BETWEEN 0 AND 3600", name="ck_program_day_circuits_rest_seconds"),
+    )
+
+    @property
+    def rounds_text(self) -> str:
+        """"3 kruga", "2 kruga", "5 krugova"."""
+        return f"{self.rounds} {plural(self.rounds, 'krug', 'kruga', 'krugova')}"
+
+    @property
+    def rest_text(self) -> str:
+        """The rest between rounds, "120 s" (always seconds; "0 s" for a 0),
+        "" when not set."""
+        return "" if self.rest_seconds is None else f"{self.rest_seconds} s"
+
+    @property
+    def line(self) -> str:
+        """The part in words, the editor's and the day page's: "Kružno · 3
+        kruga · odmor između krugova 120 s", the rest only when set."""
+        return f"Kružno · {self.rounds_text}" + (f" · odmor između krugova {self.rest_text}" if self.rest_text else "")
+
+
 def kg_text(kg: float | int | None) -> str:
     """A weight as the app prints it, a comma for the half: "20", "2,5";
     "" for none (0: no weight)."""
@@ -1078,7 +1161,8 @@ def kg_text(kg: float | int | None) -> str:
 def set_text(s: dict) -> str:
     """One logged set as the history prints it: "10 × 20 kg", "10" with no
     weight (its kg 0), "30 s" for a timed exercise's, "5 × 30 s" for one
-    that asks reps and seconds (24.11.2026: 5 reps of 30 s)."""
+    that asks reps and seconds (24.11.2026: 5 reps of 30 s). A circuit's
+    set carries its round (24.11.2026, "round": 2), which it ignores."""
     if "seconds" in s:
         seconds = f"{s.get('seconds') or 0} s"
         return f"{s.get('reps') or 0} × {seconds}" if "reps" in s else seconds
@@ -1118,8 +1202,12 @@ class WorkoutLog(Base):
     timed exercise's [{"seconds": 30}, …], one that asks reps and seconds
     [{"reps": 5, "seconds": 30}, …] since 24.11.2026: db.set_fields),
     "at": "<iso>"}}; a re-save
-    replaces the entry. The exercise is the one done, the swapped one when
-    the client swapped it. `swaps` is a JSON object {"<item id>": <exercise
+    replaces the entry. An exercise of a circuit part (24.11.2026, kružni
+    trening: ProgramDayCircuit) is saved a round at a time (db.save_round):
+    its entry holds one set per round saved, each carrying its round
+    ({"reps": 10, "kg": 20.0, "round": 2}), sorted by round; a round
+    re-saved replaces that round's set alone. The exercise is the one
+    done, the swapped one when the client swapped it. `swaps` is a JSON object {"<item id>": <exercise
     id>}, the similar exercise swapped in for this pass (absent: the plan's).
     Both are written by db.py only (json), read through done_items and
     swap_items. `effort` (1–10), `feeling` (a FEELING_LABELS key) and `note`

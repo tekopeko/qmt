@@ -24,6 +24,19 @@ ovu vježbu") sets its own rows only (the "alternatives" below). No migration: t
 as Amir ticked them, each on the page of the exercise it may be replaced from; until then
 each was also read the other way round, and that reading went.
 
+**Note (24.11.2026): a part of a day can be a circuit** (kružni trening; the owner: "Amir
+wants a new type of training called 'kružni trening' where he has sections of multiple
+exercises with no pause or a very short pause between them and then a longer pause between
+these multiple sets"). `ProgramDayCircuit` (`program_day_circuits`, migration
+`fc1840b0a981`): a row per part done as a circuit, its rounds (2–20) and its rest between
+rounds (0–3600 s or none), set in the day editor under each part's caption ("Kružno"). Its
+exercises go back to back, each once per round, the short pause each one's "Nakon vježbe
+(s)"; their sets and rests between sets stay stored and do not apply. The day page says
+"Kružno · 3 kruga · odmor između krugova 120 s" under the part's caption; the player walks
+it round by round (a step per exercise per round, "Krug 2 od 3", one set per round, saved
+carrying its `round`), the rest bar counting the short pause and, after a round, the one
+between rounds. A day may mix normal and circuit parts.
+
 ## What the owner asked
 
 "For each group he needs to add the training programme per days which the user will

@@ -7,6 +7,7 @@ middleware — if this grows routes the way mojimakrosi did, promote it.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -2808,9 +2809,90 @@ def _day_or_404(program_id: int, day_id: int):
 
 def _day_items(day) -> list:
     """The day's exercises in its display order, its sections in their
-    order, each in position order (ProgramDay.by_section): the player's
-    exercise k is items[k - 1]."""
+    order, each in position order (ProgramDay.by_section). The player walks
+    them as steps (_steps: a circuit part round by round)."""
     return [it for rows in day.by_section.values() for it in rows]
+
+
+@dataclass(frozen=True)
+class Step:
+    """One screen of the player (24.11.2026, kružni trening): an exercise of
+    the day (`item`, a ProgramDayItem) and, in a circuit part, its round
+    (1-based), the part's circuit (ProgramDayCircuit) and whether it is the
+    round's last exercise (`last`). A normal part's step has neither."""
+    item: object
+    round: int | None = None
+    circuit: object | None = None
+    last: bool = False
+
+
+def _steps(day, items: list) -> list[Step]:
+    """The player's steps through a day (24.11.2026; the owner: in a circuit
+    part "multiple exercises with no pause or a very short pause between
+    them and then a longer pause between these multiple sets"): `items` in
+    the day's display order (_day_items), a normal part one step per item,
+    a circuit part (ProgramDay.circuit) its rounds × its items, round by
+    round (round 1: every item of the part in order; round 2: again; …).
+    The player's k indexes them, 1-based: step k is steps[k - 1]. A day
+    with no circuit is its items, one step each, as before."""
+    parts: dict[str, list] = {}
+    for it in items:                         # in display order: the parts come in SECTIONS' order
+        parts.setdefault(it.section, []).append(it)
+    steps: list[Step] = []
+    for section, rows in parts.items():
+        circ = day.circuit(section)
+        if circ is None:
+            steps += [Step(it) for it in rows]
+            continue
+        for r in range(1, circ.rounds + 1):
+            steps += [Step(it, r, circ, n == len(rows) - 1) for n, it in enumerate(rows)]
+    return steps
+
+
+def _rounds_of(entry) -> set[int]:
+    """The rounds a pass's entry (WorkoutLog.done_items') holds a set of: a
+    circuit's exercise's, each set carrying its round (db.save_round)."""
+    sets = entry.get("sets") if isinstance(entry, dict) and isinstance(entry.get("sets"), list) else []
+    return {s["round"] for s in sets if isinstance(s, dict) and type(s.get("round")) is int}
+
+
+def _saved(step: Step, done: dict) -> bool:
+    """Whether the pass (its done_items) saved a step: a normal step when
+    its item has an entry, a circuit step when the entry holds a set of
+    its round."""
+    entry = done.get(step.item.id)
+    return entry is not None and (step.round is None or step.round in _rounds_of(entry))
+
+
+@dataclass(frozen=True)
+class Mark:
+    """An exercise's saved mark (_marks): `text` "✓" or "2/3", `label` its
+    words for a screen reader ("spremljeno 2 od 3 kruga")."""
+    text: str
+    label: str
+
+    @property
+    def full(self) -> bool:
+        return self.text == "✓"
+
+
+def _marks(day, items: list, done: dict) -> dict[int, Mark]:
+    """Each exercise's saved mark while a pass is open, the day page's list
+    and the player's: "✓" saved (a circuit's exercise: every round), "2/3"
+    a circuit's exercise some of whose rounds are saved (24.11.2026); an
+    exercise with nothing saved is not in it."""
+    marks = {}
+    for it in items:
+        if it.id not in done:
+            continue
+        circ = day.circuit(it.section)
+        n = None if circ is None else len({r for r in _rounds_of(done[it.id]) if r <= circ.rounds})
+        if circ is None or n >= circ.rounds:
+            marks[it.id] = Mark("✓", "spremljeno")
+        elif n:
+            marks[it.id] = Mark(f"{n}/{circ.rounds}", f"spremljeno {n} od {circ.rounds} "
+                                                      + plural(circ.rounds, "kruga", "kruga", "krugova"))
+    return marks
 
 
 def _date_text(d: date) -> str:
@@ -2864,7 +2946,10 @@ def program_day_view(request: Request, program_id: int, day_id: int):
     ticks), and at the bottom his last five passes ("Povijest"), each with
     its sets. A pass open too long (31.10.2026, WorkoutLog.stale) says so
     ("Nedovršen trening od jučer (6 od 8 vježbi) — …"), and "Završi trening"
-    (its finish screen) stands in Kreni's place, Odbaci beside it."""
+    (its finish screen) stands in Kreni's place, Odbaci beside it. A circuit
+    part (24.11.2026, kružni trening) says so under its caption, its rows
+    the dose of a round, and while a pass is open a row's mark says its
+    rounds (_marks: "✓" every round, "2/3" some)."""
     user, p = _program_or_403(request, program_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2876,7 +2961,7 @@ def program_day_view(request: Request, program_id: int, day_id: int):
     return templates.TemplateResponse(request, "trening_day.html", _ctx(
         request, user, p=p, day=day, state=state, stale=stale,
         state_line=_state_line(state, sum(1 for it in items if it.id in done), len(items), stale),
-        done=done, history=db.passes(user.id, day_id, limit=5), order=[it.id for it in items],
+        marks=_marks(day, items, done), history=db.passes(user.id, day_id, limit=5), order=[it.id for it in items],
         feelings=FEELING_LABELS))
 
 
@@ -2902,11 +2987,31 @@ def _day_base(program_id: int, day_id: int) -> str:
     return f"/treninzi/{program_id}/dan/{day_id}"
 
 
-def _next_k(items: list, log) -> int:
-    """Where "Kreni" / "Nastavi" lands: the first exercise the pass has not
-    saved, the last when it has saved them all."""
+def _next_k(steps: list[Step], log) -> int:
+    """Where "Kreni" / "Nastavi" lands: the first step the pass has not
+    saved (_saved: a circuit's step its round), the last when it has saved
+    them all."""
     done = log.done_items
-    return next((n for n, it in enumerate(items, start=1) if it.id not in done), len(items))
+    return next((n for n, st in enumerate(steps, start=1) if not _saved(st, done)), len(steps))
+
+
+def _step_rest(step: Step) -> int | None:
+    """The rest after a step, in seconds, which rides on its save's redirect
+    (?odmor=: the next step's screen counts it down): a normal step's, and
+    a circuit step's inside its round, its item's rest after it; the
+    round's last exercise's the circuit's rest between rounds (after the
+    final round too: the pause before the next part), its item's own when
+    the circuit has none (24.11.2026). None for none or 0."""
+    it, circ = step.item, step.circuit
+    if circ is not None and step.last and circ.rest_seconds is not None:
+        return circ.rest_seconds or None
+    return it.rest_after_seconds or None
+
+
+# the bar over the player: one segment per step while the day has at most
+# this many, a single track past them (24.11.2026: a circuit multiplies the
+# steps, and 60 segments do not fit a phone)
+SEGMENTS_MAX = 40
 
 
 def _kg_value(kg) -> str:
@@ -2942,65 +3047,118 @@ def _log_rows(it, entry: dict | None, last: list[dict] | None) -> list[dict]:
     return rows
 
 
-def _player(request: Request, user, p, day, items: list, k: int, log, error: str | None = None,
+def _round_rows(it, round_: int, entry: dict | None, last: list[dict] | None) -> list[dict]:
+    """A circuit step's set log (24.11.2026): ONE row, the round's set, as
+    _log_rows' rows ({"reps", "kg", "sec", "extra"}; the page shows the
+    item's fields of it, db.set_fields): the set this pass saved for this
+    round, as saved; else the plan's reps and seconds and, for the weight,
+    this pass's set of the same item in the round before, else the last
+    saved log's set of this round's place (`last`, db.last_sets: the last
+    one's past them), none without."""
+    sets = [s for s in entry.get("sets", []) if isinstance(s, dict)] if isinstance(entry, dict) else []
+    mine = next((s for s in sets if s.get("round") == round_), None)
+    if mine is not None:
+        row = {"reps": str(mine.get("reps", "")), "kg": _kg_value(mine.get("kg")), "sec": str(mine.get("seconds", ""))}
+    else:
+        weight = next((s for s in sets if s.get("round") == round_ - 1), None)
+        if weight is None and last:
+            weight = last[round_ - 1] if round_ - 1 < len(last) else last[-1]
+        row = {"reps": "" if it.reps is None else str(it.reps), "kg": _kg_value(weight.get("kg")) if weight else "",
+               "sec": "" if it.seconds is None else str(it.seconds)}
+    row["extra"] = False
+    return [row]
+
+
+def _player(request: Request, user, p, day, steps: list[Step], k: int, log, error: str | None = None,
             posted: list[dict] | None = None, status_code: int = 200, odmor: int | None = None):
-    """Exercise k's screen in the pass `log`: the segmented bar (one segment
-    per exercise), the clip with ‹ ›, the exercise's card (the swapped one's
-    name, clip and cues when the pass swapped it, "Zamjena za: …" naming the
-    plan's), its set log (_log_rows; `posted`, what a refused save sent, kept
-    under `error`), the swap list (the plan's exercise's similar exercises,
-    "Vrati …" first when swapped) and the day's whole list. `odmor` is the
-    rest the client takes before this exercise (seconds, from the previous
-    one's save: the form's data-odmor, which the script counts down at
-    load); None for none."""
-    it = items[k - 1]
+    """Step k's screen in the pass `log` (an exercise, in a circuit part one
+    round of it: _steps): the bar (one segment per step, a single track
+    past SEGMENTS_MAX), the clip with ‹ ›, the exercise's card (the swapped
+    one's name, clip and cues when the pass swapped it, "Zamjena za: …"
+    naming the plan's; a circuit step's "Krug 2 od 3", the dose of a round
+    and the rest after it, "Odmor nakon kruga" for the round's last), its
+    set log (_log_rows; a circuit step's one row, _round_rows; `posted`,
+    what a refused save sent, kept under `error`), the swap list (the
+    plan's exercise's similar exercises, "Vrati …" first when swapped) and
+    the day's whole list, each row a link to its exercise's first step not
+    saved (its first when all are), its mark (_marks). `odmor` is the rest
+    the client takes before this step (seconds, from the previous one's
+    save: the form's data-odmor, which the script counts down at load);
+    None for none."""
+    step = steps[k - 1]
+    it, circ = step.item, step.circuit
+    items = _day_items(day)
     done, swaps = log.done_items, log.swap_items
     by_id = db.exercises_by_id({it.exercise_id, *swaps.values()})
     planned = by_id.get(it.exercise_id) or it.exercise
     swapped = by_id.get(swaps[it.id]) if it.id in swaps else None
     ex = swapped or planned
     entry = done.get(it.id)
-    rows = posted if posted is not None else _log_rows(it, entry, None if entry else db.last_sets(user.id, ex.id))
+    if posted is not None:
+        rows = posted
+    elif step.round is None:
+        rows = _log_rows(it, entry, None if entry else db.last_sets(user.id, ex.id))
+    else:
+        rows = _round_rows(it, step.round, entry,
+                           None if step.round in _rounds_of(entry) else db.last_sets(user.id, ex.id))
+    if circ is None:
+        rests = [it.rest_text and f"Odmor između serija: {it.rest_text}",
+                 it.rest_after_text and f"Odmor nakon vježbe: {it.rest_after_text}"]
+    elif step.last and circ.rest_seconds is not None:
+        rests = [f"Odmor nakon kruga: {circ.rest_text}"]
+    else:
+        rests = [it.rest_after_text and f"Odmor nakon vježbe: {it.rest_after_text}"]
+    step_saved = [_saved(st, done) for st in steps]
+    first, unsaved = {}, {}
+    for n, st in enumerate(steps, start=1):
+        first.setdefault(st.item.id, n)
+        if not step_saved[n - 1]:
+            unsaved.setdefault(st.item.id, n)
     return templates.TemplateResponse(request, "trening_player.html", _ctx(
-        request, user, p=p, day=day, items=items, k=k, n_items=len(items), it=it, ex=ex, planned=planned,
-        swapped=swapped, alternatives=[a for a in planned.alternatives if swapped is None or a.id != swapped.id],
-        log=log, done=done, done_n=sum(1 for x in items if x.id in done), saved=entry is not None,
+        request, user, p=p, day=day, items=items, steps=steps, step=step, k=k, n_steps=len(steps),
+        n_items=len(items), it=it, ex=ex, planned=planned, swapped=swapped,
+        alternatives=[a for a in planned.alternatives if swapped is None or a.id != swapped.id],
+        log=log, done=done, done_n=sum(1 for x in items if x.id in done), saved=step_saved[k - 1],
+        step_saved=step_saved, segments=len(steps) <= SEGMENTS_MAX,
+        track=round(sum(step_saved) * 100 / len(steps), 2),
+        links={item_id: unsaved.get(item_id, n) for item_id, n in first.items()}, marks=_marks(day, items, done),
+        dose=it.round_dose if step.round else it.dose, rest_line=" · ".join(r for r in rests if r),
         swap_names={x.id: by_id[swaps[x.id]].name for x in items if x.id in swaps and swaps[x.id] in by_id},
         rows=rows, fields=db.set_fields(it), max_sets=db.MAX_SETS, odmor=odmor,
         error=error or request.query_params.get("error"), base=_day_base(p.id, day.id)), status_code=status_code)
 
 
 def _pass_day(request: Request, program_id: int, day_id: int):
-    """(user, programme, day, its items) for the player's routes, or (None,
-    …) for a guest; 403 / 404 as the day's page."""
+    """(user, programme, day, its steps: _steps) for the player's routes,
+    or (None, …) for a guest; 403 / 404 as the day's page."""
     user, p = _program_or_403(request, program_id)
     if user is None:
         return None, None, None, None
     day = _day_or_404(program_id, day_id)
-    return user, p, day, _day_items(day)
+    return user, p, day, _steps(day, _day_items(day))
 
 
 @app.post("/treninzi/{program_id}/dan/{day_id}/kreni")
 def pass_start(request: Request, program_id: int, day_id: int):
     """"Kreni" (and "Nastavi": the same form): the viewer's pass through the
-    day, a new one or the one in progress, then the first exercise it has
-    not saved (exercise 1 of a new one; the last when all are). A day with
-    no exercise starts nothing, and a pass left open on it (its exercises
-    deleted since, 4.11.2026) goes to its finish screen (_past_the_end); a
-    pass in progress that is stale (open too long) is not continued: its
-    finish screen."""
-    user, p, day, items = _pass_day(request, program_id, day_id)
+    day, a new one or the one in progress, then the first step it has not
+    saved (step 1 of a new one; the last when all are; a circuit's step is
+    saved when its round is, 24.11.2026). A day with no exercise starts
+    nothing, and a pass left open on it (its exercises deleted since,
+    4.11.2026) goes to its finish screen (_past_the_end); a pass in progress
+    that is stale (open too long) is not continued: its finish screen."""
+    user, p, day, steps = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     base = _day_base(program_id, day_id)
-    if not items:
+    if not steps:
         if db.open_pass(user.id, day_id) is not None:
-            return _past_the_end(base, items)
+            return _past_the_end(base, steps)
         return RedirectResponse(base, status_code=303)
     log = db.start_pass(user.id, p, day)
     if log.stale():
         return RedirectResponse(f"{base}/kraj", status_code=303)
-    return RedirectResponse(f"{base}/vjezba/{_next_k(items, log)}", status_code=303)
+    return RedirectResponse(f"{base}/vjezba/{_next_k(steps, log)}", status_code=303)
 
 
 # a save whose page was drawn for another list (its hidden item is not
@@ -3010,24 +3168,26 @@ DAY_CHANGED = "Trening se u međuvremenu promijenio — provjeri vježbu i sprem
 SET_INPUTS = {"reps": "reps", "kg": "kg", "seconds": "sec"}
 
 
-def _past_the_end(base: str, items: list) -> RedirectResponse:
-    """Where a k past the day's count goes, with a pass in progress (4.11.2026:
-    an exercise deleted from the library leaves the day while a client is
-    on its player, his page still counting the old list): the day's last
-    exercise, or the finish screen when none is left."""
-    return RedirectResponse(f"{base}/vjezba/{len(items)}" if items else f"{base}/kraj", status_code=303)
+def _past_the_end(base: str, steps: list) -> RedirectResponse:
+    """Where a k past the day's count of steps goes, with a pass in progress
+    (4.11.2026: an exercise deleted from the library leaves the day while a
+    client is on its player, his page still counting the old list; since
+    24.11.2026 a circuit switched off or given fewer rounds does the same):
+    the day's last step, or the finish screen when none is left."""
+    return RedirectResponse(f"{base}/vjezba/{len(steps)}" if steps else f"{base}/kraj", status_code=303)
 
 
 @app.get("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}", response_class=HTMLResponse)
 def pass_exercise(request: Request, program_id: int, day_id: int, k: int, odmor: str = ""):
-    """Exercise k of the day (1-based, its display order) in the viewer's
-    pass in progress; k below 1 is 404, and without a pass in progress the
-    day's page (where "Kreni" is), with a stale one (open too long) its
-    finish screen. A k past the day's count goes to its last exercise, or
-    to the finish screen when it has none left (_past_the_end). `odmor`
-    (the previous exercise's save: its rest after it, in seconds) starts
-    the rest bar at load: an int 1–3600, anything else is ignored."""
-    user, p, day, items = _pass_day(request, program_id, day_id)
+    """Step k of the day (1-based, its display order: _steps, an exercise,
+    in a circuit part one round of it) in the viewer's pass in progress; k
+    below 1 is 404, and without a pass in progress the day's page (where
+    "Kreni" is), with a stale one (open too long) its finish screen. A k
+    past the day's count of steps goes to its last step, or to the finish
+    screen when it has none left (_past_the_end). `odmor` (the previous
+    step's save: its rest after it, in seconds) starts the rest bar at
+    load: an int 1–3600, anything else is ignored."""
+    user, p, day, steps = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if k < 1:
@@ -3038,10 +3198,10 @@ def pass_exercise(request: Request, program_id: int, day_id: int, k: int, odmor:
         return RedirectResponse(base, status_code=303)
     if log.stale():
         return RedirectResponse(f"{base}/kraj", status_code=303)
-    if k > len(items):
-        return _past_the_end(base, items)
+    if k > len(steps):
+        return _past_the_end(base, steps)
     rest = _id(odmor)
-    return _player(request, user, p, day, items, k, log, odmor=rest if rest is not None and 1 <= rest <= 3600 else None)
+    return _player(request, user, p, day, steps, k, log, odmor=rest if rest is not None and 1 <= rest <= 3600 else None)
 
 
 @app.post("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}")
@@ -3060,8 +3220,14 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
     finish screen when it has none left (_past_the_end). The form names its
     item (`item`, 4.11.2026): one that is not exercise k's now, or none, is
     refused as a bad number is (DAY_CHANGED), nothing saved: the page was
-    drawn before the day changed, and its sets are not this exercise's."""
-    user, p, day, items = _pass_day(request, program_id, day_id)
+    drawn before the day changed, and its sets are not this exercise's.
+    A circuit's step (24.11.2026, kružni trening) posts one row, its
+    round's set, and names its round (`round`): saved into the pass as that
+    round's (db.save_round), the next step coming with the rest after it
+    (_step_rest: the round's last exercise the circuit's rest between
+    rounds); a `round` that is not step k's now (none for a normal step) is
+    refused as a changed day is."""
+    user, p, day, steps = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if k < 1:
@@ -3072,42 +3238,47 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
         return RedirectResponse(base, status_code=303)
     if log.stale():
         return RedirectResponse(f"{base}/kraj", status_code=303)
-    if k > len(items):
-        return _past_the_end(base, items)
+    if k > len(steps):
+        return _past_the_end(base, steps)
     form = await request.form()
 
     def field(name: str) -> str:
         value = form.get(name)
         return value if isinstance(value, str) else ""
 
-    it = items[k - 1]
+    step = steps[k - 1]
+    it = step.item
     fields = db.set_fields(it)
-    n = min(max(_id(field("rows")) or 1, 1), 30)
+    n = 1 if step.round is not None else min(max(_id(field("rows")) or 1, 1), 30)
     raw = [{f: field(f"{SET_INPUTS[f]}_{i}") for f in fields} for i in range(1, n + 1)]
 
     def refused(sentence: str):
         # the screen again, what was typed back in its inputs: a weight with
         # a comma as a number input's value takes a dot, or the browser
-        # would empty it
-        planned = min(it.sets or 1, db.MAX_SETS)
+        # would empty it (a circuit's one row is never an extra set)
+        planned = 1 if step.round is not None else min(it.sets or 1, db.MAX_SETS)
         kept = [{"reps": r.get("reps", ""), "kg": r.get("kg", "").replace(",", "."), "sec": r.get("seconds", ""),
                  "extra": i > planned} for i, r in enumerate(raw, start=1)]
-        return _player(request, user, p, day, items, k, log, error=sentence, posted=kept, status_code=400)
+        return _player(request, user, p, day, steps, k, log, error=sentence, posted=kept, status_code=400)
 
-    if field("item") != str(it.id):
+    if field("item") != str(it.id) or field("round") != ("" if step.round is None else str(step.round)):
         return refused(DAY_CHANGED)
     swaps = log.swap_items
     exercise = (db.exercises_by_id([swaps[it.id]]).get(swaps[it.id]) if it.id in swaps else None) or it.exercise
     try:
-        saved = db.save_sets(log.id, user.id, it, db.read_sets(raw, fields), exercise)
+        sets = db.read_sets(raw, fields)
+        if step.round is None:
+            saved = db.save_sets(log.id, user.id, it, sets, exercise)
+        else:
+            saved = db.save_round(log.id, user.id, it, step.round, sets[0], exercise)
     except ValueError as err:
         return refused(str(err))
     if not saved:
         return RedirectResponse(base, status_code=303)
-    if k == len(items):
+    if k == len(steps):
         return RedirectResponse(f"{base}/kraj", status_code=303)
-    rest = f"?odmor={it.rest_after_seconds}" if it.rest_after_seconds else ""
-    return RedirectResponse(f"{base}/vjezba/{k + 1}{rest}", status_code=303)
+    rest = _step_rest(step)
+    return RedirectResponse(f"{base}/vjezba/{k + 1}" + (f"?odmor={rest}" if rest else ""), status_code=303)
 
 
 @app.post("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}/zamjena")
@@ -3118,8 +3289,9 @@ def pass_swap(request: Request, program_id: int, day_id: int, k: int, exercise_i
     screen, a refusal's sentence with it. A stale pass (open too long)
     swaps nothing: its finish screen. k below 1 is 404; a k past the day's
     count swaps nothing: the day's last exercise, or the finish screen when
-    it has none left (_past_the_end, 4.11.2026)."""
-    user, p, day, items = _pass_day(request, program_id, day_id)
+    it has none left (_past_the_end, 4.11.2026). In a circuit part the swap
+    is the exercise's for the whole pass, every round (24.11.2026)."""
+    user, p, day, steps = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if k < 1:
@@ -3131,11 +3303,11 @@ def pass_swap(request: Request, program_id: int, day_id: int, k: int, exercise_i
         return RedirectResponse(base, status_code=303)
     if log.stale():
         return RedirectResponse(f"{base}/kraj", status_code=303)
-    if k > len(items):
-        return _past_the_end(base, items)
+    if k > len(steps):
+        return _past_the_end(base, steps)
     back = f"{base}/vjezba/{k}"
     try:
-        db.swap_exercise(log.id, user.id, items[k - 1], None if vrati else _id(exercise_id) or -1)
+        db.swap_exercise(log.id, user.id, steps[k - 1].item, None if vrati else _id(exercise_id) or -1)
     except ValueError as err:
         return RedirectResponse(f"{back}?error={quote(str(err))}", status_code=303)
     return RedirectResponse(back, status_code=303)
@@ -3147,13 +3319,15 @@ def _finish_page(request: Request, user, p, day, log, error: str | None = None, 
     and how long it has run (WorkoutLog.active_seconds: a stale pass's to
     its last save), then the osvrt (`form`, what a refused one sent, kept
     under `error`). A stale pass (`stale`, open too long) says it was not
-    finished and cannot be continued, with no way back to the exercises."""
+    finished and cannot be continued, with no way back to the exercises.
+    The count is by exercise (one counts once it has any entry, a circuit's
+    after one round too); "Natrag na vježbe" leads to the last step."""
     items = _day_items(day)
     done = log.done_items
     now = datetime.now(config.TZ)
     return templates.TemplateResponse(request, "trening_kraj.html", _ctx(
         request, user, p=p, day=day, log=log, n_items=len(items), done_n=sum(1 for x in items if x.id in done),
-        elapsed=duration_text(log.active_seconds(now)), stale=log.stale(now),
+        n_steps=len(_steps(day, items)), elapsed=duration_text(log.active_seconds(now)), stale=log.stale(now),
         feelings=FEELING_LABELS, v=form or {"effort": None, "feeling": "", "note": ""}, error=error,
         base=_day_base(p.id, day.id)), status_code=status_code)
 
@@ -3162,7 +3336,7 @@ def _finish_page(request: Request, user, p, day, log, error: str | None = None, 
 def pass_end_page(request: Request, program_id: int, day_id: int):
     """The finish screen of the viewer's pass in progress (a stale one's
     too: where it is finished or dropped); without one, the day's page."""
-    user, p, day, items = _pass_day(request, program_id, day_id)
+    user, p, day, steps = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     log = db.open_pass(user.id, day_id)
@@ -3178,7 +3352,7 @@ def pass_finish(request: Request, program_id: int, day_id: int, effort: str = Fo
     finishes the pass (db.finish_pass: its length the server's clock), then
     the day's page saying so. A refused osvrt ("Neispravan osvrt.") comes
     back as the finish screen, what was chosen kept."""
-    user, p, day, items = _pass_day(request, program_id, day_id)
+    user, p, day, steps = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     from urllib.parse import quote
@@ -3199,7 +3373,7 @@ def pass_drop(request: Request, program_id: int, day_id: int):
     """"Odbaci": the viewer's pass in progress through the day is deleted,
     the sets it saved with it (a finished pass is never deleted here); back
     on the day's page."""
-    user, p, day, items = _pass_day(request, program_id, day_id)
+    user, p, day, steps = _pass_day(request, program_id, day_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     from urllib.parse import quote
@@ -3306,7 +3480,8 @@ def day_add(request: Request, program_id: int):
 @app.get("/treninzi/{program_id}/dan/{day_id}/uredi", response_class=HTMLResponse)
 def day_edit_page(request: Request, program_id: int, day_id: int, vjezba: str = ""):
     """A day's editor: its title, weekday and intro, its intro video, then
-    its exercises per section, each with its own form, and the picker, which
+    its exercises per section, each with its own form (since 24.11.2026 each
+    section's "Kružno" too: day_circuit_save), and the picker, which
     offers the whole library, the exercise `vjezba` chosen (one just made
     through "Nova vježba →"), the library's tags as chips under it
     (23.11.2026, _tag_chips)."""
@@ -3428,14 +3603,17 @@ def day_item_add(request: Request, program_id: int, day_id: int, exercise_id: st
 @app.post("/treninzi/{program_id}/dan/{day_id}/stavke/{item_id}")
 def day_item_save(request: Request, program_id: int, day_id: int, item_id: int, section: str = Form("trening"),
                   sets: str = Form(""), reps: str = Form(""), seconds: str = Form(""), rest: str = Form(""),
-                  rest_after: str = Form(""), note: str = Form("")):
+                  rest_after: str = Form(""), note: str = Form(""), circuit: str = Form("")):
     """A row's form: its section, sets, reps and seconds (either or both
     since 24.11.2026), rest (between sets), rest after it (before the next
     exercise) and note; an empty
     number is none. Back at the row, which carries the word
     ("Spremljeno." or the sentence of a refusal): `stavka` names it, so the
     page prints the alert in that row, not at its top, out of view on a
-    phone scrolled to the row."""
+    phone scrolled to the row. A circuit part's row form (24.11.2026, kružni
+    trening) asks no sets and no rest between sets, which do not apply
+    there, and says so (`circuit`): the item keeps the ones it has stored
+    (db.KEEP), wherever its Dio takes it."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -3443,13 +3621,44 @@ def day_item_save(request: Request, program_id: int, day_id: int, item_id: int, 
     _day_item(program_id, day_id, item_id)
     back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
     try:
-        saved = db.update_day_item(item_id, section, _count(sets), _count(reps), _count(seconds), _count(rest),
-                                   _count(rest_after), note)
+        saved = db.update_day_item(item_id, section, db.KEEP if circuit else _count(sets), _count(reps),
+                                   _count(seconds), db.KEEP if circuit else _count(rest), _count(rest_after), note)
     except ValueError as err:
         return RedirectResponse(f"{back}?error={quote(str(err))}&stavka={item_id}#stavka-{item_id}", status_code=303)
     if not saved:
         raise HTTPException(status_code=404)
     return RedirectResponse(f"{back}?ok=Spremljeno.&stavka={item_id}#stavka-{item_id}", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/dio/{section}/krug")
+def day_circuit_save(request: Request, program_id: int, day_id: int, section: str, circuit: str = Form(""),
+                     rounds: str = Form(""), rest: str = Form("")):
+    """A part's "Kružno" form in the day editor (24.11.2026, kružni
+    trening): "Kružni dio" ticked makes the part a circuit, `rounds` rounds
+    (2–20) and `rest` seconds between two rounds (0–3600, empty for none),
+    db.set_circuit; unticked, the part is a normal one again
+    (db.clear_circuit), whatever the numbers say. Back at the part
+    (#dio-<key>), which carries the word ("Spremljeno." or the sentence of
+    a refusal): `dio` names it, so the page prints the alert in that part,
+    not at its top, and opens its form again after a refusal. A section
+    that is none comes back at the top ("Odaberi dio treninga.")."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    from urllib.parse import quote
+    _program_day(program_id, day_id)
+    back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
+    at = f"&dio={section}#dio-{section}" if section in SECTIONS else ""
+    try:
+        if circuit:
+            saved = db.set_circuit(day_id, section, _count(rounds), _count(rest))
+        else:
+            saved = db.clear_circuit(day_id, section)
+    except ValueError as err:
+        return RedirectResponse(f"{back}?error={quote(str(err))}{at}", status_code=303)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"{back}?ok=Spremljeno.{at}", status_code=303)
 
 
 @app.post("/treninzi/{program_id}/dan/{day_id}/stavke/{item_id}/pomak")

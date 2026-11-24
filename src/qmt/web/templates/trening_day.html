@@ -53,8 +53,16 @@
   .dx-body p { overflow-wrap: anywhere; }
   .dx-body p + p { margin-top: 8px; }
   .dx-body .pre { white-space: pre-line; }
-  /* an exercise the pass in progress has saved: a green ✓ before its dose */
+  /* an exercise the pass in progress has saved: a green ✓ before its dose
+     (a circuit's exercise once every round is; some, base.html's
+     .dx-rounds "2/3") */
   .dx-ok { color: var(--good); }
+  /* A circuit part (24.11.2026, kružni trening): under its caption one
+     muted line, "Kružno · 3 kruga · odmor između krugova 120 s" (.dx-sub's
+     size), pulled up to the caption; its rows the dose of a round and,
+     under them, the rest after the exercise and the note (never a rest
+     between sets: none applies). */
+  .dx-circ { margin: -6px 0 10px; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
   /* Povijest (30.10.2026): the viewer's last five passes of the day, newest
      first, a card each: one line of facts (the day, how many of its
      exercises, how long, napor, osjećaj; tabular), the comment under it,
@@ -71,7 +79,7 @@
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Trening {{ day.position }}</span></nav>
 <h1>{{ day.label }}</h1>
 {% set k = day.items|length %}
-<p class="hint">{% if day.weekday is not none %}Preporučeno: {{ WEEKDAYS[day.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}</p>
+<p class="hint">{% if day.weekday is not none %}Preporučeno: {{ WEEKDAYS[day.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}{% if day.has_circuit %} · kružni trening{% endif %}</p>
 {# the viewer's state on the day, and the way into the player (30.10.2026):
    "Kreni" opens a pass, "Nastavi" goes on with the one in progress (the
    same form: the route lands on the first exercise it has not saved); a
@@ -114,17 +122,19 @@
 
   {% set ns = namespace(n=0) %}
   {% for key, label in SECTIONS.items() %}{% set rows = day.by_section[key] %}
-  {% if rows %}
+  {% if rows %}{% set circ = day.circuit(key) %}
   <section aria-labelledby="dio-{{ key }}">
     <h2 class="dx-cap" id="dio-{{ key }}">{{ label }}</h2>
+    {% if circ %}<p class="dx-circ">{{ circ.line }}</p>{% endif %}
     <div class="dx-list">
       {% for it in rows %}{% set ns.n = ns.n + 1 %}{% set ex = it.exercise %}
+      {% set dose = it.round_dose if circ else it.dose %}{% set mark = marks.get(it.id) %}
       <details class="card ex">
         <summary>
           <span class="dx-main">
             <span class="dx-n">Vježba {{ ns.n }}</span>
-            <span class="dx-line"><span class="dx-name">{{ ex.name }}</span>{% if it.id in done %}<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span>{% if it.dose %} {{ it.dose }}{% endif %}</span>{% elif it.dose %}<span class="dx-dose">{{ it.dose }}</span>{% endif %}</span>
-            {% set sub = [it.rest_text and "Odmor između serija: " ~ it.rest_text, it.rest_after_text and "Odmor nakon vježbe: " ~ it.rest_after_text, it.note]|select|list %}
+            <span class="dx-line"><span class="dx-name">{{ ex.name }}</span>{% if mark and mark.full %}<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span>{% if dose %} {{ dose }}{% endif %}</span>{% elif mark %}<span class="dx-dose"><span class="dx-rounds" role="img" aria-label="{{ mark.label }}">{{ mark.text }}</span>{% if dose %} {{ dose }}{% endif %}</span>{% elif dose %}<span class="dx-dose">{{ dose }}</span>{% endif %}</span>
+            {% set sub = ([it.rest_after_text and "Odmor nakon vježbe: " ~ it.rest_after_text, it.note] if circ else [it.rest_text and "Odmor između serija: " ~ it.rest_text, it.rest_after_text and "Odmor nakon vježbe: " ~ it.rest_after_text, it.note])|select|list %}
             {% if sub %}<span class="dx-sub">{{ sub|join(" · ") }}</span>{% endif %}
           </span>
           <span class="dx-go" aria-hidden="true">▷</span>

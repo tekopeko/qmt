@@ -79,7 +79,8 @@
   </form>
 
   <div class="kr-more">
-    {% if not stale %}<a class="act act-quiet" href="{{ base }}{% if n_items %}/vjezba/{{ n_items }}{% endif %}">Natrag na vježbe</a>{% endif %}
+    {# the last step (a circuit's: its last round's last exercise, 24.11.2026) #}
+    {% if not stale %}<a class="act act-quiet" href="{{ base }}{% if n_steps %}/vjezba/{{ n_steps }}{% endif %}">Natrag na vježbe</a>{% endif %}
     <form method="post" action="{{ base }}/odustani"
           data-confirm-title="Odbaciti započeti trening?"
           data-confirm="Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno."

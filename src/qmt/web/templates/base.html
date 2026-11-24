@@ -847,6 +847,10 @@
     .dx-line { display: flex; align-items: baseline; gap: 2px 12px; }
     .dx-name { flex: 1; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
     .dx-dose { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    /* a circuit's exercise some of whose rounds the pass in progress saved
+       (24.11.2026, kružni trening): "2/3" before its dose, muted (in the
+       dose's tabular figures), where a saved one's green ✓ stands */
+    .dx-rounds { color: var(--muted); }
     .dx-sub { display: block; margin-top: 2px; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
     /* ===== an online pass's sets, folded (30.10.2026: the day page's
        Povijest, the trainer's view of a karton): a native <details>, its
