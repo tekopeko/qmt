@@ -55,6 +55,13 @@ FEELING_LABELS = {"slabo": "Slabo", "dobro": "Dobro", "odlicno": "Odlično"}
 SECTIONS = {"zagrijavanje": "Zagrijavanje", "trening": "Glavni dio A", "trening_b": "Glavni dio B",
             "istezanje": "Istezanje"}
 WEEKDAYS = ("ponedjeljak", "utorak", "srijeda", "četvrtak", "petak", "subota", "nedjelja")
+# What a programme is (24.11.2026, the owner: "A training can be of online
+# training class or gym training class ('dvoranski' or 'online') and he would
+# like to create trainings which are only aimed for a gym training"): an
+# online one is matched to its razina's clients, a dvoranski one is the
+# trainer's own plan for the gym, which no client sees (Program.venue; the
+# forms' "Vrsta").
+VENUES = {"online": "Online", "dvorana": "Dvoranski"}
 
 
 def plural(n: int, one: str, few: str, many: str) -> str:
@@ -881,6 +888,13 @@ class Program(Base):
     anywhere. Since 30.10.2026 a programme is a list of days (ProgramDay),
     each day its exercises in its sections (ProgramDayItem; SECTIONS, four
     since 23.11.2026: two main parts).
+
+    `venue` (24.11.2026, migration 49a70497e58a; a VENUES key, the CHECK) is
+    "online", which the matching above lists and opens to its razina's
+    clients, or "dvorana", the trainer's own plan for the gym: no client
+    lists it or opens it, its days, its player or its clips
+    (db.programs_for_level, db.client_can_view); staff see and run it as
+    any. Every programme made before it is online.
     """
 
     __tablename__ = "programs"
@@ -889,11 +903,14 @@ class Program(Base):
     title: Mapped[str] = mapped_column(String(160))
     level: Mapped[str | None] = mapped_column(String(12), nullable=True)   # upitnik.LEVELS key
     goal: Mapped[str | None] = mapped_column(String(12), nullable=True)    # upitnik.GOALS key
+    venue: Mapped[str] = mapped_column(String(8), server_default=text("'online'"), default="online")  # VENUES key
     intro: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    __table_args__ = (CheckConstraint("venue IN ('online', 'dvorana')", name="ck_programs_venue"),)
 
     days: Mapped[list["ProgramDay"]] = relationship(
         back_populates="program", cascade="all, delete-orphan", order_by="ProgramDay.position"
@@ -976,7 +993,9 @@ class ProgramDayItem(Base):
     display order, ProgramDay.by_section); a gap a deleted item left does
     not matter, and an item moved to another section goes last in it
     (db.update_day_item). The constraint is deferred so ↑ / ↓ swap two in
-    one commit. `sets`, `reps` or `seconds` (one of the two: the CHECK),
+    one commit. `sets`, `reps` and `seconds` (either or both since
+    24.11.2026, the owner: "5 reps of 30 seconds of plank"; one of the two
+    until migration 30815c99e7d2 dropped the CHECK that said so),
     `rest_seconds` (the rest between sets) and `rest_after_seconds` (the
     rest after the exercise, before the next one; 30.10.2026, the player's
     rest timers) are NULL when not set, `note` "" for none ("8 kg", "po
@@ -1010,7 +1029,6 @@ class ProgramDayItem(Base):
                          deferrable=True, initially="DEFERRED"),
         CheckConstraint("section IN ('zagrijavanje', 'trening', 'trening_b', 'istezanje')",
                         name="ck_program_day_items_section"),
-        CheckConstraint("reps IS NULL OR seconds IS NULL", name="ck_program_day_items_reps_or_seconds"),
     )
 
     day: Mapped[ProgramDay] = relationship(back_populates="items")
@@ -1020,9 +1038,13 @@ class ProgramDayItem(Base):
     @property
     def dose(self) -> str:
         """What the day asks, in the list's words: "3 × 10" (sets and
-        reps), "3 × 30 s" (sets and seconds), "10 ponavljanja" (reps alone),
-        "30 s" (seconds alone), "3 serije" (sets alone), "" (none)."""
+        reps), "3 × 30 s" (sets and seconds), "3 × 5 × 30 s" (sets, reps
+        and seconds: 3 sets of 5 reps of 30 s, since 24.11.2026), "5 × 30 s"
+        (reps and seconds), "10 ponavljanja" (reps alone), "30 s" (seconds
+        alone), "3 serije" (sets alone), "" (none)."""
         sets, reps, seconds = self.sets, self.reps, self.seconds
+        if reps is not None and seconds is not None:
+            return f"{sets} × {reps} × {seconds} s" if sets is not None else f"{reps} × {seconds} s"
         if sets is not None and reps is not None:
             return f"{sets} × {reps}"
         if sets is not None and seconds is not None:
@@ -1055,9 +1077,11 @@ def kg_text(kg: float | int | None) -> str:
 
 def set_text(s: dict) -> str:
     """One logged set as the history prints it: "10 × 20 kg", "10" with no
-    weight (its kg 0), "30 s" for a timed exercise's."""
+    weight (its kg 0), "30 s" for a timed exercise's, "5 × 30 s" for one
+    that asks reps and seconds (24.11.2026: 5 reps of 30 s)."""
     if "seconds" in s:
-        return f"{s.get('seconds') or 0} s"
+        seconds = f"{s.get('seconds') or 0} s"
+        return f"{s.get('reps') or 0} × {seconds}" if "reps" in s else seconds
     reps, kg = s.get("reps") or 0, kg_text(s.get("kg"))
     return f"{reps} × {kg} kg" if kg else f"{reps}"
 
@@ -1091,7 +1115,9 @@ class WorkoutLog(Base):
     `done` is a JSON object, one entry per exercise saved in this pass, keyed
     by the day's item id: {"<item id>": {"exercise_id": 12, "name": "Goblet
     čučanj", "section": "trening", "sets": [{"reps": 10, "kg": 20.0}, …] (a
-    timed exercise's [{"seconds": 30}, …]), "at": "<iso>"}}; a re-save
+    timed exercise's [{"seconds": 30}, …], one that asks reps and seconds
+    [{"reps": 5, "seconds": 30}, …] since 24.11.2026: db.set_fields),
+    "at": "<iso>"}}; a re-save
     replaces the entry. The exercise is the one done, the swapped one when
     the client swapped it. `swaps` is a JSON object {"<item id>": <exercise
     id>}, the similar exercise swapped in for this pass (absent: the plan's).

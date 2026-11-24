@@ -6,7 +6,7 @@
   Sve je automatski: upitnik svrsta polaznika u razinu, a on odmah vidi sve programe te razine,
   po tipu treninga — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku razinu napravi
   programe po tipu pa im dodaj treninge i vježbe. Razina bez programa polazniku kaže da se
-  programi još pripremaju.
+  programi još pripremaju. Dvoranski programi su samo tvoji: polaznici ih ne vide.
 </p>
 
 <h2 style="font-size:1.05rem; margin-bottom:12px;">Programi po razinama</h2>
@@ -27,7 +27,7 @@
     {% for p, nd, ni in g.rows %}
     <tr style="border-bottom:1px solid var(--line);">
       <td style="padding:9px 6px; white-space:nowrap;">{{ goals.get(p.goal, p.goal) }}</td>
-      <td><strong>{{ p.title }}</strong></td>
+      <td><strong>{{ p.title }}</strong>{% if p.venue == "dvorana" %} <span class="venue-chip">dvoranski</span>{% endif %}</td>
       <td>{{ nd }}</td>
       <td>{{ ni }}{% if ni == 0 %} <span style="color:var(--danger); font-weight:700; font-size:.76rem;">prazno!</span>{% endif %}</td>
       <td class="hint">{{ p.updated_at.strftime("%-d.%-m.%Y.") }}</td>
@@ -49,7 +49,7 @@
     {% for p, nd, ni in untagged %}
     <tr style="border-bottom:1px solid var(--line); opacity:.6;">
       <td style="padding:9px 6px;" class="hint">—</td>
-      <td><strong>{{ p.title }}</strong></td>
+      <td><strong>{{ p.title }}</strong>{% if p.venue == "dvorana" %} <span class="venue-chip">dvoranski</span>{% endif %}</td>
       <td>{{ nd }}</td>
       <td>{{ ni }}</td>
       <td class="hint">{{ p.updated_at.strftime("%-d.%-m.%Y.") }}</td>
@@ -67,7 +67,10 @@
 <form method="post" action="/treninzi" class="card" style="max-width:560px; padding:20px 22px;">
   <div class="field"><label for="np-title">Naziv</label>
     <input id="np-title" type="text" name="title" placeholder="npr. Gornji dio tijela — tjedan 2" required></div>
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+  {# three selects in a row where they fit, one under the other on a phone;
+     Vrsta (24.11.2026): Online first and chosen, or Dvoranski, a gym
+     programme no client sees #}
+  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0 12px;">
     <div class="field"><label for="np-goal">Tip treninga</label>
       <select id="np-goal" name="goal" required>
         {% for k, l in goals.items() %}<option value="{{ k }}">{{ l }}</option>{% endfor %}
@@ -75,6 +78,10 @@
     <div class="field"><label for="np-level">Razina</label>
       <select id="np-level" name="level" required>
         {% for k, l in levels.items() %}<option value="{{ k }}">{{ l }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="np-venue">Vrsta</label>
+      <select id="np-venue" name="venue" required>
+        {% for k, l in VENUES.items() %}<option value="{{ k }}"{% if loop.first %} selected{% endif %}>{{ l }}</option>{% endfor %}
       </select></div>
   </div>
   <div class="field"><label for="np-intro">Uvod (neobavezno)</label>

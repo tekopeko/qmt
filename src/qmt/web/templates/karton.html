@@ -386,7 +386,8 @@
    member's own on a line under the lead, the trainer's after the age and
    the phone #}
 <p class="hint">
-  {% if own %}Dnevnik treninga, upitnik i termini na jednom mjestu.{% if body_line %}<span class="k-body">{{ body_line }}</span>{% endif %}
+  {% if staff_own %}Tvoj vlastiti karton: dnevnik treninga, maksimumi, masa i fotografije.{% if body_line %}<span class="k-body">{{ body_line }}</span>{% endif %}
+  {% elif own %}Dnevnik treninga, upitnik i termini na jednom mjestu.{% if body_line %}<span class="k-body">{{ body_line }}</span>{% endif %}
   {% else %}{{ subject.email }}{% if age %} · {{ age }} god.{% endif %}{% if subject.phone %} · {{ subject.phone }}{% endif %}{% if body_line %} · {{ body_line }}{% endif %}{% endif %}
 </p>
 
@@ -395,7 +396,7 @@
 <section class="upitnik lvl-{{ onboarding.level }}" aria-labelledby="u-level">
   <div class="u-head">
     <span class="eyebrow">Online trening — upitnik</span>
-    {% if own %}
+    {% if own and not staff_own %}{# staff never fill it: no way back in for one who did as a client #}
     <a class="redo" href="/upitnik">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.5h-4.5"/>
@@ -444,6 +445,9 @@
   </details>
   {% endif %}
 </section>
+{% elif staff_own %}
+{# staff's own karton (24.11.2026): no upitnik card in its place, staff
+   never fill it (POST /upitnik refuses them) #}
 {% elif can_upitnik %}
 <section class="upitnik">
   <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
@@ -576,7 +580,8 @@
   <div class="k-sec">
     <h2 id="osvrti">Dnevnik treninga</h2>
     <p class="hint" style="margin-bottom:12px;">
-      {% if own %}Svaki odrađeni termin završi ovdje — ispuni osvrt (napor, osjećaj, komentar)
+      {% if staff_own %}Tvoji online treninzi i treninzi koje upišeš sam/a.{# staff book no termini #}
+      {% elif own %}Svaki odrađeni termin završi ovdje — ispuni osvrt (napor, osjećaj, komentar)
       ili označi da nisi bio/la.
       {% else %}Odrađeni termini i osvrti.{% endif %}
     </p>
@@ -796,7 +801,8 @@
     {% endif %}
 
     {% else %}
-    <p class="hint">Još nema odrađenih termina{% if own %} — <a class="tlink" href="/raspored">rezerviraj prvi</a>{% endif %}.</p>
+    {% if staff_own %}<p class="hint">Još nema treninga u dnevniku.</p>{# staff book no termini #}
+    {% else %}<p class="hint">Još nema odrađenih termina{% if own %} — <a class="tlink" href="/raspored">rezerviraj prvi</a>{% endif %}.</p>{% endif %}
     {% endfor %}
   </div>
 
@@ -851,6 +857,8 @@
       {{ weight_rows(weights, own) }}
       {% endif %}
     </section>
+    {# staff book no termini: their own karton has no termini card (24.11.2026) #}
+    {% if not staff_own %}
     <section class="termini" aria-labelledby="termini-h">
       <h2 id="termini-h">Nadolazeći termini</h2>
       {% for s in upcoming %}
@@ -862,6 +870,7 @@
       {% else %}<p class="empty">Nema rezervacija.</p>{% endfor %}
       {% if own %}<a class="act act-quiet more" href="/raspored">Otvori raspored →</a>{% endif %}
     </section>
+    {% endif %}
   </aside>
 </div>
 {% if own %}

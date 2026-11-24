@@ -30,7 +30,14 @@ card in the rail (one value a day, the history, its ✕), "Ograničenja i
 bolovi" (the member's text, the trainer's amber chip), and "Napredak —
 fotografije" (one photo a month, shrunk and bare as an announcement's, served
 by /media to the member and staff only), in a test client, under racing
-writes and on a phone."""
+writes and on a phone.
+
+Since 24.11.2026 staff (the trainer, the owner) have a karton of their own
+at /karton (the owner: "Lets show the Karton tab in the Admin view as well
+so that Amir can check out the changes we made there"): a member's, less
+the upitnik card and the termini. And the maxes never count a set that
+holds seconds: since the same day an online exercise may ask for reps and
+seconds, its sets {"reps": 5, "seconds": 30}."""
 
 from __future__ import annotations
 
@@ -140,9 +147,65 @@ def test_karton_self_other_and_trainer():
 
     ct = client_for("trener@test.local")
     assert ct.get(f"/karton/{ivan}").status_code == 200
-    # trainer has no personal karton — bounced to članarine
+    # since 24.11.2026 the trainer has a karton of his own (until then: bounced to članarine)
     r = ct.get("/karton", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/clanarine"
+    assert r.status_code == 200 and "<h1>Moj karton</h1>" in r.text
+
+
+def test_staff_have_a_karton_of_their_own():
+    """Since 24.11.2026 (the owner: "Lets show the Karton tab in the Admin
+    view as well so that Amir can check out the changes we made there")
+    /karton is staff's own as a member's: the trainer's, and the owner's
+    who does not train. Neither has the upitnik card (staff never fill it)
+    nor "Nadolazeći termini" (they book none), and the empty diary says
+    "Još nema treninga u dnevniku." with no way to book. The rest is a
+    member's: "+ Dodaj trening izvan termina" stores his training, the
+    maxes count it, his weight and his limitations save, and his finished
+    online pass (staff use the player) is in his diary. A client's karton,
+    /karton/<id>, is as it was for him: its crumbs, its upitnik block and
+    its termini; and a client's own keeps both."""
+    ivan = make_user("ivan@test.local")                                       # an online plan, no upitnik yet
+    amir = make_user("amir@test.local", is_trainer=True, plans=())
+    make_user("trener@test.local", plans=())                                  # the owner (OWNER_EMAIL), not a trainer
+    ex = library("Potisak s klupe", "Plank")
+    ca, co = client_for("amir@test.local"), client_for("trener@test.local")
+    for c in (ca, co):
+        page = c.get("/karton").text
+        assert "<h1>Moj karton</h1>" in page
+        for gone in ('<section class="upitnik', "Upitnik još nije ispunjen", "Ispuni upitnik",
+                     "dio zasebne članarine", 'id="termini-h"', "Nadolazeći termini", "rezerviraj prvi"):
+            assert gone not in page, gone
+        assert '<p class="hint">Još nema treninga u dnevniku.</p>' in page and 'id="trening-novi"' in page
+        assert 'id="masa"' in page and 'id="ogranicenja"' in page and 'id="napredak"' in page
+
+    today = config.today()
+    r = ca.post("/karton/trening", data={"effort": "6", "day": today.isoformat(), **LOG,
+                                          **block(0, ex["Potisak s klupe"], (6, "90"))}, follow_redirects=False)
+    [log] = db.training_logs(amir)
+    assert location(r) == f"/karton?ok=Trening je spremljen.#log-{log.id}"
+    assert location(ca.post("/karton/masa", data={"kg": "82,5", "day": today.isoformat()}, follow_redirects=False)) == \
+        "/karton?ok=Masa je spremljena.#masa"
+    ca.post("/karton/ogranicenja", data={"text": "Staro koljeno."})
+    pid = db.create_program("Online", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    it = db.add_day_item(did, ex["Plank"], "trening")
+    db.update_day_item(it, "trening", 3, None, 40, None, None, "")
+    ca.post(f"/treninzi/{pid}/dan/{did}/kreni")
+    ca.post(f"/treninzi/{pid}/dan/{did}/vjezba/1", data={"rows": "1", "item": str(it), "sec_1": "40"})
+    ca.post(f"/treninzi/{pid}/dan/{did}/kraj", data={"effort": "5"})
+    [done] = db.passes(amir)
+    page = ca.get("/karton").text
+    assert f'id="log-{log.id}"' in page and f'id="pass-{done.id}"' in page and "Još nema treninga" not in page
+    assert sets_lines(page.split(f'id="pass-{done.id}"')[1].split('<div class="log-entry')[0]) == ["Plank: 40 s"]
+    assert maxes_rows(page) == [("Potisak s klupe", "108 kg", f"90 kg × 6 · {today.strftime('%-d.%-m.%Y.')} dvorana")]
+    assert '<p class="ms-val">82,5 kg</p>' in page and "Staro koljeno." in page
+    assert "Nadolazeći termini" not in page and '<section class="upitnik' not in page
+
+    seen = ca.get(f"/karton/{ivan}").text                                     # a client's: as before
+    assert '<nav class="crumbs" aria-label="Putanja"><a href="/clanarine">Trenutne članarine</a>' in seen
+    assert 'id="termini-h"' in seen and "Upitnik još nije ispunjen." in seen and 'id="trening-novi"' not in seen
+    own = client_for("ivan@test.local").get("/karton").text                  # and his own
+    assert 'id="termini-h"' in own and "Ispuni upitnik" in own and "rezerviraj prvi" in own
 
 
 # ---------- upitnik gates online treninzi ----------
@@ -867,6 +930,28 @@ def test_estimated_maxes_best_set_per_exercise_gym_and_online():
     assert words["Zgibovi"] == ("11 ponavljanja", "11 ponavljanja", "dvorana")
     assert words["Čučanj"] == ("15 ponavljanja", "15 ponavljanja", "online")
     assert [m.name for m in db.estimated_maxes(ana)] == ["Potisak s klupe"]
+
+
+def test_the_maxes_never_count_a_set_that_holds_seconds():
+    """Since 24.11.2026 an online exercise may ask for reps and seconds
+    (the plank's "3 × 5 × 30 s"), its sets saved {"reps": 5, "seconds":
+    30}: such a set is no bodyweight record of 5 reps (nor of 8), as a
+    timed {"seconds": 60} never was; another exercise's reps with no weight
+    in the same pass still are. The karton's table says only that."""
+    ivan = make_user("ivan@test.local")
+    ex = library("Bočni plank", "Sklek")
+    pid = db.create_program("Online", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    plank, push = (db.add_day_item(did, ex[n], "trening") for n in ("Bočni plank", "Sklek"))
+    db.update_day_item(plank, "trening", 3, 5, 30, None, None, "")
+    log = db.start_pass(ivan, db.get_program(pid), db.get_day(did))
+    db.save_sets(log.id, ivan, db.get_day_item(plank), [{"reps": 5, "seconds": 30}, {"reps": 8, "seconds": 20}],
+                 db.exercise(ex["Bočni plank"]))
+    db.save_sets(log.id, ivan, db.get_day_item(push), [{"reps": 12, "kg": 0.0}], db.exercise(ex["Sklek"]))
+    db.finish_pass(log.id, ivan, 6, None, "")
+    assert [(m.name, m.kind, m.value) for m in db.estimated_maxes(ivan)] == [("Sklek", "reps", 12)]
+    page = client_for("ivan@test.local").get("/karton").text
+    assert maxes_rows(page) == [("Sklek", "12 ponavljanja", f"{config.today().strftime('%-d.%-m.%Y.')} online")]
 
 
 def maxes_section(page: str) -> str:

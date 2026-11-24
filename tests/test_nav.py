@@ -4,21 +4,25 @@ and different because I am an admin").
 
 A client's row: Početna · Raspored · Karton · Online treninzi (while an
 online plan runs) · Moja članarina · Prehrana. Staff's, the trainer's and the
-owner's: that row without Karton, then "Admin ▾", a menu in the account
+owner's: that row (without Karton until 24.11.2026, when staff got a karton
+of their own; the owner: "Lets show the Karton tab in the Admin view as
+well"), then "Admin ▾", a menu in the account
 menu's component: Termini (/admin), Trenutne članarine (/clanarine), Upitnik
 (/upitnik), Vježbe (/treninzi/vjezbe, the library of exercises, 30.10.2026)
 and, the owner's only, Korisnici and Statistika. The tab is .on
-while one of its pages is open, that item aria-current="page". The account
-menu is Profil, the theme and Odjava for everyone. In the ☰ drawer (≤900px) a
-client has the one plain list, staff two sections under captions, "Kao član"
-and "Admin" (the menu's items as rows).
+while one of its pages is open, that item aria-current="page"; staff's
+Karton at /karton alone, a client's karton (/karton/<id>) lighting Trenutne
+članarine. The account menu is Profil, the theme and Odjava for everyone.
+In the ☰ drawer (≤900px) a client has the one plain list, staff two
+sections under captions, "Kao član" and "Admin" (the menu's items as rows).
 
 The route half reads the HTML. The browser half starts the app in a thread,
 as tests/test_copy.py does, and walks the owner and a client at 390 and
 1280px: the pill is one row and nothing widens the page, the wordmark rule
 holds, the Admin menu opens and closes (a click, Escape, a click outside,
 the keyboard) and its items lead to their pages, and the drawer shows its
-sections. Then edit mode (26.10.2026, the owner: "when I go to a tab as an
+sections; the owner's bar of seven (six tabs and Admin ▾) is measured at
+901, 960, 1024, 1100, 1200 and 1280px, both themes. Then edit mode (26.10.2026, the owner: "when I go to a tab as an
 admin, please dont make it editable but default"): no page opens in it by
 itself, so staff land on /upitnik, ?uredi=1 (the old way in) or not, in
 normal mode with the ✎ pill there to press; leaving a page ends it (a tab,
@@ -118,7 +122,7 @@ def account_menu(page: str) -> list[str]:
     return re.findall(r'<span(?: id="themeLabel")?>([^<]+)</span>', menu)
 
 
-MEMBER_ROW = [("/", "Početna"), ("/raspored", "Raspored"), ("/treninzi", "Online treninzi"),
+MEMBER_ROW = [("/", "Početna"), ("/raspored", "Raspored"), ("/karton", "Karton"), ("/treninzi", "Online treninzi"),
               ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")]
 TRAINER_ITEMS = [("/admin", "Termini"), ("/clanarine", "Trenutne članarine"), ("/upitnik", "Upitnik"),
                  ("/treninzi/vjezbe", "Vježbe")]
@@ -139,13 +143,17 @@ def test_a_clients_row_is_the_members_tabs_and_nothing_of_admin():
     assert account_menu(page) == ACCOUNT                                   # no Moja članarina item: the tab is the way
     assert [label for _, label, _ in tabs(client_for("ana@test.local").get("/raspored").text)] == \
         ["Početna", "Raspored", "Karton", "Moja članarina", "Prehrana"]
+    karton = client_for("ivan@test.local").get("/karton").text                # his karton lights his tab, as ever
+    assert [label for _, label, on in tabs(karton) if on] == ["Karton"]
 
 
-def test_staff_get_the_members_row_without_karton_and_admin_with_their_items():
-    """The member's row less Karton (staff have none of their own), then
-    Admin ▾: four items for a trainer who is not the owner, six for the
-    owner. Two captions for the drawer, and the account menu without a
-    Moja članarina item: the tab is in their row now."""
+def test_staff_get_the_members_row_and_admin_with_their_items():
+    """The member's row, Karton in it since 24.11.2026 (staff have a karton
+    of their own now; the owner: "Lets show the Karton tab in the Admin
+    view as well so that Amir can check out the changes we made there"),
+    then Admin ▾: four items for a trainer who is not the owner, six for the
+    owner. Two captions for the drawer, Karton under "Kao član", and the
+    account menu without a Moja članarina item: the tab is in their row."""
     make_user("trener@test.local", is_trainer=True)                     # the owner, who trains too (the demo's trener)
     make_user("coach@test.local", is_trainer=True)                      # a trainer who is not the owner
     for email, items in (("coach@test.local", TRAINER_ITEMS), ("trener@test.local", OWNER_ITEMS)):
@@ -161,29 +169,34 @@ def test_staff_get_the_members_row_without_karton_and_admin_with_their_items():
 
 def test_an_owner_who_does_not_train_is_staff_too():
     """Staff is the trainer or the owner (the routes' _require_trainer): an
-    owner without is_trainer gets the same bar, Karton gone, all six items.
-    Online treninzi follows his plans, as for anyone but a trainer
-    (show_online, unchanged)."""
+    owner without is_trainer gets the same bar, Karton in it (24.11.2026),
+    all six items. Online treninzi follows his plans, as for anyone but a
+    trainer (show_online, unchanged)."""
     make_user("trener@test.local", plans=("grupni",))                  # the owner, not a trainer, no online plan
     page = client_for("trener@test.local").get("/raspored").text
-    assert [label for _, label, _ in tabs(page)] == ["Početna", "Raspored", "Moja članarina", "Prehrana"]
+    assert [label for _, label, _ in tabs(page)] == ["Početna", "Raspored", "Karton", "Moja članarina", "Prehrana"]
     assert [(href, label) for href, label, _ in admin_items(page)] == OWNER_ITEMS
     assert account_menu(page) == ACCOUNT
 
 
 def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
-    """On Termini (its sub-pages too), Trenutne članarine, Upitnik, Vježbe
-    (an exercise's page too: under /treninzi, yet Online treninzi is not
-    .on there), Korisnici and Statistika the Admin tab is .on and that item,
-    alone, aria-current; no member tab is. Elsewhere the member's tab is .on
-    and Admin is not. The pages carry the items' names. Staff's /upitnik keeps
-    the whole bar: the brand-only pill is a member's (who fills it)."""
+    """On Termini (its sub-pages too), Trenutne članarine (and since
+    24.11.2026 a client's karton, /karton/<id>, which is reached from it),
+    Upitnik, Vježbe (an exercise's page too: under /treninzi, yet Online
+    treninzi is not .on there), Korisnici and Statistika the Admin tab is
+    .on and that item, alone, aria-current; no member tab is (Karton not on
+    a client's karton, nor on /upitnik). Elsewhere the member's tab is .on
+    and Admin is not: Karton on staff's own karton, /karton. The pages carry
+    the items' names. Staff's /upitnik keeps the whole bar: the brand-only
+    pill is a member's (who fills it)."""
     make_user("trener@test.local", is_trainer=True)
+    ivan = make_user("ivan@test.local", plans=("grupni",))
     tid = db.add_template("Grupni trening", 0, 7 * 60, 60, 8, None)
     eid = db.create_exercise("Plank")
     c = client_for("trener@test.local")
     for path, item in (("/admin", "Termini"), (f"/admin/templates/{tid}", "Termini"),
-                       ("/clanarine", "Trenutne članarine"), ("/upitnik", "Upitnik"),
+                       ("/clanarine", "Trenutne članarine"), (f"/karton/{ivan}", "Trenutne članarine"),
+                       ("/upitnik", "Upitnik"),
                        ("/treninzi/vjezbe", "Vježbe"), ("/treninzi/vjezbe/nova", "Vježbe"),
                        (f"/treninzi/vjezbe/{eid}", "Vježbe"),
                        ("/korisnici", "Korisnici"), ("/statistika", "Statistika")):
@@ -191,8 +204,8 @@ def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
         assert admin_tab(page) == ("Admin ▾", True), path
         assert [label for _, label, current in admin_items(page) if current] == [item], path
         assert [label for _, label, on in tabs(page) if on] == [], path
-    for path, tab in (("/", "Početna"), ("/raspored", "Raspored"), ("/treninzi", "Online treninzi"),
-                      ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")):
+    for path, tab in (("/", "Početna"), ("/raspored", "Raspored"), ("/karton", "Karton"),
+                      ("/treninzi", "Online treninzi"), ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")):
         page = c.get(path).text
         assert admin_tab(page) == ("Admin ▾", False) and not any(current for *_, current in admin_items(page)), path
         assert [label for _, label, on in tabs(page) if on] == [tab], path
@@ -387,6 +400,57 @@ def test_the_bar_menu_and_drawer_in_a_browser(server):
                     check(state == [False, False], f"a client's /upitnik?uredi=1: edit mode, editor = {state}")
                 problems += [f"{where} {e}" for e in errors]
                 ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+# The bar's tabs as shown, in order, and the ones whose label is cut (its
+# content wider than its box)
+SHOWN_TABS = r"""() => {
+  const vis = el => getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 0;
+  const tabs = [...document.querySelectorAll('#mainNav > a, #mainNav .navbtn')].filter(vis);
+  return {labels: tabs.map(t => t.textContent.trim().replace(/\s+/g, ' ')),
+          clipped: tabs.filter(t => t.scrollWidth > t.clientWidth + 1).map(t => t.textContent.trim()),
+          drawer: getComputedStyle(document.getElementById('mainNav')).position === 'absolute',
+          theme: document.documentElement.getAttribute('data-theme')};
+}"""
+
+
+def test_staffs_bar_of_seven_is_one_row_from_901px(server):
+    """Staff's bar is six tabs and Admin ▾ since 24.11.2026 (Karton joined
+    their row). The owner's, the widest (he trains too: Online treninzi
+    shows), at 901, 960, 1024, 1100, 1200 and 1280px, in both themes: the
+    tabs in the bar, not the drawer, Karton among them; the pill one row
+    (every child inside its padding and on its line, none over another, the
+    avatar's room kept; the tabs on one line, none wrapping or cutting its
+    label) and the page no wider than the window; the wordmark one of its
+    two. No rule tightens them for it (base.html: measured, none needed)."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("trener@test.local", is_trainer=True)                   # the owner, a trainer too
+    problems: list[str] = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        for theme in ("light", "dark"):
+            ctx, pg, errors = open_page(browser, server, "trener@test.local", 1280, "/raspored")
+            pg.evaluate(f"() => localStorage.setItem('qmt-theme', '{theme}')")
+            for w in (901, 960, 1024, 1100, 1200, 1280):
+                pg.set_viewport_size({"width": w, "height": 900})
+                go(pg, server + "/raspored")
+                where = f"[{theme} {w}px]"
+                bar, shown = pg.evaluate(PILL), pg.evaluate(SHOWN_TABS)
+                problems += [f"{where} {p}" for p in bar["problems"]]
+                if bar["wordmark"] not in ("full", "QMT"):
+                    problems.append(f"{where} the wordmark shows {bar['wordmark']}")
+                if shown["drawer"] or shown["labels"] != [*MEMBER_LABELS, "Admin ▾"]:
+                    problems.append(f"{where} the bar shows {shown['labels']} (in the drawer: {shown['drawer']})")
+                if shown["clipped"]:
+                    problems.append(f"{where} labels cut: {shown['clipped']}")
+                if shown["theme"] != theme:
+                    problems.append(f"{where} the page is in the {shown['theme']} theme")
+            problems += [f"[{theme}] {e}" for e in errors]
+            ctx.close()
         browser.close()
     print("\n".join(problems))
     assert not problems, f"{len(problems)} problems, listed above"

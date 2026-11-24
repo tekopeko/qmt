@@ -8,8 +8,8 @@ first; a new class is a last resort and needs a comment explaining the gap.
 
 | class | where | what |
 |---|---|---|
-| `.topbar` | base | a floating dark-glass pill (999px, blur, sticky 10px below the top, max 1100px) on every screen and both themes; ONE row at every width: brand left, tabs middle, avatar right, all inside the pill's padding. `.brand-slot` takes the room the tabs leave and is a query container: the wordmark shows in full when the slot is ≥19.2rem, else "QMT" (never a window breakpoint — the pill is capped, so the window says nothing about the room inside). 7+ tabs run tight (`.nav:has(> a:nth-of-type(7))`; no bar has seven since 26.10.2026: a client six at most, staff five and Admin ▾), all tabs tighten ≤1200px and fold into ☰ ≤900px. Tabs never wrap. The ☰ drawer: a client's is one plain list; staff's two sections under `.nav-cap` captions (PT Sans 700 .72rem uppercase, `#9a9aa0` on the bar's glass), "Kao član" and "Admin", a hairline (`.nav-admin`'s border-top) between them, Admin ▾'s items as rows like the tabs (no icons, the current one `.on`'s look) and the tab itself no row; it scrolls inside itself when taller than the window (the bar is sticky) |
-| `.nav > a` / `.nav .navbtn` / `.nav a.cta` / `.nav a.dark` / `.on` | base | tab: a link right in `.nav` (`> a`: Admin ▾'s items are links further in, rows of its menu) or a `.navbtn` (Admin ▾, `.menu-btn`, its caret part of its label, `aria-hidden`); red pill (`.cta`); dark glass pill (`.dark`, the pill's own "black", theme-free because the bar is always dark); current page (`.on`; Admin ▾ while one of its pages is open, and the same look while its menu is open). A client: Početna · Raspored · Karton · Online treninzi (with an online plan) · Moja članarina · Prehrana; staff (trainer, owner): that row without Karton, then Admin ▾ (26.10.2026). Guest bar: Prijava `.cta` (plus Registriraj se at the same weight while signup is open) · "Kontakt" `.dark`; never a Cjenik tab, and no "Što nudimo" — the photo leads to the offer |
+| `.topbar` | base | a floating dark-glass pill (999px, blur, sticky 10px below the top, max 1100px) on every screen and both themes; ONE row at every width: brand left, tabs middle, avatar right, all inside the pill's padding. `.brand-slot` takes the room the tabs leave and is a query container: the wordmark shows in full when the slot is ≥19.2rem, else "QMT" (never a window breakpoint — the pill is capped, so the window says nothing about the room inside). 7+ tabs run tight (`.nav:has(> a:nth-of-type(7))`; no bar has seven links: a client six at most, staff six and Admin ▾ since 24.11.2026, Karton joining their row, which the rule does not count and which needs none of it: the owner's bar measured at 901, 960, 1024, 1100, 1200 and 1280px in both themes keeps every tab on its line inside the pill, the brand's slot 191px at 901px, the whole name from 1024px), all tabs tighten ≤1200px and fold into ☰ ≤900px. Tabs never wrap. The ☰ drawer: a client's is one plain list; staff's two sections under `.nav-cap` captions (PT Sans 700 .72rem uppercase, `#9a9aa0` on the bar's glass), "Kao član" and "Admin", a hairline (`.nav-admin`'s border-top) between them, Admin ▾'s items as rows like the tabs (no icons, the current one `.on`'s look) and the tab itself no row; it scrolls inside itself when taller than the window (the bar is sticky) |
+| `.nav > a` / `.nav .navbtn` / `.nav a.cta` / `.nav a.dark` / `.on` | base | tab: a link right in `.nav` (`> a`: Admin ▾'s items are links further in, rows of its menu) or a `.navbtn` (Admin ▾, `.menu-btn`, its caret part of its label, `aria-hidden`); red pill (`.cta`); dark glass pill (`.dark`, the pill's own "black", theme-free because the bar is always dark); current page (`.on`; Admin ▾ while one of its pages is open, and the same look while its menu is open). A client: Početna · Raspored · Karton · Online treninzi (with an online plan) · Moja članarina · Prehrana; staff (trainer, owner): that row, Karton in it since 24.11.2026 (their own karton: `.on` at `/karton` alone, a client's `/karton/<id>` lighting Admin ▾ → Trenutne članarine, `/upitnik` Admin ▾ → Upitnik), then Admin ▾ (26.10.2026). Guest bar: Prijava `.cta` (plus Registriraj se at the same weight while signup is open) · "Kontakt" `.dark`; never a Cjenik tab, and no "Što nudimo" — the photo leads to the offer |
 | `.topbar.compact` | base (guests) | Shape's small pill: `width: fit-content`, centred; the brand is content-sized (no slot query) and the wordmark shortens below 420px, where even the small pill cannot hold the name beside the ☰. Its drawer is a centred 300px card, not a sliver the pill's width |
 | `.menu-wrap` / `.menu` | base | the topbar's dropdown, one component for two menus (26.10.2026): a `.menu-wrap` (`position: relative`) holds a button (`aria-controls`, `aria-haspopup`, `aria-expanded`) and its `.menu` panel, `role="menu"`, `--surface`, hairline, 12px radius, `--shadow`, hung `calc(100% + 9px)` under the button; rows (`role="menuitem"`) full-bleed, 10px 16px, 500 .92rem, a 22px line icon (`.mi`, 24px viewBox, stroke 1.7) on one gutter, hover / focus `--surface-2`; `.sep` a hairline. One script in base.html: a click on the button opens it and the next shuts it, one menu open at a time (the account menu also shuts the ☰ drawer), a click outside or Escape shuts it (Escape gives the focus back to the button when it was in the menu); an open panel is moved in to stay 12px inside the window. Tab reaches its rows; no arrow keys |
 | `.avatar` / `.user-menu` | base | initials circle → the account menu (`.menu.user-menu`, 288px, right-aligned to the avatar) on the YouTube pattern: identity header (the email ellipsized on a desktop with the whole address in its `title`, wrapped ≤900px), icon gutter rows: Profil, theme, Odjava — for everyone since 26.10.2026 (the Moja članarina tab is everyone's way to that page) |
@@ -96,6 +96,7 @@ targets; do not introduce new uses.
 | `.u-fact` (karton, upitnik v2) | a fact from the upitnik's part 1 (the goal, "3 dana tjedno", "45-60 min", the place): a neutral pill, `--surface-2` with `--text`, 600 .78rem — facts, not state, so no razina colour |
 | `.u-flag` (karton, the trainer's view) | the upitnik's safety flags, 999px pills, 700 .78rem: `.review` "Zahtijeva pregled" (q15 Da) in `--accent-dim` / `--accent-tint-ink`; `.pain` "Bolovi N/10 · where" (q14 ≥ 4) in the karton's amber (`--warn` on `--warn-soft`, the `.act-absent` values, AA on both themes); since 23.11.2026 the same `.pain` chip "Ograničenja" heads the limitations card on the trainer's view while the member's text holds anything |
 | `.u-note` (karton) | the pain sentence for a client at q14 ≥ 7 (`upitnik.pain_note`), shown to him and the trainer: `--text` on the amber tint, `--r-md`, 10px 14px |
+| `.venue-chip` (base.html; staff's /treninzi table, a programme's page and its editor) | "dvoranski" after a dvoranski programme's title (24.11.2026: a gym programme, the trainer's own, which no client sees): a muted fact, not a state, the karton `.chip`'s values in a pill (`--muted` on `--surface-2`: 4.6:1 light, 5.6:1 dark), Inter 600 .72rem/1.5, 2px 9px, never broken, `vertical-align: middle`; lower-case even inside an uppercase PT Sans h1 (`text-transform: none`): after the h1's title on the programme's page (staff only) and after "Uredi program" in its editor. In the table it follows the title's `strong` in the same cell (no new column) and wraps under it on a phone |
 | `.price > .base` / `.base-l` (base.html; the landing, /moja-clanarina) | the **bazna cijena** under a price (23.11.2026, the law's base price; `_plan_price.html`'s `base`): `<small class="base">`, the last child of its `.price` block, so the Mjesečno / Godišnje switch shows and hides it with its price; a block of its own under the amount and its unit (`flex-basis: 100%` in the landing's flex row), 500 .8rem/1.3 `--muted`, 2px under the amount, tabular-nums, `overflow-wrap: anywhere`. Its words: `.base-l` "Bazna cijena na 10.9.2026.:" (the `price.base_label` slot, the colon the template's), then the base slot, " €" after a number without its sign (`priced`). Only under a price that holds a number, and for a visitor only when the base holds one too (the editor's box shows as soon as the price does). In a line of prices it goes in brackets after each price instead (`base_paren`: Individualno's other plans, prehrana's MojiMakrosi line), " (Bazna cijena na 10.9.2026.: 25 €)", a `span.base-paren` (an inline block in the landing's `.price-note`, as a price's `.whole` is) |
 
 ## Page conventions
@@ -349,7 +350,7 @@ planovi, uplate i računi →", allowed to wrap: it nearly fills a 360px card).
 (`--lvl`/`--lvl-soft` per theme), diary `.log-entry` rows in four states
 (written / `.is-absent` / cancelled / open — `.fresh` gets the accent inset bar),
 `.le-actions` right-aligned pills, `.le-edit` inline form toggled by
-`qmtToggleForm`. Rail `aside.k-rail`: "Tjelesna masa" (`.masa`, 23.11.2026, below), then `.termini`, Nadolazeći. `.upitnik`, `.masa` and `.termini`
+`qmtToggleForm`. Rail `aside.k-rail`: "Tjelesna masa" (`.masa`, 23.11.2026, below), then `.termini`, Nadolazeći. Staff's own karton (24.11.2026, `staff_own`: the trainer's, the owner's) is a member's with no upitnik block (nothing in its place) and no `.termini` (the rail is the weight card alone), its empty diary "Još nema treninga u dnevniku.". `.upitnik`, `.masa` and `.termini`
 are `--r-xl`; `.log-entry` rows are `--r-md` and keep the accent inset bar for
 `.fresh` — at 12px the bar still reads as a bar. A v2 response's block (26.10.2026)
 puts `.u-fact` pills and the muted score ("6,4 / 10") on its `.u-meta` line, the
@@ -568,10 +569,15 @@ auto`: one group at the right end, wrapping under the name whole on a phone),
 `.it-video` ("video ✓" `.has` in `--good` 600, or "bez videa" muted) and
 `.it-acts` (↑ / ↓ / ✕, `.btn-ghost.btn-sm`, a disabled one at .35).
 
-**The programme editor (`trening_edit.html`).** The h1 "Uredi program"; its lead:
+**The programme editor (`trening_edit.html`).** The h1 "Uredi program" (a dvoranski
+programme's followed by `.venue-chip` "dvoranski", 24.11.2026); its lead:
 "Program ima treninge; svaki trening ima zagrijavanje, glavni dio A i B te istezanje, a
 vježbe biraš iz baze vježbi." (A and B since 23.11.2026) (a `.tlink` to the library) and "pogledaj kako
-polaznik vidi →" (`.act.act-quiet`). The programme's form (`.card`, 640px), then
+polaznik vidi →" (`.act.act-quiet`). The programme's form (`.card`, 640px: Tip treninga,
+Razina and since 24.11.2026 Vrsta, Online / Dvoranski, three selects in one grid,
+`repeat(auto-fit, minmax(160px, 1fr))`, `gap: 0 12px`: a row where they fit, one under
+the other on a phone, the `.field`s' 14px apart; staff's "Novi program" on /treninzi
+the same three, Online chosen), then
 **Treninzi** (30.10.2026; a day reads "Trening N" since 2.11.2026): a
 `.card.it-row` per day, `id="dan-<id>"`: its label as `.it-name` (a link to the
 day's editor),
@@ -587,7 +593,8 @@ vježbama; …").
 
 **The day editor (`trening_day_edit.html`, 30.10.2026).** Crumbs Treninzi / the
 programme (its editor) / Trening N, the h1 "Trening N", the lead ("Naslov, preporučeni dan
-u tjednu i uvod; ispod toga vježbe po dijelovima — …" + "pogledaj kako polaznik
+u tjednu i uvod; ispod toga vježbe po dijelovima — …", since 24.11.2026 "Ponavljanja i
+sekunde mogu zajedno: 5 ponavljanja po 30 s." after it, + "pogledaj kako polaznik
 vidi →" to the day's page). Card 1, `.card.ex-card`: Naslov ("npr. Cijelo
 tijelo"), Preporučeni dan (a select: "Bez preporuke", then the weekdays
 capitalised), Uvod, Spremi (`.btn.btn-sm`). Card 2, **Uvodni video**: the
@@ -618,7 +625,8 @@ filtered, under the input, so the chips stay in reach), and `.add-row` (Dodaj
 "Obriši trening" (`form.ex-delete`, asks first).
 
 **The programme page (`trening_view.html`) and the day page (`trening_day.html`,
-30.10.2026).** The programme: crumbs, the h1, "2 treninga" (`.hint`), its intro, the
+30.10.2026).** The programme: crumbs, the h1 (a dvoranski programme's, for staff, its
+title then `.venue-chip` "dvoranski", 24.11.2026), "2 treninga" (`.hint`), its intro, the
 trainer's "Uredi program" (`.btn-quiet.btn-sm`), then its days as `.card.day-card`
 links (the client's /treninzi cards' look, 52px at least, padding 16px 20px, the
 whole card one link): the label in 700 over a muted "Preporučeno: ponedjeljak · 7
@@ -685,13 +693,13 @@ muted) with `.pl-chip` "3/8" (`--surface-2`) and `.pl-saved` "✓ Spremljeno"
 (`--good`), `h1.pl-name` (`clamp(1.35rem, 5vw, 1.9rem)`), `.pl-for` "Zamjena za:
 …" (muted), the alert, `.pl-dose` (700 1.05rem), `.pl-sub` lines (rest, note),
 `details.pl-how` "Kako se izvodi" (a 32px summary, a › that turns). The set log
-`form.pl-log`: `table.pl-sets` (base.html's since 23.11.2026, the karton's exercise log prints it too; rows 8px apart; `thead` SET · PON. · KG, 700
+`form.pl-log`: `table.pl-sets` (base.html's since 23.11.2026, the karton's exercise log prints it too; rows 8px apart; `thead` SET · PON. · KG (the item's fields, `db.set_fields`, in the order reps, kg, seconds: a timed exercise's SET · SEK., and since 24.11.2026 one that asks reps and seconds SET · PON. · SEK., `reps_n` / `sec_n` prefilled with the plan's two, no KG column; the same widths: two value columns or one), 700
 .72rem muted, the value columns centred; `tbody th` the set's number, 700 1rem,
 `tr.extra`'s muted with `.pl-x` "dodatna serija" under it; inputs 44px,
 centred, 600 tabular), then `.pl-foot`: "+" (`.btn-ghost.pl-add`, 40px round, at
 the right; rendered `hidden`, the script's) over "Spremi" (`.btn.pl-save`, the
 card's width on a phone, 200px from 600px). **The ✓ column** (30.10.2026): the
-log's last, SET · PON. · KG · ✓ (SET · SEK. · ✓), its `.pl-tick` cells rendered
+log's last, SET · PON. · KG · ✓ (SET · SEK. · ✓, SET · PON. · SEK. · ✓), its `.pl-tick` cells rendered
 `hidden` (the script's, as "+"), as narrow as their button: `button.pl-done`, a
 44px circle (`--surface`, a 1px `--line` hairline, a muted ✓, 700 1.05rem),
 `aria-pressed`, "Serija n odrađena"; hover `--surface-2`; pressed `--good-fill`

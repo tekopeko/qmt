@@ -1646,7 +1646,7 @@ def read_log(form) -> list[dict]:
             raise ValueError(NO_EXERCISE)
         if not re.fullmatch(r"[0-9]{1,9}", block["ex"]):
             raise ValueError(UNKNOWN_EXERCISE)
-        logged.append((int(block["ex"]), read_sets(rows, timed=False)))
+        logged.append((int(block["ex"]), read_sets(rows, ("reps", "kg"))))
     if len(logged) > MAX_LOG_EXERCISES:
         raise ValueError(TOO_MANY_EXERCISES)
     if not logged:
@@ -1766,8 +1766,10 @@ def estimated_maxes(user_id: int) -> list[Max]:
       - no weight (kg 0) and 1 rep or more: the most reps per exercise, a
         bodyweight record, kept only for an exercise with no one-rep max;
       - a weight with more than 12 reps (Epley is for low reps: past them it
-        overstates the max), a timed set (a plank's seconds), a set of 0
-        reps: not counted.
+        overstates the max), a timed set (any set that holds seconds: a
+        plank's, and since 24.11.2026 one of reps and seconds, "5 × 30 s",
+        which is no bodyweight record of 5 reps), a set of 0 reps: not
+        counted.
     On a tie the later set wins (its date; on one day, a pass's over a
     training's, then the later row's). Grouped by the exercise's id, each
     named by the library's name now, or for one deleted since by the
@@ -1798,7 +1800,9 @@ def estimated_maxes(user_id: int) -> list[Max]:
         if isinstance(entry.get("name"), str) and entry["name"]:
             snapshot[ex] = entry["name"]
         for st in entry.get("sets") if isinstance(entry.get("sets"), list) else []:
-            reps, kg = (st.get("reps"), st.get("kg") or 0) if isinstance(st, dict) else (None, 0)
+            if not isinstance(st, dict) or "seconds" in st:
+                continue                                 # a timed set, with its reps or without: no max
+            reps, kg = st.get("reps"), st.get("kg") or 0
             if type(reps) is not int or reps < 1 or isinstance(kg, bool) or not isinstance(kg, (int, float)):
                 continue
             if kg > 0 and reps <= EPLEY_MAX_REPS:
@@ -1987,13 +1991,14 @@ def programs_for_level(level: str) -> list[Program]:
     allow the users to be able to access all types of training. The
     questionnaire only determines the level of fitness and the trainings
     are available for everybody."; until then a programme's cilj had to
-    match his too). No hand-outs — matching IS the access. In GOALS' order
-    (cijelo, gornji, donji, core; a type not among them last), each type by
-    title; each with its days and their items loaded (the list says how
-    many days)."""
+    match his too). Online programmes only (24.11.2026: a dvoranski one is
+    the trainer's own plan for the gym, Program.venue). No hand-outs —
+    matching IS the access. In GOALS' order (cijelo, gornji, donji, core; a
+    type not among them last), each type by title; each with its days and
+    their items loaded (the list says how many days)."""
     with session_scope() as s:
         rows = list(s.scalars(
-            select(Program).where(Program.level == level)
+            select(Program).where(Program.level == level, Program.venue == "online")
             .options(selectinload(Program.days).selectinload(ProgramDay.items))
             .order_by(Program.title)))
     order = list(upitnik.GOALS)
@@ -2001,8 +2006,12 @@ def programs_for_level(level: str) -> list[Program]:
 
 
 def client_can_view(program: Program, user_id: int) -> bool:
-    """A client sees a programme iff it is of the razina his upitnik gave
-    him, whatever its type (since 23.11.2026: programs_for_level)."""
+    """A client sees a programme iff it is an online one of the razina his
+    upitnik gave him, whatever its type (since 23.11.2026:
+    programs_for_level); a dvoranski one never (24.11.2026, Program.venue:
+    its pages, its player and its clips are 403 to every client)."""
+    if program.venue != "online":
+        return False
     onb = get_onboarding(user_id)
     return onb is not None and program.level is not None and program.level == onb.level
 
@@ -2300,9 +2309,11 @@ def all_programs() -> list[tuple[Program, int, int]]:
 
 
 def create_program(title: str, intro: str | None,
-                   level: str | None = None, goal: str | None = None) -> int:
+                   level: str | None = None, goal: str | None = None, venue: str = "online") -> int:
+    """A new programme, with no day; `venue` a VENUES key (24.11.2026),
+    online unless said."""
     with session_scope() as s:
-        p = Program(title=title, intro=intro, level=level, goal=goal)
+        p = Program(title=title, intro=intro, level=level, goal=goal, venue=venue)
         s.add(p)
         s.flush()
         return p.id
@@ -2317,11 +2328,15 @@ def get_program(program_id: int) -> Program | None:
 
 
 def update_program(program_id: int, title: str, intro: str | None,
-                   level: str | None = None, goal: str | None = None) -> None:
+                   level: str | None = None, goal: str | None = None, venue: str | None = None) -> None:
+    """The programme's form saved; `venue` a VENUES key (24.11.2026), None
+    keeps the one it has."""
     with session_scope() as s:
         p = s.get(Program, program_id)
         if p is not None:
             p.title, p.intro, p.level, p.goal = title, intro, level, goal
+            if venue is not None:
+                p.venue = venue
 
 
 def delete_program(program_id: int) -> list[str] | None:
@@ -2352,7 +2367,6 @@ ITEM_NOTE_MAX = 500
 ITEM_LIMITS = {"sets": (1, 99), "reps": (1, 999), "seconds": (1, 3600), "rest_seconds": (0, 3600),
                "rest_after_seconds": (0, 3600)}
 BAD_NUMBER = "Neispravan broj."
-REPS_OR_SECONDS = "Upiši ponavljanja ili sekunde, ne oboje."
 
 
 def _day_locked(s: Session, day_id: int) -> tuple[Program, ProgramDay] | None:
@@ -2525,14 +2539,14 @@ def get_day_item(item_id: int) -> ProgramDayItem | None:
 
 def update_day_item(item_id: int, section: str, sets: int | None, reps: int | None, seconds: int | None,
                     rest_seconds: int | None, rest_after_seconds: int | None, note: str) -> bool:
-    """Save what a day asks of an exercise: its section, sets, reps or
-    seconds (one of the two), the rest between sets, the rest after it
-    (before the next exercise) and a note (stripped); None for a number not
-    set. An item moved to another section goes last in it. False for an
-    item that is gone. ValueError with the sentence to show: a number out
-    of ITEM_LIMITS ("Neispravan broj."), reps and seconds both ("Upiši
-    ponavljanja ili sekunde, ne oboje."), a note past ITEM_NOTE_MAX, a
-    section that is none."""
+    """Save what a day asks of an exercise: its section, sets, reps and
+    seconds (either or both since 24.11.2026: "5 ponavljanja po 30 s"),
+    the rest between sets, the rest after it (before the next exercise)
+    and a note (stripped); None for a number not set. An item moved to
+    another section goes last in it. False for an item that is gone.
+    ValueError with the sentence to show: a number out of ITEM_LIMITS
+    ("Neispravan broj."), a note past ITEM_NOTE_MAX, a section that is
+    none."""
     if section not in SECTIONS:
         raise ValueError("Odaberi dio treninga.")
     for field, value in (("sets", sets), ("reps", reps), ("seconds", seconds), ("rest_seconds", rest_seconds),
@@ -2540,8 +2554,6 @@ def update_day_item(item_id: int, section: str, sets: int | None, reps: int | No
         least, most = ITEM_LIMITS[field]
         if value is not None and not least <= value <= most:
             raise ValueError(BAD_NUMBER)
-    if reps is not None and seconds is not None:
-        raise ValueError(REPS_OR_SECONDS)
     note = (note or "").strip()
     if len(note) > ITEM_NOTE_MAX:
         raise ValueError(f"Napomena može imati najviše {ITEM_NOTE_MAX} znakova.")
@@ -2642,38 +2654,59 @@ def _set_number(raw: str | None, field: str) -> int | float | None:
     return number
 
 
-def read_sets(rows: list[dict[str, str]], timed: bool) -> list[dict]:
-    """A set log as the player posts it, row by row ({"reps": "10", "kg":
-    "2,5"}, a timed exercise's {"seconds": "30"}), as it is stored: [{"reps":
-    10, "kg": 2.5}, …] or [{"seconds": 30}, …]. A row with every field empty
-    is dropped; in a row that has a number, an empty field is 0 (a weight of
-    0 is none). ValueError with the sentence to show: a number that is none
-    or out of its range ("Neispravan broj."), no set left ("Upiši bar jednu
-    seriju."), more than MAX_SETS ("Najviše 12 serija.")."""
-    fields = ("seconds",) if timed else ("reps", "kg")
+# A set log's three shapes (24.11.2026): the fields a set holds, as the
+# player asks them of an exercise (set_fields, by its plan's item) and as a
+# stored set holds them: reps and a weight, seconds alone (a timed one: a
+# plank), or reps and seconds (5 reps of 30 s: no weight).
+SET_SHAPES = (("reps", "kg"), ("seconds",), ("reps", "seconds"))
+
+
+def set_fields(item: ProgramDayItem) -> tuple[str, ...]:
+    """The fields of an item's set log, one of SET_SHAPES: reps and kg
+    (SET · PON. · KG) for an item that asks reps or no number; seconds
+    alone (SET · SEK.) for one that asks seconds; reps and seconds (SET ·
+    PON. · SEK., no weight) for one that asks both (24.11.2026, the owner:
+    "5 reps of 30 seconds of plank")."""
+    if item.seconds is None:
+        return ("reps", "kg")
+    return ("reps", "seconds") if item.reps is not None else ("seconds",)
+
+
+def read_sets(rows: list[dict[str, str]], fields: tuple[str, ...]) -> list[dict]:
+    """A set log as the player posts it, row by row, each row its `fields`
+    (set_fields: {"reps": "10", "kg": "2,5"}; a timed exercise's {"seconds":
+    "30"}; one that asks both, {"reps": "5", "seconds": "30"}), as it is
+    stored: [{"reps": 10, "kg": 2.5}, …], [{"seconds": 30}, …] or [{"reps":
+    5, "seconds": 30}, …]. A row with every field empty is dropped; in a row
+    that has a number, an empty field is 0 (a weight of 0 is none).
+    ValueError with the sentence to show: a number that is none or out of
+    its range ("Neispravan broj."), no set left ("Upiši bar jednu
+    seriju."), more than MAX_SETS ("Najviše 12 serija."); fields that are
+    none of SET_SHAPES BAD_NUMBER too."""
+    fields = tuple(fields)
+    if fields not in SET_SHAPES:
+        raise ValueError(BAD_NUMBER)
     sets = []
     for row in rows:
         values = {f: _set_number(row.get(f), f) for f in fields}
         if all(v is None for v in values.values()):
             continue
-        sets.append({"seconds": values["seconds"] or 0} if timed
-                    else {"reps": values["reps"] or 0, "kg": float(values["kg"] or 0)})
+        sets.append({f: float(values[f] or 0) if f == "kg" else (values[f] or 0) for f in fields})
     return _checked_sets(sets)
 
 
 def _checked_sets(sets: list[dict]) -> list[dict]:
-    """Sets as stored (read_sets'), checked again where they are written."""
+    """Sets as stored (read_sets'), checked again where they are written:
+    each holds the fields of one of SET_SHAPES, each number within
+    SET_LIMITS, whole (a weight in halves of a kilo)."""
     if not sets:
         raise ValueError(NO_SET)
     if len(sets) > MAX_SETS:
         raise ValueError(TOO_MANY_SETS)
     clean = []
     for st in sets:
-        if set(st) == {"seconds"}:
-            fields = ("seconds",)
-        elif set(st) == {"reps", "kg"}:
-            fields = ("reps", "kg")
-        else:
+        fields = next((shape for shape in SET_SHAPES if set(st) == set(shape)), None)
+        if fields is None:
             raise ValueError(BAD_NUMBER)
         for f in fields:
             least, most = SET_LIMITS[f]
@@ -2682,8 +2715,7 @@ def _checked_sets(sets: list[dict]) -> list[dict]:
                 raise ValueError(BAD_NUMBER)
             if f != "kg" and v != int(v) or f == "kg" and (v * 2) % 1:
                 raise ValueError(BAD_NUMBER)
-        clean.append({"seconds": int(st["seconds"])} if fields == ("seconds",)
-                     else {"reps": int(st["reps"]), "kg": float(st["kg"])})
+        clean.append({f: float(st[f]) if f == "kg" else int(st[f]) for f in fields})
     return clean
 
 

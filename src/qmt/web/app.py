@@ -20,7 +20,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .. import auth, config, copy, db, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, ONLINE_TIER_SLOTS, ONLINE_TIERS, PAYMENT_METHODS, PLAN_ABBR,
-                      PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, WEEKDAYS as DAY_WEEKDAYS, add_month,
+                      PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, VENUES, WEEKDAYS as DAY_WEEKDAYS, add_month,
                       duration_text, fold, matches, plural, sub_month)
 
 @asynccontextmanager
@@ -67,6 +67,9 @@ templates.env.globals["ONLINE_TIER_SLOTS"] = ONLINE_TIER_SLOTS
 templates.env.globals["SECTIONS"] = SECTIONS
 templates.env.globals["WEEKDAYS"] = DAY_WEEKDAYS
 templates.env.globals["plural"] = plural
+# what a programme is (24.11.2026): online, or dvoranski, the trainer's own
+# plan for the gym (the programme forms' "Vrsta", staff's "dvoranski" chip)
+templates.env.globals["VENUES"] = VENUES
 # a programme as the library's pages name it, "Booty build (napredna razina)"
 # (vjezba.html: the programmes that hold an exercise)
 templates.env.filters["program_name"] = db.program_name
@@ -1918,9 +1921,14 @@ def _render_karton(request: Request, viewer, subject, own: bool):
     # first (its button says "Zamijeni ovomjesečnu" when this month has one)
     weights = db.weights(subject.id)
     photos = db.photos(subject.id)
+    # a staff member's own karton (24.11.2026): his diary (his online passes,
+    # his trainings outside a termin), maxes, weight, limitations and photos
+    # as a member's; no upitnik card (staff never fill it: POST /upitnik
+    # refuses them) and no termini (they book none)
+    staff_own = own and _can_edit_copy(subject)
     return templates.TemplateResponse(request, "karton.html", _ctx(
-        request, viewer, copy_texts=texts, subject=subject, own=own, age=age,
-        can_upitnik=own and _has_online(subject),
+        request, viewer, copy_texts=texts, subject=subject, own=own, age=age, staff_own=staff_own,
+        can_upitnik=own and not staff_own and _has_online(subject),
         onboarding=onboarding, answers=answers,
         levels=upitnik.LEVELS, goals=upitnik.GOALS, max_score_v1=upitnik.MAX_SCORE_V1,
         u_rows=u_rows, u_chips=u_chips, u_score=u_score, pain_ask=upitnik.PAIN_ASK, pain_where=pain_where,
@@ -1945,13 +1953,14 @@ def _render_karton(request: Request, viewer, subject, own: bool):
 
 @app.get("/karton", response_class=HTMLResponse)
 def karton_self(request: Request):
+    """The viewer's own karton: a member's, and since 24.11.2026 staff's too
+    (the owner: "Lets show the Karton tab in the Admin view as well so that
+    Amir can check out the changes we made there"; until then a trainer was
+    sent to /clanarine). Their clients' are /karton/{id}."""
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/karton')}", status_code=303)
-    if user.is_trainer:
-        # the trainer has no karton of their own — their view is per-client
-        return RedirectResponse("/clanarine", status_code=303)
     return _render_karton(request, user, user, own=True)
 
 
@@ -2559,9 +2568,18 @@ def treninzi(request: Request):
         has_plan=has_plan, levels=upitnik.LEVELS))
 
 
+# a programme's Vrsta (models.VENUES) that is none of its options
+BAD_VENUE = "Odaberi vrstu programa."
+
+
 @app.post("/treninzi")
 def create_program(request: Request, title: str = Form(...), intro: str = Form(""),
-                   level: str = Form(...), goal: str = Form(...)):
+                   level: str = Form(...), goal: str = Form(...), venue: str = Form("online")):
+    """"Novi program": its title, type, razina, Vrsta (24.11.2026: online,
+    the select's first, or dvoranski; a form that posts none, online) and
+    intro; then its editor, the programme with no day."""
+    from urllib.parse import quote
+
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -2570,7 +2588,9 @@ def create_program(request: Request, title: str = Form(...), intro: str = Form("
         return RedirectResponse("/treninzi?error=Naziv+je+obavezan.", status_code=303)
     if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
         return RedirectResponse("/treninzi?error=Odaberi+razinu+i+tip+treninga.", status_code=303)
-    pid = db.create_program(title, intro.strip() or None, level, goal)
+    if venue not in VENUES:
+        return RedirectResponse(f"/treninzi?error={quote(BAD_VENUE)}", status_code=303)
+    pid = db.create_program(title, intro.strip() or None, level, goal, venue)
     return RedirectResponse(f"/treninzi/{pid}/uredi", status_code=303)
 
 
@@ -2870,7 +2890,8 @@ def program_day_view(request: Request, program_id: int, day_id: int):
 # osvrt closes it (db.finish_pass), "Odbaci" drops it (db.drop_pass). Every
 # route goes through _program_or_403 and the day check, as the day's page: a
 # client reaches only his matched programmes' days; staff may use it too,
-# their passes their own (staff have no karton: they show on the days only).
+# their passes their own (on the days, and since 24.11.2026 on their own
+# karton's diary).
 # A pass with no activity for PASS_STALE_HOURS (31.10.2026, the owner: no
 # hanging training; WorkoutLog.stale) cannot be continued: Kreni / Nastavi,
 # an exercise's screen, its save and its swap all lead to the finish screen,
@@ -2896,12 +2917,14 @@ def _kg_value(kg) -> str:
 
 def _log_rows(it, entry: dict | None, last: list[dict] | None) -> list[dict]:
     """The set log's rows for an item, as the player prints them, each
-    {"reps", "kg", "sec": an input's value, "extra": a set past the plan's}:
-    the sets this pass saved for it, as saved; else a row per planned set
-    (the plan's sets, 1 when it says none, MAX_SETS at most), its reps and
-    its seconds the plan's, its kg the last saved log's of the exercise
-    (`last`: set i's, the last one's for a set past them; none without);
-    then one empty row more ("dodatna serija"), while there is room."""
+    {"reps", "kg", "sec": an input's value, "extra": a set past the plan's}
+    (the page shows the item's fields of them, db.set_fields: reps and kg,
+    seconds, or since 24.11.2026 reps and seconds): the sets this pass
+    saved for it, as saved; else a row per planned set (the plan's sets, 1
+    when it says none, MAX_SETS at most), its reps and its seconds the
+    plan's, its kg the last saved log's of the exercise (`last`: set i's,
+    the last one's for a set past them; none without); then one empty row
+    more ("dodatna serija"), while there is room."""
     planned = min(it.sets or 1, db.MAX_SETS)
     if entry is not None:
         rows = [{"reps": str(s.get("reps", "")), "kg": _kg_value(s.get("kg")), "sec": str(s.get("seconds", ""))}
@@ -2943,7 +2966,7 @@ def _player(request: Request, user, p, day, items: list, k: int, log, error: str
         swapped=swapped, alternatives=[a for a in planned.alternatives if swapped is None or a.id != swapped.id],
         log=log, done=done, done_n=sum(1 for x in items if x.id in done), saved=entry is not None,
         swap_names={x.id: by_id[swaps[x.id]].name for x in items if x.id in swaps and swaps[x.id] in by_id},
-        rows=rows, timed=it.seconds is not None, max_sets=db.MAX_SETS, odmor=odmor,
+        rows=rows, fields=db.set_fields(it), max_sets=db.MAX_SETS, odmor=odmor,
         error=error or request.query_params.get("error"), base=_day_base(p.id, day.id)), status_code=status_code)
 
 
@@ -2983,6 +3006,8 @@ def pass_start(request: Request, program_id: int, day_id: int):
 # a save whose page was drawn for another list (its hidden item is not
 # exercise k's: an exercise deleted from the day, or moved, since)
 DAY_CHANGED = "Trening se u međuvremenu promijenio — provjeri vježbu i spremi ponovno."
+# a set log's field (db.SET_SHAPES) -> its inputs' name on the page, n the row: reps_n, kg_n, sec_n
+SET_INPUTS = {"reps": "reps", "kg": "kg", "seconds": "sec"}
 
 
 def _past_the_end(base: str, items: list) -> RedirectResponse:
@@ -3022,11 +3047,12 @@ def pass_exercise(request: Request, program_id: int, day_id: int, k: int, odmor:
 @app.post("/treninzi/{program_id}/dan/{day_id}/vjezba/{k}")
 async def pass_save(request: Request, program_id: int, day_id: int, k: int):
     """Exercise k's "Spremi": its set log, `rows` rows of reps_n and kg_n (a
-    timed exercise's sec_n), read by db.read_sets and saved into the pass
-    (db.save_sets: the exercise done, the swapped one when swapped); then
-    the next exercise, or the finish screen after the last. When the day's
-    item (the plan's, swapped or not) has a rest after it, the next
-    exercise comes with it (?odmor=<seconds>: its screen counts it down);
+    timed exercise's sec_n; since 24.11.2026 one that asks reps and seconds
+    reps_n and sec_n: the item's db.set_fields), read by db.read_sets and
+    saved into the pass (db.save_sets: the exercise done, the swapped one
+    when swapped); then the next exercise, or the finish screen after the
+    last. When the day's item (the plan's, swapped or not) has a rest after
+    it, the next exercise comes with it (?odmor=<seconds>: its screen counts it down);
     the finish screen never does. A refusal comes back as the screen, its
     sentence under the name and what was typed kept. A stale pass (open too
     long) saves nothing: its finish screen. k below 1 is 404; a k past the
@@ -3054,10 +3080,10 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
         value = form.get(name)
         return value if isinstance(value, str) else ""
 
-    it, timed = items[k - 1], items[k - 1].seconds is not None
+    it = items[k - 1]
+    fields = db.set_fields(it)
     n = min(max(_id(field("rows")) or 1, 1), 30)
-    raw = [{"seconds": field(f"sec_{i}")} if timed else {"reps": field(f"reps_{i}"), "kg": field(f"kg_{i}")}
-           for i in range(1, n + 1)]
+    raw = [{f: field(f"{SET_INPUTS[f]}_{i}") for f in fields} for i in range(1, n + 1)]
 
     def refused(sentence: str):
         # the screen again, what was typed back in its inputs: a weight with
@@ -3073,7 +3099,7 @@ async def pass_save(request: Request, program_id: int, day_id: int, k: int):
     swaps = log.swap_items
     exercise = (db.exercises_by_id([swaps[it.id]]).get(swaps[it.id]) if it.id in swaps else None) or it.exercise
     try:
-        saved = db.save_sets(log.id, user.id, it, db.read_sets(raw, timed), exercise)
+        saved = db.save_sets(log.id, user.id, it, db.read_sets(raw, fields), exercise)
     except ValueError as err:
         return refused(str(err))
     if not saved:
@@ -3200,15 +3226,22 @@ def program_edit_page(request: Request, program_id: int):
 
 @app.post("/treninzi/{program_id}/edit")
 def program_edit(request: Request, program_id: int, title: str = Form(...),
-                 intro: str = Form(""), level: str = Form(...), goal: str = Form(...)):
+                 intro: str = Form(""), level: str = Form(...), goal: str = Form(...),
+                 venue: str | None = Form(None)):
+    """"Uredi program"'s form: its type, razina, Vrsta (24.11.2026; one not
+    posted keeps the programme's), title and intro."""
+    from urllib.parse import quote
+
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
         return RedirectResponse(f"/treninzi/{program_id}/uredi?error=Odaberi+razinu+i+tip+treninga.",
                                 status_code=303)
+    if venue is not None and venue not in VENUES:
+        return RedirectResponse(f"/treninzi/{program_id}/uredi?error={quote(BAD_VENUE)}", status_code=303)
     db.update_program(program_id, title.strip() or "Program", intro.strip() or None,
-                      level, goal)
+                      level, goal, venue)
     return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Spremljeno.", status_code=303)
 
 
@@ -3396,8 +3429,9 @@ def day_item_add(request: Request, program_id: int, day_id: int, exercise_id: st
 def day_item_save(request: Request, program_id: int, day_id: int, item_id: int, section: str = Form("trening"),
                   sets: str = Form(""), reps: str = Form(""), seconds: str = Form(""), rest: str = Form(""),
                   rest_after: str = Form(""), note: str = Form("")):
-    """A row's form: its section, sets, reps or seconds, rest (between
-    sets), rest after it (before the next exercise) and note; an empty
+    """A row's form: its section, sets, reps and seconds (either or both
+    since 24.11.2026), rest (between sets), rest after it (before the next
+    exercise) and note; an empty
     number is none. Back at the row, which carries the word
     ("Spremljeno." or the sentence of a refusal): `stavka` names it, so the
     page prints the alert in that row, not at its top, out of view on a

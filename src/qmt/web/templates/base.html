@@ -258,8 +258,12 @@
     .nav-burger { display: none; font-size: 1.35rem; padding: 6px 12px; }
     /* Seven tabs or more run tight at every width, so the studio's name
        still fits beside them in the 1100px pill. Not in the drawer (≤900px),
-       where each tab has a row to itself. No bar has seven since 26.10.2026:
-       a client six at most, staff five and Admin ▾. */
+       where each tab has a row to itself. No bar has seven links: a client
+       six at most, staff six and Admin ▾ since 24.11.2026 (Karton joined
+       their row), which this rule does not count and which need none of it:
+       measured for the owner (the widest bar) at 901–1280px, both themes,
+       every tab on its line inside the pill, the brand's slot still 191px at
+       901px (its floor 86px), the whole name from 1024px. */
     @media (min-width: 901px) {
       .nav:has(> a:nth-of-type(7)) > a { padding: 8px 10px; font-size: .84rem; }
     }
@@ -281,9 +285,9 @@
         border-radius: 22px; border: 1px solid rgba(255, 255, 255, .09);
         box-shadow: 0 16px 28px rgba(0, 0, 0, .45);
         backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-        /* staff's drawer is ten rows and two captions: on a short phone it
-           scrolls inside itself (the bar is sticky, so a drawer taller than
-           the window would never show its last rows) */
+        /* staff's drawer is up to twelve rows and two captions: on a short
+           phone it scrolls inside itself (the bar is sticky, so a drawer
+           taller than the window would never show its last rows) */
         max-height: calc(100vh - 96px); max-height: calc(100dvh - 96px);
         overflow-y: auto; overscroll-behavior: contain;
       }
@@ -736,6 +740,14 @@
     .it-video { color: var(--muted); font-size: .82rem; white-space: nowrap; }
     .it-video.has { color: var(--good); font-weight: 600; }
     .it-acts { display: inline-flex; gap: 6px; }
+    /* "dvoranski" after a programme's title (24.11.2026: a gym programme,
+       the trainer's own, which no client sees): staff's /treninzi table, the
+       programme's page and its editor, beside the h1. A muted fact, not a
+       state: --muted on --surface-2 (the karton's .chip), a pill, Inter 600
+       .72rem lower-case even inside an uppercase PT Sans h1, never broken */
+    .venue-chip { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--surface-2);
+                  color: var(--muted); font: 600 .72rem/1.5 var(--font-body); letter-spacing: .02em;
+                  text-transform: none; white-space: nowrap; vertical-align: middle; }
     /* The tags under an exercise search, as chips (23.11.2026, the owner:
        "a search helper where we can search the items used in the exercise
        like for example 'girja'"; _tagbar.html): the library's search
@@ -926,10 +938,15 @@
       {# Staff, the trainer and the owner, get a member's tabs and Admin ▾
          after them (26.10.2026, the owner: the tabs he shares with the
          members in one group, the ones that are there because he is an admin
-         in another). Their member row is a client's without Karton: staff
-         have none of their own. Moja članarina is the members' page, which
-         they edit in place: everyone has the tab, nobody an account-menu
-         item for it. #}
+         in another). Their member row is a client's, Karton too since
+         24.11.2026 (the owner: "Lets show the Karton tab in the Admin view as
+         well so that Amir can check out the changes we made there"): staff
+         have a karton of their own, /karton, and their tab is .on there
+         alone; a client's karton (/karton/<id>, reached from Trenutne
+         članarine, its crumbs say so) lights that item of Admin ▾, and
+         /upitnik its own. Moja članarina is the members' page, which they
+         edit in place: everyone has the tab, nobody an account-menu item
+         for it. #}
       {% set staff = user.is_trainer or is_owner %}
       {# the library of exercises is under /treninzi but Admin ▾'s (30.10.2026):
          its pages light Vježbe there, not the Online treninzi tab #}
@@ -937,7 +954,8 @@
       {% if staff %}<p class="nav-cap">Kao član</p>{% endif %}
       <a href="/" class="{% if path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if path.startswith('/raspored') %}on{% endif %}">Raspored</a>
-      {% if not staff %}<a href="/karton" class="{% if path.startswith('/karton') or path.startswith('/upitnik') %}on{% endif %}">Karton</a>{% endif %}
+      {% set at_karton = path == '/karton' if staff else (path.startswith('/karton') or path.startswith('/upitnik')) %}
+      <a href="/karton" class="{% if at_karton %}on{% endif %}">Karton</a>
       {# a paid product: without an active online plan the tab doesn't exist #}
       {% if show_online %}<a href="/treninzi" class="{% if path.startswith('/treninzi') and not at_vjezbe %}on{% endif %}">Online treninzi</a>{% endif %}
       <a href="/moja-clanarina" class="{% if path.startswith('/moja-clanarina') %}on{% endif %}">Moja članarina</a>
@@ -951,7 +969,8 @@
          In the ☰ drawer its items are rows under the "Admin" caption, and
          the tab is no row. #}
       {% set at_termini = path.startswith('/admin') %}
-      {% set at_clanarine = path.startswith('/clanarine') %}
+      {# a client's karton is opened from Trenutne članarine (24.11.2026) #}
+      {% set at_clanarine = path.startswith('/clanarine') or path.startswith('/karton/') %}
       {% set at_upitnik = path.startswith('/upitnik') %}
       {% set at_korisnici = is_owner and path.startswith('/korisnici') %}
       {% set at_statistika = is_owner and path.startswith('/statistika') %}

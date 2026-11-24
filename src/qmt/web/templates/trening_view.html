@@ -19,7 +19,8 @@
 {% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><span class="here">{{ p.title }}</span></nav>
-<h1>{{ p.title }}</h1>
+{# a dvoranski programme (24.11.2026) says so to staff, the only ones who reach it #}
+<h1>{{ p.title }}{% if user.is_trainer and p.venue == "dvorana" %} <span class="venue-chip">dvoranski</span>{% endif %}</h1>
 {% set n = p.days|length %}
 <p class="hint" style="margin-bottom:6px;">{{ n }} {{ plural(n, "trening", "treninga", "treninga") }}</p>
 {% if p.intro %}<p style="max-width:64ch; margin-bottom:10px; white-space:pre-line;">{{ p.intro }}</p>{% endif %}

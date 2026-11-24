@@ -49,6 +49,11 @@ last exercise (or to the finish screen when none is left). A pass open on a
 day left with no exercise keeps its way out, a day holding none counts a
 pass as a deleted day does ("2 vježbe"), and a save names its item: one
 from a page drawn before the day changed is refused.
+
+An exercise may ask for reps and seconds together (24.11.2026, the owner:
+"5 reps of 30 seconds of plank"): the set log's third shape (db.set_fields),
+SET · PON. · SEK., each set stored {"reps": 5, "seconds": 30}, which the
+history says "5 × 30 s".
 """
 
 from __future__ import annotations
@@ -514,13 +519,80 @@ def test_the_set_log_is_read_saved_and_refused():
     assert r.headers["location"] == f"{d.base}/kraj"                       # after the last: the finish screen
 
     with pytest.raises(ValueError, match="Upiši bar jednu seriju."):
-        db.read_sets([{"reps": "", "kg": ""}], False)
-    assert db.read_sets([{"reps": "0", "kg": ""}, {"reps": "", "kg": "0,5"}], False) == [
+        db.read_sets([{"reps": "", "kg": ""}], ("reps", "kg"))
+    assert db.read_sets([{"reps": "0", "kg": ""}, {"reps": "", "kg": "0,5"}], ("reps", "kg")) == [
         {"reps": 0, "kg": 0.0}, {"reps": 0, "kg": 0.5}]
-    assert db.read_sets([{"seconds": "0"}, {"seconds": "3600"}], True) == [{"seconds": 0}, {"seconds": 3600}]
+    assert db.read_sets([{"seconds": "0"}, {"seconds": "3600"}], ("seconds",)) == [{"seconds": 0}, {"seconds": 3600}]
     for bad in ([{"reps": True, "kg": 0.0}], [{"reps": 1}], [{"reps": 1, "kg": 0.25}], [{"seconds": 1.5}], []):
         with pytest.raises(ValueError):
             db.save_sets(log_id, ivan, item(d, 2), bad, item(d, 2).exercise)
+
+
+def test_an_exercise_of_reps_and_seconds_logs_both():
+    """The set log's third shape (24.11.2026, the owner: "5 reps of 30
+    seconds of plank"): db.set_fields says an item's fields, reps and kg for
+    reps or no number, seconds for seconds, reps and seconds for both. Plank
+    asking 3 × 5 × 30 s: SET · PON. · SEK. (· ✓), no KG column, a row per
+    planned set prefilled with the plan's 5 and 30, one row more; Spremi
+    stores each set {"reps": 5, "seconds": 30} (an empty field beside a
+    number 0, a posted weight ignored) and the saved sets come back in the
+    inputs; a refused number (400, the sentence) keeps what was typed and
+    stores nothing; read_sets and save_sets take that shape and no other.
+    The history says "5 × 30 s": the day's Povijest and the karton."""
+    trainer, ivan, ana = people()
+    d = build_day()
+    db.update_day_item(d.items[2], "trening", 3, 5, 30, 60, None, "")
+    assert [db.set_fields(item(d, k)) for k in (1, 2, 3, 4)] == [("reps", "kg"), ("reps", "kg"), ("reps", "seconds"),
+                                                                  ("reps", "kg")]
+    db.update_day_item(d.items[0], "zagrijavanje", 2, None, 30, None, None, "")
+    assert db.set_fields(item(d, 1)) == ("seconds",)
+    ci = client_for("ivan@test.local")
+    ci.post(f"{d.base}/kreni")
+    log_id = stored()[0][0]
+    page = ci.get(f"{d.base}/vjezba/3").text
+    head = ('<th scope="col" class="pl-tick" hidden><span aria-hidden="true">✓</span>'
+            '<span class="pl-sr">Odrađena serija</span></th></tr></thead>')
+    assert f'<thead><tr><th scope="col">Set</th><th scope="col">Pon.</th><th scope="col">Sek.</th>{head}' in page
+    assert 'name="kg_' not in page and '<p class="pl-dose">3 × 5 × 30 s</p>' in page
+    assert inputs(page) == [("reps", "1", "5"), ("sec", "1", "30"), ("reps", "2", "5"), ("sec", "2", "30"),
+                            ("reps", "3", "5"), ("sec", "3", "30"), ("reps", "4", ""), ("sec", "4", "")]
+    assert '<input type="hidden" name="rows" value="4">' in page
+    assert len(re.findall(r'<td class="pl-tick" hidden><button type="button" class="pl-done"', page)) == 4
+
+    form = {"rows": "4", "item": str(d.items[2]), "reps_1": "5", "sec_1": "30", "kg_1": "20", "reps_2": "5", "sec_2": "25",
+            "reps_3": "4", "sec_3": "", "reps_4": "", "sec_4": ""}
+    r = ci.post(f"{d.base}/vjezba/3", data=form, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"{d.base}/vjezba/4"
+    sets = [{"reps": 5, "seconds": 30}, {"reps": 5, "seconds": 25}, {"reps": 4, "seconds": 0}]
+    assert db.get_pass(log_id, ivan).done_items[d.items[2]]["sets"] == sets
+    assert inputs(ci.get(f"{d.base}/vjezba/3").text) == [
+        ("reps", "1", "5"), ("sec", "1", "30"), ("reps", "2", "5"), ("sec", "2", "25"), ("reps", "3", "4"), ("sec", "3", "0"),
+        ("reps", "4", ""), ("sec", "4", "")]
+    for change, kept in (({"sec_1": "3601"}, [("reps", "1", "5"), ("sec", "1", "3601")]),
+                         ({"reps_1": "x"}, [("reps", "1", "x"), ("sec", "1", "30")]),
+                         ({"reps_1": "1000", "sec_1": ""}, [("reps", "1", "1000"), ("sec", "1", "")])):
+        r = ci.post(f"{d.base}/vjezba/3", data={"rows": "1", "item": str(d.items[2]), "reps_1": "5", "sec_1": "30", **change})
+        assert r.status_code == 400 and alert(r.text) == ["Neispravan broj."] and inputs(r.text) == kept, change
+    r = ci.post(f"{d.base}/vjezba/3", data={"rows": "1", "item": str(d.items[2]), "reps_1": "", "sec_1": "", "kg_1": "20"})
+    assert r.status_code == 400 and alert(r.text) == ["Upiši bar jednu seriju."]
+    assert db.get_pass(log_id, ivan).done_items[d.items[2]]["sets"] == sets                     # untouched
+
+    assert db.read_sets([{"reps": "5", "seconds": "30"}, {"reps": "", "seconds": ""}, {"reps": "", "seconds": "20"}],
+                        ("reps", "seconds")) == [{"reps": 5, "seconds": 30}, {"reps": 0, "seconds": 20}]
+    for fields in (("kg",), ("reps", "kg", "seconds"), ()):
+        with pytest.raises(ValueError, match="Neispravan broj."):
+            db.read_sets([{"reps": "5", "kg": "5", "seconds": "5"}], fields)
+    for bad in ([{"reps": 5, "kg": 0.0, "seconds": 30}], [{"reps": 5, "seconds": 30.5}], [{"reps": 1000, "seconds": 30}],
+                [{"reps": 5, "seconds": 3601}], [{"kg": 5.0, "seconds": 30}]):
+        with pytest.raises(ValueError):
+            db.save_sets(log_id, ivan, item(d, 3), bad, item(d, 3).exercise)
+    assert db.get_pass(log_id, ivan).done_items[d.items[2]]["sets"] == sets
+
+    db.finish_pass(log_id, ivan, 6, None, "")
+    first = ci.get(d.base).text.split('<li class="card hist-row">')[1]
+    assert sets_lines(first) == ["Plank: 5 × 30 s · 5 × 25 s · 4 × 0 s"]
+    karton = ci.get("/karton").text.split(f'id="pass-{log_id}"')[1].split('<div class="log-entry')[0].split("<aside")[0]
+    assert sets_lines(karton) == ["Plank: 5 × 30 s · 5 × 25 s · 4 × 0 s"]
 
 
 def test_skipping_saves_nothing_and_the_last_leads_to_the_end():

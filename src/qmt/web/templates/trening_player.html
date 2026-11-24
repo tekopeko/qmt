@@ -80,7 +80,8 @@
   .pl-how[open] > summary::before { transform: rotate(90deg); }
   .pl-how p { margin: 4px 0 6px; font-size: .92rem; white-space: pre-line; overflow-wrap: anywhere; }
 
-  /* ===== the set log: SET · PON. · KG (a timed exercise: SET · SEK.), a
+  /* ===== the set log: SET · PON. · KG (a timed exercise: SET · SEK.; one
+     that asks reps and seconds, since 24.11.2026: SET · PON. · SEK.), a
      row per set, 44px inputs; a row past the plan's says "dodatna serija";
      "+" adds one (the script), "Spremi" saves and goes on ===== */
   .pl-log { margin-top: 14px; }
@@ -248,7 +249,10 @@
 
         {# the set log: one form, a row per planned set (the plan's reps and
            seconds, the last saved weights), one row more; a row past the
-           plan's says so. "+" (the script) adds rows and counts them in rows.
+           plan's says so. Its columns are the item's fields (db.set_fields,
+           in this order: reps, kg, seconds): PON. · KG, SEK., or PON. · SEK.
+           for an exercise that asks both (24.11.2026, no weight there).
+           "+" (the script) adds rows and counts them in rows.
            The ✓ column (the script's) marks a set done and starts the rest
            between sets, data-rest (the plan's, none when it has none or 0);
            data-odmor is the rest before this exercise, which the script
@@ -260,16 +264,19 @@
              changed under it is refused, not put into another's (4.11.2026) #}
           <input type="hidden" name="item" value="{{ it.id }}">
           <table class="pl-sets">
-            <thead><tr><th scope="col">Set</th>{% if timed %}<th scope="col">Sek.</th>{% else %}<th scope="col">Pon.</th><th scope="col">Kg</th>{% endif %}<th scope="col" class="pl-tick" hidden><span aria-hidden="true">✓</span><span class="pl-sr">Odrađena serija</span></th></tr></thead>
+            <thead><tr><th scope="col">Set</th>{% if "reps" in fields %}<th scope="col">Pon.</th>{% endif %}{% if "kg" in fields %}<th scope="col">Kg</th>{% endif %}{% if "seconds" in fields %}<th scope="col">Sek.</th>{% endif %}<th scope="col" class="pl-tick" hidden><span aria-hidden="true">✓</span><span class="pl-sr">Odrađena serija</span></th></tr></thead>
             <tbody>
               {% for r in rows %}{% set n = loop.index %}
               <tr{% if r.extra %} class="extra"{% endif %}>
                 <th scope="row">{{ n }}{% if r.extra %}<span class="pl-x">dodatna serija</span>{% endif %}</th>
-                {% if timed %}
-                <td><input type="number" name="sec_{{ n }}" value="{{ r.sec }}" inputmode="numeric" min="0" max="3600" step="1" aria-label="Serija {{ n }}: sekunde"></td>
-                {% else %}
+                {% if "reps" in fields %}
                 <td><input type="number" name="reps_{{ n }}" value="{{ r.reps }}" inputmode="numeric" min="0" max="999" step="1" aria-label="Serija {{ n }}: ponavljanja"></td>
+                {% endif %}
+                {% if "kg" in fields %}
                 <td><input type="number" name="kg_{{ n }}" value="{{ r.kg }}" inputmode="decimal" min="0" max="500" step="0.5" aria-label="Serija {{ n }}: kilogrami"></td>
+                {% endif %}
+                {% if "seconds" in fields %}
+                <td><input type="number" name="sec_{{ n }}" value="{{ r.sec }}" inputmode="numeric" min="0" max="3600" step="1" aria-label="Serija {{ n }}: sekunde"></td>
                 {% endif %}
                 <td class="pl-tick" hidden><button type="button" class="pl-done" aria-pressed="false" aria-label="Serija {{ n }} odrađena">✓</button></td>
               </tr>

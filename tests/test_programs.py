@@ -51,6 +51,13 @@ section `trening` "Glavni dio"; the model, the routes and the ids still say
 day. Since 23.11.2026 a day has two main parts (the owner, for Amir:
 "'glavni dio A' and 'glavni dio B'"): `trening` reads "Glavni dio A" and
 `trening_b` is "Glavni dio B" (migration dc22ce1ed7e6).
+
+Since 24.11.2026 an exercise of a day may ask for reps and seconds together
+(the owner: "5 reps of 30 seconds of plank"; migration 30815c99e7d2 dropped
+the CHECK that refused it), its dose "3 × 5 × 30 s"; and a programme is
+online or dvoranski (`Program.venue`, migration 49a70497e58a): a dvoranski
+one is the trainer's own plan for the gym, which no client lists or opens.
+Both migrations run for real on qmt_test, there and back.
 """
 
 from __future__ import annotations
@@ -78,7 +85,7 @@ from sqlalchemy import inspect as sa_inspect, text as sa_text
 from sqlalchemy.exc import IntegrityError
 
 from qmt import auth, config, db
-from qmt.models import SECTIONS, Base, ProgramDay, ProgramDayItem, alpha_key, fold, matches
+from qmt.models import SECTIONS, VENUES, Base, ProgramDay, ProgramDayItem, alpha_key, fold, matches
 from qmt.web.app import app
 
 PORT = 8114                      # test_copy's server is 8111, test_raspored_ui's and test_upitnik_ui's 8112, test_nav's 8113
@@ -404,15 +411,16 @@ def test_a_client_without_the_upitnik_is_told_it_decides_his_razina():
 def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
     """The lead says what is automatic (the matching, by razina since
     23.11.2026, every type of it) and what is his (the programmes, their
-    days and exercises), and what a razina with no programme tells its
-    client; the form is "Novi program", its button "Kreiraj i dodaj
-    treninge", which opens the new programme's editor, the programme with
-    no day."""
+    days and exercises), what a razina with no programme tells its client,
+    and since 24.11.2026 that a dvoranski programme is his alone; the form
+    is "Novi program", its button "Kreiraj i dodaj treninge", which opens
+    the new programme's editor, the programme with no day."""
     ct, *_ = trainer_with_clients()
     page = ct.get("/treninzi").text
     lead = ("Sve je automatski: upitnik svrsta polaznika u razinu, a on odmah vidi sve programe te razine, po tipu "
             "treninga — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku razinu napravi programe po tipu "
-            "pa im dodaj treninge i vježbe. Razina bez programa polazniku kaže da se programi još pripremaju.")
+            "pa im dodaj treninge i vježbe. Razina bez programa polazniku kaže da se programi još pripremaju. "
+            "Dvoranski programi su samo tvoji: polaznici ih ne vide.")
     assert f'<p class="hint"> {lead} </p>' in " ".join(page.split())
     assert '<h2 style="font-size:1.05rem; margin-bottom:12px;">Novi program</h2>' in page
     assert '<button type="submit">Kreiraj i dodaj treninge</button>' in page
@@ -464,6 +472,123 @@ def test_a_programme_is_one_of_four_types_core_last():
     assert stored_counts()[0] == 4 and (p.title, p.level, p.goal) == ("Core 1", "srednja", "core")
 
 
+# ---------- a programme is online or dvoranski (24.11.2026) ----------
+
+VENUE_GRID = 'style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0 12px;"'
+OPTION = re.compile(r'<option value="(\w+)"( selected)?>([^<]*)</option>')
+
+
+def test_a_programme_is_online_or_dvoranski_on_both_forms():
+    """A programme's "Vrsta" (24.11.2026, the owner: "'dvoranski' or
+    'online'"; models.VENUES): a select after Tip treninga and Razina, the
+    three in one auto-fit grid (a row where they fit, stacked on a phone),
+    on "Novi program" (Online, Dvoranski; Online chosen) and on "Uredi
+    program" (the programme's chosen). Created dvoranski, it is one; a form
+    that posts none makes it online; the editor moves it either way, and
+    one that posts none keeps it. A value that is none is refused on both
+    routes, "Odaberi vrstu programa.", nothing stored or changed."""
+    ct, *_ = trainer_with_clients()
+    assert VENUES == {"online": "Online", "dvorana": "Dvoranski"}
+    page = ct.get("/treninzi").text
+    form = page.split('<form method="post" action="/treninzi" class="card"')[1].split("</form>")[0]
+    assert '<div class="field"><label for="np-venue">Vrsta</label>' in form and VENUE_GRID in form
+    assert form.index('id="np-goal"') < form.index('id="np-level"') < form.index('id="np-venue"')
+    assert OPTION.findall(form.split('id="np-venue"')[1].split("</select>")[0]) == [
+        ("online", " selected", "Online"), ("dvorana", "", "Dvoranski")]
+
+    def new(title: str, **venue) -> int:
+        r = ct.post("/treninzi", data={"title": title, "level": "pocetna", "goal": "cijelo", **venue},
+                    follow_redirects=False)
+        return int(r.headers["location"].split("/")[2])
+
+    gym, online, plain = new("Dvorana A", venue="dvorana"), new("Online A", venue="online"), new("Bez vrste")
+    assert [db.get_program(p).venue for p in (gym, online, plain)] == ["dvorana", "online", "online"]
+    edit = ct.get(f"/treninzi/{gym}/uredi").text
+    assert '<div class="field"><label for="pe-venue">Vrsta</label>' in edit and VENUE_GRID in edit
+    assert OPTION.findall(edit.split('id="pe-venue"')[1].split("</select>")[0]) == [
+        ("online", "", "Online"), ("dvorana", " selected", "Dvoranski")]
+    assert OPTION.findall(ct.get(f"/treninzi/{online}/uredi").text.split('id="pe-venue"')[1].split("</select>")[0]) == [
+        ("online", " selected", "Online"), ("dvorana", "", "Dvoranski")]
+
+    def edit_to(pid: int, title: str, **venue):
+        return ct.post(f"/treninzi/{pid}/edit", data={"title": title, "level": "pocetna", "goal": "cijelo", **venue},
+                       follow_redirects=False)
+
+    assert location(edit_to(gym, "Dvorana A", venue="online")) == f"/treninzi/{gym}/uredi?ok=Spremljeno."
+    assert db.get_program(gym).venue == "online"
+    edit_to(gym, "Dvorana A", venue="dvorana")
+    assert db.get_program(gym).venue == "dvorana"
+    edit_to(gym, "Dvorana B")                                                # none posted: kept
+    assert (db.get_program(gym).title, db.get_program(gym).venue) == ("Dvorana B", "dvorana")
+    for bad in ("x", "Dvoranski", "online ", "DVORANA"):
+        r = ct.post("/treninzi", data={"title": "X", "level": "pocetna", "goal": "cijelo", "venue": bad},
+                    follow_redirects=False)
+        assert location(r) == "/treninzi?error=Odaberi vrstu programa.", bad
+        assert location(edit_to(gym, "X", venue=bad)) == f"/treninzi/{gym}/uredi?error=Odaberi vrstu programa.", bad
+    assert stored_counts()[0] == 3 and (db.get_program(gym).title, db.get_program(gym).venue) == ("Dvorana B", "dvorana")
+    with pytest.raises(IntegrityError):                                     # the CHECK: nothing else is stored
+        db.create_program("Y", None, "pocetna", "cijelo", "kardio")
+
+
+def test_a_dvoranski_programme_is_staffs_only():
+    """A dvoranski programme (24.11.2026) is the trainer's own plan for the
+    gym. A client of its razina has it neither in his list (his online one
+    he has: db.programs_for_level) nor behind any address: its page, its
+    day, its player (Kreni, an exercise, its save, the finish screen) and
+    its clips (an exercise only it holds, its day's intro video) are 403,
+    db.client_can_view false, no pass opened. Staff see it, a muted
+    "dvoranski" after its title in the /treninzi table and beside the h1 on
+    its page and in its editor (an online one carries none), watch its
+    clips and run its player: Kreni, a save, the osvrt, a finished pass of
+    their own. Moved to online, it is the client's at once."""
+    ct, ivan, _ = trainer_with_clients()
+    trainer = db.get_user_by_email("trener@test.local").id
+    gym = db.create_program("Snaga u dvorani", None, "pocetna", "cijelo", "dvorana")
+    online = db.create_program("Snaga online", None, "pocetna", "cijelo")
+    did = db.add_day(gym)
+    lift = db.create_exercise("Mrtvo dizanje")                              # only the gym programme holds it
+    iid = hold(gym, lift)
+    db.update_day_item(iid, "trening", 3, 5, None, 120, None, "")
+    upload(ct, lift, "m.mp4", MP4)
+    day_upload(ct, gym, did, "d.mp4", MP4)
+    clip, intro = db.exercise(lift).video, db.get_day(did).intro_video
+    day = f"/treninzi/{gym}/dan/{did}"
+    ci = client_for("ivan@test.local")
+
+    assert client_groups(ci.get("/treninzi").text) == [("Cijelo tijelo", ["Snaga online"])]
+    assert [p.id for p in db.programs_for_level("pocetna")] == [online]
+    assert not db.client_can_view(db.get_program(gym), ivan) and db.client_can_view(db.get_program(online), ivan)
+    for r in (ci.get(f"/treninzi/{gym}"), ci.get(day), ci.post(f"{day}/kreni"), ci.get(f"{day}/vjezba/1"),
+              ci.post(f"{day}/vjezba/1", data={"rows": "1", "item": str(iid), "reps_1": "5", "kg_1": "100"}),
+              ci.get(f"{day}/kraj"), ci.get(f"/media/{clip}"), ci.get(f"/media/{intro}")):
+        assert r.status_code == 403, r.request.url
+    assert db.passes(ivan) == [] and db.open_pass(ivan, did) is None
+
+    table = ct.get("/treninzi").text
+    assert '<td><strong>Snaga u dvorani</strong> <span class="venue-chip">dvoranski</span></td>' in table
+    assert '<td><strong>Snaga online</strong></td>' in table and table.count('class="venue-chip"') == 1
+    assert '<h1>Snaga u dvorani <span class="venue-chip">dvoranski</span></h1>' in ct.get(f"/treninzi/{gym}").text
+    assert '<h1>Uredi program <span class="venue-chip">dvoranski</span></h1>' in ct.get(f"/treninzi/{gym}/uredi").text
+    assert "<h1>Snaga online</h1>" in ct.get(f"/treninzi/{online}").text
+    assert "<h1>Uredi program</h1>" in ct.get(f"/treninzi/{online}/uredi").text
+    assert ct.get(f"/media/{clip}").status_code == 200 and ct.get(f"/media/{intro}").status_code == 200
+    r = ct.post(f"{day}/kreni", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"{day}/vjezba/1"
+    assert ct.get(f"{day}/vjezba/1").status_code == 200
+    r = ct.post(f"{day}/vjezba/1", data={"rows": "1", "item": str(iid), "reps_1": "5", "kg_1": "100"}, follow_redirects=False)
+    assert r.headers["location"] == f"{day}/kraj"
+    r = ct.post(f"{day}/kraj", data={"effort": "7"}, follow_redirects=False)
+    assert location(r) == f"{day}?ok=Trening je spremljen."
+    [done] = db.passes(trainer)
+    assert (done.program_title, done.effort, done.done_items[iid]["sets"]) == ("Snaga u dvorani", 7, [{"reps": 5, "kg": 100.0}])
+
+    ct.post(f"/treninzi/{gym}/edit", data={"title": "Snaga u dvorani", "level": "pocetna", "goal": "cijelo", "venue": "online"})
+    assert ci.get(f"/treninzi/{gym}").status_code == 200 and ci.get(f"/media/{clip}").status_code == 200
+    assert [title for _, titles in client_groups(ci.get("/treninzi").text) for title in titles] == [
+        "Snaga online", "Snaga u dvorani"]
+    assert client_for("ana@test.local").get(f"/treninzi/{gym}").status_code == 403   # another razina's: still not hers
+
+
 def test_the_demo_seed_makes_its_nine_programmes_none_of_them_core():
     """scripts/seed_demo.py's programmes walk its DEMO_PROGRAMS (since
     23.11.2026, not upitnik.GOALS, which holds Core now: the demo's
@@ -492,17 +617,20 @@ def test_a_day_says_its_label_and_an_item_its_dose_and_rest():
     """A day's label is "Trening N", with its title "Trening N · title";
     its items read section by section in their order, each in position
     order. An item's dose is the list's words: sets × reps, sets × seconds,
-    reps or seconds alone, sets alone, nothing; its rest "60 s" or
-    nothing."""
+    and since 24.11.2026 sets × reps × seconds ("3 × 5 × 30 s": 5 reps of
+    30 s) and reps × seconds with no sets ("5 × 30 s"), reps or seconds
+    alone, sets alone, nothing; its rest "60 s" or nothing."""
     assert ProgramDay(position=2, title="").label == "Trening 2"
     assert ProgramDay(position=1, title="Cijelo tijelo").label == "Trening 1 · Cijelo tijelo"
 
     def dose(sets=None, reps=None, seconds=None):
         return ProgramDayItem(sets=sets, reps=reps, seconds=seconds).dose
 
-    assert [dose(3, 10), dose(3, None, 30), dose(None, 10), dose(None, 1), dose(None, 3), dose(None, None, 30),
+    assert [dose(3, 10), dose(3, None, 30), dose(3, 5, 30), dose(1, 1, 3600), dose(None, 5, 30), dose(None, 1, 10),
+            dose(None, 10), dose(None, 1), dose(None, 3), dose(None, None, 30),
             dose(3), dose(1), dose(5), dose(21), dose(12), dose()] == [
-        "3 × 10", "3 × 30 s", "10 ponavljanja", "1 ponavljanje", "3 ponavljanja", "30 s",
+        "3 × 10", "3 × 30 s", "3 × 5 × 30 s", "1 × 1 × 3600 s", "5 × 30 s", "1 × 10 s",
+        "10 ponavljanja", "1 ponavljanje", "3 ponavljanja", "30 s",
         "3 serije", "1 serija", "5 serija", "21 serija", "12 serija", ""]
     assert [ProgramDayItem(rest_seconds=r).rest_text for r in (60, 0, None)] == ["60 s", "0 s", ""]
     day = ProgramDay(position=1, title="")
@@ -1421,10 +1549,11 @@ def test_items_go_into_a_section_and_say_what_the_day_asks():
     """An exercise goes last into the chosen section and the editor comes
     back at its row; a choice that is no exercise, or a section that is
     none, adds nothing ("Odaberi vježbu iz baze."). A row's form saves the
-    section, sets, reps or seconds, rest and the note (stripped); an empty
-    number is none. Refused with the sentence, the row unchanged: a number
-    out of range or not a number ("Neispravan broj."), reps and seconds
-    both, a note past 500. Moved to another section, it goes last in it;
+    section, sets, reps and / or seconds (both since 24.11.2026: their own
+    test, below), rest and the note (stripped); an empty number is none.
+    Refused with the sentence, the row unchanged: a number out of range or
+    not a number ("Neispravan broj."), a note past 500, a section that is
+    none. Moved to another section, it goes last in it;
     ↑ / ↓ move it within its section only; ✕ takes it out of the day, the
     library keeps the exercise."""
     ct, *_ = trainer_with_clients()
@@ -1485,7 +1614,7 @@ def test_items_go_into_a_section_and_say_what_the_day_asks():
                 ({"reps": "0"}, "Neispravan broj."), ({"reps": "1000"}, "Neispravan broj."),
                 ({"seconds": "0"}, "Neispravan broj."), ({"seconds": "3601"}, "Neispravan broj."),
                 ({"rest": "3601"}, "Neispravan broj."), ({"rest": "-5"}, "Neispravan broj."),
-                ({"sets": "3", "reps": "10", "seconds": "30"}, "Upiši ponavljanja ili sekunde, ne oboje."),
+                ({"sets": "3", "reps": "10", "seconds": "3601"}, "Neispravan broj."),
                 ({"note": "x" * 501}, "Napomena može imati najviše 500 znakova."),
                 ({"section": "kardio"}, "Odaberi dio treninga.")]
     for fields, sentence in refusals:
@@ -1509,6 +1638,53 @@ def test_items_go_into_a_section_and_say_what_the_day_asks():
     assert r.headers["location"] == f"{base}/uredi"
     assert layout() == {"zagrijavanje": [ia, ib], "trening": [], "trening_b": [], "istezanje": [id_]}
     assert db.exercise(c) is not None and not db.delete_day_item(ic)
+
+
+def test_an_item_asks_for_reps_and_seconds_together():
+    """Since 24.11.2026 (the owner: "5 reps of 30 seconds of plank"; until
+    then "Upiši ponavljanja ili sekunde, ne oboje."), a row saves reps and
+    seconds together, through its form and through db.update_day_item
+    alike, each within its limits as ever; its form shows both, and its
+    dose says them, "3 × 5 × 30 s" with sets and "5 × 30 s" without, on the
+    client's day page too. Emptied, either goes alone again. The editor's
+    lead says so: "Ponavljanja i sekunde mogu zajedno: 5 ponavljanja po 30
+    s."."""
+    ct, *_ = trainer_with_clients()
+    pid = db.create_program("T", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    iid = hold(pid, db.create_exercise("Bočni plank 1. razina - bodyweight"))
+    base = f"/treninzi/{pid}/dan/{did}"
+
+    def save(**fields):
+        data = {"section": "trening", "sets": "", "reps": "", "seconds": "", "rest": "", "rest_after": "", "note": ""}
+        return ct.post(f"{base}/stavke/{iid}", data=data | fields, follow_redirects=False)
+
+    def stored():
+        it = db.get_day_item(iid)
+        return it.sets, it.reps, it.seconds, it.rest_seconds, it.dose
+
+    r = save(sets="3", reps="5", seconds="30", rest="60")                  # the owner's photo: 3 × 5 of 30 s
+    assert location(r) == f"{base}/uredi?ok=Spremljeno.&stavka={iid}#stavka-{iid}"
+    assert stored() == (3, 5, 30, 60, "3 × 5 × 30 s")
+    page = ct.get(f"{base}/uredi").text
+    assert "Ponavljanja i sekunde mogu zajedno: 5 ponavljanja po 30 s." in page
+    form = page.split(f'id="stavka-{iid}"')[1].split('<form class="st-form"')[1].split("</form>")[0]
+    assert {k: v for k, v in re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', form) if k in ("sets", "reps", "seconds")} == {
+        "sets": "3", "reps": "5", "seconds": "30"}
+    client_day = client_for("ivan@test.local").get(base).text
+    assert '<span class="dx-name">Bočni plank 1. razina - bodyweight</span><span class="dx-dose">3 × 5 × 30 s</span>' in client_day
+    assert db.update_day_item(iid, "trening", None, 5, 30, None, None, "")
+    assert stored() == (None, 5, 30, None, "5 × 30 s")
+    assert db.update_day_item(iid, "trening", 99, 999, 3600, 0, 0, "")     # each at its limit
+    assert stored()[:3] == (99, 999, 3600)
+    for sets, reps, seconds in ((3, 1000, 30), (3, 5, 3601), (3, 0, 30), (100, 5, 30)):
+        with pytest.raises(ValueError, match="Neispravan broj."):
+            db.update_day_item(iid, "trening", sets, reps, seconds, None, None, "")
+    assert stored()[:3] == (99, 999, 3600)
+    save(sets="3", seconds="30")                                            # reps emptied: seconds alone
+    assert stored() == (3, None, 30, None, "3 × 30 s")
+    save(sets="3", reps="5")                                                # seconds emptied: reps alone
+    assert stored() == (3, 5, None, None, "3 × 5")
 
 
 def test_a_foreign_day_or_item_is_404():
@@ -1602,8 +1778,9 @@ def test_the_day_editor_shows_each_row_and_its_form():
             f'<a href="/treninzi/{pid}/uredi">Cijelo tijelo — početna</a><span class="sep">/</span>'
             '<span class="here">Trening 1</span></nav>\n<h1>Trening 1</h1>') in page
     assert "<title>Uredi: Trening 1 — Cijelo tijelo — početna — QMT</title>" in page
-    assert ("Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja ili "
-            "sekunde, odmor i napomena.") in page
+    assert ("Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja, "
+            "sekunde, odmor i napomena.\n  Ponavljanja i sekunde mogu zajedno: 5 ponavljanja po 30 s.") in page
+    assert "ili sekunde" not in page and "ne oboje" not in page                 # both may be set (24.11.2026)
     assert ("„Odmor (s)” je odmor između serija, a „Nakon vježbe (s)” odmor prije sljedeće vježbe: polaznik za oba "
             "dobiva odbrojavanje koje može preskočiti.") in page
     assert f'<a class="act act-quiet" href="/treninzi/{pid}/dan/{did}">pogledaj kako polaznik vidi →</a>' in page
@@ -2016,11 +2193,14 @@ def _schema_diffs(tables: set[str]) -> list:
 
 
 TRENINZI = {"programs", "program_days", "program_day_items", "program_items", "exercises", "exercise_alternatives"}
-# 4f9d6f7103ad, the rest after an exercise, and 45c543c860f3, the items' key to
-# their exercise CASCADE (4.11.2026): a test that builds program_day_items with
+# 4f9d6f7103ad, the rest after an exercise, 45c543c860f3, the items' key to
+# their exercise CASCADE (4.11.2026), and 30815c99e7d2, reps and seconds
+# together (24.11.2026: the CHECK 7c3bf996c983 made goes, and Alembic's
+# compare sees a CHECK by its name): a test that builds program_day_items with
 # 7c3bf996c983 runs them on top, so the table is the model's again
 REST_AFTER = "4f9d6f7103ad_program_day_items_rest_after.py"
 CASCADE = "45c543c860f3_program_day_items_exercise_cascade.py"
+REPS_AND_SECONDS = "30815c99e7d2_program_day_items_reps_and_seconds.py"
 
 
 def _old_items() -> list[tuple]:
@@ -2149,6 +2329,7 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     _run(_migration("7c3bf996c983_program_days.py").upgrade)                 # and on to the days
     _run(_migration(REST_AFTER).upgrade)                                     # and their rest after an exercise
     _run(_migration(CASCADE).upgrade)                                        # and their key to it, CASCADE
+    _run(_migration(REPS_AND_SECONDS).upgrade)                               # and reps with seconds, no CHECK
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI) == []
     assert _library() == library
     assert [[(i.exercise.name, i.sets, i.reps, i.seconds, i.note) for i in items_of(p)] for p in (p1, p2, p3)] == [
@@ -2191,10 +2372,11 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     counting on across its days in each day's display order, each note its
     dose and its note joined by " · ", and drops the days; a second upgrade
     folds them again. (4f9d6f7103ad follows each upgrade: the items' rest
-    after an exercise, a later column the models have; and 45c543c860f3,
-    their key to the exercise CASCADE, as the models have it.)"""
+    after an exercise, a later column the models have; 45c543c860f3, their
+    key to the exercise CASCADE, as the models have it; and 30815c99e7d2,
+    which drops the reps-or-seconds CHECK the models no longer have.)"""
     mig = _migration("7c3bf996c983_program_days.py")
-    rest_after, cascade = _migration(REST_AFTER), _migration(CASCADE)
+    rest_after, cascade, both = _migration(REST_AFTER), _migration(CASCADE), _migration(REPS_AND_SECONDS)
     assert (mig.revision, mig.down_revision) == ("7c3bf996c983", "4c2e8a6f1d39")
     with db.engine.begin() as conn:                                         # the tables as before the revision
         # (workout_logs, 3890252ee50f's, points at program_days: it goes first)
@@ -2216,6 +2398,7 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     _run(mig.upgrade)
     _run(rest_after.upgrade)
     _run(cascade.upgrade)
+    _run(both.upgrade)
     assert capsys.readouterr().out == f"[7c3bf996c983] programs {p1} ('Cijelo tijelo — srednja'): Dan 1 with 7 exercises\n"
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI) == []
     days = db.get_program(p1).days
@@ -2242,6 +2425,7 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     _run(mig.upgrade)
     _run(rest_after.upgrade)
     _run(cascade.upgrade)
+    _run(both.upgrade)
     assert capsys.readouterr().out.endswith("Dan 1 with 10 exercises\n")
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI) == []
     assert [(i.exercise_id, i.section, i.sets, i.reps, i.seconds, i.note) for i in items_of(p1)][:3] == [
@@ -2364,6 +2548,81 @@ def test_the_two_main_parts_migration_lets_an_item_into_b_and_back():
     assert sections() == [(a, "trening", 1), (b, "trening", 2)] and not into_b(a)
     _run(mig.upgrade)
     assert into_b(a) and sections() == [(a, "trening_b", 1), (b, "trening", 2)]
+
+
+def _takes(sql: str, **params) -> bool:
+    """Whether the database takes this write (no CHECK refuses it)."""
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(sa_text(sql), params)
+        return True
+    except IntegrityError:
+        return False
+
+
+def test_the_reps_and_seconds_migration_lets_an_item_ask_both_and_back():
+    """30815c99e7d2, run on qmt_test as before it (the CHECK
+    ck_program_day_items_reps_or_seconds: an item with reps and seconds is
+    refused): the CHECK goes, the tables the models', and an item holds
+    both; downgrade keeps such an item's reps and drops its seconds (one
+    with seconds alone keeps them), and the CHECK refuses both again; a
+    second upgrade lets them in once more."""
+    mig = _migration("30815c99e7d2_program_day_items_reps_and_seconds.py")
+    assert (mig.revision, mig.down_revision) == ("30815c99e7d2", "0401f7fb9861")
+    pid = db.create_program("T", None, "pocetna", "cijelo")
+    both, timed = hold(pid, db.create_exercise("Bočni plank")), hold(pid, db.create_exercise("Plank"))
+    db.update_day_item(timed, "trening", 3, None, 40, None, None, "")
+    both_sql = "UPDATE program_day_items SET sets = 3, reps = 5, seconds = 30 WHERE id = :i"
+
+    def numbers() -> list[tuple]:
+        with db.engine.connect() as conn:
+            return [tuple(r) for r in conn.execute(sa_text("SELECT id, sets, reps, seconds FROM program_day_items ORDER BY id"))]
+
+    with db.engine.begin() as conn:                                         # the CHECK as before the revision
+        conn.execute(sa_text("ALTER TABLE program_day_items ADD CONSTRAINT ck_program_day_items_reps_or_seconds "
+                             "CHECK (reps IS NULL OR seconds IS NULL)"))
+    assert not _takes(both_sql, i=both) and _schema_diffs(TRENINZI) != []   # the models have it no more
+    _run(mig.upgrade)
+    assert _schema_diffs(TRENINZI) == [] and _takes(both_sql, i=both)
+    assert numbers() == [(both, 3, 5, 30), (timed, 3, None, 40)] and db.get_day_item(both).dose == "3 × 5 × 30 s"
+    _run(mig.downgrade)
+    assert numbers() == [(both, 3, 5, None), (timed, 3, None, 40)] and not _takes(both_sql, i=both)
+    assert _schema_diffs(TRENINZI) != []
+    _run(mig.upgrade)
+    assert _schema_diffs(TRENINZI) == [] and _takes(both_sql, i=both) and numbers()[0] == (both, 3, 5, 30)
+
+
+def test_the_venue_migration_makes_every_programme_online_and_back():
+    """49a70497e58a, run on qmt_test as before it (programs without venue,
+    two programmes in it): the column as the model has it (String(8), NOT
+    NULL, 'online' by default), every programme there online, a row
+    inserted without one online, its CHECK refusing a venue that is none of
+    online and dvorana; downgrade drops the column, the programmes staying;
+    a second upgrade makes them online again."""
+    mig = _migration("49a70497e58a_programs_venue.py")
+    assert (mig.revision, mig.down_revision) == ("49a70497e58a", "30815c99e7d2")
+    assert mig.VENUES == tuple(VENUES)                                      # its own copy agrees with the model's
+    a = db.create_program("A", None, "pocetna", "cijelo")
+    b = db.create_program("B", None, "srednja", "core", "dvorana")
+    with db.engine.begin() as conn:                                         # the table as before the revision
+        conn.execute(sa_text("ALTER TABLE programs DROP COLUMN venue"))
+    assert "venue" not in {c["name"] for c in sa_inspect(db.engine).get_columns("programs")}
+    _run(mig.upgrade)
+    assert _schema_diffs({"programs"}) == []
+    col = {c["name"]: c for c in sa_inspect(db.engine).get_columns("programs")}["venue"]
+    assert not col["nullable"] and str(col["type"]) == "VARCHAR(8)" and col["default"] == "'online'::character varying"
+    assert [(db.get_program(p).title, db.get_program(p).venue) for p in (a, b)] == [("A", "online"), ("B", "online")]
+    with db.engine.begin() as conn:
+        assert conn.execute(sa_text("INSERT INTO programs (title) VALUES ('C') RETURNING venue")).scalar_one() == "online"
+    assert _takes("UPDATE programs SET venue = 'dvorana' WHERE id = :i", i=b)
+    assert not _takes("UPDATE programs SET venue = 'teretana' WHERE id = :i", i=a)
+    assert [p.title for p in db.programs_for_level("srednja")] == []         # b is dvoranski now
+    _run(mig.downgrade)
+    assert "venue" not in {c["name"] for c in sa_inspect(db.engine).get_columns("programs")}
+    with db.engine.connect() as conn:
+        assert [r[0] for r in conn.execute(sa_text("SELECT title FROM programs ORDER BY id"))] == ["A", "B", "C"]
+    _run(mig.upgrade)
+    assert _schema_diffs({"programs"}) == [] and {db.get_program(p).venue for p in (a, b)} == {"online"}
 
 
 def test_nutricionizam_links_to_mojimakrosi():
