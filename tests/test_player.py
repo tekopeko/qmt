@@ -963,11 +963,13 @@ def test_the_karton_lists_the_passes_among_the_termini():
 
     page = client_for("ivan@test.local").get("/karton").text
     row = entry(page, a)
-    assert '<div class="le-kicker">Online trening</div>' in row
+    # the karton's own words are copy slots since 25.11.2026, each in a span
+    # (a member's span.t; the trainer's view, an editor's, its span.ed.t)
+    assert '<div class="le-kicker"><span class="t">Online trening</span></div>' in row
     assert '<div class="hint le-sub">Trening 1 · Cijelo tijelo — Cijelo tijelo — početna</div>' in row
     assert '<div class="hint le-sub">2 od 4 vježbe · 38 min</div>' in row
     assert '<span class="rpe">napor 7/10</span>' in row and '<span class="rpe feel ">Odlično</span>' in row
-    assert "<p>Online.</p>" in row and "<summary>Serije</summary>" in row
+    assert "<p>Online.</p>" in row and '<summary><span class="t">Serije</span></summary>' in row
     assert sets_lines(row) == ["Goblet čučanj: 10 × 20 kg · 8 × 20 kg", "Plank: 40 s"]
     assert '<div class="hint le-sub">1 od 4 vježbe · 1 h 05 min</div>' in entry(page, b)
     assert '<span class="rpe feel low">Slabo</span>' in entry(page, b)
@@ -976,7 +978,7 @@ def test_the_karton_lists_the_passes_among_the_termini():
 
     page = client_for("trener@test.local").get(f"/karton/{ivan}").text
     row = entry(page, a)
-    assert "<summary>Serije</summary>" in row
+    assert re.search(r'<summary><span class="ed t" data-copy="karton\.diary\.sets"[^>]*>Serije</span></summary>', row)
     assert sets_lines(row) == ["Goblet čučanj: 10 × 20 kg · 8 × 20 kg", "Plank: 40 s"]
     db.delete_day(d.did)                                                   # the day gone: the pass stays
     page = client_for("ivan@test.local").get("/karton").text

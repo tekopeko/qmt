@@ -113,6 +113,30 @@ a heading, its lines, a list and the lines under the list, any of them
 empty if he likes; then the guide's title and its button. _vodic.html
 prints it, on /upitnik's first screen and on /vodic.
 
+The karton's texts (25.11.2026, the owner: "In the moji karton tab, lets
+allow the admin to change all of the text, like in other tabs as well")
+are slots too, karton.<area>.<name>: every static text karton.html
+prints, its headings, leads, hints, empty lines, kickers, chips, form
+labels, buttons, links, <summary> texts, table headers, the exercise
+block's words and the confirm dialogs' texts, the member's own karton, a
+staff member's own and the trainer's view of a client each with its own
+variant where they differ (karton.staff.*). Their defaults are the texts
+as the page printed them, so nothing changes until someone edits; a
+control's words are required (its default comes back when emptied), a
+lead, a hint, a kicker, a chip or an empty line is not (emptied, a reader
+gets nothing for it). A text in an attribute (a confirm's, a placeholder)
+prints with copy_text, and the editor reaches it, and every text only a
+member or the trainer's view shows, in the panel "Svi tekstovi kartona"
+at the bottom of his own karton in edit mode (KARTON_AREAS, KARTON_PANEL).
+What stays code there: a sentence built around a value (the head line,
+"Razina 2 od 3 — …", "napor 7/10", "3 vježbe", "6 od 8 vježbi · 38 min",
+"Karton — <ime>", a confirm that names a value, the photo field's label
+with its size in MB, the line the script writes for an exercise gone from
+the library), the tables' cells, LEVELS, FEELING_LABELS and the months
+(the app's words everywhere), the upitnik's own questions and answers
+(rows and slots of their own), the routes' flashes, every aria-label and
+alt, the page's <title>, the crumbs and the nav.
+
 The price slots (18.10.2026) are plain Slots with one job: every price the
 site shows, whether or not Stripe is configured (app.py, reference_prices
 and _offer_prices). No Stripe Price overrides them (the owner's call, the
@@ -551,7 +575,174 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
                              else Slot(section[part], CAP, f"Vodič {n}: {word}"))
        for n, section in enumerate(VODIC_SECTIONS, start=1) for part, word in VODIC_PARTS.items()},
     "vodic.cta": Slot("Idemo na upitnik!", CAP, "Vodič: gumb"),
+    # ---- the karton (/karton, /karton/<id>; 25.11.2026, the owner: "In the
+    # moji karton tab, lets allow the admin to change all of the text, like in
+    # other tabs as well"): every static text karton.html prints, in the
+    # page's order, area by area (KARTON_AREAS below: the panel "Svi tekstovi
+    # kartona" lists them so). A control's words are required (a heading, a
+    # button, a link, a label, a <summary>, a table header, a confirm's three
+    # texts): emptied, the default comes back; a lead, a hint, a kicker, a
+    # chip and an empty line are not, and an emptied one prints nothing. The
+    # words before a link carry the dash that leads to it ("Visina nije
+    # upisana —"); the period after the link is the template's. The trainer's
+    # view of a client and a staff member's own karton have their own
+    # variants (karton.staff.*). Not slots: the sentences built around a
+    # value (the head line, "Razina 2 od 3 — …", "napor 7/10", "3 vježbe", a
+    # date, a name, a count, a confirm that names a value, the photo field's
+    # label with its size in MB), the tables' cells, LEVELS, FEELING_LABELS,
+    # the months, the upitnik's own questions and answers, the routes'
+    # flashes, every aria-label and alt, the crumbs and the nav ----
+    "karton.head.title": Slot("Moj karton", CAP, "Karton: naslov", required=True),
+    "karton.head.lead": Slot("Dnevnik treninga, upitnik i termini na jednom mjestu.", CAP, "Karton: uvodna rečenica"),
+    "karton.upitnik.eyebrow": Slot("Online trening — upitnik", CAP, "Karton · upitnik: mala oznaka"),
+    "karton.upitnik.redo": Slot("Ispuni ponovno", CAP, "Karton · upitnik: gumb Ispuni ponovno", required=True),
+    "karton.upitnik.old": Slot("Stari upitnik —", CAP, "Karton · upitnik: stari upitnik, prije poveznice"),
+    "karton.upitnik.old_link": Slot("ispuni novi", CAP, "Karton · upitnik: poveznica na novi upitnik", required=True),
+    "karton.upitnik.none_title": Slot("Upitnik još nije ispunjen", CAP, "Karton · upitnik: naslov dok nije ispunjen",
+                                      required=True),
+    "karton.upitnik.none_text": Slot("Prema odgovorima te svrstavamo u razinu — programi se otvaraju odmah.", CAP,
+                                     "Karton · upitnik: tekst dok nije ispunjen"),
+    "karton.upitnik.fill": Slot("Ispuni upitnik", CAP, "Karton · upitnik: gumb Ispuni upitnik", required=True),
+    "karton.upitnik.no_plan": Slot("Online treninzi su dio zasebne članarine — javi se treneru za pristup.", CAP,
+                                   "Karton · upitnik: bez online članarine"),
+    "karton.limits.title": Slot("Ograničenja i bolovi", CAP, "Karton · ograničenja: naslov", required=True),
+    "karton.limits.edit": Slot("Uredi", CAP, "Karton · ograničenja: gumb Uredi", required=True),
+    "karton.limits.empty": Slot("Nema upisanih ograničenja.", CAP, "Karton · ograničenja: kad nema teksta"),
+    "karton.limits.placeholder": Slot("npr. bol u koljenu pri čučnju, stara ozljeda ramena", CAP,
+                                      "Karton · ograničenja: primjer u praznom polju"),
+    "karton.limits.save": Slot("Spremi", CAP, "Karton · ograničenja: gumb Spremi", required=True),
+    "karton.limits.cancel": Slot("Odustani", CAP, "Karton · ograničenja: gumb Odustani", required=True),
+    "karton.weight.title": Slot("Tjelesna masa", CAP, "Karton · masa: naslov", required=True),
+    "karton.weight.add": Slot("Upiši", CAP, "Karton · masa: gumb Upiši", required=True),
+    "karton.weight.height_edit": Slot("uredi", CAP, "Karton · masa: poveznica uz visinu", required=True),
+    "karton.weight.no_height": Slot("Visina nije upisana —", CAP, "Karton · masa: bez visine, prije poveznice"),
+    "karton.weight.no_height_link": Slot("upiši je na profilu", CAP, "Karton · masa: poveznica na profil",
+                                         required=True),
+    "karton.weight.empty": Slot("Još nije upisana.", CAP, "Karton · masa: kad nema unosa"),
+    "karton.weight.kg": Slot("Kilogrami", CAP, "Karton · masa: polje Kilogrami", required=True),
+    "karton.weight.day": Slot("Datum", CAP, "Karton · masa: polje Datum", required=True),
+    "karton.weight.save": Slot("Spremi", CAP, "Karton · masa: gumb Spremi", required=True),
+    "karton.weight.cancel": Slot("Odustani", CAP, "Karton · masa: gumb Odustani", required=True),
+    "karton.weight.more": Slot("prikaži sve", CAP, "Karton · masa: starije unose prikaži sve", required=True),
+    "karton.photos.title": Slot("Napredak — fotografije", CAP, "Karton · fotografije: naslov", required=True),
+    "karton.photos.add": Slot("Dodaj fotografiju", CAP, "Karton · fotografije: gumb Dodaj", required=True),
+    "karton.photos.replace": Slot("Zamijeni ovomjesečnu", CAP, "Karton · fotografije: gumb Zamijeni", required=True),
+    "karton.photos.month": Slot("Mjesec", CAP, "Karton · fotografije: polje Mjesec", required=True),
+    "karton.photos.rule": Slot("Jedna fotografija po mjesecu: nova za isti mjesec zamjenjuje staru.", CAP,
+                               "Karton · fotografije: pravilo ispod polja"),
+    "karton.photos.save": Slot("Spremi", CAP, "Karton · fotografije: gumb Spremi", required=True),
+    "karton.photos.cancel": Slot("Odustani", CAP, "Karton · fotografije: gumb Odustani", required=True),
+    "karton.photos.empty": Slot("Još nema fotografija.", CAP, "Karton · fotografije: kad nema fotografija"),
+    "karton.photos.hint": Slot("Jedna fotografija mjesečno, kad želiš — za usporedbu kroz vrijeme.", CAP,
+                               "Karton · fotografije: savjet"),
+    "karton.maxes.title": Slot("Procijenjeni maksimumi", CAP, "Karton · maksimumi: naslov", required=True),
+    "karton.maxes.hint": Slot("Iz najbolje serije svake vježbe, Epleyevom formulom (kg × (1 + ponavljanja / 30)), "
+                              "do 12 ponavljanja. Vježbe bez utega: najviše ponavljanja.", CAP,
+                              "Karton · maksimumi: objašnjenje"),
+    "karton.maxes.col_exercise": Slot("Vježba", CAP, "Karton · maksimumi: stupac Vježba", required=True),
+    "karton.maxes.col_value": Slot("Procjena", CAP, "Karton · maksimumi: stupac Procjena", required=True),
+    "karton.maxes.col_from": Slot("Iz", CAP, "Karton · maksimumi: stupac Iz", required=True),
+    "karton.maxes.empty": Slot("Još nema serija — upiši vježbe uz osvrt treninga.", CAP,
+                               "Karton · maksimumi: kad nema serija"),
+    "karton.termini.title": Slot("Nadolazeći termini", CAP, "Karton · termini: naslov", required=True),
+    "karton.termini.canceled": Slot("OTKAZANO", CAP, "Karton · termini: oznaka otkazanog termina"),
+    "karton.termini.empty": Slot("Nema rezervacija.", CAP, "Karton · termini: kad nema rezervacija"),
+    "karton.termini.open": Slot("Otvori raspored →", CAP, "Karton · termini: poveznica na raspored", required=True),
+    "karton.diary.title": Slot("Dnevnik treninga", CAP, "Karton · dnevnik: naslov", required=True),
+    "karton.diary.lead": Slot("Svaki odrađeni termin završi ovdje — ispuni osvrt (napor, osjećaj, komentar) ili "
+                              "označi da nisi bio/la.", CAP, "Karton · dnevnik: uvodna rečenica"),
+    "karton.diary.online": Slot("Online trening", CAP, "Karton · dnevnik: oznaka online treninga"),
+    "karton.diary.outside": Slot("Trening izvan termina", CAP, "Karton · dnevnik: oznaka treninga izvan termina"),
+    "karton.diary.edit": Slot("Uredi", CAP, "Karton · dnevnik: gumb Uredi", required=True),
+    "karton.diary.delete": Slot("Obriši", CAP, "Karton · dnevnik: gumb Obriši", required=True),
+    "karton.diary.absent_chip": Slot("Nisam bio/la", CAP, "Karton · dnevnik: oznaka izostanka"),
+    "karton.diary.undo": Slot("Poništi", CAP, "Karton · dnevnik: gumb Poništi", required=True),
+    "karton.diary.canceled": Slot("Otkazano", CAP, "Karton · dnevnik: oznaka otkazanog termina"),
+    "karton.diary.fill": Slot("Ispuni osvrt", CAP, "Karton · dnevnik: gumb Ispuni osvrt", required=True),
+    "karton.diary.absent": Slot("Nisam bio/la", CAP, "Karton · dnevnik: gumb Nisam bio/la", required=True),
+    "karton.diary.sets": Slot("Serije", CAP, "Karton · dnevnik: Serije", required=True),
+    "karton.diary.empty": Slot("Još nema odrađenih termina —", CAP, "Karton · dnevnik: prazan dnevnik, prije poveznice"),
+    "karton.diary.empty_link": Slot("rezerviraj prvi", CAP, "Karton · dnevnik: poveznica na raspored", required=True),
+    "karton.outside.add": Slot("+ Dodaj trening izvan termina", CAP, "Karton · trening izvan termina: gumb Dodaj",
+                               required=True),
+    "karton.outside.title": Slot("Trening izvan termina", CAP, "Karton · trening izvan termina: naslov obrasca",
+                                 required=True),
+    "karton.outside.day": Slot("Datum", CAP, "Karton · trening izvan termina: polje Datum", required=True),
+    "karton.outside.save": Slot("Spremi trening", CAP, "Karton · trening izvan termina: gumb Spremi", required=True),
+    "karton.outside.cancel": Slot("Odustani", CAP, "Karton · trening izvan termina: gumb Odustani", required=True),
+    "karton.osvrt.title": Slot("Kako je bilo?", CAP, "Karton · osvrt: pitanje", required=True),
+    "karton.osvrt.effort": Slot("Napor (1 lagano – 10 maksimalno)", CAP, "Karton · osvrt: polje Napor", required=True),
+    "karton.osvrt.feeling": Slot("Osjećaj", CAP, "Karton · osvrt: polje Osjećaj", required=True),
+    "karton.osvrt.note": Slot("Komentar (neobavezno)", CAP, "Karton · osvrt: polje Komentar", required=True),
+    "karton.osvrt.placeholder": Slot("npr. kilaže, što je išlo dobro/loše", CAP, "Karton · osvrt: primjer u komentaru"),
+    "karton.osvrt.save": Slot("Spremi osvrt", CAP, "Karton · osvrt: gumb Spremi osvrt", required=True),
+    "karton.osvrt.cancel": Slot("Odustani", CAP, "Karton · osvrt: gumb Odustani", required=True),
+    "karton.osvrt.note_edit": Slot("Komentar", CAP, "Karton · osvrt: polje Komentar pri uređivanju", required=True),
+    "karton.osvrt.edit_save": Slot("Spremi", CAP, "Karton · osvrt: gumb Spremi pri uređivanju", required=True),
+    "karton.osvrt.edit_cancel": Slot("Odustani", CAP, "Karton · osvrt: gumb Odustani pri uređivanju", required=True),
+    "karton.log.title": Slot("Vježbe (neobavezno)", CAP, "Karton · vježbe: naslov", required=True),
+    "karton.log.hint": Slot("Upiši vježbe i serije — iz njih se računaju tvoji maksimumi. Sekunde (plank i slično) "
+                            "upiši u komentar.", CAP, "Karton · vježbe: objašnjenje"),
+    "karton.log.add": Slot("+ Dodaj vježbu", CAP, "Karton · vježbe: gumb Dodaj vježbu", required=True),
+    "karton.log.exercise": Slot("Vježba", CAP, "Karton · vježbe: polje Vježba", required=True),
+    "karton.log.col_set": Slot("Set", CAP, "Karton · vježbe: stupac Set", required=True),
+    "karton.log.col_reps": Slot("Pon.", CAP, "Karton · vježbe: stupac Pon.", required=True),
+    "karton.log.col_kg": Slot("Kg", CAP, "Karton · vježbe: stupac Kg", required=True),
+    "karton.log.add_set": Slot("+ serija", CAP, "Karton · vježbe: gumb + serija", required=True),
+    "karton.log.remove": Slot("Ukloni vježbu", CAP, "Karton · vježbe: gumb Ukloni vježbu", required=True),
+    "karton.confirm.weight_title": Slot("Obrisati unos?", CAP, "Karton · brisanje mase: naslov", required=True),
+    "karton.confirm.weight_cta": Slot("Obriši unos", CAP, "Karton · brisanje mase: gumb", required=True),
+    "karton.confirm.photo_title": Slot("Obrisati fotografiju?", CAP, "Karton · brisanje fotografije: naslov",
+                                       required=True),
+    "karton.confirm.photo_cta": Slot("Obriši fotografiju", CAP, "Karton · brisanje fotografije: gumb", required=True),
+    "karton.confirm.osvrt_title": Slot("Obrisati osvrt?", CAP, "Karton · brisanje osvrta: naslov", required=True),
+    "karton.confirm.osvrt_text": Slot("Napor, osjećaj, komentar i vježbe bit će trajno obrisani. Termin ostaje u "
+                                      "dnevniku i osvrt možeš ispuniti ponovno.", CAP,
+                                      "Karton · brisanje osvrta: tekst", required=True),
+    "karton.confirm.osvrt_cta": Slot("Obriši osvrt", CAP, "Karton · brisanje osvrta: gumb", required=True),
+    "karton.confirm.outside_title": Slot("Obrisati trening?", CAP, "Karton · brisanje treninga: naslov", required=True),
+    "karton.confirm.outside_text": Slot("Trening izvan termina bit će trajno obrisan: datum, napor, osjećaj, "
+                                        "komentar i vježbe.", CAP, "Karton · brisanje treninga: tekst", required=True),
+    "karton.confirm.outside_cta": Slot("Obriši trening", CAP, "Karton · brisanje treninga: gumb", required=True),
+    "karton.confirm.absent_title": Slot("Nisi bio/la na terminu?", CAP, "Karton · izostanak: naslov", required=True),
+    "karton.confirm.absent_text": Slot("Termin se miče iz dnevnika kao odrađen trening i ostaje zabilježen kao "
+                                       "izostanak. Uvijek ga možeš vratiti klikom na Poništi.", CAP,
+                                       "Karton · izostanak: tekst", required=True),
+    "karton.confirm.absent_cta": Slot("Da, nisam bio/la", CAP, "Karton · izostanak: gumb", required=True),
+    # the variants: a staff member's own karton (24.11.2026) and the
+    # trainer's view of a client's (/karton/<id>), where they differ from a
+    # member's own
+    "karton.staff.own_lead": Slot("Tvoj vlastiti karton: dnevnik treninga, maksimumi, masa i fotografije.", CAP,
+                                  "Karton · osoblje: uvodna rečenica"),
+    "karton.staff.review": Slot("Zahtijeva pregled", CAP, "Karton · pogled trenera: oznaka Zahtijeva pregled"),
+    "karton.staff.old": Slot("Stari upitnik.", CAP, "Karton · pogled trenera: stari upitnik"),
+    "karton.staff.answers": Slot("Odgovori", CAP, "Karton · pogled trenera: Odgovori", required=True),
+    "karton.staff.upitnik_none": Slot("Upitnik još nije ispunjen.", CAP,
+                                      "Karton · pogled trenera: upitnik nije ispunjen"),
+    "karton.staff.limits_flag": Slot("Ograničenja", CAP, "Karton · pogled trenera: oznaka Ograničenja"),
+    "karton.staff.weight_history": Slot("Povijest", CAP, "Karton · pogled trenera: Povijest mase", required=True),
+    "karton.staff.maxes_empty": Slot("Još nema serija.", CAP, "Karton · pogled trenera: kad nema serija"),
+    "karton.staff.diary_lead": Slot("Odrađeni termini i osvrti.", CAP, "Karton · pogled trenera: uvodna rečenica dnevnika"),
+    "karton.staff.own_diary_lead": Slot("Tvoji online treninzi i treninzi koje upišeš sam/a.", CAP,
+                                        "Karton · osoblje: uvodna rečenica dnevnika"),
+    "karton.staff.no_osvrt": Slot("bez osvrta", CAP, "Karton · pogled trenera: oznaka bez osvrta"),
+    "karton.staff.diary_empty": Slot("Još nema odrađenih termina.", CAP, "Karton · pogled trenera: prazan dnevnik"),
+    "karton.staff.own_diary_empty": Slot("Još nema treninga u dnevniku.", CAP, "Karton · osoblje: prazan dnevnik"),
 }
+
+# The karton's texts by area (25.11.2026), in the page's order: the caption
+# each area has in the panel "Svi tekstovi kartona" at the bottom of a staff
+# member's own karton in edit mode (karton.html), which lists every
+# karton.* slot under its area's caption, so the texts only a member, the
+# trainer's view or a confirm dialog shows are in his reach too.
+KARTON_AREAS = {"head": "Zaglavlje", "upitnik": "Upitnik", "limits": "Ograničenja i bolovi",
+                "weight": "Tjelesna masa", "photos": "Napredak — fotografije", "maxes": "Procijenjeni maksimumi",
+                "termini": "Nadolazeći termini", "diary": "Dnevnik treninga", "outside": "Trening izvan termina",
+                "osvrt": "Osvrt na trening", "log": "Vježbe u osvrtu", "confirm": "Prozori za potvrdu",
+                "staff": "Pogled trenera i karton osoblja"}
+# (caption, the area's keys in registry order) per area, for the panel
+KARTON_PANEL = tuple((caption, tuple(key for key in SLOTS if key.startswith(f"karton.{area}.")))
+                     for area, caption in KARTON_AREAS.items())
 
 # Every price the site shows -> the slot of its bazna cijena (23.11.2026;
 # Croatia's Pravilnik o isticanju bazne cijene proizvoda, NN 132/2026, in

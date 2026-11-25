@@ -1595,6 +1595,14 @@
       var x = e.target.closest(".ed-x"), a = e.target.closest(".ed-add"), el = e.target.closest(".ed");
       var ax = e.target.closest(".ed-ann-x > button, .ed-gym-x > button, button.ed-q-x");
       var rf = e.target.closest("[data-refuse]");
+      // A text inside a control (a button's or a link's words, a <summary>,
+      // a <label>: the karton's, 25.11.2026) does nothing to its control
+      // while it is open: a space typed in it makes the browser "click" its
+      // button or summary (the keyboard's activation, a click aimed at the
+      // control, not at the text: measured in Chrome), and a tap on the
+      // control's edge would press it too. Another text a click opens.
+      var host = cur && (!el || el === cur) && e.target.closest("button, summary, a, label");
+      if (host && host.contains(cur)) { e.preventDefault(); e.stopPropagation(); return; }
       if (rf) { e.preventDefault(); e.stopPropagation(); end(false); says(rf.getAttribute("aria-label") || "", rf.dataset.refuse); }
       else if (f) { e.preventDefault(); e.stopPropagation(); flag(f); }
       else if (im) { e.preventDefault(); e.stopPropagation(); pick(im); }

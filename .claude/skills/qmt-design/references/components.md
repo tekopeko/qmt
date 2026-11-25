@@ -16,7 +16,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.admin-menu` | base (trainer, owner) | Admin ▾'s menu (`.menu.admin-menu`, as wide as its longest row, left-aligned to its tab): Termini (calendar icon) → `/admin`, Trenutne članarine (card) → `/clanarine`, Upitnik (clipboard) → `/upitnik` (in normal mode, as every page opens: the ✎ pill turns edit mode on), Vježbe (dumbbell) → `/treninzi/vjezbe` (30.10.2026: the library's pages are under /treninzi, yet they light Admin ▾ and this item, never the Online treninzi tab), and the owner's Korisnici (people) and Statistika (chart). The page that is open: `aria-current="page"`, an inset 3px `--accent` bar on the row's left edge and the label in 700. In the ☰ drawer it is static rows under the "Admin" caption |
 | `main` | base | max-width 1100px, `clamp(14px,4vw,40px)` side padding; `main.full` for the landing |
 | `main > h1`, `main > h1 + .hint` | base | the page header: title `clamp(1.6rem,3vw,2rem)` + one lead sentence, 70ch max — templates write bare `<h1>` / `<p class="hint">` with no inline style |
-| `.card` | base | `--surface`, hairline, `--r-lg` (20px), `--shadow`; hero-grade cards (`.svc`, `.plan`, `.upitnik`, `.termini`) take `--r-xl` (28px) with 26px padding |
+| `.card` | base | `--surface`, hairline, `--r-lg` (20px), `--shadow`; hero-grade cards (`.svc`, `.plan`, `.upitnik`; the karton's `.termini` until 25.11.2026) take `--r-xl` (28px) with 26px padding |
 | `.crumbs` | base | breadcrumb: muted links, `/` separators, `.here` current |
 | `.ed` / `.copy-toggle` / `.copy-bar` | base (trainer, owner) | in-place copy editor: `_copy.html` prints every slot in a `span.t` (`white-space: pre-line`, so the owner's line breaks show) and makes it an `.ed` for an editor; the fixed "✎ Uredi tekstove" pill toggles `body.editing` (dashed outlines, click to edit, `.ed-on` while open; an empty `.ed` keeps a 2.5em box so it can be clicked); Enter is a new line, ⌘/Ctrl+Enter saves; the bar under the pill (as wide as its content, at most the window less 20px) shows label, an "n znakova" counter, the `.cb-hint` "Enter = novi red · ⌘/Ctrl+Enter = spremi" (600px and up) and Spremi / Zadano / Odustani. An emptied text stays empty (20.10.2026): the bar says "Prazno: Spremi ostavlja prazno." (from 600px "… · Zadano vraća izvorni tekst." after it, `.cb-more`), and for a number (`data-required`: `price.<plan>.amount`, `addon.*`) "Prazno: Spremi vraća izvorni tekst."; the empty `.ed` keeps its box in edit mode, and the shape around it (a pill, a chip, a link) goes outside it. Visitors get a bare `span.t`, no editor markup, and nothing for an empty text |
 | `ul[data-list]` / `.ed-x` / `.ed-add` | base (trainer, owner) | an editable list (`c.points`): each item an `.ed` with `data-index`, a 32px round `.ed-x` ✕ beside it (negative margin, so the line height holds) and an `.act.ed-add` "+ Dodaj stavku" after the list, hidden at the count limit; both only under `body.editing`. The bar names the item ("…: stavka 2") and its Zadano reads "Zadano (cijela lista)" |
@@ -350,8 +350,8 @@ planovi, uplate i računi →", allowed to wrap: it nearly fills a 360px card).
 (`--lvl`/`--lvl-soft` per theme), diary `.log-entry` rows in four states
 (written / `.is-absent` / cancelled / open — `.fresh` gets the accent inset bar),
 `.le-actions` right-aligned pills, `.le-edit` inline form toggled by
-`qmtToggleForm`. Rail `aside.k-rail`: "Tjelesna masa" (`.masa`, 23.11.2026, below), then `.termini`, Nadolazeći. Staff's own karton (24.11.2026, `staff_own`: the trainer's, the owner's) is a member's with no upitnik block (nothing in its place) and no `.termini` (the rail is the weight card alone), its empty diary "Još nema treninga u dnevniku.". `.upitnik`, `.masa` and `.termini`
-are `--r-xl`; `.log-entry` rows are `--r-md` and keep the accent inset bar for
+`qmtToggleForm`. **The page's order** (25.11.2026; a grid with a rail, `aside.k-rail`, the weight and the termini, beside the diary until then): the upitnik block, `.limits`, `.masa`, `.photos`, `.maxes`, `.termini`, each a card of the column, then the diary (`.k-sec`) last. Below 1000px one column, every card 720px at most at its left edge; from 1000px `.k-cards` is a grid of two equal columns across the page's width (`repeat(2, minmax(0, 1fr))`, 20px gap, the two of a row one height: the grid stretches them), in the same reading order, the upitnik block and a `.card` left alone in its row (`:last-child:nth-child(odd of .card)`, its own rule) across both; the diary under it at the page's width, its forms (`.k-sec .le-edit`) 640px at most. Staff's own karton (24.11.2026, `staff_own`: the trainer's, the owner's) is a member's with no upitnik block (nothing in its place) and no `.termini`, its empty diary "Još nema treninga u dnevniku.". `.upitnik`
+is `--r-xl`; `.log-entry` rows are `--r-md` and keep the accent inset bar for
 `.fresh` — at 12px the bar still reads as a bar. A v2 response's block (26.10.2026)
 puts `.u-fact` pills and the muted score ("6,4 / 10") on its `.u-meta` line, the
 trainer's `.u-flag`s under it, and the `.u-note` under the ramp; under "Odgovori"
@@ -433,9 +433,10 @@ in, its `.k-x` a solid `--surface` circle with `--shadow` (a control on a
 photo, never text on it: `--surface-2` on hover). The photo form's two fields
 `.ph-fields` side by side where two of 220px fit, else stacked, its rule line
 `.ph-rule` (muted .82rem); the empty card's hint `.kc-hint`.
-**"Tjelesna masa"** (`section.masa#masa`): the rail is `aside.k-rail` (a grid,
-18px apart) holding it and then `.termini`, each the hero-grade rail card
-(`.termini, .masa`: `--surface`, hairline, `--r-xl`, 18px; h2 .95rem). Under
+**"Tjelesna masa"** (`section.card.masa#masa`) and **"Nadolazeći termini"**
+(`section.card.termini`): cards of the column like the limitations' and the
+photos' (`.card`, 720px at most below 1000px, 18px 20px, 16px under 600px; h2
+1.05rem; until 25.11.2026 the rail's two, `--r-xl`, h2 .95rem). Under
 the head `.ms-height` (muted .82rem: "Visina 178 cm · uredi", the `.tlink` the
 member's), `.ms-val` the newest weight (Inter 800 1.6rem, tabular), `.ms-date`
 its date (muted .82rem); the form's `.ms-fields`, Kilogrami beside Datum
@@ -445,6 +446,31 @@ least, "12.11.2026. · 82,5 kg" and the member's `.k-x`; past twelve the rest
 under base.html's `details.sets` fold, "prikaži sve" (the trainer's whole
 history under "Povijest"). Every card clears the floating bar when a save
 comes back to it (`scroll-margin-top: 96px`).
+**The karton's texts** (25.11.2026) are copy slots (`karton.*`, the `.ed`
+editor of every page): a long one wraps, never widens the page. A pill's,
+a button's and a `<summary>`'s label wraps inside it once it is longer than
+its row (`white-space: normal`, `overflow-wrap: anywhere`, `min-width: 0`,
+`max-width: 100%`; the default labels stay one line, measured). A table
+header's span is an inline box whose word stays whole up to 7.5em (the
+maxes' three; 6em over the set log's numbers), so a column keeps its width
+and a 300-character header fits a 360px row; the set log's other two break
+anywhere. "OTKAZANO" in a termin row stays whole and wraps in half the row
+(`max-width: 50%`, `overflow-wrap: break-word`). An emptied optional text (a
+lead, a hint, a kicker, a chip, an empty line) prints nothing for a member;
+its empty `.ed` box the editor gets in edit mode only (`:has(> .ed:empty)`).
+**`.k-texts`, "Svi tekstovi kartona"** (a staff member's own karton, under
+the diary): every karton text, area by area, so those only a member, the
+trainer's view or a confirm dialog shows are in the editor's reach. In edit
+mode only (`display: none` outside it: no room, nothing read aloud); a
+`.card` of the column (720px below 1000px, the diary's width from it), 18px
+20px (16px under 600px), 26px under the diary; its h2 1.05rem and one muted
+.82rem line under it ("Ovdje su i tekstovi koje vidi samo član ili su u
+prozorima za potvrdu. Promjena u prozorima i poljima vidi se nakon
+osvježavanja stranice."); an `h3` per area (the kicker's look: 700 .7rem,
+.12em, uppercase, muted, 20px above it), then a `dl`, a row per text
+(8px 0, a hairline over it): its label (`dt`, muted .82rem) over the text
+(`dd`, .92rem), an `.ed` a click opens. Its own words are the editor's, no
+slot.
 
 **Upitnik (`upitnik.html`, 26.10.2026; patterns.md §7).** One `form.quiz` (640px,
 centred) holds every step; for a member the page sets `solo_page` (`not can_edit_copy`),

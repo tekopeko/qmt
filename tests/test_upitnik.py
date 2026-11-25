@@ -1483,7 +1483,12 @@ def test_the_branching_migration_turns_the_follow_ups_into_questions_and_back():
 # ---------- the karton ----------
 
 def upitnik_block(page: str) -> str:
-    return page.split('<section class="upitnik')[1].split("</section>")[0]
+    """The karton's upitnik block, its texts' spans unwrapped: since
+    25.11.2026 the karton's own words are copy slots, each printed in a span
+    (a member's span.t, the editor's span.ed.t); unwrapped, the markup
+    around a text reads as it did (tests/test_copy.py proves the spans)."""
+    block = page.split('<section class="upitnik')[1].split("</section>")[0]
+    return re.sub(r'<span class="(?:ed )?t"[^>]*>(.*?)</span>', r"\1", block, flags=re.S)
 
 
 def test_the_clients_karton_shows_the_score_the_four_chips_and_the_pain_note():

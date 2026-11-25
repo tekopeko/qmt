@@ -21,7 +21,14 @@ pages (21.10.2026: /moja-clanarina's "Dodaj plan" cards print the landing's
 prices, a gym plan's yearly price is a slot of its own, and the migration
 that made each card one text and carried the gym cards' typed yearly
 prices), and the guide through the training (29.10.2026: its slots, an
-emptied one, /vodic; its place on /upitnik is tests/test_upitnik.py's).
+emptied one, /vodic; its place on /upitnik is tests/test_upitnik.py's), and
+the karton's texts (25.11.2026: every static text of /karton a slot, its
+words as the page printed them, a control's required, an emptied one
+nothing for a member, every view printing its own, the editor's panel "Svi
+tekstovi kartona", and in a browser on a phone a heading, a button's words,
+a <summary>'s, a link's and a panel row edited in place without pressing
+what holds them; the long-text walk covers its three views, every form
+open; its order and columns are tests/test_karton.py's).
 
 The browser half is the net under the texts. Their design limits were lifted
 on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
@@ -54,7 +61,8 @@ import pathlib
 import re
 import threading
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from html import unescape
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
@@ -71,10 +79,10 @@ from sqlalchemy import inspect as sa_inspect, text as sa_text
 from sqlalchemy.exc import IntegrityError
 
 from qmt import auth, config, copy, db, storage
-from qmt.models import PLAN_TYPES, Base, SiteCopy, User
+from qmt.models import PLAN_TYPES, Base, Booking, SiteCopy, User
 from qmt.web.app import addon_amounts, app, reference_prices
 
-PAGES = ("/", "/moja-clanarina", "/prehrana", "/upitnik", "/vodic")  # every page that has editable text
+PAGES = ("/", "/moja-clanarina", "/prehrana", "/upitnik", "/vodic", "/karton")  # every page that has editable text
 
 
 @pytest.fixture(autouse=True)
@@ -1581,14 +1589,18 @@ def test_an_emptied_text_stays_empty_and_only_a_number_gets_its_default_back():
     A required slot, a number (every price.<plan>.amount and, since
     21.10.2026, every gym plan's .year_amount, addon.online, addon.dvorana),
     emptied, is its default again, as every text was before; the editor's
-    span says which it is (data-required)."""
+    span says which it is (data-required). Since 25.11.2026 the karton's
+    controls' words are required too (its headings, buttons, links,
+    labels, <summary> texts, table headers and confirms' texts: none can be
+    left blank; the karton's tests below)."""
     make_user("ivan@test.local", plans=("rehabilitacija",)); make_user("trener@test.local", is_trainer=True)
     gym_examples()
     t = client_for("trener@test.local")
     assert {k for k, s in copy.SLOTS.items() if isinstance(s, copy.Slot) and s.required} == {
         *(f"price.{plan}.amount" for plan in PLAN_TYPES),
         *(f"price.{plan}.year_amount" for plan in PLAN_TYPES if plan != "online"), "addon.online", "addon.dvorana",
-        *copy.BASE_OF.values(), "price.base_label"}                             # the bazna cijena's (23.11.2026)
+        *copy.BASE_OF.values(), "price.base_label",                             # the bazna cijena's (23.11.2026)
+        *(k for k in copy.SLOTS if k.startswith("karton.") and k not in KARTON_OPTIONAL)}   # the karton's (25.11.2026)
     assert copy.clean("") == "" and copy.clean(" \n\t \n ") == ""             # what an emptied text stores
 
     def line(page: str) -> str:                     # Individualno's line, its markup
@@ -2068,6 +2080,256 @@ def test_vodic_is_the_guide_for_members_and_staff_its_button_to_question_1():
         assert 'href="/vodic' not in c.get(path).text, path
 
 
+# ---------- the karton's texts (25.11.2026) ----------
+
+KARTON = [key for key in copy.SLOTS if key.startswith("karton.")]
+# the karton's texts that are no control's words (a lead, a hint, a
+# kicker, a chip, an empty line, a placeholder): emptied, they stay empty;
+# every other karton text is required, its default back when emptied
+KARTON_OPTIONAL = {
+    "karton.head.lead", "karton.upitnik.eyebrow", "karton.upitnik.old", "karton.upitnik.none_text",
+    "karton.upitnik.no_plan", "karton.limits.empty", "karton.limits.placeholder", "karton.weight.no_height",
+    "karton.weight.empty", "karton.photos.rule", "karton.photos.empty", "karton.photos.hint", "karton.maxes.hint",
+    "karton.maxes.empty", "karton.termini.canceled", "karton.termini.empty", "karton.diary.lead", "karton.diary.online",
+    "karton.diary.outside", "karton.diary.absent_chip", "karton.diary.canceled", "karton.diary.empty",
+    "karton.osvrt.placeholder", "karton.log.hint", "karton.staff.own_lead", "karton.staff.review", "karton.staff.old",
+    "karton.staff.upitnik_none", "karton.staff.limits_flag", "karton.staff.maxes_empty", "karton.staff.diary_lead",
+    "karton.staff.own_diary_lead", "karton.staff.no_osvrt", "karton.staff.diary_empty", "karton.staff.own_diary_empty"}
+# texts karton.html printed before they were slots (at b82221d), copied from
+# it character for character: what their defaults are (the words before a
+# link carry the dash that led to it)
+KARTON_BEFORE = {
+    "karton.head.title": "Moj karton",
+    "karton.head.lead": "Dnevnik treninga, upitnik i termini na jednom mjestu.",
+    "karton.upitnik.eyebrow": "Online trening — upitnik",
+    "karton.upitnik.old": "Stari upitnik —",
+    "karton.limits.placeholder": "npr. bol u koljenu pri čučnju, stara ozljeda ramena",
+    "karton.weight.no_height": "Visina nije upisana —",
+    "karton.weight.more": "prikaži sve",
+    "karton.photos.replace": "Zamijeni ovomjesečnu",
+    "karton.maxes.hint": "Iz najbolje serije svake vježbe, Epleyevom formulom (kg × (1 + ponavljanja / 30)), do 12 "
+                         "ponavljanja. Vježbe bez utega: najviše ponavljanja.",
+    "karton.termini.canceled": "OTKAZANO",
+    "karton.termini.open": "Otvori raspored →",
+    "karton.diary.lead": "Svaki odrađeni termin završi ovdje — ispuni osvrt (napor, osjećaj, komentar) ili označi da "
+                         "nisi bio/la.",
+    "karton.diary.canceled": "Otkazano",
+    "karton.diary.absent": "Nisam bio/la",
+    "karton.outside.add": "+ Dodaj trening izvan termina",
+    "karton.osvrt.effort": "Napor (1 lagano – 10 maksimalno)",
+    "karton.log.hint": "Upiši vježbe i serije — iz njih se računaju tvoji maksimumi. Sekunde (plank i slično) upiši u "
+                       "komentar.",
+    "karton.log.col_reps": "Pon.",
+    "karton.confirm.osvrt_cta": "Obriši osvrt",
+    "karton.confirm.absent_text": "Termin se miče iz dnevnika kao odrađen trening i ostaje zabilježen kao izostanak. "
+                                  "Uvijek ga možeš vratiti klikom na Poništi.",
+    "karton.staff.answers": "Odgovori",
+    "karton.staff.own_diary_empty": "Još nema treninga u dnevniku.",
+}
+
+
+def attended(uid: int, hours_ago: float) -> int:
+    """A finished termin uid was booked into (booked directly: book()
+    refuses a past one); its id."""
+    sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) - timedelta(hours=hours_ago), 60, 8, None)
+    with db.session_scope() as s:
+        s.add(Booking(user_id=uid, session_id=sid))
+    return sid
+
+
+def karton_rows(uid: int, member: bool) -> None:
+    """A karton with every kind of row it prints (the long-text walk, the
+    edits below): fourteen weights (the history folds), a photo of this
+    month (its file in this test's MEDIA_DIR), a limitation, a training
+    outside a termin and an online pass with their sets (the maxes). A
+    member's (`member`) also: a v2 upitnik that needs a review, in pain;
+    an osvrt with sets on a termin, a termin still owed one, one he missed,
+    one the trainer canceled; a booking ahead and a canceled one."""
+    today, n = config.today(), len(db.exercises())
+    bench, plank = (db.create_exercise(f"{name} {n}") for name in ("Potisak s klupe", "Plank"))
+    entry = {"exercise_id": bench, "name": f"Potisak s klupe {n}", "sets": [{"reps": 6, "kg": 90.0}],
+             "at": datetime.now(config.TZ).isoformat(timespec="seconds")}
+    for k in range(14):
+        db.set_weight(uid, today - timedelta(days=3 * k), Decimal(80) + Decimal(k) / 10)
+    config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"napredak-{uid}-{today:%Y%m}-0123456789abcdef.jpg"
+    Image.new("RGB", (600, 800), (70, 92, 112)).save(config.MEDIA_DIR / name, "JPEG")
+    db.set_photo(uid, today.replace(day=1), name)
+    db.set_limitations(uid, "Bol u koljenu pri čučnju.")
+    db.add_training_log(uid, today - timedelta(days=2), 7, "Sam u teretani.", feeling="dobro", sets=[entry])
+    pid = db.create_program(f"Online {n}", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    item = db.add_day_item(did, plank, "trening")
+    db.update_day_item(item, "trening", 3, None, 40, None, None, "")
+    done = db.start_pass(uid, db.get_program(pid), db.get_day(did))
+    db.save_sets(done.id, uid, db.get_day_item(item), [{"seconds": 40}], db.exercise(plank))
+    db.finish_pass(done.id, uid, 6, None, "")
+    if not member:
+        return
+    answers = {"q1": "Gubitak težine", "q2": "3", "q3": "45-60", "q4": "U teretani", "q14": 5, "q16": "donji dio leđa",
+               "q15": True, "q17": "Operacija koljena."}
+    db.save_onboarding(uid, json.dumps(answers), 6.4, "srednja", "cijelo", version=2, pain_level=5, pain_high=False,
+                       needs_review=True, consented_at=datetime.now(config.TZ))
+    db.add_session_feedback(uid, attended(uid, 50), 8, "odlicno", "Dobar dan.", sets=[entry])
+    attended(uid, 3)                                                           # owed its osvrt
+    db.mark_session_absent(uid, attended(uid, 75))
+    db.set_session_canceled(attended(uid, 100), True)
+    for days, canceled in ((1, False), (2, True)):
+        sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=days), 60, 8, None)
+        with db.session_scope() as s:
+            s.add(Booking(user_id=uid, session_id=sid))
+        db.set_session_canceled(sid, canceled)
+
+
+def spans(page: str, key: str) -> list[str]:
+    """The texts the page prints for slot `key`, a reader's span.t or the
+    editor's span.ed.t (its key on it)."""
+    return [unescape(t) for t in re.findall(rf'<span class="ed t" data-copy="{re.escape(key)}"[^>]*>(.*?)</span>', page, re.S)]
+
+
+def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
+    """Every static text of the karton is a slot (25.11.2026): 110 of them,
+    karton.<area>.<name>, registered area by area in the page's order
+    (copy.KARTON_AREAS: the panel lists them so, each once), every one a
+    text of CAP characters labelled for the editor's bar ("Karton: naslov",
+    "Karton · masa: gumb Upiši", "Karton · osvrt: pitanje"). A control's
+    words are required, a lead, a hint, a kicker, a chip, an empty line or
+    a placeholder not. Their defaults are what karton.html printed before,
+    character for character (spot-checked against its old texts), each as
+    clean() keeps a text."""
+    assert len(KARTON) == 110 and KARTON == [k for k in copy.SLOTS if k.startswith("karton.")]
+    areas = [key.split(".")[1] for key in KARTON]
+    assert list(dict.fromkeys(areas)) == list(copy.KARTON_AREAS)                 # area by area, in the page's order
+    assert [key for _, keys in copy.KARTON_PANEL for key in keys] == KARTON      # the panel: every one, once, in order
+    assert [caption for caption, _ in copy.KARTON_PANEL] == list(copy.KARTON_AREAS.values())
+    for key in KARTON:
+        slot = copy.SLOTS[key]
+        assert isinstance(slot, copy.Slot) and slot.max == copy.CAP, key
+        assert slot.label.startswith("Karton") and slot.label.count(":") == 1, key
+        assert slot.default and copy.clean(slot.default) == slot.default, key
+        assert slot.required == (key not in KARTON_OPTIONAL), key
+    assert len(KARTON_OPTIONAL) == 35 and KARTON_OPTIONAL <= set(KARTON)
+    for key, label in (("karton.head.title", "Karton: naslov"), ("karton.weight.add", "Karton · masa: gumb Upiši"),
+                       ("karton.osvrt.title", "Karton · osvrt: pitanje")):
+        assert copy.SLOTS[key].label == label, key
+    assert {key: copy.SLOTS[key].default for key in KARTON_BEFORE} == KARTON_BEFORE
+    assert len({copy.SLOTS[key].label for key in KARTON}) == len(KARTON)        # the bar names each one apart
+
+
+def test_a_required_karton_text_comes_back_and_an_optional_one_stays_empty():
+    """POST /copy/{key} on every karton text, emptied: a required one (a
+    control's words) is its default again, no row stored; an optional one is
+    stored empty. Zadano brings each back."""
+    make_user("trener@test.local", is_trainer=True)
+    t = client_for("trener@test.local")
+    for key in KARTON:
+        slot = copy.SLOTS[key]
+        r = t.post(f"/copy/{key}", data={"text": " \n "}).json()
+        if slot.required:
+            assert r == {"ok": True, "text": slot.default, "default": True} and key not in db.copy_texts(), key
+        else:
+            assert r == {"ok": True, "text": "", "default": False} and db.copy_texts()[key] == "", key
+            assert t.post(f"/copy/{key}", data={"reset": "1"}).json()["text"] == slot.default, key
+    assert db.copy_texts() == {}
+
+
+def test_an_edited_karton_text_shows_where_each_view_prints_it():
+    """An edited karton text prints in its place on every view that prints
+    it: the title on a member's own and a staff member's own (not on the
+    trainer's view of a client, "Karton — <ime>"), a card's heading and the
+    rows' words on all three, the staff variants on theirs alone; a member
+    reads a bare span.t, the editor his span.ed.t. A confirm dialog's texts
+    and a placeholder are attributes: an edit shows in them."""
+    ivan = make_user("ivan@test.local", plans=("grupni",)); trener = make_user("trener@test.local", is_trainer=True)
+    upitnik_examples()
+    karton_rows(ivan, member=True); karton_rows(trener, member=False)
+    new = {"karton.head.title": "Moja knjižica", "karton.limits.title": "Što me boli",
+           "karton.weight.add": "Novi unos", "karton.diary.sets": "Sve serije", "karton.diary.fill": "Napiši osvrt",
+           "karton.staff.answers": "Svi odgovori", "karton.staff.own_lead": "Moj dnevnik i tijelo.",
+           "karton.staff.no_osvrt": "osvrt nije napisan", "karton.log.col_kg": "Težina",
+           "karton.confirm.absent_title": "Nisi došao/la?", "karton.confirm.weight_cta": "Makni unos",
+           "karton.limits.placeholder": "npr. leđa", "karton.osvrt.placeholder": "Kako je prošlo?"}
+    t = client_for("trener@test.local")
+    for key, text in new.items():
+        assert t.post(f"/copy/{key}", data={"text": text}).json()["text"] == text, key
+    mine, own, view = (client_for("ivan@test.local").get("/karton").text, t.get("/karton").text,
+                       t.get(f"/karton/{ivan}").text)
+    for key, pages in (("karton.head.title", (mine, own)), ("karton.limits.title", (mine, own, view)),
+                       ("karton.weight.add", (mine, own)), ("karton.diary.sets", (mine, own, view)),
+                       ("karton.diary.fill", (mine,)), ("karton.staff.answers", (view,)),
+                       ("karton.staff.own_lead", (own,)), ("karton.staff.no_osvrt", (view,))):
+        for page in pages:
+            shown = spans(page, key) if 'id="copyToggle"' in page else [
+                unescape(x) for x in re.findall(r'<span class="t">(.*?)</span>', page, re.S)]
+            assert new[key] in shown, (key, page is mine, page is own)
+    assert '<h1><span class="t">Moja knjižica</span></h1>' in mine and "Moja knjižica" not in view.split("</h1>")[0]
+    page = own.split('<section class="card k-texts"')[0]                                    # the page, not the panel
+    assert "Svi odgovori" not in mine and "Svi odgovori" not in page and "Moj dnevnik i tijelo." not in mine
+    assert "osvrt nije napisan" not in mine and "osvrt nije napisan" not in page
+    assert '<th scope="col"><span class="t">Težina</span></th>' in mine.split('<template id="ex-block">')[1]
+    assert 'data-confirm-title="Nisi došao/la?"' in mine and 'data-confirm-cta="Makni unos"' in mine
+    assert 'data-confirm-cta="Makni unos"' in own and 'data-confirm-cta="Makni unos"' not in view   # his rows only
+    assert 'placeholder="npr. leđa">' in mine and 'placeholder="Kako je prošlo?">' in mine
+    assert "Obrisati unos?" in mine and 'data-copy="' not in mine                           # the others as they were
+
+
+def test_an_emptied_karton_text_prints_nothing_for_a_member():
+    """An emptied optional karton text is nothing for a member, nor what
+    holds it: an emptied lead with no body line no <p> under the title, an
+    empty line no <p>, a kicker no <div>, a chip no <span>, a hint no <p>,
+    an emptied placeholder no attribute, and a block of the upitnik whose
+    texts are all empty no block. The editor keeps each as an empty box,
+    which the page's CSS takes away outside edit mode."""
+    ivan = make_user("ivan@test.local", plans=("grupni",)); make_user("ana@test.local"); make_user("trener@test.local", is_trainer=True)
+    upitnik_examples()
+    karton_rows(ivan, member=True)
+    t = client_for("trener@test.local")
+    emptied = ("karton.head.lead", "karton.diary.online", "karton.diary.absent_chip", "karton.diary.canceled",
+               "karton.maxes.hint", "karton.termini.canceled", "karton.osvrt.placeholder", "karton.upitnik.eyebrow",
+               "karton.upitnik.no_plan", "karton.weight.empty", "karton.photos.empty", "karton.photos.hint",
+               "karton.limits.empty", "karton.staff.review")
+    for key in emptied:
+        assert t.post(f"/copy/{key}", data={"text": ""}).json()["text"] == "", key
+    mine = client_for("ivan@test.local").get("/karton").text
+    for gone in ('<span class="chip">', '<span class="chip off">', 'class="hint mx-hint"', "<strong style=",
+                 'placeholder="npr. kilaže', '<span class="eyebrow">'):
+        assert gone not in mine, gone
+    online = mine.split('<div class="log-entry online"')[1].split('<div class="log-entry')[0]
+    assert "le-kicker" not in online and '<div class="le-head">' in online       # the online pass: no kicker
+    assert mine.count('<div class="le-kicker">') == 1                            # the other kicker stays
+    assert '<div class="le-kicker"><span class="t">Trening izvan termina</span></div>' in mine
+    assert '<p class="hint">\n  <span class="k-body">' in mine                    # his lead emptied: the body line alone
+    ana = client_for("ana@test.local").get("/karton").text                       # her own: no plan, nothing written
+    assert re.search(r"</h1>\s*(<!--.*?-->\s*)?<div class=\"k-cards\">", ana)    # no lead, no body line: no <p>
+    assert '<section class="upitnik' not in ana and 'class="kc-empty"' not in ana and 'class="hint kc-hint"' not in ana
+    seen = t.get(f"/karton/{ivan}").text
+    for key in ("karton.diary.absent_chip", "karton.diary.canceled", "karton.staff.review", "karton.upitnik.eyebrow"):
+        assert f'<span class="ed t" data-copy="{key}"' in seen and spans(seen, key) == [""] * len(spans(seen, key)), key
+    assert "body:not(.editing) :is(.upitnik .eyebrow" in seen and ":has(> .ed:empty)" in seen
+
+
+def test_the_editors_own_karton_holds_every_karton_text():
+    """A staff member's own karton carries every karton text (25.11.2026):
+    the panel "Svi tekstovi kartona" under the diary lists each, its label
+    over its span, area by area under the areas' captions, so the texts only
+    a member, the trainer's view or a confirm dialog prints are in his
+    reach: every karton key has its span on the page. It shows in edit mode
+    only (its CSS). A member's karton and the trainer's view of a client
+    have no panel."""
+    ivan = make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
+    t = client_for("trener@test.local")
+    own = t.get("/karton").text
+    assert all(f'data-copy="{key}"' in own for key in KARTON)
+    panel = own.split('<section class="card k-texts" aria-labelledby="k-texts-h">')[1].split("</section>")[0]
+    assert '<h2 id="k-texts-h">Svi tekstovi kartona</h2>' in panel
+    assert re.findall(r"<h3>([^<]*)</h3>", panel) == list(copy.KARTON_AREAS.values())
+    rows = re.findall(r'<div><dt>([^<]*)</dt><dd><span class="ed t" data-copy="([^"]+)"', panel)
+    assert [key for _, key in rows] == KARTON and all(unescape(label) == copy.SLOTS[key].label for label, key in rows)
+    assert ".k-texts { display:none; }" in own and "body.editing .k-texts { display:block;" in own
+    for page in (client_for("ivan@test.local").get("/karton").text, t.get(f"/karton/{ivan}").text):
+        assert 'class="card k-texts"' not in page
+
+
 # ---------- the layout, measured in a browser ----------
 #
 # No slot has a design limit since 16.10.2026 (src/qmt/copy.py): the copy
@@ -2517,11 +2779,12 @@ PLACED = r"""([w, proText, heroText]) => {
 def test_layout_holds_with_long_texts_and_line_breaks(server):
     pytest.importorskip("playwright")
     from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright
-    make_user("trener@test.local", is_trainer=True); make_user("ivan@test.local", plans=("grupni",))
+    trener = make_user("trener@test.local", is_trainer=True); ivan = make_user("ivan@test.local", plans=("grupni",))
     one, two = examples()                             # the landing's two announcements, as the migration leaves them
     CARD = f'[data-image="aktualno.{one}.image"]'     # the first one, in the editor's markup
     _, individualno = gym_examples()                  # and the gym's two cards
     upitnik_examples()                                # and /upitnik's questions
+    karton_rows(ivan, member=True); karton_rows(trener, member=False)   # and a karton with every kind of row
 
     def fill(make):
         for key, slot in copy.SLOTS.items():
@@ -2532,8 +2795,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 db.set_copy(key, copy.dump_items([make(min(slot.max_chars, n))] * min(slot.max_items, ITEMS)), None)
             elif isinstance(slot, copy.RowsSlot):       # every table 12 rows long, each cell 300 characters
                 db.set_copy(key, copy.dump_rows([[make(min(slot.max_chars, LONG))] * 2] * min(slot.max_rows, ITEMS)), None)
-            elif key.startswith("vodic."):              # the guide's texts 300 characters in three lines
-                db.set_copy(key, "\n".join([make(LONG // 3)] * 3), None)   # (span.t: the breaks show)
+            elif key.startswith(("vodic.", "karton.")):  # the guide's and the karton's texts 300 characters
+                db.set_copy(key, "\n".join([make(LONG // 3)] * 3), None)   # in three lines (span.t: the breaks show)
             elif key in copy.BASE_OF or key in copy.BASE_OF.values():   # a price and its base (23.11.2026) hold
                 db.set_copy(key, "1 € " + make(min(slot.max, LONG) - 4), None)   # a number, so the base line prints,
                                                         # and their sign, so the page adds none
@@ -3120,6 +3383,45 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 browser.close()
         return [f"[moja-clanarina] {p}" for p in out + [f"js: {e}" for e in errs]]
 
+    def karton(pw, widths, strict=True):
+        """The karton's three views with the long texts (fill(): every karton
+        text 300 characters in three lines, or one word of 300), on the
+        karton_rows() the test began with: ivan's own (a member's: every
+        kind of row), the trainer's own (a staff member's), out of edit mode
+        and in it (the panel "Svi tekstovi kartona" under the diary, every
+        text there), and his view of ivan's (25.11.2026). On each, every
+        form opened (its .editing, as its button does) with an exercise
+        block added to each (the block's words), and every <details> open.
+        Nothing overflows, widens the page or is cut (MEASURE); no page
+        errors."""
+        out, errs = [], []
+        OPEN = """() => { for (const f of document.querySelectorAll('main .le-edit')) f.closest('[id]').classList.add('editing');
+          for (const b of document.querySelectorAll('main .xl-add')) if (b.offsetParent) b.click();
+          for (const d of document.querySelectorAll('main details')) d.open = true;
+          if (document.activeElement) document.activeElement.blur(); }"""
+        for w in widths:
+            phone, browser = w < 600, pw.chromium.launch()
+            for email, paths in (("ivan@test.local", ("/karton",)), ("trener@test.local", ("/karton", f"/karton/{ivan}"))):
+                pg = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+                pg.on("pageerror", lambda e, w=w: errs.append(f"{w}px: {e}"))
+                pg.goto(server + "/login"); pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+                pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
+                pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+                for path in paths:
+                    pg.goto(server + path); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+                    pg.evaluate(OPEN)
+                    where = f"[karton {email} {w}px {path}]"
+                    out += [f"{where} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
+                    if email.startswith("trener") and path == "/karton":           # his own, in edit mode: the panel
+                        toggle = "() => document.getElementById('copyToggle').click()"   # (a page that overflowed
+                        pg.evaluate(toggle)                                          # would hide the pill: say why)
+                        if not pg.is_visible(".k-texts"):
+                            out.append(f"{where} edit mode: no panel")
+                        out += [f"{where} edit mode: {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
+                        pg.evaluate(toggle)
+            browser.close()
+        return out + [f"[karton] js: {e}" for e in errs]
+
     def hours_edit(pg):
         """The hours table in edit mode with the walk's texts (fill(): twelve
         rows of 300-character cells): EDIT_HOURS, then Gotovo."""
@@ -3263,6 +3565,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280), photos=(390,),
                          adds=(390, 1280), hours=(390,))
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")
+        problems += karton(pw, (360, 390, 900, 1280))  # the karton's three views, every form open, the editor's panel
         problems += clanarina(pw)                     # Dodaj plan's two groups and their switches (one text in four lines)
         problems += banner(pw)                        # the install banner's week between asks
         db.set_announcement_field(one, "body", LINES, None)   # line breaks: the first announcement's text in three lines
@@ -3270,6 +3573,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         problems += walk(pw, "trener@test.local", (390,), "lines", lines=True)
         fill(lambda n: "W" * n)                       # one unbreakable word: must wrap, never widen
         problems += walk(pw, "trener@test.local", (360, 1280), "one-word", strict=False, hours=(360,))
+        problems += karton(pw, (360, 1280), strict=False)
     print("\n".join(problems))
     assert not problems, f"{len(problems)} layout problems, listed above"
 
@@ -3383,6 +3687,119 @@ def test_the_editor_moves_a_card_in_a_browser(server):
         browser.close()
     print("\n".join(problems))
     assert not problems, f"{len(problems)} problems, listed above"
+
+
+def test_the_karton_is_edited_in_place_on_a_phone(server):
+    """The karton's texts edited in place (25.11.2026), at 390px on a touch
+    screen. The trainer on his own karton turns edit mode on: the panel "Svi
+    tekstovi kartona" shows under the diary, and every karton text has its
+    span in the document. A tap on a heading ("Tjelesna masa") opens it, its
+    label in the bar; retyped and saved, it is stored. A tap on a button's
+    words ("Upiši") opens them and does not open the weight's form, nor does
+    a space typed into them (the browser "clicks" a button at a space:
+    base.html keeps the open text's button still); saved, stored. A tap on a
+    <summary>'s words ("prikaži sve") does not open its <details>, nor a
+    space typed; a tap on a link's ("upiši je na profilu") does not follow
+    it. A tap on a row of the panel (the weight row's confirm title, an
+    attribute on the page) opens it; saved, stored. Reloaded (edit mode
+    off), each shows: the heading, the button, the confirm's title on his
+    weight rows' forms; and ivan, a member, reads the same words on his own
+    karton, with no editor markup. The page never scrolls sideways; no page
+    errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    trener = make_user("trener@test.local", is_trainer=True); ivan = make_user("ivan@test.local", plans=("grupni",))
+    today = config.today()
+    for k in range(14):                                                    # past twelve: "prikaži sve"
+        db.set_weight(trener, today - timedelta(days=k), Decimal(80))
+    db.set_weight(ivan, today, Decimal(82))
+    problems, errs = [], []
+    overflow = "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    def bar() -> str:
+        return "" if pg.locator("#copyBar").is_hidden() else pg.locator("#copyBar .cb-label").inner_text()
+
+    def saved(key: str, text: str) -> None:
+        """Spremi, then the bar gone and the text stored."""
+        pg.tap("#cbSave")
+        try:
+            pg.wait_for_function("() => document.getElementById('copyBar').hidden", timeout=5000)
+        except Exception:
+            problems.append(f"{key}: Spremi did not close the bar")
+        check(db.copy_texts().get(key) == text, f"{key} stored {db.copy_texts().get(key)!r}")
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e)))
+        pg.goto(server + "/login"); pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.fill("main input[name=email]", "trener@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+        check(pg.evaluate(overflow) == 0 and not pg.is_visible(".k-texts"), "out of edit mode: an overflow, or the panel")
+        pg.tap("#copyToggle")
+        check(pg.is_visible(".k-texts"), "edit mode: no panel")
+        keys = pg.evaluate("() => [...new Set([...document.querySelectorAll('[data-copy^=\"karton.\"]')].map(e => e.dataset.copy))]")
+        check(sorted(keys) == sorted(KARTON), f"karton texts with no span: {sorted(set(KARTON) - set(keys))}")
+
+        heading = pg.locator("#masa-h .ed")                                # a heading
+        heading.tap()
+        check(bar() == "Karton · masa: naslov", f"a tap on the heading: the bar says {bar()!r}")
+        heading.fill("Masa tijela")
+        saved("karton.weight.title", "Masa tijela")
+
+        words = pg.locator("#masa .kc-head .act .ed")                     # a button's words
+        words.tap()
+        check(bar() == "Karton · masa: gumb Upiši" and not pg.is_visible("#masa form.le-edit"),
+              f"a tap on Upiši's words: the bar {bar()!r}, the form open {pg.is_visible('#masa form.le-edit')}")
+        pg.keyboard.type(" sada")
+        check(not pg.evaluate("() => document.getElementById('masa').classList.contains('editing')"),
+              "a space typed into Upiši's words opened the weight's form")
+        saved("karton.weight.add", "Upiši sada")
+
+        more = pg.locator("#masa details.sets > summary .ed")             # a <summary>'s words
+        more.tap(); pg.keyboard.type(" x")
+        check(bar() == "Karton · masa: starije unose prikaži sve"
+              and not pg.evaluate("() => document.querySelector('#masa details.sets').open"),
+              "a tap and a space on prikaži sve opened its details")
+        pg.tap("#cbCancel")
+        check(more.text_content() == "prikaži sve", f"Odustani left {more.text_content()!r}")
+
+        link = pg.locator("#masa .ms-height a .ed")                       # a link's words
+        link.tap(); pg.wait_for_timeout(300)
+        check(pg.url == server + "/karton" and bar() == "Karton · masa: poveznica na profil",
+              f"a tap on the link's words: {pg.url}, the bar {bar()!r}")
+        pg.tap("#cbCancel")
+
+        row = pg.locator('.k-texts [data-copy="karton.confirm.weight_title"]')   # a row of the panel
+        row.scroll_into_view_if_needed(); row.tap()
+        check(bar() == "Karton · brisanje mase: naslov", f"a tap on the panel's row: the bar says {bar()!r}")
+        row.fill("Obrisati mjerenje?")
+        saved("karton.confirm.weight_title", "Obrisati mjerenje?")
+        check(pg.evaluate(overflow) == 0, f"edit mode overflows by {pg.evaluate(overflow)}px")
+
+        pg.reload(); pg.wait_for_load_state("networkidle")                  # edit mode off: each shows
+        for email, page in (("trener@test.local", pg), ("ivan@test.local", None)):
+            if page is None:
+                page = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True).new_page()
+                page.on("pageerror", lambda e: errs.append(str(e)))
+                page.goto(server + "/login"); page.fill("main input[name=email]", email)
+                page.fill("main input[name=password]", "lozinka123"); page.click("main button[type=submit]")
+                page.wait_for_load_state("networkidle"); page.goto(server + "/karton"); page.wait_for_load_state("networkidle")
+            seen = page.evaluate("""() => [document.getElementById('masa-h').textContent,
+              document.querySelector('#masa .kc-head .act').textContent.trim(),
+              [...new Set([...document.querySelectorAll('#masa form[data-confirm-title]')].map(f => f.dataset.confirmTitle))],
+              document.body.classList.contains('editing'), document.querySelectorAll('[data-copy]').length > 0]""")
+            check(seen == ["Masa tijela", "Upiši sada", ["Obrisati mjerenje?"], False, email.startswith("trener")],
+                  f"{email} after the edits: {seen}")
+            check(page.evaluate(overflow) == 0, f"{email}: the karton overflows by {page.evaluate(overflow)}px")
+        browser.close()
+    print("\n".join(problems + errs))
+    assert not problems and not errs, f"{len(problems + errs)} problems, listed above"
 
 
 def test_the_clanarine_add_form_shows_the_select_that_fits_the_plan(server):

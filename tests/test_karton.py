@@ -26,18 +26,25 @@ the owner: "Height is one number, weight a dated history, limitations a free
 text, the photo optional and shrunk like the landing's photos, visible to the
 member and Amir only"; migration 0401f7fb9861, run for real on qmt_test there
 and back): the height on /profil and in the karton's head line, the weight
-card in the rail (one value a day, the history, its ✕), "Ograničenja i
-bolovi" (the member's text, the trainer's amber chip), and "Napredak —
-fotografije" (one photo a month, shrunk and bare as an announcement's, served
-by /media to the member and staff only), in a test client, under racing
-writes and on a phone.
+card (one value a day, the history, its ✕), "Ograničenja i bolovi" (the
+member's text, the trainer's amber chip), and "Napredak — fotografije" (one
+photo a month, shrunk and bare as an announcement's, served by /media to the
+member and staff only), in a test client, under racing writes and on a
+phone.
 
 Since 24.11.2026 staff (the trainer, the owner) have a karton of their own
 at /karton (the owner: "Lets show the Karton tab in the Admin view as well
 so that Amir can check out the changes we made there"): a member's, less
 the upitnik card and the termini. And the maxes never count a set that
 holds seconds: since the same day an online exercise may ask for reps and
-seconds, its sets {"reps": 5, "seconds": 30}."""
+seconds, its sets {"reps": 5, "seconds": 30}.
+
+Since 25.11.2026 the karton is one column, the diary last (the owner:
+"Everything should be one above the other and the 'dnevnik treninga'
+should be last"; from 1000px its cards in two columns above the diary:
+"if you have more room on the PC layout, you can use more columns"), read
+in a browser on the three views; and its texts are copy slots, printed in
+spans (bare() reads through them; tests/test_copy.py proves them)."""
 
 from __future__ import annotations
 
@@ -113,6 +120,23 @@ def client_for(email: str) -> TestClient:
     return c
 
 
+def bare(html: str) -> str:
+    """A page with its texts' spans unwrapped: since 25.11.2026 every static
+    text of the karton is a copy slot, printed in a span (a member's
+    span.t, the editor's span.ed.t with its key and label); unwrapped, the
+    markup around a text reads as it did, so an assertion about it keeps
+    its meaning. tests/test_copy.py proves the spans themselves."""
+    return re.sub(r'<span class="(?:ed )?t"[^>]*>(.*?)</span>', r"\1", html, flags=re.S)
+
+
+def karton_only(page: str) -> str:
+    """A staff member's own karton without the editor's panel "Svi tekstovi
+    kartona" (25.11.2026: every karton text, those only a member or the
+    trainer's view shows among them, at the bottom of his page, in edit mode
+    only): what the page itself shows him."""
+    return page.split('<section class="card k-texts"')[0]
+
+
 def seed_questions() -> None:
     """The upitnik's questions: the gym owner's fifteen, as the migration
     makes them (copy.UPITNIK_DEFAULT_QUESTIONS)."""
@@ -149,7 +173,7 @@ def test_karton_self_other_and_trainer():
     assert ct.get(f"/karton/{ivan}").status_code == 200
     # since 24.11.2026 the trainer has a karton of his own (until then: bounced to članarine)
     r = ct.get("/karton", follow_redirects=False)
-    assert r.status_code == 200 and "<h1>Moj karton</h1>" in r.text
+    assert r.status_code == 200 and "<h1>Moj karton</h1>" in bare(r.text)
 
 
 def test_staff_have_a_karton_of_their_own():
@@ -170,7 +194,7 @@ def test_staff_have_a_karton_of_their_own():
     ex = library("Potisak s klupe", "Plank")
     ca, co = client_for("amir@test.local"), client_for("trener@test.local")
     for c in (ca, co):
-        page = c.get("/karton").text
+        page = bare(karton_only(c.get("/karton").text))
         assert "<h1>Moj karton</h1>" in page
         for gone in ('<section class="upitnik', "Upitnik još nije ispunjen", "Ispuni upitnik",
                      "dio zasebne članarine", 'id="termini-h"', "Nadolazeći termini", "rezerviraj prvi"):
@@ -195,11 +219,11 @@ def test_staff_have_a_karton_of_their_own():
     ca.post(f"/treninzi/{pid}/dan/{did}/kraj", data={"effort": "5"})
     [done] = db.passes(amir)
     page = ca.get("/karton").text
-    assert f'id="log-{log.id}"' in page and f'id="pass-{done.id}"' in page and "Još nema treninga" not in page
+    assert f'id="log-{log.id}"' in page and f'id="pass-{done.id}"' in page and "Još nema treninga" not in karton_only(page)
     assert sets_lines(page.split(f'id="pass-{done.id}"')[1].split('<div class="log-entry')[0]) == ["Plank: 40 s"]
     assert maxes_rows(page) == [("Potisak s klupe", "108 kg", f"90 kg × 6 · {today.strftime('%-d.%-m.%Y.')} dvorana")]
     assert '<p class="ms-val">82,5 kg</p>' in page and "Staro koljeno." in page
-    assert "Nadolazeći termini" not in page and '<section class="upitnik' not in page
+    assert "Nadolazeći termini" not in karton_only(page) and '<section class="upitnik' not in page
 
     seen = ca.get(f"/karton/{ivan}").text                                     # a client's: as before
     assert '<nav class="crumbs" aria-label="Putanja"><a href="/clanarine">Trenutne članarine</a>' in seen
@@ -620,7 +644,7 @@ def test_an_osvrt_logs_its_exercises_for_the_client_and_the_trainer():
     sid = attended_session(ivan)
     ci = client_for("ivan@test.local")
     page = ci.get("/karton").text
-    form = page.split(f'action="/karton/feedback/{sid}"')[1].split("</form>")[0]
+    form = bare(page.split(f'action="/karton/feedback/{sid}"')[1].split("</form>")[0])
     assert (f'<fieldset class="xl" data-xl="fb-{sid}" data-log=\'[]\' hidden>' in form
             and "<legend>Vježbe (neobavezno)</legend>" in form and HINT in form
             and '<div class="xl-blocks"></div>' in form
@@ -645,7 +669,7 @@ def test_an_osvrt_logs_its_exercises_for_the_client_and_the_trainer():
     assert log.exercise_count == 2 and log.lines() == [("Potisak s klupe", ["6 × 90 kg", "5 × 92,5 kg"]), ("Zgibovi", ["9"])]
     trainer = client_for("trener@test.local").get(f"/karton/{ivan}").text
     for page in (ci.get("/karton").text, trainer):
-        row = read_part(entry(page, log.id))
+        row = bare(read_part(entry(page, log.id)))
         assert "<p>Dobar dan.</p>" in row and '<div class="hint le-sub le-ex">2 vježbe</div>' in row
         assert row.index("<p>Dobar dan.</p>") < row.index("2 vježbe") < row.index("<summary>Serije</summary>")
         assert sets_lines(row) == ["Potisak s klupe: 6 × 90 kg · 5 × 92,5 kg", "Zgibovi: 9"]
@@ -750,7 +774,7 @@ def test_a_training_outside_a_termin():
     today = config.today()
     earlier = today - timedelta(days=22)
     page = ci.get("/karton").text
-    new = " ".join(page.split('<div class="log-new" id="trening-novi">')[1].split("</form>")[0].split())
+    new = " ".join(bare(page).split('<div class="log-new" id="trening-novi">')[1].split("</form>")[0].split())
     assert page.index('id="trening-novi"') < page.index('class="log-entry')         # above the diary's rows
     assert ('<button type="button" class="act" onclick="qmtToggleForm(\'trening-novi\')">+ Dodaj trening izvan termina'
             '</button>') in new
@@ -781,7 +805,7 @@ def test_a_training_outside_a_termin():
                              [(bench, "Potisak s klupe", [{"reps": 8, "kg": 80.0}])])]
     assert [x.id for x in db.pending_feedback(ivan)] == [sid]
     for page in (ci.get("/karton").text, client_for("trener@test.local").get(f"/karton/{ivan}").text):
-        row = read_part(entry(page, log.id))
+        row = bare(read_part(entry(page, log.id)))
         assert row.index('<div class="le-kicker">Trening izvan termina</div>') < row.index('<span class="when">')
         assert '<span class="when">sri 1.1.2020.</span>' in row and "Grupni trening" not in row
         assert '<div class="hint le-sub le-ex">1 vježba</div>' in row and sets_lines(row) == ["Potisak s klupe: 8 × 80 kg"]
@@ -981,10 +1005,10 @@ def test_the_karton_shows_the_maxes_to_the_client_and_the_trainer():
             'do 12 ponavljanja. Vježbe bez utega: najviše ponavljanja.</p>')
     for page, empty in ((ci.get("/karton").text, "Još nema serija — upiši vježbe uz osvrt treninga."),
                         (ct.get(f"/karton/{ivan}").text, "Još nema serija.")):
-        section = maxes_section(page)
+        section = bare(maxes_section(page))
         assert '<h2 id="maxes-h">Procijenjeni maksimumi</h2>' in section and hint in section
         assert f'<p class="mx-empty">{empty}</p>' in section and "<table>" not in section
-        assert page.index('<section class="upitnik') < page.index('class="card maxes"') < page.index('class="karton-grid"')
+        assert page.index('<section class="upitnik') < page.index('class="card maxes"') < page.index('<h2 id="osvrti">')
     day = date(2026, 11, 12)
     db.add_training_log(ivan, day, 7, "", sets=[logged(ex["Zgibovi"], "Zgibovi", (9, 0)),
                                                 logged(ex["Potisak s klupe"], "Potisak s klupe", (6, 90), (8, 80))])
@@ -992,7 +1016,7 @@ def test_the_karton_shows_the_maxes_to_the_client_and_the_trainer():
                 ("Zgibovi", "9 ponavljanja", "12.11.2026. dvorana")]
     for page in (ci.get("/karton").text, ct.get(f"/karton/{ivan}").text):
         assert maxes_rows(page) == expected
-        section = maxes_section(page)
+        section = bare(maxes_section(page))
         assert ('<thead><tr><th scope="col">Vježba</th><th scope="col">Procjena</th><th scope="col">Iz</th></tr></thead>'
                 in section and "mx-empty" not in section)
 
@@ -1025,8 +1049,9 @@ def head_line(page: str) -> str:
 
 
 def card(page: str, cls: str) -> str:
-    """One of part 2's cards: "masa" (the rail's), "card limits", "card photos"."""
-    return page.split(f'<section class="{cls}"')[1].split("</section>")[0]
+    """One of part 2's cards, its texts' spans unwrapped (bare): "card masa"
+    (the rail's, "masa", until 25.11.2026), "card limits", "card photos"."""
+    return bare(page.split(f'<section class="{cls}"')[1].split("</section>")[0])
 
 
 def weight_list(chunk: str) -> list[str]:
@@ -1079,15 +1104,15 @@ def test_the_height_is_a_profile_field_and_heads_the_karton():
     assert head_line(page) == "Dnevnik treninga, upitnik i termini na jednom mjestu. Visina 178 cm"
     assert '<span class="k-body">Visina 178 cm</span>' in page
     assert head_line(seen) == f"ivan@test.local · {age_of(date(1990, 1, 1))} god. · Visina 178 cm"
-    assert '<p class="hint ms-height">Visina 178 cm · <a class="tlink" href="/profil">uredi</a></p>' in card(page, "masa")
-    assert '<p class="hint ms-height">Visina 178 cm</p>' in card(seen, "masa")
+    assert '<p class="hint ms-height">Visina 178 cm · <a class="tlink" href="/profil">uredi</a></p>' in card(page, "card masa")
+    assert '<p class="hint ms-height">Visina 178 cm</p>' in card(seen, "card masa")
     r = ci.post("/profil", data={**form, "height": ""}, follow_redirects=False)            # emptied: none
     assert location(r) == "/profil?ok=Podaci su spremljeni." and db.get_user(ivan).height_cm is None
     page, seen = ci.get("/karton").text, ct.get(f"/karton/{ivan}").text
     assert head_line(page) == "Dnevnik treninga, upitnik i termini na jednom mjestu." and '<span class="k-body">' not in page
-    assert "Visina" not in head_line(seen) and "ms-height" not in card(seen, "masa")
+    assert "Visina" not in head_line(seen) and "ms-height" not in card(seen, "card masa")
     assert ('<p class="hint ms-height">Visina nije upisana — <a class="tlink" href="/profil">upiši je na profilu</a>.</p>'
-            in card(page, "masa"))
+            in card(page, "card masa"))
     assert "BMI" not in page and "ITM" not in page                                       # not asked
 
 
@@ -1118,7 +1143,7 @@ def test_a_weight_a_day_upserted_shown_and_deleted_own_only():
     make_user("trener@test.local", is_trainer=True)
     ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
     page = ci.get("/karton").text
-    assert '<p class="kc-empty">Još nije upisana.</p>' in card(page, "masa") and "ms-list" not in card(page, "masa")
+    assert '<p class="kc-empty">Još nije upisana.</p>' in card(page, "card masa") and "ms-list" not in card(page, "card masa")
     assert "Masa" not in head_line(page) and "Masa" not in head_line(ct.get(f"/karton/{ivan}").text)
     today = config.today()
     older, newer = today - timedelta(days=9), today - timedelta(days=2)
@@ -1135,8 +1160,8 @@ def test_a_weight_a_day_upserted_shown_and_deleted_own_only():
     assert [(w.measured_on, w.kg) for w in db.weights(ivan)] == [(newer, Decimal("82.5")), (older, Decimal("84.0"))]
     page, seen = ci.get("/karton").text, ct.get(f"/karton/{ivan}").text
     for p in (page, seen):
-        masa = card(p, "masa")
-        assert f'<p class="ms-val">82,5 kg</p>\n      <p class="hint ms-date">{full(newer)}</p>' in masa
+        masa = card(p, "card masa")          # a card of the column since 25.11.2026: its lines two spaces in
+        assert f'<p class="ms-val">82,5 kg</p>\n  <p class="hint ms-date">{full(newer)}</p>' in masa
         assert weight_list(masa) == [f"{full(newer)} · 82,5 kg", f"{full(older)} · 84 kg"]
         assert "prikaži sve" not in masa and "Povijest" not in masa
     assert head_line(page).endswith(f"mjestu. Masa 82,5 kg ({short(newer)})")
@@ -1144,10 +1169,10 @@ def test_a_weight_a_day_upserted_shown_and_deleted_own_only():
     newest = db.weights(ivan)[0]
     assert (f'<form method="post" action="/karton/masa/{newest.id}/obrisi"\n          data-confirm-title="Obrisati unos?"\n'
             f'          data-confirm="Unos 82,5 kg od {full(newer)} bit će trajno obrisan."\n          data-confirm-cta="Obriši unos">\n'
-            f'      <button type="submit" class="k-x" aria-label="Obriši unos {full(newer)}">✕</button>') in card(page, "masa")
-    masa = card(seen, "masa")                                                              # the trainer reads
+            f'      <button type="submit" class="k-x" aria-label="Obriši unos {full(newer)}">✕</button>') in card(page, "card masa")
+    masa = card(seen, "card masa")                                                              # the trainer reads
     assert "<form" not in masa and "k-x" not in masa and "Upiši" not in masa
-    assert '<button type="button" class="act" onclick="qmtToggleForm(\'masa\')">Upiši</button>' in card(page, "masa")
+    assert '<button type="button" class="act" onclick="qmtToggleForm(\'masa\')">Upiši</button>' in card(page, "card masa")
     db.update_profile(ivan, "ivan", "Test", date(1990, 1, 1), "", height_cm=178)
     assert head_line(ci.get("/karton").text).endswith(f"mjestu. Visina 178 cm · Masa 82,5 kg ({short(newer)})")
     theirs = db.weights(ana)[0].id
@@ -1175,16 +1200,16 @@ def test_the_weight_history_shows_twelve_then_folds_the_rest():
     for k, day in enumerate(days):
         db.set_weight(ivan, day, Decimal(80) + Decimal(k) / 10)
     rows = [f"{full(d)} · {str(Decimal(80) + Decimal(k) / 10).replace('.', ',')} kg" for k, d in enumerate(days)]
-    masa = card(ci.get("/karton").text, "masa")
+    masa = card(ci.get("/karton").text, "card masa")
     shown, folded = masa.split('<details class="sets"><summary>prikaži sve</summary>')
     assert weight_list(shown) == rows[:12] and weight_list(folded) == rows[12:]
     assert masa.count('class="k-x"') == 14
-    masa = card(ct.get(f"/karton/{ivan}").text, "masa")
+    masa = card(ct.get(f"/karton/{ivan}").text, "card masa")
     before, history = masa.split('<details class="sets"><summary>Povijest</summary>')
     assert weight_list(before) == [] and weight_list(history) == rows and "k-x" not in masa and "prikaži sve" not in masa
     for w in db.weights(ivan)[12:]:
         db.delete_weight(w.id, ivan)
-    masa = card(ct.get(f"/karton/{ivan}").text, "masa")
+    masa = card(ct.get(f"/karton/{ivan}").text, "card masa")
     assert weight_list(masa) == rows[:12] and "<details" not in masa
 
 
@@ -1757,15 +1782,17 @@ def test_the_exercise_log_on_a_phone(server):
     assert not problems, f"{len(problems)} problems, listed above"
 
 
-# the part 2 cards' places on the page: [top, left, width] of each
-PLACES = """() => Object.fromEntries(['.upitnik', '#ogranicenja', '#napredak', '.maxes', '#masa', '.termini'].map(s => {
+# the cards' places on the page: [top, left, width] of each (the diary's
+# heading for the diary)
+PLACES = """() => Object.fromEntries(['.upitnik', '#ogranicenja', '#masa', '#napredak', '.maxes', '.termini', '#osvrti'].map(s => {
   const r = document.querySelector(s).getBoundingClientRect(); return [s, [Math.round(r.top + scrollY), Math.round(r.left), Math.round(r.width)]]; }))"""
 
 
 def test_the_body_cards_on_a_phone(server):
-    """At 390px, touch, on ivan's karton: the limitations and the photos are
-    blocks between the upitnik block and the maxes, the weight card heads
-    the rail (the termini under it); every card fits the screen. "Upiši"
+    """At 390px, touch, on ivan's karton: the cards one under the other in
+    their order (25.11.2026), the upitnik block, the limitations, the
+    weight, the photos, the maxes, the termini, the diary last; every card
+    fits the screen. "Upiši"
     opens the weight form, the focus in Kilogrami, Datum today: 82.5 and
     Spremi, and the card says 82,5 kg and today, its history one row, the
     head line "Masa 82,5 kg (…)". "Uredi" opens the textarea, focused: two
@@ -1790,7 +1817,8 @@ def test_the_body_cards_on_a_phone(server):
         pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle")
         check(pg.evaluate(OVERFLOW) == 0, f"the karton overflows by {pg.evaluate(OVERFLOW)}px")
         at = pg.evaluate(PLACES)
-        check(at[".upitnik"][0] < at["#ogranicenja"][0] < at["#napredak"][0] < at[".maxes"][0] < at["#masa"][0] < at[".termini"][0]
+        check(at[".upitnik"][0] < at["#ogranicenja"][0] < at["#masa"][0] < at["#napredak"][0] < at[".maxes"][0]
+              < at[".termini"][0] < at["#osvrti"][0]
               and all(left >= 0 and left + width <= 390 for _, left, width in at.values()), f"the cards' places: {at}")
         # the weight
         pg.tap("#masa .kc-head .act")
@@ -1838,6 +1866,132 @@ def test_the_body_cards_on_a_phone(server):
         check(pg.evaluate(OVERFLOW) == 0, f"the photos overflow by {pg.evaluate(OVERFLOW)}px")
         problems += errors
         ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+# ---------- the page's order and columns (25.11.2026) ----------
+
+# The karton as it lies: the visible h2s' words in the page's order, each
+# card's box (top and bottom on the page) and how much its content is wider
+# than it, the diary's box (its .k-sec), the page's overflow.
+LAYOUT = """() => {
+  const vis = el => !!el && el.getClientRects().length > 0;
+  const box = el => { const r = el.getBoundingClientRect();
+    return {top: r.top + scrollY, bottom: r.bottom + scrollY, left: r.left, right: r.right, width: r.width}; };
+  const cards = ['.upitnik', '#ogranicenja', '#masa', '#napredak', '.maxes', '.termini']
+    .map(s => [s, document.querySelector(s)]).filter(([, el]) => vis(el));
+  return {heads: [...document.querySelectorAll('main h2')].filter(vis).map(h => h.textContent.replace(/\\s+/g, ' ').trim()),
+          cards: cards.map(([s, el]) => ({name: s, ...box(el), wide: el.scrollWidth - el.clientWidth})),
+          diary: box(document.getElementById('osvrti').parentElement),
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth};
+}"""
+
+
+def _lies_wrong(at: dict, heads: list[str], w: int) -> list[str]:
+    """What is wrong with a karton as LAYOUT read it at w px (nothing: []):
+    its headings not `heads`, an overflow, a card whose content is wider than
+    it, the diary not under every card. Below 1000px a card whose left edge
+    is not the diary's, or that is not under the one before; from 1000px
+    the limitations and the weight, and the photos and the maxes, not each a
+    row of two equal columns (one top, one bottom, one width, 20px apart),
+    the upitnik block or the termini not across both, a row not under the
+    one before, the diary not as wide as the two columns."""
+    out, got, diary = [], at["cards"], at["diary"]
+    if at["heads"] != heads:
+        out.append(f"the headings {at['heads']}")
+    if at["overflow"]:
+        out.append(f"the page overflows by {at['overflow']}px")
+    out += [f"{c['name']}'s content is {c['wide']}px wider than it" for c in got if c["wide"] > 0]
+    if any(diary["top"] < c["bottom"] - 1 for c in got):
+        out.append(f"the diary ({diary['top']:.0f}) is not under every card")
+    if w < 1000:                                         # one column: one left edge, each under the one before
+        if any(abs(c["left"] - diary["left"]) > 1 for c in got):
+            out.append(f"the left edges {[round(c['left']) for c in got]}, the diary's {diary['left']:.0f}")
+        if any(b["top"] < a["bottom"] - 1 for a, b in zip(got, got[1:])):
+            out.append(f"a card beside another: {[(c['name'], round(c['top'])) for c in got]}")
+        return out
+    named = {c["name"]: c for c in got}
+    left, right = named["#ogranicenja"]["left"], named["#masa"]["right"]
+    for a, b in ((named["#ogranicenja"], named["#masa"]), (named["#napredak"], named[".maxes"])):
+        if (abs(a["top"] - b["top"]) > 1 or abs(a["bottom"] - b["bottom"]) > 1 or abs(a["width"] - b["width"]) > 1
+                or abs(b["left"] - a["right"] - 20) > 1 or abs(a["left"] - left) > 1 or abs(b["right"] - right) > 1):
+            out.append(f"{a['name']} and {b['name']} are not one row of two equal columns: {a}, {b}")
+    for span in (".upitnik", ".termini"):
+        if span in named and (abs(named[span]["left"] - left) > 1 or abs(named[span]["right"] - right) > 1):
+            out.append(f"{span} does not span both columns: {named[span]}")
+    rows = [[named[n] for n in row if n in named]
+            for row in ((".upitnik",), ("#ogranicenja", "#masa"), ("#napredak", ".maxes"), (".termini",))]
+    rows = [row for row in rows if row]
+    if any(min(c["top"] for c in b) < max(c["bottom"] for c in a) - 1 for a, b in zip(rows, rows[1:])):
+        out.append(f"a row is not under the one before: {[(c['name'], round(c['top'])) for c in got]}")
+    if abs(diary["left"] - left) > 1 or abs(diary["right"] - right) > 1:
+        out.append(f"the diary ({diary['left']:.0f}–{diary['right']:.0f}) is not the columns' width")
+    return out
+
+
+def test_the_karton_is_one_column_then_two_in_its_order(server):
+    """The karton's order (25.11.2026, the owner: "Everything should be one
+    above the other and the 'dnevnik treninga' should be last"): the
+    upitnik block, "Ograničenja i bolovi", "Tjelesna masa", "Napredak —
+    fotografije", "Procijenjeni maksimumi", "Nadolazeći termini" (not on a
+    staff member's own), "Dnevnik treninga" last, read from the headings on
+    the member's own karton, a staff member's own and the trainer's view of
+    the member, at 390 (touch), 999, 1000 and 1280px. Below 1000px one
+    column: every card's left edge the diary's, each under the one before,
+    none beside another. From 1000px (the owner: "if you have more room on
+    the PC layout, you can use more columns") two equal columns: the
+    upitnik block across both, the limitations beside the weight and the
+    photos beside the maxes (a top edge shared, one width, one height, 20px
+    apart), the termini alone in their row across both; the diary under
+    every card, as wide as the two columns. No card's content is wider than
+    the card (fourteen weights, a photo, the maxes, a booking); the page
+    never scrolls sideways."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    from qmt import upitnik
+    seed_questions()
+    ivan = make_user("ivan@test.local")
+    trener = make_user("trener@test.local", is_trainer=True, plans=())
+    client_for("ivan@test.local").post("/upitnik", data=filled_upitnik(), follow_redirects=False)
+    ex = library("Potisak s klupe", "Zgibovi s vlastitom težinom tijela")
+    today = config.today()
+    for uid in (ivan, trener):
+        for k in range(14):
+            db.set_weight(uid, today - timedelta(days=3 * k), Decimal(80) + Decimal(k) / 10)
+        db.add_training_log(uid, today - timedelta(days=2), 7, "", sets=[
+            logged(ex["Potisak s klupe"], "Potisak s klupe", (6, 90)),
+            logged(ex["Zgibovi s vlastitom težinom tijela"], "Zgibovi s vlastitom težinom tijela", (9, 0))])
+        config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+        name = f"napredak-{uid}-{today:%Y%m}-0123456789abcdef.jpg"
+        Image.new("RGB", (600, 800), (70, 92, 112)).save(config.MEDIA_DIR / name, "JPEG")
+        db.set_photo(uid, today.replace(day=1), name)
+    sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=1), 60, 8, None)
+    with db.session_scope() as s:
+        s.add(Booking(user_id=ivan, session_id=sid))
+    level = upitnik.LEVELS[db.get_onboarding(ivan).level]
+    cards = ["Ograničenja i bolovi", "Tjelesna masa", "Napredak — fotografije", "Procijenjeni maksimumi"]
+    views = (("ivan@test.local", "/karton", [level, *cards, "Nadolazeći termini", "Dnevnik treninga"]),
+             ("trener@test.local", "/karton", [*cards, "Dnevnik treninga"]),
+             ("trener@test.local", f"/karton/{ivan}", [level, *cards, "Nadolazeći termini", "Dnevnik treninga"]))
+    problems: list[str] = []
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        for email, path, heads in views:
+            for w in (390, 999, 1000, 1280):
+                phone = w < 600
+                ctx = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
+                pg = ctx.new_page()
+                pg.goto(server + "/login")
+                pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+                pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
+                pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+                pg.goto(server + path); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+                at = pg.evaluate(LAYOUT)
+                problems += [f"{email} {path} {w}px: {p}" for p in _lies_wrong(at, heads, w)]
+                ctx.close()
         browser.close()
     print("\n".join(problems))
     assert not problems, f"{len(problems)} problems, listed above"

@@ -61,6 +61,9 @@ templates.env.globals["GYM"] = copy.GYM_CARD_SLOTS     # a gym card's fields (la
 templates.env.globals["QUESTION"] = copy.UPITNIK_QUESTION_SLOTS   # a question's texts (upitnik.html)
 # the guide's sections by number, 1 … 11: its slots are vodic.<n>.* (_vodic.html)
 templates.env.globals["VODIC_SECTIONS"] = range(1, len(copy.VODIC_SECTIONS) + 1)
+# the karton's texts by area, (caption, keys), for the panel "Svi tekstovi
+# kartona" on a staff member's own karton in edit mode (karton.html, 25.11.2026)
+templates.env.globals["KARTON_PANEL"] = copy.KARTON_PANEL
 # an online tier's QMove card, whose title slot is the tier's name (moja_clanarina.html, Paket)
 templates.env.globals["ONLINE_TIER_SLOTS"] = ONLINE_TIER_SLOTS
 # an online programme's day (30.10.2026): its sections in their order, the
