@@ -131,8 +131,10 @@ at the bottom of his own karton in edit mode (KARTON_AREAS, KARTON_PANEL).
 What stays code there: a sentence built around a value (the head line,
 "Razina 2 od 3 — …", "napor 7/10", "3 vježbe", "6 od 8 vježbi · 38 min",
 "Karton — <ime>", a confirm that names a value, the photo field's label
-with its size in MB, the line the script writes for an exercise gone from
-the library), the tables' cells, LEVELS, FEELING_LABELS and the months
+and since 25.11.2026 the document fields' with their size in MB, the
+exercise history's "Zadnji put: …" and "Procjena maksimuma: …", the line
+the script writes for an exercise gone from the library), the tables'
+cells, LEVELS, FEELING_LABELS and the months
 (the app's words everywhere), the upitnik's own questions and answers
 (rows and slots of their own), the routes' flashes, every aria-label and
 alt, the page's <title>, the crumbs and the nav.
@@ -612,7 +614,25 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
                                       "Karton · ograničenja: primjer u praznom polju"),
     "karton.limits.save": Slot("Spremi", CAP, "Karton · ograničenja: gumb Spremi", required=True),
     "karton.limits.cancel": Slot("Odustani", CAP, "Karton · ograničenja: gumb Odustani", required=True),
-    "karton.weight.title": Slot("Tjelesna masa", CAP, "Karton · masa: naslov", required=True),
+    # the documents under the limitations (25.11.2026, Amir: "U ograničenja i
+    # bolovi treba dodati mogućnost da se doda slika ili pdf"): the member's
+    # button beside Uredi, the list's caption, the form's name field and its
+    # buttons (the file field's label says its size in MB: code), each
+    # document's chip
+    "karton.limits.add_doc": Slot("Dodaj dokument", CAP, "Karton · ograničenja: gumb Dodaj dokument", required=True),
+    "karton.limits.docs": Slot("Dokumenti", CAP, "Karton · ograničenja: naslov popisa dokumenata", required=True),
+    "karton.limits.doc_name": Slot("Naziv (neobavezno)", CAP, "Karton · ograničenja: polje Naziv dokumenta",
+                                   required=True),
+    "karton.limits.doc_save": Slot("Spremi", CAP, "Karton · ograničenja: gumb Spremi dokument", required=True),
+    "karton.limits.doc_cancel": Slot("Odustani", CAP, "Karton · ograničenja: gumb Odustani od dokumenta",
+                                     required=True),
+    "karton.limits.chip_pdf": Slot("PDF", CAP, "Karton · ograničenja: oznaka PDF"),
+    "karton.limits.chip_image": Slot("slika", CAP, "Karton · ograničenja: oznaka slike"),
+    # "Tjelesna kompozicija" since 25.11.2026 (Amir: "Tjelesna masa tu bi
+    # promijenio u tjelesna kompozicija gdje opet mogu dodati pdf ili sliku ili
+    # samo upisati ručno masu"; "Tjelesna masa" until then): its entries a
+    # mass, a document, or both
+    "karton.weight.title": Slot("Tjelesna kompozicija", CAP, "Karton · masa: naslov", required=True),
     "karton.weight.add": Slot("Upiši", CAP, "Karton · masa: gumb Upiši", required=True),
     "karton.weight.height_edit": Slot("uredi", CAP, "Karton · masa: poveznica uz visinu", required=True),
     "karton.weight.no_height": Slot("Visina nije upisana —", CAP, "Karton · masa: bez visine, prije poveznice"),
@@ -621,6 +641,8 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "karton.weight.empty": Slot("Još nije upisana.", CAP, "Karton · masa: kad nema unosa"),
     "karton.weight.kg": Slot("Kilogrami", CAP, "Karton · masa: polje Kilogrami", required=True),
     "karton.weight.day": Slot("Datum", CAP, "Karton · masa: polje Datum", required=True),
+    "karton.weight.hint": Slot("Upiši masu, dodaj dokument (npr. ispis analize sastava tijela) ili oboje.", CAP,
+                               "Karton · masa: savjet u obrascu"),
     "karton.weight.save": Slot("Spremi", CAP, "Karton · masa: gumb Spremi", required=True),
     "karton.weight.cancel": Slot("Odustani", CAP, "Karton · masa: gumb Odustani", required=True),
     "karton.weight.more": Slot("prikaži sve", CAP, "Karton · masa: starije unose prikaži sve", required=True),
@@ -644,6 +666,18 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "karton.maxes.col_from": Slot("Iz", CAP, "Karton · maksimumi: stupac Iz", required=True),
     "karton.maxes.empty": Slot("Još nema serija — upiši vježbe uz osvrt treninga.", CAP,
                                "Karton · maksimumi: kad nema serija"),
+    # "Povijest vježbe" (25.11.2026, the owner: "We need a search bar for each
+    # user. Admins can access everyone's karton and search a particular
+    # exercise."): the card's heading, the picker's label and its button, the
+    # fold of the older times, the two empty states ("Zadnji put: …",
+    # "Procjena maksimuma: …" are built around a value: code)
+    "karton.history.title": Slot("Povijest vježbe", CAP, "Karton · povijest vježbe: naslov", required=True),
+    "karton.history.exercise": Slot("Vježba", CAP, "Karton · povijest vježbe: polje Vježba", required=True),
+    "karton.history.show": Slot("Prikaži", CAP, "Karton · povijest vježbe: gumb Prikaži", required=True),
+    "karton.history.more": Slot("prikaži sve", CAP, "Karton · povijest vježbe: starije prikaži sve", required=True),
+    "karton.history.empty": Slot("Još nema upisanih vježbi.", CAP, "Karton · povijest vježbe: kad nema vježbi"),
+    "karton.history.unknown": Slot("Ta vježba nije u ovom kartonu.", CAP,
+                                   "Karton · povijest vježbe: vježba nije u kartonu"),
     "karton.termini.title": Slot("Nadolazeći termini", CAP, "Karton · termini: naslov", required=True),
     "karton.termini.canceled": Slot("OTKAZANO", CAP, "Karton · termini: oznaka otkazanog termina"),
     "karton.termini.empty": Slot("Nema rezervacija.", CAP, "Karton · termini: kad nema rezervacija"),
@@ -695,6 +729,8 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "karton.confirm.photo_title": Slot("Obrisati fotografiju?", CAP, "Karton · brisanje fotografije: naslov",
                                        required=True),
     "karton.confirm.photo_cta": Slot("Obriši fotografiju", CAP, "Karton · brisanje fotografije: gumb", required=True),
+    "karton.confirm.doc_title": Slot("Obrisati dokument?", CAP, "Karton · brisanje dokumenta: naslov", required=True),
+    "karton.confirm.doc_cta": Slot("Obriši dokument", CAP, "Karton · brisanje dokumenta: gumb", required=True),
     "karton.confirm.osvrt_title": Slot("Obrisati osvrt?", CAP, "Karton · brisanje osvrta: naslov", required=True),
     "karton.confirm.osvrt_text": Slot("Napor, osjećaj, komentar i vježbe bit će trajno obrisani. Termin ostaje u "
                                       "dnevniku i osvrt možeš ispuniti ponovno.", CAP,
@@ -736,7 +772,8 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
 # karton.* slot under its area's caption, so the texts only a member, the
 # trainer's view or a confirm dialog shows are in his reach too.
 KARTON_AREAS = {"head": "Zaglavlje", "upitnik": "Upitnik", "limits": "Ograničenja i bolovi",
-                "weight": "Tjelesna masa", "photos": "Napredak — fotografije", "maxes": "Procijenjeni maksimumi",
+                "weight": "Tjelesna kompozicija", "photos": "Napredak — fotografije", "maxes": "Procijenjeni maksimumi",
+                "history": "Povijest vježbe",
                 "termini": "Nadolazeći termini", "diary": "Dnevnik treninga", "outside": "Trening izvan termina",
                 "osvrt": "Osvrt na trening", "log": "Vježbe u osvrtu", "confirm": "Prozori za potvrdu",
                 "staff": "Pogled trenera i karton osoblja"}

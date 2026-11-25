@@ -98,7 +98,8 @@
      one above the other and the 'dnevnik treninga' should be last"; a
      two-column grid with the weight and the termini in a rail beside the
      diary until then): the upitnik block, the limitations, the weight, the
-     photos, the maxes, the termini, then the diary. Below 1000px ONE
+     photos, the maxes, the exercise's history (the same day's later
+     build), the termini, then the diary. Below 1000px ONE
      column, each card 720px at most at the column's left edge. From 1000px
      (the owner: "if you have more room on the PC layout, you can use more
      columns"; the number Fable's) the cards above the diary flow in two
@@ -113,6 +114,13 @@
     .k-cards { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:20px; margin-bottom:26px; }
     .k-cards > :is(.upitnik, .card) { max-width:none; margin:0; }    /* over the cards' own 720px, below */
     .k-cards > .upitnik { grid-column:1 / -1; }
+    /* "Povijest vježbe" (25.11.2026, after the maxes) across both, its
+       picker 640px at most as the diary's forms, and the termini after it
+       across both as they were: half a row, a termin's title would give
+       way to a long "OTKAZANO" the editor retyped (tests/test_copy.py's
+       walk measured it at 1280px) */
+    .k-cards > :is(.hist, .termini) { grid-column:1 / -1; }
+    .hist .hx-form { max-width:640px; }
     .k-sec { max-width:none; }
   }
   /* its own rule: a browser that does not know "of" drops it alone */
@@ -239,8 +247,12 @@
   .kc-head h2 { margin:0; min-width:0; overflow-wrap:anywhere; }
   .kc-btns { display:flex; gap:9px; flex-wrap:wrap; }
   .kc-empty { font-size:.88rem; color:var(--muted); margin-top:8px; overflow-wrap:anywhere; }
-  :is(.masa, .limits, .photos) { scroll-margin-top:96px; }
-  :is(.masa, .limits, .photos).editing .le-edit { display:block; }
+  :is(.masa, .limits, .photos, .hist) { scroll-margin-top:96px; }
+  /* a card's toggle opens ITS form (the card's own .le-edit): since
+     25.11.2026 the limitations hold a second block with a form of its
+     own, the documents' (.lim-docs, its own toggle), which Uredi leaves
+     shut */
+  :is(.masa, .limits, .photos, .lim-docs).editing > .le-edit { display:block; }
   /* a quiet ✕ (the calendar's .unbook-x): a weight's, a photo's; 32px round
      at every pointer, a faint wash on hover; its form asks first */
   .k-x { width:32px; height:32px; padding:0; border:none; border-radius:50%; flex:none;
@@ -266,17 +278,77 @@
   .masa details.sets .ms-list { margin-top:4px; }
   .masa .ms-list li { display:flex; align-items:center; justify-content:space-between; gap:8px;
                       min-height:34px; border-top:1px solid var(--line); overflow-wrap:anywhere; }
+  /* "Tjelesna kompozicija" (25.11.2026): an entry's document is a link in
+     its row ("12.11.2026. · 82,5 kg · <name>", a new tab), a long name
+     wrapping anywhere; the form's document field under the two, then the
+     hint (muted .82rem, the photo form's rule line) */
+  .masa .ms-list li > span { min-width:0; padding:6px 0; }
+  .masa .ms-hint { font-size:.82rem; margin:-4px 0 12px; overflow-wrap:anywhere; }
+  .masa input[type="file"] { min-width:0; }
 
   /* "Ograničenja i bolovi": the member's text as he saved it (its line
      breaks), or the muted empty line; Uredi swaps it for the textarea.
      Its look is the column's cards' (the weight's and the termini's since
      25.11.2026 too): 720px at most, 18px 20px, 16px on a phone */
-  .limits, .photos, .masa, .termini { max-width:720px; margin-bottom:26px; padding:18px 20px; }
-  @media (max-width: 600px) { .limits, .photos, .masa, .termini { padding:16px; } }
-  .limits h2, .photos h2, .masa h2, .termini h2 { font-size:1.05rem; overflow-wrap:anywhere; }
+  .limits, .photos, .masa, .termini, .hist { max-width:720px; margin-bottom:26px; padding:18px 20px; }
+  @media (max-width: 600px) { .limits, .photos, .masa, .termini, .hist { padding:16px; } }
+  .limits h2, .photos h2, .masa h2, .termini h2, .hist h2 { font-size:1.05rem; overflow-wrap:anywhere; }
   .limits .lim-text { margin-top:8px; font-size:.92rem; white-space:pre-line; overflow-wrap:anywhere; }
   .limits.editing :is(.lim-text, .kc-empty) { display:none; }
   .limits textarea { resize:vertical; }
+
+  /* The documents under the limitations (25.11.2026, Amir: "U ograničenja
+     i bolovi treba dodati mogućnost da se doda slika ili pdf"): under the
+     text a block of their own (.lim-docs, its own toggle: "Dodaj
+     dokument" beside Uredi), its caption "Dokumenti" (the karton's kicker
+     look, an h3), the form in a hairline box (the training outside a
+     termin's: the file, its name), then a row per document, newest
+     first, a hairline over each: its name a link to the file in a new tab
+     (wrapping anywhere: a long name never widens the page), under it a
+     muted line, the chip "PDF" / "slika" and its date; the member's quiet
+     ✕ at the row's end. The trainer reads the list. */
+  .lim-docs { margin-top:16px; scroll-margin-top:96px; }
+  .lim-docs h3 { font:700 .7rem var(--font-body); letter-spacing:.12em; text-transform:uppercase;
+                 color:var(--muted); overflow-wrap:anywhere; }
+  .lim-docs .le-edit { margin:8px 0 10px; padding:14px 12px 12px; background:var(--surface);
+                       border:1px solid var(--line); border-radius:var(--r-md); }
+  .lim-docs input[type="file"] { min-width:0; }
+  .doc-list { list-style:none; margin:6px 0 0; padding:0; font-size:.88rem; }
+  .doc-list li { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:44px;
+                 padding:6px 0; border-top:1px solid var(--line); }
+  .doc-list .doc-main { flex:1 1 auto; min-width:0; }
+  .doc-list .doc-name { overflow-wrap:anywhere; }
+  .doc-list .doc-meta { display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; margin-top:2px;
+                        font-size:.8rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .doc-list form { margin:0; flex:none; }
+
+  /* ===== "Povijest vježbe" (25.11.2026, the owner: "We need a search bar
+     for each user. Admins can access everyone's karton and search a
+     particular exercise."): a card of the column right after the maxes,
+     the limitations' look. Its form: the picker (base.html's qmtCombobox
+     over the exercises this karton holds, each its name over its count and
+     its last day; a native select without the script) over "Prikaži", the
+     day editor's "Dodaj vježbu" order. With ?vjezba= the exercise under a
+     hairline: its name (an h3), "Zadnji put" and that time's sets, its
+     estimated max, then a row per time, newest first: the date, muted
+     where it was, the sets under it; past ten the rest under "prikaži sve"
+     (base.html's details.sets). ===== */
+  .hist h2 { margin-bottom:10px; }
+  .hist .hx-form .field { margin-bottom:10px; }
+  @media (pointer: coarse) { .hist .cbx > input { min-height:44px; } }
+  .hist .hx { margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+  .hist .hx-name { font-size:.98rem; overflow-wrap:anywhere; }
+  .hist :is(.hx-last, .hx-max) { margin-top:6px; font-size:.88rem; font-variant-numeric:tabular-nums;
+                                 overflow-wrap:anywhere; }
+  .hist .hx-sets { margin-top:2px; font-size:.92rem; font-weight:600; font-variant-numeric:tabular-nums;
+                   overflow-wrap:anywhere; }
+  .hist .set { white-space:nowrap; }
+  .hist ul.hx-list { list-style:none; margin:12px 0 0; padding:0; display:block; font-size:.88rem;
+                     font-variant-numeric:tabular-nums; }
+  .hist details.sets ul.hx-list { margin-top:4px; }
+  .hist .hx-list li { padding:8px 0; border-top:1px solid var(--line); overflow-wrap:anywhere; }
+  .hist .hx-when { font-weight:700; }
+  .hist .hx-where { color:var(--muted); font-weight:400; }
 
   /* "Napredak — fotografije": a wrapping row of thumbnails, never a
      sideways scroll, the newest month first; each a 120 × 160 box (the
@@ -359,7 +431,7 @@
   body:not(.editing) main > h1 + .hint:has(> .ed:empty):not(:has(.k-body)),
   body:not(.editing) :is(.upitnik .eyebrow, .upitnik .hint, .u-old, .u-flag, .kc-empty, .ph-rule, .kc-hint, .mx-hint,
                          .mx-empty, .termini .empty, .cal-row strong, .k-sec > .hint, .le-kicker, .chip,
-                         .xl-hint):not(:has(> a)):has(> .ed:empty),
+                         .xl-hint, .ms-hint):not(:has(> a)):has(> .ed:empty),
   body:not(.editing) .u-head:has(> .eyebrow > .ed:empty):not(:has(> .redo)),
   body:not(.editing) .u-flags:has(> .review > .ed:empty):not(:has(> .pain)),
   body:not(.editing) .upitnik.u-none:not(:has(span.t:not(:empty))) { display:none; }
@@ -457,19 +529,36 @@
 
 {# The weight card's history rows (23.11.2026): "12.11.2026. · 82,5 kg",
    newest first, on the member's own karton each with its quiet ✕, which
-   asks first #}
+   asks first. Since 25.11.2026 ("Tjelesna kompozicija") an entry's
+   document is a link after it, " · " and its name (a new tab; /media: the
+   member and staff only), an entry with no mass the date and the link
+   alone; the ✕ deletes the entry and its file. #}
 {% macro weight_rows(rows, own) -%}
 <ul class="ms-list">
   {%- for w in rows %}{% set day = w.measured_on.strftime("%-d.%-m.%Y.") %}
-  <li><span>{{ day }} · {{ w.kg_text }} kg</span>
+  <li><span>{{ day }}{% if w.kg is not none %} · {{ w.kg_text }} kg{% endif %}{% if w.file %} · <a class="tlink" href="/media/{{ w.file }}" target="_blank" rel="noopener">{{ w.file_name }}</a>{% endif %}</span>
     {%- if own %}
     <form method="post" action="/karton/masa/{{ w.id }}/obrisi"
           data-confirm-title="{{ copy_text('karton.confirm.weight_title', copy_texts) }}"
-          data-confirm="Unos {{ w.kg_text }} kg od {{ day }} bit će trajno obrisan."
+          data-confirm="{% if w.file %}Unos {% if w.kg is not none %}{{ w.kg_text }} kg {% endif %}od {{ day }} i njegov dokument bit će trajno obrisani.{% else %}Unos {{ w.kg_text }} kg od {{ day }} bit će trajno obrisan.{% endif %}"
           data-confirm-cta="{{ copy_text('karton.confirm.weight_cta', copy_texts) }}">
       <button type="submit" class="k-x" aria-label="Obriši unos {{ day }}">✕</button>
     </form>
     {%- endif %}</li>
+  {%- endfor %}
+</ul>
+{%- endmacro %}
+
+{# An exercise's times on the karton (25.11.2026, "Povijest vježbe";
+   db.exercise_history): a row a training, newest first, its date, muted
+   where it was logged ("dvorana" / "online") and where (the termin's
+   title, "Trening izvan termina", the online day's label), its sets under
+   it as the history prints them #}
+{% macro history_rows(rows) -%}
+<ul class="hx-list">
+  {%- for r in rows %}
+  <li><div class="hx-when">{{ r.on.strftime("%-d.%-m.%Y.") }} <span class="hx-where">{{ r.source_text }} · {{ r.where }}</span></div>
+    <div class="hx-did">{% for s in r.sets %}<span class="set">{{ s }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</div></li>
   {%- endfor %}
 </ul>
 {%- endmacro %}
@@ -587,14 +676,19 @@
 
 {# "Ograničenja i bolovi" (23.11.2026, Amir: "ograničenja koja će se on
    napisati, bolovi itd."): the member's own text as he saved it; his Uredi
-   opens the textarea (cleaned as copy is, 2000 characters at most). The
-   trainer reads it, with the pain flag's amber "Ograničenja" in the head
-   when it holds anything, so he does not miss it. #}
+   opens the textarea (cleaned as copy is, 2000 characters at most). Since
+   25.11.2026 (Amir: "treba dodati mogućnost da se doda slika ili pdf") his
+   documents under it, "Dodaj dokument" beside Uredi (not at ten). The
+   trainer reads both, with the pain flag's amber "Ograničenja" in the head
+   when the text holds anything or a document is there, so he does not
+   miss it. #}
+{% set can_add_doc = own and docs|length < docs_max %}
 <section class="card limits" id="ogranicenja" aria-labelledby="lim-h">
   <div class="kc-head">
     <h2 id="lim-h">{{ c.t("karton.limits.title") }}</h2>
-    {% if own %}<button type="button" class="act" onclick="qmtToggleForm('ogranicenja')">{{ c.t("karton.limits.edit") }}</button>
-    {% elif subject.limitations and (can_edit_copy or copy_text("karton.staff.limits_flag", copy_texts)) %}<span class="u-flag pain">{{ c.t("karton.staff.limits_flag") }}</span>{% endif %}
+    {% if own %}<div class="kc-btns"><button type="button" class="act" onclick="qmtToggleForm('ogranicenja')">{{ c.t("karton.limits.edit") }}</button>
+      {%- if can_add_doc %}<button type="button" class="act" onclick="qmtToggleForm('lim-docs')">{{ c.t("karton.limits.add_doc") }}</button>{% endif %}</div>
+    {% elif (subject.limitations or docs) and (can_edit_copy or copy_text("karton.staff.limits_flag", copy_texts)) %}<span class="u-flag pain">{{ c.t("karton.staff.limits_flag") }}</span>{% endif %}
   </div>
   {% if subject.limitations %}<p class="lim-text">{{ subject.limitations }}</p>
   {% elif can_edit_copy or copy_text("karton.limits.empty", copy_texts) %}<p class="kc-empty">{{ c.t("karton.limits.empty") }}</p>{% endif %}
@@ -609,12 +703,57 @@
     </div>
   </form>
   {% endif %}
+  {# the documents (25.11.2026): their caption when there is one, and
+     always on the member's own karton, whose "Dodaj dokument" opens the
+     form here (a file, its name: 80 characters, the file's own name when
+     none); a row each, newest first, its name a link to the file (a new
+     tab: /media, the member and staff only), its chip and its date, the
+     member's ✕ (the row, then the file) #}
+  {% if own or docs %}
+  <div class="lim-docs" id="lim-docs">
+    <h3>{{ c.t("karton.limits.docs") }}</h3>
+    {% if can_add_doc %}
+    <form class="le-edit" method="post" action="/karton/ogranicenja/dokument" enctype="multipart/form-data">
+      <div class="field"><label for="doc-file">Dokument (pdf, jpg, png ili webp, do {{ image_mb }} MB)</label>
+        <input id="doc-file" type="file" name="dokument" accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp" required data-focus></div>
+      <div class="field"><label for="doc-name">{{ c.t("karton.limits.doc_name") }}</label>
+        <input id="doc-name" type="text" name="naziv" maxlength="{{ doc_name_max }}" autocomplete="off"></div>
+      <div class="kc-btns">
+        <button type="submit" class="btn-sm btn-signal">{{ c.t("karton.limits.doc_save") }}</button>
+        <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('lim-docs')">{{ c.t("karton.limits.doc_cancel") }}</button>
+      </div>
+    </form>
+    {% endif %}
+    {% if docs %}
+    {% set k_pdf = can_edit_copy or copy_text("karton.limits.chip_pdf", copy_texts) %}
+    {% set k_image = can_edit_copy or copy_text("karton.limits.chip_image", copy_texts) %}
+    <ul class="doc-list">
+      {%- for d in docs %}{% set day = d.created_at.astimezone(tz).strftime("%-d.%-m.%Y.") %}
+      <li><div class="doc-main"><a class="tlink doc-name" href="/media/{{ d.file }}" target="_blank" rel="noopener">{{ d.name }}</a>
+          <div class="doc-meta">{% if d.is_pdf and k_pdf %}<span class="chip">{{ c.t("karton.limits.chip_pdf") }}</span>{% elif not d.is_pdf and k_image %}<span class="chip">{{ c.t("karton.limits.chip_image") }}</span>{% endif %}<span>{{ day }}</span></div></div>
+        {%- if own %}
+        <form method="post" action="/karton/ogranicenja/dokument/{{ d.id }}/obrisi"
+              data-confirm-title="{{ copy_text('karton.confirm.doc_title', copy_texts) }}"
+              data-confirm="Dokument „{{ d.name }}” bit će trajno obrisan."
+              data-confirm-cta="{{ copy_text('karton.confirm.doc_cta', copy_texts) }}">
+          <button type="submit" class="k-x" aria-label="Obriši dokument {{ d.name }}">✕</button>
+        </form>
+        {%- endif %}</li>
+      {%- endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
 </section>
 
-{# "Tjelesna masa" (23.11.2026, Amir: "tjelesna visina, tjelesna masa";
-   the owner: "Height is one number, weight a dated history"): the
-   height from the profile, the newest weight and its day, the member's
-   form (one a day: a second save that day replaces it), then the
+{# "Tjelesna kompozicija" ("Tjelesna masa" from 23.11.2026, Amir:
+   "tjelesna visina, tjelesna masa"; the owner: "Height is one number,
+   weight a dated history"; since 25.11.2026, Amir: "Tjelesna masa tu bi
+   promijenio u tjelesna kompozicija gdje opet mogu dodati pdf ili sliku
+   ili samo upisati ručno masu"): the height from the profile, the newest
+   mass and its day (an entry may be a document alone: the newest entry
+   that has one), the member's form (a mass, a document, or both; one
+   entry a day: a second save that day replaces what it gives), then the
    history, newest first: twelve, the rest under "prikaži sve" (the
    member's, each with its ✕), or for the trainer the whole of a longer
    one under "Povijest". No BMI: not asked. A card of the column under
@@ -629,21 +768,24 @@
   {% elif own %}
   <p class="hint ms-height">{{ c.t("karton.weight.no_height") }} <a class="tlink" href="/profil">{{ c.t("karton.weight.no_height_link") }}</a>.</p>
   {% endif %}
-  {% if weights %}
-  <p class="ms-val">{{ weights[0].kg_text }} kg</p>
-  <p class="hint ms-date">{{ weights[0].measured_on.strftime("%-d.%-m.%Y.") }}</p>
+  {% if latest_kg %}
+  <p class="ms-val">{{ latest_kg.kg_text }} kg</p>
+  <p class="hint ms-date">{{ latest_kg.measured_on.strftime("%-d.%-m.%Y.") }}</p>
   {% elif can_edit_copy or copy_text("karton.weight.empty", copy_texts) %}
   <p class="kc-empty">{{ c.t("karton.weight.empty") }}</p>
   {% endif %}
   {% if own %}
-  <form class="le-edit" method="post" action="/karton/masa">
+  <form class="le-edit" method="post" action="/karton/masa" enctype="multipart/form-data">
     <div class="ms-fields">
       <div class="field"><label for="ms-kg">{{ c.t("karton.weight.kg") }}</label>
-        <input id="ms-kg" type="number" name="kg" min="20" max="300" step="0.1" inputmode="decimal" required></div>
+        <input id="ms-kg" type="number" name="kg" min="20" max="300" step="0.1" inputmode="decimal"></div>
       <div class="field"><label for="ms-day">{{ c.t("karton.weight.day") }}</label>
         <input id="ms-day" type="date" name="day" value="{{ today.isoformat() }}"
                min="{{ first_day.isoformat() }}" max="{{ today.isoformat() }}" required></div>
     </div>
+    <div class="field"><label for="ms-doc">Dokument (pdf, jpg, png ili webp, do {{ image_mb }} MB)</label>
+      <input id="ms-doc" type="file" name="dokument" accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"></div>
+    {% if can_edit_copy or copy_text("karton.weight.hint", copy_texts) %}<p class="hint ms-hint">{{ c.t("karton.weight.hint") }}</p>{% endif %}
     <div class="kc-btns">
       <button type="submit" class="btn-sm btn-signal">{{ c.t("karton.weight.save") }}</button>
       <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('masa')">{{ c.t("karton.weight.cancel") }}</button>
@@ -730,7 +872,7 @@
     <tbody>
       {%- for m in maxes %}
       <tr>
-        <th scope="row">{{ m.name }}</th>
+        <th scope="row"><a class="tlink" href="?vjezba={{ m.exercise_id }}#povijest-vjezbe">{{ m.name }}</a></th>
         <td class="mx-val">{{ m.value_text }}</td>
         <td>{% if m.kind == "1rm" %}<span class="nw">{{ m.set_text }}</span> · {% endif %}<span class="nw">{{ m.on.strftime("%-d.%-m.%Y.") }}</span> <span class="mx-src">{{ m.source_text }}</span></td>
       </tr>
@@ -740,6 +882,51 @@
   {% else %}
   {% set empty = "karton.maxes.empty" if own else "karton.staff.maxes_empty" %}
   {% if can_edit_copy or copy_text(empty, copy_texts) %}<p class="mx-empty">{{ c.t(empty) }}</p>{% endif %}
+  {% endif %}
+</section>
+
+{# "Povijest vježbe" (25.11.2026, the owner: "We need a search bar for
+   each user. Admins can access everyone's karton and search a particular
+   exercise."; his note to Amir: "search unutar kartona vježbe kad je
+   radio i kaj je zadnje radio"): on a member's own karton, a staff
+   member's own and the trainer's view of a client. A GET form to this
+   karton (back at the card): the exercises it holds (db.logged_exercises)
+   in a native select, which the page's script turns into base.html's
+   combobox over #hx-json (each row its name over "5× · zadnji put …"); a
+   maxes row's name links here too. With ?vjezba=<id>: the exercise, its
+   last time and its sets, its estimated max (the maxes' own number), then
+   every time, newest first (db.exercise_history), ten and the rest under
+   "prikaži sve"; an id the karton does not hold says so. Nothing logged:
+   the empty line and no form. #}
+<section class="card hist" id="povijest-vjezbe" aria-labelledby="hist-h">
+  <h2 id="hist-h">{{ c.t("karton.history.title") }}</h2>
+  {% if logged %}
+  <form class="hx-form" method="get" action="{{ karton_path }}#povijest-vjezbe">
+    <div class="field"><label for="hx-ex">{{ c.t("karton.history.exercise") }}</label>
+      <select id="hx-ex" name="vjezba" data-chosen="{{ hx.exercise.exercise_id if hx else '' }}">
+        {%- for e in logged %}
+        <option value="{{ e.exercise_id }}"{% if hx and hx.exercise.exercise_id == e.exercise_id %} selected{% endif %}>{{ e.name }}</option>
+        {%- endfor %}
+      </select></div>
+    <button type="submit" class="btn-sm btn-signal">{{ c.t("karton.history.show") }}</button>
+    <script type="application/json" id="hx-json">{{ hx_rows|tojson }}</script>
+  </form>
+  {% if hx %}{% set last = hx.rows[0] %}
+  <div class="hx">
+    <h3 class="hx-name">{{ hx.exercise.name }}</h3>
+    <p class="hx-last">Zadnji put: {{ last.on.strftime("%-d.%-m.%Y.") }} · {{ last.source_text }}</p>
+    <p class="hx-sets">{% for s in last.sets %}<span class="set">{{ s }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+    {% if hx.max %}<p class="hx-max">Procjena maksimuma: <strong>{{ hx.max.value_text }}</strong></p>{% endif %}
+    {{ history_rows(hx.rows[:hx_shown]) }}
+    {% if hx.rows|length > hx_shown %}
+    <details class="sets"><summary>{{ c.t("karton.history.more") }}</summary>{{ history_rows(hx.rows[hx_shown:]) }}</details>
+    {% endif %}
+  </div>
+  {% elif hx_unknown and (can_edit_copy or copy_text("karton.history.unknown", copy_texts)) %}
+  <p class="kc-empty">{{ c.t("karton.history.unknown") }}</p>
+  {% endif %}
+  {% elif can_edit_copy or copy_text("karton.history.empty", copy_texts) %}
+  <p class="kc-empty">{{ c.t("karton.history.empty") }}</p>
   {% endif %}
 </section>
 
@@ -1038,16 +1225,41 @@
   // rows read first, write on demand: one toggle drives both the osvrt form on
   // an open termin and the edit form on a written one (and since 23.11.2026
   // the form of a training outside a termin, and the weight, limitations and
-  // photo cards' forms). Opened, the focus goes to the form's first question:
-  // a control it names (data-focus: the photo's file), else its first select
-  // or textarea (napor, the limitations), else its first input (the weight)
+  // photo cards' forms; since 25.11.2026 the limitations' documents', a block
+  // of the card with its own toggle). Opened, the focus goes to the first
+  // question of the block's OWN form (its .le-edit: the limitations' Uredi
+  // never lands in the documents' form): a control it names (data-focus: a
+  // file), else its first select or textarea (napor, the limitations), else
+  // its first input (the mass)
   function qmtToggleForm(id) {
     var row = document.getElementById(id);
     if (!row || !row.classList.toggle("editing")) return;
-    var first = row.querySelector("[data-focus]") || row.querySelector("select, textarea")
-                || row.querySelector(".le-edit input:not([type=hidden])");
+    var form = row.querySelector(":scope > .le-edit") || row;
+    var first = form.querySelector("[data-focus]") || form.querySelector("select, textarea")
+                || form.querySelector("input:not([type=hidden])");
     if (first) first.focus();
   }
+
+  // "Povijest vježbe" (25.11.2026): the picker as base.html's combobox,
+  // typed into, over the exercises this karton holds (#hx-json: [id, name,
+  // "5× · zadnji put …"], each row its name over that line); a hidden
+  // vjezba takes the select's place and is what the form sends, the
+  // exercise picked (?vjezba=) in the box. "Prikaži" with nothing picked
+  // stops at "Odaberi vježbu s popisa.". Without the script the select is
+  // the picker.
+  (function () {
+    var sel = document.getElementById("hx-ex"), data = document.getElementById("hx-json");
+    if (!sel || !data || !window.qmtCombobox) return;
+    var rows;
+    try {
+      rows = JSON.parse(data.textContent).map(function (x) { return {id: String(x[0]), name: x[1], tags: x[2] || ""}; });
+    } catch (e) { return; }
+    var value = document.createElement("input");
+    value.type = "hidden"; value.name = sel.name; value.value = sel.getAttribute("data-chosen") || "";
+    sel.parentNode.replaceChild(value, sel);
+    value.id = sel.id;
+    qmtCombobox({rows: rows, value: value}, {form: value.form});
+  })();
 
 {% if own %}
   // The exercise log in every form of the page (23.11.2026: a termin's

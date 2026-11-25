@@ -96,5 +96,5 @@ def send_termin_reminder(to: str, termini: list[tuple[str, str]]) -> bool:
         <table style="border-collapse:collapse;font-size:15px">{rows}</table>
         <p style="margin-top:14px">{_button(config.PUBLIC_BASE_URL + "/raspored", "Otvori raspored")}</p>
         <p style="color:#777;font-size:13px">Ne stigneš? Otkaži u rasporedu
-        najkasnije 3 sata prije termina.</p>
+        najkasnije {config.CANCEL_CUTOFF_HOURS} h prije termina.</p>
       </div>""")

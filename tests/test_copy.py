@@ -2090,6 +2090,9 @@ KARTON_OPTIONAL = {
     "karton.head.lead", "karton.upitnik.eyebrow", "karton.upitnik.old", "karton.upitnik.none_text",
     "karton.upitnik.no_plan", "karton.limits.empty", "karton.limits.placeholder", "karton.weight.no_height",
     "karton.weight.empty", "karton.photos.rule", "karton.photos.empty", "karton.photos.hint", "karton.maxes.hint",
+    # the documents' chips, the body form's hint, the history's two empty lines (25.11.2026)
+    "karton.limits.chip_pdf", "karton.limits.chip_image", "karton.weight.hint", "karton.history.empty",
+    "karton.history.unknown",
     "karton.maxes.empty", "karton.termini.canceled", "karton.termini.empty", "karton.diary.lead", "karton.diary.online",
     "karton.diary.outside", "karton.diary.absent_chip", "karton.diary.canceled", "karton.diary.empty",
     "karton.osvrt.placeholder", "karton.log.hint", "karton.staff.own_lead", "karton.staff.review", "karton.staff.old",
@@ -2139,23 +2142,32 @@ def attended(uid: int, hours_ago: float) -> int:
 
 def karton_rows(uid: int, member: bool) -> None:
     """A karton with every kind of row it prints (the long-text walk, the
-    edits below): fourteen weights (the history folds), a photo of this
-    month (its file in this test's MEDIA_DIR), a limitation, a training
-    outside a termin and an online pass with their sets (the maxes). A
-    member's (`member`) also: a v2 upitnik that needs a review, in pain;
-    an osvrt with sets on a termin, a termin still owed one, one he missed,
-    one the trainer canceled; a booking ahead and a canceled one."""
+    edits below): fourteen weights (the history folds; since 25.11.2026 one
+    with a document, and a document alone on a day of its own), a photo of
+    this month (its file in this test's MEDIA_DIR), a limitation and two
+    documents under it (a PDF and an image: both chips), a training outside
+    a termin and an online pass with their sets (the maxes, the exercise's
+    history). A member's (`member`) also: a v2 upitnik that needs a review,
+    in pain; an osvrt with sets on a termin, a termin still owed one, one
+    he missed, one the trainer canceled; a booking ahead and a canceled
+    one."""
     today, n = config.today(), len(db.exercises())
     bench, plank = (db.create_exercise(f"{name} {n}") for name in ("Potisak s klupe", "Plank"))
     entry = {"exercise_id": bench, "name": f"Potisak s klupe {n}", "sets": [{"reps": 6, "kg": 90.0}],
              "at": datetime.now(config.TZ).isoformat(timespec="seconds")}
     for k in range(14):
         db.set_weight(uid, today - timedelta(days=3 * k), Decimal(80) + Decimal(k) / 10)
+    db.set_weight(uid, today, None, file=f"sastav-{uid}-{today:%Y%m%d}-0123456789abcdef.pdf",
+                  file_name="InBody_analiza_sastava_tijela_studeni.pdf")
+    db.set_weight(uid, today - timedelta(days=1), None, file=f"sastav-{uid}-{today:%Y%m%d}-fedcba9876543210.pdf",
+                  file_name="Vaga.pdf")
     config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     name = f"napredak-{uid}-{today:%Y%m}-0123456789abcdef.jpg"
     Image.new("RGB", (600, 800), (70, 92, 112)).save(config.MEDIA_DIR / name, "JPEG")
     db.set_photo(uid, today.replace(day=1), name)
     db.set_limitations(uid, "Bol u koljenu pri čučnju.")
+    db.add_limitation_file(uid, f"nalaz-{uid}-0123456789abcdef.pdf", "Nalaz_magnetske_rezonance_desnog_koljena_ortopedija")
+    db.add_limitation_file(uid, f"nalaz-{uid}-fedcba9876543210.jpg", "Sken")
     db.add_training_log(uid, today - timedelta(days=2), 7, "Sam u teretani.", feeling="dobro", sets=[entry])
     pid = db.create_program(f"Online {n}", None, "pocetna", "cijelo")
     did = db.add_day(pid)
@@ -2188,7 +2200,9 @@ def spans(page: str, key: str) -> list[str]:
 
 
 def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
-    """Every static text of the karton is a slot (25.11.2026): 110 of them,
+    """Every static text of the karton is a slot (25.11.2026): 126 of them
+    (110, and the same day's later build's 16: the documents, the body
+    form's hint, "Povijest vježbe", the document's confirm),
     karton.<area>.<name>, registered area by area in the page's order
     (copy.KARTON_AREAS: the panel lists them so, each once), every one a
     text of CAP characters labelled for the editor's bar ("Karton: naslov",
@@ -2196,8 +2210,10 @@ def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
     words are required, a lead, a hint, a kicker, a chip, an empty line or
     a placeholder not. Their defaults are what karton.html printed before,
     character for character (spot-checked against its old texts), each as
-    clean() keeps a text."""
-    assert len(KARTON) == 110 and KARTON == [k for k in copy.SLOTS if k.startswith("karton.")]
+    clean() keeps a text; the weight card's heading is "Tjelesna
+    kompozicija" since the later build (Amir: "Tjelesna masa tu bi
+    promijenio u tjelesna kompozicija")."""
+    assert len(KARTON) == 126 and KARTON == [k for k in copy.SLOTS if k.startswith("karton.")]
     areas = [key.split(".")[1] for key in KARTON]
     assert list(dict.fromkeys(areas)) == list(copy.KARTON_AREAS)                 # area by area, in the page's order
     assert [key for _, keys in copy.KARTON_PANEL for key in keys] == KARTON      # the panel: every one, once, in order
@@ -2208,11 +2224,13 @@ def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
         assert slot.label.startswith("Karton") and slot.label.count(":") == 1, key
         assert slot.default and copy.clean(slot.default) == slot.default, key
         assert slot.required == (key not in KARTON_OPTIONAL), key
-    assert len(KARTON_OPTIONAL) == 35 and KARTON_OPTIONAL <= set(KARTON)
+    assert len(KARTON_OPTIONAL) == 40 and KARTON_OPTIONAL <= set(KARTON)
     for key, label in (("karton.head.title", "Karton: naslov"), ("karton.weight.add", "Karton · masa: gumb Upiši"),
                        ("karton.osvrt.title", "Karton · osvrt: pitanje")):
         assert copy.SLOTS[key].label == label, key
     assert {key: copy.SLOTS[key].default for key in KARTON_BEFORE} == KARTON_BEFORE
+    assert copy.SLOTS["karton.weight.title"].default == "Tjelesna kompozicija"
+    assert copy.KARTON_AREAS["weight"] == "Tjelesna kompozicija" and copy.KARTON_AREAS["history"] == "Povijest vježbe"
     assert len({copy.SLOTS[key].label for key in KARTON}) == len(KARTON)        # the bar names each one apart
 
 
@@ -2287,12 +2305,13 @@ def test_an_emptied_karton_text_prints_nothing_for_a_member():
     emptied = ("karton.head.lead", "karton.diary.online", "karton.diary.absent_chip", "karton.diary.canceled",
                "karton.maxes.hint", "karton.termini.canceled", "karton.osvrt.placeholder", "karton.upitnik.eyebrow",
                "karton.upitnik.no_plan", "karton.weight.empty", "karton.photos.empty", "karton.photos.hint",
-               "karton.limits.empty", "karton.staff.review")
+               "karton.limits.empty", "karton.staff.review", "karton.limits.chip_pdf", "karton.limits.chip_image",
+               "karton.weight.hint", "karton.history.empty")
     for key in emptied:
         assert t.post(f"/copy/{key}", data={"text": ""}).json()["text"] == "", key
     mine = client_for("ivan@test.local").get("/karton").text
     for gone in ('<span class="chip">', '<span class="chip off">', 'class="hint mx-hint"', "<strong style=",
-                 'placeholder="npr. kilaže', '<span class="eyebrow">'):
+                 'placeholder="npr. kilaže', '<span class="eyebrow">', 'class="hint ms-hint"'):
         assert gone not in mine, gone
     online = mine.split('<div class="log-entry online"')[1].split('<div class="log-entry')[0]
     assert "le-kicker" not in online and '<div class="le-head">' in online       # the online pass: no kicker

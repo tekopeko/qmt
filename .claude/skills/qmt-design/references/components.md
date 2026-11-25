@@ -55,7 +55,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.act-absent` (karton) | amber tint + amber border | deeper tint, **not** a flood | "Nisam bio/la" — the only non-brand hue |
 | `.tlink` | accent, 600, no underline | colour → `--accent-strong` | link inside prose |
 | `.redo` (karton) | hairline pill, hover-revealed on pointer devices only | takes the razina colour | "Ispuni ponovno" |
-| `.unbook-x` in `form.unbook` (calendar) | 32px round ✕ at every pointer, no fill, `--muted`; pinned 6px into the top-right corner of a "Moje rezervacije" card (the card's `.t` line reserves 28px for it and never wraps); on phones at the right end of the booking's row, and at the right end of `.next-termin` | faint `--text` wash, ink → `--text`; never the red flood | cancel a booking: asks first via `data-confirm` ("Otkazati rezervaciju?" / "Otkaži rezervaciju"; "Maknuti otkazani termin?" / "Makni" for a termin the trainer canceled, whose ✕ stays unfaded on the faded card). Only while cancelling is allowed (`db.cancel_deadline`); after that the card says "Otkazivanje do 12 h prije termina" |
+| `.unbook-x` in `form.unbook` (calendar) | 32px round ✕ at every pointer, no fill, `--muted`; pinned 6px into the top-right corner of a "Moje rezervacije" card (the card's `.t` line reserves 28px for it and never wraps); on phones at the right end of the booking's row, and at the right end of `.next-termin` | faint `--text` wash, ink → `--text`; never the red flood | cancel a booking: asks first via `data-confirm` ("Otkazati rezervaciju?" / "Otkaži rezervaciju"; "Maknuti otkazani termin?" / "Makni" for a termin the trainer canceled, whose ✕ stays unfaded on the faded card). Only while cancelling is allowed (`db.cancel_deadline`); after that the card says "Otkazivanje do 4 h prije termina" (12 h until 25.11.2026: the number is `CANCEL_CUTOFF_HOURS`) |
 
 `a.btn, a.btn-sm, a.btn-ghost, a.btn-quiet, a.act` get `text-decoration: none;
 display: inline-flex` — an anchor with only `.btn-sm` otherwise keeps the
@@ -350,7 +350,7 @@ planovi, uplate i računi →", allowed to wrap: it nearly fills a 360px card).
 (`--lvl`/`--lvl-soft` per theme), diary `.log-entry` rows in four states
 (written / `.is-absent` / cancelled / open — `.fresh` gets the accent inset bar),
 `.le-actions` right-aligned pills, `.le-edit` inline form toggled by
-`qmtToggleForm`. **The page's order** (25.11.2026; a grid with a rail, `aside.k-rail`, the weight and the termini, beside the diary until then): the upitnik block, `.limits`, `.masa`, `.photos`, `.maxes`, `.termini`, each a card of the column, then the diary (`.k-sec`) last. Below 1000px one column, every card 720px at most at its left edge; from 1000px `.k-cards` is a grid of two equal columns across the page's width (`repeat(2, minmax(0, 1fr))`, 20px gap, the two of a row one height: the grid stretches them), in the same reading order, the upitnik block and a `.card` left alone in its row (`:last-child:nth-child(odd of .card)`, its own rule) across both; the diary under it at the page's width, its forms (`.k-sec .le-edit`) 640px at most. Staff's own karton (24.11.2026, `staff_own`: the trainer's, the owner's) is a member's with no upitnik block (nothing in its place) and no `.termini`, its empty diary "Još nema treninga u dnevniku.". `.upitnik`
+`qmtToggleForm`. **The page's order** (25.11.2026; a grid with a rail, `aside.k-rail`, the weight and the termini, beside the diary until then): the upitnik block, `.limits`, `.masa`, `.photos`, `.maxes`, `.hist` (since 25.11.2026's later build), `.termini`, each a card of the column, then the diary (`.k-sec`) last. Below 1000px one column, every card 720px at most at its left edge; from 1000px `.k-cards` is a grid of two equal columns across the page's width (`repeat(2, minmax(0, 1fr))`, 20px gap, the two of a row one height: the grid stretches them), in the same reading order, the upitnik block, `.hist` and `.termini` (half a row, a termin's title gave way to a long retyped "OTKAZANO") and a `.card` left alone in its row (`:last-child:nth-child(odd of .card)`, its own rule) across both; the diary under it at the page's width, its forms (`.k-sec .le-edit`) 640px at most. Staff's own karton (24.11.2026, `staff_own`: the trainer's, the owner's) is a member's with no upitnik block (nothing in its place) and no `.termini`, its empty diary "Još nema treninga u dnevniku.". `.upitnik`
 is `--r-xl`; `.log-entry` rows are `--r-md` and keep the accent inset bar for
 `.fresh` — at 12px the bar still reads as a bar. A v2 response's block (26.10.2026)
 puts `.u-fact` pills and the muted score ("6,4 / 10") on its `.u-meta` line, the
@@ -433,19 +433,59 @@ in, its `.k-x` a solid `--surface` circle with `--shadow` (a control on a
 photo, never text on it: `--surface-2` on hover). The photo form's two fields
 `.ph-fields` side by side where two of 220px fit, else stacked, its rule line
 `.ph-rule` (muted .82rem); the empty card's hint `.kc-hint`.
-**"Tjelesna masa"** (`section.card.masa#masa`) and **"Nadolazeći termini"**
+**The documents' list** (`.lim-docs#lim-docs` inside `.limits`, 25.11.2026:
+a member's findings and scans under his limitations): a block of the card
+with its own toggle, 16px under the text, so `qmtToggleForm` opens a card's
+OWN form only (`:scope > .le-edit`; the CSS `:is(.masa, .limits, .photos,
+.lim-docs).editing > .le-edit`: Uredi never opens the documents' form, nor
+"Dodaj dokument" the textarea). Its caption "Dokumenti" an `h3` in the
+karton's kicker look (700 .7rem, .12em, uppercase, `--muted`), shown when
+there is a document and always on the member's own karton; the member's
+"Dodaj dokument" an `.act` beside Uredi in the head (both in a `.kc-btns`,
+which wraps under the title on a narrow card; not offered at ten). Its form
+sits in a hairline box (the training outside a termin's: `--surface`,
+`--r-md`, 14px 12px 12px, 8px under the caption): the file (`data-focus`)
+and "Naziv (neobavezno)", then Spremi / Odustani. Then `ul.doc-list`
+(.88rem): a row per document, newest first, a hairline over each, 44px at
+least, 6px above and below, a flex row, the ends apart: `.doc-main` (`flex:
+1 1 auto`, `min-width: 0`) holding the name, a `.tlink.doc-name` to the file
+in a new tab, wrapping anywhere (a long name of one word breaks inside the
+card, never widens the page), and under it `.doc-meta` (a wrapping flex row,
+4px 8px, muted .8rem, tabular): the karton's `.chip` ("PDF" / "slika") and
+the date; at the row's end the member's `.k-x` (asks first, naming the
+document). The trainer's view the same list, no form, no ✕.
+**"Tjelesna kompozicija"** ("Tjelesna masa" until 25.11.2026's later build;
+`section.card.masa#masa`) and **"Nadolazeći termini"**
 (`section.card.termini`): cards of the column like the limitations' and the
 photos' (`.card`, 720px at most below 1000px, 18px 20px, 16px under 600px; h2
 1.05rem; until 25.11.2026 the rail's two, `--r-xl`, h2 .95rem). Under
 the head `.ms-height` (muted .82rem: "Visina 178 cm · uredi", the `.tlink` the
-member's), `.ms-val` the newest weight (Inter 800 1.6rem, tabular), `.ms-date`
-its date (muted .82rem); the form's `.ms-fields`, Kilogrami beside Datum
-(`minmax(0, 1fr) minmax(0, 1.35fr)`, 12px; both inputs 44px, one line); then
-`ul.ms-list` (.88rem, tabular): a row per day, a hairline over each, 34px at
-least, "12.11.2026. · 82,5 kg" and the member's `.k-x`; past twelve the rest
-under base.html's `details.sets` fold, "prikaži sve" (the trainer's whole
-history under "Povijest"). Every card clears the floating bar when a save
-comes back to it (`scroll-margin-top: 96px`).
+member's), `.ms-val` the newest entry's mass that has one (Inter 800 1.6rem,
+tabular), `.ms-date` its date (muted .82rem); the form's `.ms-fields`,
+Kilogrami beside Datum (`minmax(0, 1fr) minmax(0, 1.35fr)`, 12px; both
+inputs 44px, one line), under them the document's field and `.ms-hint` (the
+photo form's rule line: muted .82rem); then `ul.ms-list` (.88rem, tabular):
+a row per day, a hairline over each, 34px at least (its text 6px above and
+below, so a wrapped document's name keeps clear of the hairlines),
+"12.11.2026. · 82,5 kg" and, with a document, " · " and its `.tlink` (a new
+tab), an entry with no mass the date and the link alone, and the member's
+`.k-x`; past twelve the rest under base.html's `details.sets` fold, "prikaži
+sve" (the trainer's whole history under "Povijest"). Every card clears the
+floating bar when a save comes back to it (`scroll-margin-top: 96px`).
+**"Povijest vježbe"** (`section.card.hist#povijest-vjezbe`, 25.11.2026):
+right after the maxes, the limitations' card look; from 1000px across both
+columns (its form 640px at most, as the diary's forms) and the termini
+across both after it. A GET form: "Vježba" over the picker (base.html's
+combobox, Forms above, in `{rows, value}` mode over `#hx-json`, each row's
+muted line "5× · zadnji put 23.11.2026."; its input 44px on a coarse
+pointer; a native select of the same exercises without the script), then
+"Prikaži" (`.btn-sm.btn-signal`) under it, the day editor's order. Picked,
+`.hx` under a hairline, 16px down: the name an `h3` (.98rem), `.hx-last`
+(.88rem: "Zadnji put: … · dvorana"), `.hx-sets` (600 .92rem, each set
+`.set` whole), `.hx-max` (.88rem, its value `strong`), then `ul.hx-list`
+(.88rem, tabular): a row per time, a hairline over each, 8px above and
+below, `.hx-when` (the date 700, `.hx-where` muted 400 after it) over its
+sets; past ten the rest under `details.sets`. Empty lines `.kc-empty`.
 **The karton's texts** (25.11.2026) are copy slots (`karton.*`, the `.ed`
 editor of every page): a long one wraps, never widens the page. A pill's,
 a button's and a `<summary>`'s label wraps inside it once it is longer than

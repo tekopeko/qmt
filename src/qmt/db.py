@@ -19,18 +19,18 @@ from decimal import Decimal
 from fractions import Fraction
 from typing import Iterator
 
-from sqlalchemy import and_, create_engine, delete as sa_delete, func, or_, select, text as sa_text
+from sqlalchemy import and_, create_engine, delete as sa_delete, func, or_, select, text as sa_text, union_all
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased, joinedload, load_only, selectinload, sessionmaker
 
 from . import config, copy, upitnik
 from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, Announcement, Base, Booking,
-                     Exercise, GymCard, Membership, OnboardingResponse, Payment, Program, ProgramDay,
+                     Exercise, GymCard, LimitationFile, Membership, OnboardingResponse, Payment, Program, ProgramDay,
                      ProgramDayCircuit, ProgramDayItem, ProgressPhoto, ReminderLog, SessionTemplate, SiteCopy,
                      TrainingLog, TrainingSession,
                      UpitnikQuestion, User, Weight, WorkoutLog, alpha_key, exercise_alternatives, fold, kg_text,
-                     matches, plural)
+                     matches, plural, set_text)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -1756,12 +1756,54 @@ def _to_half(x: Fraction) -> float:
     return math.floor(x * 2 + Fraction(1, 2)) / 2
 
 
+OUTSIDE_TERMIN = "Trening izvan termina"      # where a training outside a termin was (exercise_history)
+
+
+def _logged_sets(user_id: int) -> list[tuple]:
+    """Every exercise entry a member logged, oldest first: each training's
+    exercise log (TrainingLog.sets, on its date; where: its termin's title,
+    or OUTSIDE_TERMIN for a training outside a termin) and each finished
+    online pass's (WorkoutLog.done, on the day it was started; where: the
+    day's label as the pass keeps it; an entry is the exercise done, the
+    similar one when it was swapped in). Each (on, 0 a training / 1 a pass,
+    the row's id, the entry's place in it, source "gym" / "online", where,
+    the entry), sorted by their first four (on one day a pass after a
+    training, then by row and place). The one reading of a member's sets
+    (25.11.2026): estimated_maxes, logged_exercises and exercise_history
+    each go over it."""
+    with session_scope() as s:
+        gym = s.execute(select(TrainingLog.date, TrainingLog.id, TrainingLog.sets, TrainingSession.title)
+                        .select_from(TrainingLog)
+                        .outerjoin(TrainingSession, TrainingSession.id == TrainingLog.session_id)
+                        .where(TrainingLog.user_id == user_id)).all()
+        online = s.execute(select(WorkoutLog.started_at, WorkoutLog.id, WorkoutLog.done, WorkoutLog.day_label)
+                           .where(WorkoutLog.user_id == user_id, WorkoutLog.finished_at.is_not(None))).all()
+    found = []
+    for on, row_id, raw, title in gym:
+        for k, entry in enumerate(TrainingLog.entries(raw)):
+            found.append((on, 0, row_id, k, "gym", title or OUTSIDE_TERMIN, entry))
+    for started, row_id, raw, label in online:
+        on = started.astimezone(config.TZ).date()
+        for k, entry in enumerate(e for e in WorkoutLog._object(raw).values() if isinstance(e, dict)):
+            found.append((on, 1, row_id, k, "online", label, entry))
+    found.sort(key=lambda f: f[:4])
+    return found
+
+
+def _names_now(ids) -> dict[int, str]:
+    """The library's names now of these exercises (an id deleted since has none)."""
+    if not ids:
+        return {}
+    with session_scope() as s:
+        return dict(s.execute(select(Exercise.id, Exercise.name).where(Exercise.id.in_(set(ids)))).all())
+
+
 def estimated_maxes(user_id: int) -> list[Max]:
     """A client's estimated max per exercise (the karton's "Procijenjeni
-    maksimumi"), from every set he logged: each training's exercise log
-    (TrainingLog.sets, on its date) and each finished online pass's
-    (WorkoutLog.done, on the day it was started; an entry is the exercise
-    done, the similar one when it was swapped in). Set by set:
+    maksimumi"), from every set he logged (_logged_sets): each training's
+    exercise log (TrainingLog.sets, on its date) and each finished online
+    pass's (WorkoutLog.done, on the day it was started; an entry is the
+    exercise done, the similar one when it was swapped in). Set by set:
       - a weight (kg > 0) and 1 to 12 reps: its one-rep max (epley: Epley's
         formula; a single is its weight), the best per exercise its max;
       - no weight (kg 0) and 1 rep or more: the most reps per exercise, a
@@ -1777,24 +1819,10 @@ def estimated_maxes(user_id: int) -> list[Max]:
     newest name it was logged under; in the alphabet's order (alpha_key).
     `value` is the one-rep max to the nearest 0.5 kg (_to_half), or the
     reps."""
-    with session_scope() as s:
-        gym = s.execute(select(TrainingLog.date, TrainingLog.id, TrainingLog.sets)
-                        .where(TrainingLog.user_id == user_id)).all()
-        online = s.execute(select(WorkoutLog.started_at, WorkoutLog.id, WorkoutLog.done)
-                           .where(WorkoutLog.user_id == user_id, WorkoutLog.finished_at.is_not(None))).all()
-    found = []                       # (on, a pass after a training, the row's id, the entry's place, source, entry)
-    for on, row_id, raw in gym:
-        for k, entry in enumerate(TrainingLog.entries(raw)):
-            found.append((on, 0, row_id, k, "gym", entry))
-    for started, row_id, raw in online:
-        on = started.astimezone(config.TZ).date()
-        for k, entry in enumerate(e for e in WorkoutLog._object(raw).values() if isinstance(e, dict)):
-            found.append((on, 1, row_id, k, "online", entry))
-    found.sort(key=lambda f: f[:4])                     # oldest first: on a tie the later set wins
     best: dict[int, tuple] = {}      # exercise id -> (one-rep max, Max fields) …
     most: dict[int, tuple] = {}      # … and its bodyweight record (reps, Max fields)
     snapshot: dict[int, str] = {}
-    for on, _, _, _, source, entry in found:
+    for on, _, _, _, source, _, entry in _logged_sets(user_id):     # oldest first: on a tie the later set wins
         ex = entry.get("exercise_id")
         if type(ex) is not int:
             continue
@@ -1814,14 +1842,88 @@ def estimated_maxes(user_id: int) -> list[Max]:
                 most[ex] = (reps, reps, 0.0, on, source)
     if not best and not most:
         return []
-    with session_scope() as s:
-        names = dict(s.execute(select(Exercise.id, Exercise.name)
-                               .where(Exercise.id.in_(set(best) | set(most)))).all())
+    names = _names_now(set(best) | set(most))
     out = [Max(ex, names.get(ex) or snapshot.get(ex, ""), "1rm", _to_half(v), reps, kg, on, source)
            for ex, (v, reps, kg, on, source) in best.items()]
     out += [Max(ex, names.get(ex) or snapshot.get(ex, ""), "reps", v, reps, kg, on, source)
             for ex, (v, reps, kg, on, source) in most.items() if ex not in best]
     return sorted(out, key=lambda m: (alpha_key(m.name), m.exercise_id))
+
+
+# ---------- an exercise's history on the karton (25.11.2026) ----------
+#
+# The owner (his note to Amir: "search unutar kartona vježbe kad je radio i
+# kaj je zadnje radio"): "We need a search bar for each user. Admins can
+# access everyone's karton and search a particular exercise." The karton's
+# "Povijest vježbe": the exercises a member has logged, and for one of them
+# every time he did it. Both read what the maxes read (_logged_sets).
+
+@dataclass(frozen=True)
+class Logged:
+    """An exercise a member has logged (logged_exercises): its id, its name
+    (the library's now; one deleted since the newest name it was logged
+    under), in how many trainings (`times`: a training's log or a pass
+    holding it, once each) and the day of the last."""
+    exercise_id: int
+    name: str
+    times: int
+    last_on: date
+
+
+@dataclass(frozen=True)
+class Done:
+    """A training in an exercise's history (exercise_history): its day,
+    where it was logged (`source`, "gym" or "online"), where (the termin's
+    title, OUTSIDE_TERMIN, or the online day's label as the pass keeps it)
+    and the exercise's sets in it as the history prints them (set_text:
+    "10 × 20 kg", "10", "30 s")."""
+    on: date
+    source: str
+    where: str
+    sets: tuple[str, ...]
+
+    @property
+    def source_text(self) -> str:
+        return "dvorana" if self.source == "gym" else "online"
+
+
+def logged_exercises(user_id: int) -> list[Logged]:
+    """Every exercise a member has logged (the history card's picker), from
+    his trainings' logs and his finished online passes (_logged_sets: a
+    swapped exercise under the swap), each in how many trainings and when
+    last; named as the library names it now, a deleted one by the newest
+    name it was logged under; in the alphabet's order (alpha_key)."""
+    held: dict[int, set] = {}
+    last: dict[int, date] = {}
+    snapshot: dict[int, str] = {}
+    for on, kind, row_id, _, _, _, entry in _logged_sets(user_id):
+        ex = entry.get("exercise_id")
+        if type(ex) is not int:
+            continue
+        if isinstance(entry.get("name"), str) and entry["name"]:
+            snapshot[ex] = entry["name"]
+        held.setdefault(ex, set()).add((kind, row_id))
+        last[ex] = on                                    # oldest first: the last seen is the newest
+    names = _names_now(held)
+    out = [Logged(ex, names.get(ex) or snapshot.get(ex, ""), len(rows), last[ex]) for ex, rows in held.items()]
+    return sorted(out, key=lambda e: (alpha_key(e.name), e.exercise_id))
+
+
+def exercise_history(user_id: int, exercise_id: int) -> list[Done]:
+    """Every time a member did an exercise (the history card), newest first:
+    a Done per training that holds it (an exercise logged twice in one
+    training is one, its sets in the order logged), from the same reading as
+    the maxes (_logged_sets: a pass's swapped exercise under the swap, never
+    under the plan's). [] for one he never logged."""
+    rows: dict[tuple, list] = {}
+    for on, kind, row_id, _, source, where, entry in _logged_sets(user_id):
+        ex = entry.get("exercise_id")
+        if type(ex) is not int or ex != exercise_id:
+            continue
+        row = rows.setdefault((kind, row_id), [on, source, where, []])
+        row[3] += [set_text(st) for st in (entry.get("sets") if isinstance(entry.get("sets"), list) else [])
+                   if isinstance(st, dict)]
+    return [Done(on, source, where, tuple(sets)) for on, source, where, sets in reversed(list(rows.values()))]
 
 
 # ---------- the karton's body facts and photos (23.11.2026) ----------
@@ -1840,6 +1942,35 @@ LIMITATIONS_MAX = 2000                         # characters after copy.clean, a 
 LIMITATIONS_TOO_LONG = f"Najviše {LIMITATIONS_MAX} znakova."
 PHOTO_MONTHS = 12                              # the month a photo is of: this one or the eleven before it
 BAD_MONTH = "Neispravan mjesec."
+# the karton's documents (25.11.2026, Amir: "U ograničenja i bolovi treba
+# dodati mogućnost da se doda slika ili pdf. … tjelesna kompozicija gdje opet
+# mogu dodati pdf ili sliku ili samo upisati ručno masu")
+NO_MASS_NOR_FILE = "Upiši masu ili dodaj dokument."
+MAX_LIMITATION_FILES = 10                      # a member's documents under his limitations
+TOO_MANY_FILES = f"Najviše {MAX_LIMITATION_FILES} dokumenata."
+DOC_NAME_MAX = 80                              # characters of a document's name in its list
+
+
+def _checked_file(name: str) -> str:
+    """A stored file's name as a row keeps it (String(120)): a name, never
+    a path (ValueError otherwise)."""
+    if not name or len(name) > 120 or "/" in name or "\\" in name or ".." in name:
+        raise ValueError(f"not a file name: {name!r}")
+    return name
+
+
+def doc_name(typed: str | None, filename: str | None = None) -> str:
+    """What a document's list says (25.11.2026): the name the member typed
+    ("Naziv (neobavezno)"), else the upload's own file name without its path
+    ("C:\\\\nalazi\\\\MR koljena.pdf" → "MR koljena.pdf"); each cleaned (every
+    run of white space or other unprintable characters one space, the ends
+    trimmed) and cut to DOC_NAME_MAX (80) characters; "Dokument" when that
+    leaves nothing."""
+    def tidy(text: str | None) -> str:
+        return " ".join("".join(ch if ch.isprintable() else " " for ch in text or "").split())
+
+    name = tidy(typed) or tidy(re.split(r"[\\/]", filename or "")[-1])
+    return name[:DOC_NAME_MAX].rstrip() or "Dokument"
 
 
 def _checked_weight(kg) -> Decimal:
@@ -1864,33 +1995,61 @@ def read_weight(raw: str | None) -> Decimal:
     return _checked_weight(Decimal(value.replace(",", ".")))
 
 
-def set_weight(user_id: int, on: date, kg) -> None:
-    """A member's weight on a day (read_weight's, read_day's): one a day, so
-    a second save that day replaces the first (an upsert on
-    uq_weights_user_day: two at once leave one row). Checked again here
-    (ValueError BAD_WEIGHT; BAD_DAY for a day past read_day's bounds)."""
-    kg = _checked_weight(kg)
+def set_weight(user_id: int, on: date, kg=None, file: str | None = None, file_name: str = "") -> str | None:
+    """An entry of a member's "Tjelesna kompozicija" on a day (25.11.2026;
+    his weight alone until then): a mass (read_weight's), a stored document
+    (`file`, its name; `file_name` what its link says, doc_name's), or both;
+    neither is ValueError NO_MASS_NOR_FILE ("Upiši masu ili dodaj
+    dokument."). One entry a day (uq_weights_user_day): a second save that
+    day replaces what it gives and keeps what it does not (a new mass the
+    mass, a new document the document). Returns the document it replaced,
+    for the caller to delete from storage now that no row names it (the
+    row first); None when it replaced none. Under the member's row lock (FOR
+    NO KEY UPDATE, as set_photo's), so saves for one day at once take turns:
+    one row is left, and each document replaced is named to exactly one
+    caller. Checked again here (ValueError BAD_WEIGHT; BAD_DAY for a day past
+    read_day's bounds; a file name that is a path). LookupError: no such
+    member (the caller deletes the file it stored)."""
+    if kg is None and file is None:
+        raise ValueError(NO_MASS_NOR_FILE)
+    kg = None if kg is None else _checked_weight(kg)
+    if file is not None:
+        _checked_file(file)
+        file_name = doc_name(file_name)                 # cleaned again; none: "Dokument"
     if not FIRST_DAY <= on <= config.today():
         raise ValueError(BAD_DAY)
-    stmt = pg_insert(Weight).values(user_id=user_id, measured_on=on, kg=kg)
     with session_scope() as s:
-        s.execute(stmt.on_conflict_do_update(constraint="uq_weights_user_day",
-                                             set_={"kg": stmt.excluded.kg, "created_at": func.now()}))
+        if s.execute(select(User.id).where(User.id == user_id).with_for_update(key_share=True)).first() is None:
+            raise LookupError(user_id)
+        w = s.scalar(select(Weight).where(Weight.user_id == user_id, Weight.measured_on == on))
+        if w is None:
+            s.add(Weight(user_id=user_id, measured_on=on, kg=kg, file=file, file_name=file_name if file else ""))
+            return None
+        old = None
+        if kg is not None:
+            w.kg = kg
+        if file is not None:
+            old, w.file, w.file_name = w.file, file, file_name
+        w.created_at = func.now()
+        return old
 
 
 def weights(user_id: int) -> list[Weight]:
-    """A member's weights, the newest day first: the karton's value (the
-    first) and its history."""
+    """A member's "Tjelesna kompozicija", the newest day first: its history
+    (the first entry that has a mass is the karton's value)."""
     with session_scope() as s:
         return list(s.scalars(select(Weight).where(Weight.user_id == user_id)
                               .order_by(Weight.measured_on.desc(), Weight.id.desc())))
 
 
-def delete_weight(weight_id: int, user_id: int) -> bool:
-    """A member deletes his OWN weights only: user_id is part of the match.
-    False: none such of his."""
+def delete_weight(weight_id: int, user_id: int) -> str | None:
+    """A member deletes his OWN entries only: user_id is part of the match.
+    Returns its document's stored name for the caller to delete from
+    storage (the row first), "" for an entry with none; None: none such of
+    his."""
     with session_scope() as s:
-        return s.execute(sa_delete(Weight).where(Weight.id == weight_id, Weight.user_id == user_id)).rowcount > 0
+        return s.scalar(sa_delete(Weight).where(Weight.id == weight_id, Weight.user_id == user_id)
+                        .returning(func.coalesce(Weight.file, "")))
 
 
 def set_limitations(user_id: int, text: str) -> str:
@@ -1908,6 +2067,46 @@ def set_limitations(user_id: int, text: str) -> str:
             raise LookupError(user_id)
         u.limitations = cleaned
     return cleaned
+
+
+def limitation_files(user_id: int) -> list[LimitationFile]:
+    """A member's documents under his limitations, the newest first."""
+    with session_scope() as s:
+        return list(s.scalars(select(LimitationFile).where(LimitationFile.user_id == user_id)
+                              .order_by(LimitationFile.created_at.desc(), LimitationFile.id.desc())))
+
+
+def add_limitation_file(user_id: int, file: str, name: str = "") -> int:
+    """File a stored document (its name) under a member's limitations, its
+    list name `name` (doc_name's, cleaned again here: "Dokument" for none);
+    the new row's id. At most MAX_LIMITATION_FILES (10): ValueError
+    TOO_MANY_FILES ("Najviše 10 dokumenata.") past them, the caller deleting
+    the file it stored. Under the member's row lock (FOR NO KEY UPDATE, as
+    set_photo's), so two uploads at once take turns and the count holds:
+    at nine, one of them is the tenth and the other is refused.
+    LookupError: no such member; ValueError: a name that is a path."""
+    _checked_file(file)
+    name = doc_name(name)
+    with session_scope() as s:
+        if s.execute(select(User.id).where(User.id == user_id).with_for_update(key_share=True)).first() is None:
+            raise LookupError(user_id)
+        held = s.scalar(select(func.count()).select_from(LimitationFile).where(LimitationFile.user_id == user_id))
+        if held >= MAX_LIMITATION_FILES:
+            raise ValueError(TOO_MANY_FILES)
+        row = LimitationFile(user_id=user_id, file=file, name=name)
+        s.add(row)
+        s.flush()
+        return row.id
+
+
+def delete_limitation_file(file_id: int, user_id: int) -> str | None:
+    """A member deletes his OWN document only: user_id is part of the match.
+    Returns its file's name for the caller to delete from storage (the row
+    first); None: none such of his."""
+    with session_scope() as s:
+        return s.scalar(sa_delete(LimitationFile)
+                        .where(LimitationFile.id == file_id, LimitationFile.user_id == user_id)
+                        .returning(LimitationFile.file))
 
 
 def photo_months(today: date | None = None) -> list[date]:
@@ -1977,11 +2176,16 @@ def delete_photo(photo_id: int, user_id: int) -> str | None:
                         .returning(ProgressPhoto.image))
 
 
-def photo_owner(name: str) -> int | None:
-    """Whose progress photo a stored file is (/media: the member and staff
-    see it, nobody else); None when no photo holds the name."""
+def file_owner(name: str) -> int | None:
+    """Whose karton file a stored name is (/media: the member and staff see
+    it, nobody else): a progress photo (ProgressPhoto.image), since
+    25.11.2026 a document under his limitations (LimitationFile.file) or an
+    entry's of his "Tjelesna kompozicija" (Weight.file); None when no row
+    holds the name."""
     with session_scope() as s:
-        return s.scalar(select(ProgressPhoto.user_id).where(ProgressPhoto.image == name))
+        return s.scalar(union_all(select(ProgressPhoto.user_id).where(ProgressPhoto.image == name),
+                                  select(LimitationFile.user_id).where(LimitationFile.file == name),
+                                  select(Weight.user_id).where(Weight.file == name)).limit(1))
 
 
 # ---------- training programmes (treninzi) ----------

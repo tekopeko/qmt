@@ -693,15 +693,17 @@ _IMAGE_FORMATS = ("JPEG", "MPO", "PNG", "WEBP")
 _IMAGE_UNSUPPORTED = "Nepodržan format — dozvoljeno: jpg, png, webp."
 
 
-def _shrink_image(raw: Path) -> bytes:
+def _shrink_image(raw: Path, px: int = IMAGE_PX) -> bytes:
     """A photo as the app keeps it, from the file an upload was spooled to
     (`raw`, already under IMAGE_MB): turned upright (a phone keeps the
-    rotation in EXIF), shrunk to IMAGE_PX on its long side (never enlarged)
-    and saved as a progressive JPEG with no EXIF at all (the camera, the
-    place and the time stay out of it); its bytes. ValueError: no image
-    Pillow can read, a broken one, or one of a kind not in _IMAGE_FORMATS,
-    whatever its name says. An announcement's photo (copy_image_upload) and,
-    since 23.11.2026, a member's monthly photo on the karton (karton_photo)."""
+    rotation in EXIF), shrunk to `px` on its long side (IMAGE_PX, 1600, by
+    default; never enlarged) and saved as a progressive JPEG with no EXIF
+    at all (the camera, the place and the time stay out of it); its bytes.
+    ValueError: no image Pillow can read, a broken one, or one of a kind
+    not in _IMAGE_FORMATS, whatever its name says. An announcement's photo
+    (copy_image_upload) and, since 23.11.2026, a member's monthly photo on
+    the karton (karton_photo); since 25.11.2026 a karton document that is an
+    image, at DOC_PX (_store_document)."""
     import io
 
     from PIL import Image, ImageOps
@@ -713,12 +715,12 @@ def _shrink_image(raw: Path) -> bytes:
             # a JPEG decodes straight at the smallest scale the shrink
             # still has room in: a 48 MP photo at a quarter, in a
             # sixteenth of the memory
-            scale = min(1, IMAGE_PX / max(im.size))
+            scale = min(1, px / max(im.size))
             im.draft("RGB", (max(1, round(im.width * scale)), max(1, round(im.height * scale))))
             photo = ImageOps.exif_transpose(im).convert("RGB")
     except Exception as e:                               # not an image Pillow can read, or a broken one
         raise ValueError("not a photo") from e
-    photo.thumbnail((IMAGE_PX, IMAGE_PX))                         # never enlarges
+    photo.thumbnail((px, px))                                     # never enlarges
     out = io.BytesIO()
     photo.save(out, "JPEG", quality=82, progressive=True)        # no exif= given: none is written
     return out.getvalue()
@@ -1856,13 +1858,17 @@ def _log_entries(log, held: set[int]) -> list[dict]:
 # the rest under "prikaži sve" (the member's); the trainer's view folds the
 # whole of a longer one under "Povijest".
 WEIGHTS_SHOWN = 12
+# An exercise's history on the karton (25.11.2026, "Povijest vježbe"): the
+# newest ten times, the rest under "prikaži sve".
+HISTORY_SHOWN = 10
 
 
 def _body_line(height_cm: int | None, latest) -> str:
     """The karton's head line of the body (23.11.2026): "Visina 178 cm ·
     Masa 82,5 kg (12.11.)", the height from the profile and the newest
-    weight (a models.Weight, None for none) with its day (_date_text: its
-    year in another year), each part only when it is known; "" for none."""
+    entry that has a mass (a models.Weight, None for none; since 25.11.2026
+    an entry may be a document alone) with its day (_date_text: its year in
+    another year), each part only when it is known; "" for none."""
     parts = []
     if height_cm:
         parts.append(f"Visina {height_cm} cm")
@@ -1925,6 +1931,28 @@ def _render_karton(request: Request, viewer, subject, own: bool):
     # first (its button says "Zamijeni ovomjesečnu" when this month has one)
     weights = db.weights(subject.id)
     photos = db.photos(subject.id)
+    # "Tjelesna kompozicija" (25.11.2026): an entry may be a document with no
+    # mass; the card's value and the head line's "Masa" are the newest entry
+    # that has one. The documents under the limitations, the newest first.
+    latest_kg = next((w for w in weights if w.kg is not None), None)
+    docs = db.limitation_files(subject.id)
+    # "Povijest vježbe" (25.11.2026): the exercises this karton holds (its
+    # picker, #hx-json: [id, name, "5× · zadnji put 23.11.2026."]), and with
+    # ?vjezba=<id> one of them, every time it was done and its estimated max
+    # (the maxes' own); an id the karton does not hold says so
+    maxes = db.estimated_maxes(subject.id)
+    logged = db.logged_exercises(subject.id)
+    hx, hx_unknown, picked = None, False, request.query_params.get("vjezba", "").strip()
+    if picked:
+        pick = int(picked) if picked.isascii() and picked.isdigit() and len(picked) <= 9 else None
+        found = next((e for e in logged if e.exercise_id == pick), None)
+        if found is None:
+            hx_unknown = True
+        else:
+            hx = {"exercise": found, "rows": db.exercise_history(subject.id, found.exercise_id),
+                  "max": next((m for m in maxes if m.exercise_id == found.exercise_id), None)}
+    hx_rows = [[e.exercise_id, e.name, f"{e.times}× · zadnji put {e.last_on.strftime('%-d.%-m.%Y.')}"]
+               for e in logged]
     # a staff member's own karton (24.11.2026): his diary (his online passes,
     # his trainings outside a termin), maxes, weight, limitations and photos
     # as a member's; no upitnik card (staff never fill it: POST /upitnik
@@ -1943,14 +1971,17 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         pending_ids={x.id for x in pending},
         feelings=FEELING_LABELS,
         upcoming=db.my_upcoming(subject.id),
-        maxes=db.estimated_maxes(subject.id),
+        maxes=maxes,
         library_rows=[[e.id, e.name, e.tags] for e in library], log_entries=log_entries,
         max_log=db.MAX_LOG_EXERCISES, max_sets=db.MAX_SETS, first_day=db.FIRST_DAY,
-        weights=weights, weights_shown=WEIGHTS_SHOWN,
-        body_line=_body_line(subject.height_cm, weights[0] if weights else None),
+        weights=weights, weights_shown=WEIGHTS_SHOWN, latest_kg=latest_kg,
+        body_line=_body_line(subject.height_cm, latest_kg),
         photos=photos, photo_months=db.photo_months(today) if own else [],
         month_has_photo=any(p.month == today.replace(day=1) for p in photos),
         limitations_max=db.LIMITATIONS_MAX, image_mb=IMAGE_MB,
+        docs=docs, docs_max=db.MAX_LIMITATION_FILES, doc_name_max=db.DOC_NAME_MAX,
+        logged=logged, hx=hx, hx_unknown=hx_unknown, hx_rows=hx_rows, hx_shown=HISTORY_SHOWN,
+        karton_path="/karton" if own else f"/karton/{subject.id}",
         today=config.today(), tz=config.TZ,
     ))
 
@@ -2324,31 +2355,124 @@ def _karton_back(card: str, error: str | None = None, ok: str | None = None) -> 
     return RedirectResponse(f"/karton?{query}#{card}", status_code=303)
 
 
+def _spool_upload(upload: UploadFile, raw: Path) -> bool:
+    """An upload spooled to `raw` in 1 MB chunks, to IMAGE_MB (15) at most:
+    False as soon as it is bigger (the cap trips before Pillow reads a byte,
+    let alone storage; the caller's temp dir takes what was written). The
+    karton's monthly photo and its documents (25.11.2026)."""
+    total = 0
+    with raw.open("wb") as f:
+        while chunk := upload.file.read(1 << 20):
+            total += len(chunk)
+            if total > IMAGE_MB * 1024 * 1024:
+                return False
+            f.write(chunk)
+    return True
+
+
+# A karton document (25.11.2026, Amir: "U ograničenja i bolovi treba dodati
+# mogućnost da se doda slika ili pdf … tjelesna kompozicija gdje opet mogu
+# dodati pdf ili sliku"): a PDF, kept as it came, or an image, shrunk as the
+# photos are but to a larger side, so a photographed printout stays legible.
+DOC_PX = 2400
+_DOC_SUFFIXES = (".pdf",) + _IMAGE_SUFFIXES
+_DOC_UNSUPPORTED = "Nepodržan format — dozvoljeno: pdf, jpg, png, webp."
+# what /media serves a member's file as, by its stored name's extension
+_MEMBER_FILE_TYPES = {".pdf": "application/pdf", ".jpg": "image/jpeg"}
+
+
+def _store_document(upload: UploadFile | None, stem: str) -> str | None:
+    """A karton document stored (25.11.2026): its new name, `stem` and a
+    random part (nalaz-<user id>-<hex>.<ext> under the limitations,
+    sastav-<user id>-<YYYYMMDD>-<hex>.<ext> for an entry of "Tjelesna
+    kompozicija"); None when no file came (none chosen: its name empty).
+    A PDF by its name (.pdf) AND its first bytes (%PDF-), stored as it is
+    (application/pdf); an image by its name (jpg / png / webp) and by what
+    Pillow finds, shrunk to DOC_PX (_shrink_image: upright, no EXIF) and
+    stored as .jpg (image/jpeg); at most IMAGE_MB (_spool_upload). ValueError
+    with the sentence to show: another format, a fake PDF, an image Pillow
+    cannot read ("Nepodržan format — dozvoljeno: pdf, jpg, png, webp."), one
+    too big; nothing is stored then."""
+    if upload is None or not (upload.filename or "").strip():
+        return None
+    import secrets
+    import tempfile
+
+    suffix = Path(upload.filename.replace("\\", "/")).suffix.lower()
+    if suffix not in _DOC_SUFFIXES:
+        raise ValueError(_DOC_UNSUPPORTED)
+    with tempfile.TemporaryDirectory() as tmp:       # whatever is left in it goes, a refusal's bytes too
+        raw = Path(tmp) / "upload"
+        if not _spool_upload(upload, raw):
+            raise ValueError(f"Dokument je veći od {IMAGE_MB} MB.")
+        if suffix == ".pdf":
+            with raw.open("rb") as f:
+                if f.read(5) != b"%PDF-":                 # a file of another kind renamed
+                    raise ValueError(_DOC_UNSUPPORTED)
+            name, path, kind = f"{stem}-{secrets.token_hex(8)}.pdf", raw, "application/pdf"
+        else:
+            path = Path(tmp) / "dokument.jpg"
+            try:
+                path.write_bytes(_shrink_image(raw, DOC_PX))
+            except ValueError:
+                raise ValueError(_DOC_UNSUPPORTED) from None
+            name, kind = f"{stem}-{secrets.token_hex(8)}.jpg", "image/jpeg"
+        storage.save(name, path, kind)
+    return name
+
+
 @app.post("/karton/masa")
-def karton_weight(request: Request, kg: str = Form(""), day: str = Form("")):
-    """The member's weight on a day (the weight card's form): kg 20–300 in
-    steps of 0.1, "82,5" or "82.5" (db.read_weight: "Neispravna masa."), the
-    day not in the future, not before 2020 (db.read_day: "Neispravan
-    datum."); a second save that day replaces the first (db.set_weight)."""
+def karton_weight(request: Request, kg: str = Form(""), day: str = Form(""),
+                  dokument: UploadFile | None = File(None)):
+    """An entry of the member's "Tjelesna kompozicija" on a day (the card's
+    form, multipart since 25.11.2026): a mass, kg 20–300 in steps of 0.1,
+    "82,5" or "82.5" (db.read_weight: "Neispravna masa."), a document
+    (_store_document: a PDF or an image, sastav-<id>-<YYYYMMDD>-<hex>, its
+    link named by the upload's own name), or both; neither, "Upiši masu ili
+    dodaj dokument."; the day not in the future, not before 2020
+    (db.read_day: "Neispravan datum."). A second save that day replaces
+    what it gives and keeps what it does not (db.set_weight), a document
+    replaced deleted from storage. A refusal stores nothing."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     try:
-        db.set_weight(user.id, db.read_day(day), db.read_weight(kg))
+        on = db.read_day(day)
+        mass = db.read_weight(kg) if kg.strip() else None
+        if mass is None and (dokument is None or not (dokument.filename or "").strip()):
+            raise ValueError(db.NO_MASS_NOR_FILE)
+        name = _store_document(dokument, f"sastav-{user.id}-{on:%Y%m%d}")
     except ValueError as e:
         return _karton_back("masa", error=str(e))
-    return _karton_back("masa", ok="Masa je spremljena.")
+    try:
+        old = db.set_weight(user.id, on, mass, file=name,
+                            file_name=db.doc_name("", dokument.filename) if name else "")
+    except (ValueError, LookupError) as e:               # the account went while its file went up
+        if name:
+            storage.delete(name)
+        if isinstance(e, LookupError):
+            return RedirectResponse("/login", status_code=303)
+        return _karton_back("masa", error=str(e))
+    if old:
+        storage.delete(old)
+    ok = ("Masa i dokument su spremljeni." if mass is not None and name else
+          "Masa je spremljena." if mass is not None else "Dokument je spremljen.")
+    return _karton_back("masa", ok=ok)
 
 
 @app.post("/karton/masa/{weight_id}/obrisi")
 def karton_weight_delete(request: Request, weight_id: int):
-    """A weight of the member's own taken out of his history (its ✕ asks
-    first); another member's, or one gone, is 404."""
+    """An entry of the member's own taken out of his history (its ✕ asks
+    first): the row, then its document's file; another member's, or one
+    gone, is 404."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    if not db.delete_weight(weight_id, user.id):
+    name = db.delete_weight(weight_id, user.id)
+    if name is None:
         raise HTTPException(status_code=404)
+    if name:
+        storage.delete(name)
     return _karton_back("masa", ok="Unos je obrisan.")
 
 
@@ -2368,6 +2492,50 @@ def karton_limitations(request: Request, text: str = Form("")):
     except LookupError:
         return RedirectResponse("/login", status_code=303)
     return _karton_back("ogranicenja", ok="Ograničenja su spremljena.")
+
+
+@app.post("/karton/ogranicenja/dokument")
+def karton_limitation_doc(request: Request, naziv: str = Form(""), dokument: UploadFile | None = File(None)):
+    """A document under the member's limitations (25.11.2026; the card's
+    "Dodaj dokument", multipart): the file (_store_document: a PDF or an
+    image, nalaz-<user id>-<hex>), and the name its list shows, "Naziv
+    (neobavezno)", 80 characters, or the upload's own name, or "Dokument"
+    (db.doc_name). At most ten (db.add_limitation_file: "Najviše 10
+    dokumenata."). A refusal stores nothing and says why; the flash names
+    no file."""
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if len(db.limitation_files(user.id)) >= db.MAX_LIMITATION_FILES:      # said before a byte is stored
+        return _karton_back("ogranicenja", error=db.TOO_MANY_FILES)
+    try:
+        name = _store_document(dokument, f"nalaz-{user.id}")
+        if name is None:
+            raise ValueError(_DOC_UNSUPPORTED)
+    except ValueError as e:
+        return _karton_back("ogranicenja", error=str(e))
+    try:
+        db.add_limitation_file(user.id, name, db.doc_name(naziv, dokument.filename))
+    except (ValueError, LookupError) as e:               # the tenth went in meanwhile, or the account went
+        storage.delete(name)
+        if isinstance(e, LookupError):
+            return RedirectResponse("/login", status_code=303)
+        return _karton_back("ogranicenja", error=str(e))
+    return _karton_back("ogranicenja", ok="Dokument je spremljen.")
+
+
+@app.post("/karton/ogranicenja/dokument/{file_id}/obrisi")
+def karton_limitation_doc_delete(request: Request, file_id: int):
+    """A document of the member's own deleted (its ✕ asks first): the row,
+    then its file; another member's, or one gone, is 404."""
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    name = db.delete_limitation_file(file_id, user.id)
+    if name is None:
+        raise HTTPException(status_code=404)
+    storage.delete(name)
+    return _karton_back("ogranicenja", ok="Dokument je obrisan.")
 
 
 @app.post("/karton/slika")
@@ -2396,13 +2564,8 @@ def karton_photo(request: Request, mjesec: str = Form(""), slika: UploadFile | N
     with tempfile.TemporaryDirectory() as tmp:       # whatever is left in it goes, a refusal's bytes too
         raw, out = Path(tmp) / "upload", Path(tmp) / "slika.jpg"
         # spooled in 1 MB chunks to the cap, as copy_image_upload does
-        total = 0
-        with raw.open("wb") as f:
-            while chunk := slika.file.read(1 << 20):
-                total += len(chunk)
-                if total > IMAGE_MB * 1024 * 1024:
-                    return _karton_back("napredak", error=f"Slika je veća od {IMAGE_MB} MB.")
-                f.write(chunk)
+        if not _spool_upload(slika, raw):
+            return _karton_back("napredak", error=f"Slika je veća od {IMAGE_MB} MB.")
         try:
             out.write_bytes(_shrink_image(raw))
         except ValueError:
@@ -3693,17 +3856,21 @@ def media(request: Request, name: str):
     one whose exercise is in a programme he is matched to (or may stand in
     for one that is: a swap's target, db.video_programs), or whose day is
     one of its days, while his online plan runs. Since 23.11.2026 also a
-    member's monthly photo from his karton (db.photo_owner): the member
-    whose photo it is and staff see it, nobody else, whatever his plans;
-    never public, never /slika, and marked private, so no shared cache in
-    front of the app keeps it."""
+    member's file from his karton (db.file_owner): his monthly photo, and
+    since 25.11.2026 a document under his limitations or of his "Tjelesna
+    kompozicija" (his health documents): the member whose file it is and
+    staff see it, nobody else, whatever his plans; never public, never
+    /slika, marked private, so no shared cache in front of the app keeps
+    it, typed by its stored name (application/pdf, image/jpeg) and never
+    sniffed, a PDF shown inline under its stored name (never the name the
+    member typed: no header carries it)."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if "/" in name or "\\" in name or ".." in name:
         raise HTTPException(status_code=404)
     staff = user.is_trainer or _is_owner(user)
-    owner = db.photo_owner(name)
+    owner = db.file_owner(name)
     if owner is not None:
         if not staff and owner != user.id:
             raise HTTPException(status_code=403, detail="Ovo nije tvoj sadržaj.")
@@ -3723,7 +3890,11 @@ def media(request: Request, name: str):
     if not path.is_file():
         raise HTTPException(status_code=404)
     if owner is not None:
-        return FileResponse(path, media_type="image/jpeg", headers=private)
+        kind = _MEMBER_FILE_TYPES.get(path.suffix.lower(), "image/jpeg")
+        headers = {**private, "X-Content-Type-Options": "nosniff"}
+        if kind == "application/pdf":
+            return FileResponse(path, media_type=kind, headers=headers, filename=name, content_disposition_type="inline")
+        return FileResponse(path, media_type=kind, headers=headers)
     return FileResponse(path, media_type=_VIDEO_TYPES.get(path.suffix.lower()))
 
 

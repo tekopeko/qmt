@@ -44,7 +44,20 @@ Since 25.11.2026 the karton is one column, the diary last (the owner:
 should be last"; from 1000px its cards in two columns above the diary:
 "if you have more room on the PC layout, you can use more columns"), read
 in a browser on the three views; and its texts are copy slots, printed in
-spans (bare() reads through them; tests/test_copy.py proves them)."""
+spans (bare() reads through them; tests/test_copy.py proves them).
+
+The karton again, the same day (Amir: "U ograničenja i bolovi treba dodati
+mogućnost da se doda slika ili pdf. … Tjelesna masa tu bi promijenio u
+tjelesna kompozicija gdje opet mogu dodati pdf ili sliku ili samo upisati
+ručno masu"; the owner: "We need a search bar for each user. Admins can
+access everyone's karton and search a particular exercise."; migration
+2b7e4c9a61d3, run for real on qmt_test there and back): documents under the
+limitations (a PDF as it came, an image shrunk; ten at most, under the
+member's row lock), "Tjelesna kompozicija" (an entry a mass, a document or
+both), /media serving each kind to its member and staff only, and
+"Povijest vježbe" (db.logged_exercises, db.exercise_history: every time
+an exercise was done, gym and online alike), in a test client, under
+racing writes and on a phone."""
 
 from __future__ import annotations
 
@@ -983,10 +996,11 @@ def maxes_section(page: str) -> str:
 
 
 def maxes_rows(page: str) -> list[tuple[str, str, str]]:
-    """The maxes table's rows as a reader reads them: (Vježba, Procjena, Iz)."""
-    rows = re.findall(r'<tr>\s*<th scope="row">([^<]*)</th>\s*<td class="mx-val">([^<]*)</td>\s*<td>(.*?)</td>\s*</tr>',
+    """The maxes table's rows as a reader reads them: (Vježba, Procjena, Iz)
+    (since 25.11.2026 each name a link to its history, read through)."""
+    rows = re.findall(r'<tr>\s*<th scope="row">(.*?)</th>\s*<td class="mx-val">([^<]*)</td>\s*<td>(.*?)</td>\s*</tr>',
                       maxes_section(page), re.S)
-    return [(unescape(a), unescape(b), unescape(re.sub(r"<[^>]+>", "", c))) for a, b, c in rows]
+    return [(unescape(re.sub(r"<[^>]+>", "", a)), unescape(b), unescape(re.sub(r"<[^>]+>", "", c))) for a, b, c in rows]
 
 
 def test_the_karton_shows_the_maxes_to_the_client_and_the_trainer():
@@ -1375,9 +1389,9 @@ def test_media_shows_a_photo_to_its_member_and_staff_only(monkeypatch):
     whatever their plans; another client is 403 (his online plan and the
     programmes it opens do not reach it), a guest goes to log in (303).
     Under R2 the member and staff get the 307 to the presigned link, private
-    too, another client still 403. db.photo_owner names the member; a name
-    no photo holds is none (a clip's stays a clip's: 404 when nothing
-    holds it)."""
+    too, another client still 403. db.file_owner names the member (since
+    25.11.2026; db.photo_owner until then); a name no karton file holds is
+    none (a clip's stays a clip's: 404 when nothing holds it)."""
     ivan = make_user("ivan@test.local", plans=())
     make_user("ana@test.local")
     make_user("trener@test.local", plans=())                                       # the owner (OWNER_EMAIL), not a trainer
@@ -1386,7 +1400,7 @@ def test_media_shows_a_photo_to_its_member_and_staff_only(monkeypatch):
     ci = client_for("ivan@test.local")
     ci.post("/karton/slika", data={"mjesec": month.strftime("%Y-%m")}, files={"slika": ("a.jpg", picture(400, 300), "image/jpeg")})
     name = db.photos(ivan)[0].image
-    assert db.photo_owner(name) == ivan and db.photo_owner("vjezba-1-0000000000000000.mp4") is None
+    assert db.file_owner(name) == ivan and db.file_owner("vjezba-1-0000000000000000.mp4") is None
     body = (config.MEDIA_DIR / name).read_bytes()
     for who in ("ivan@test.local", "trener@test.local", "amir@test.local"):
         r = client_for(who).get(f"/media/{name}")
@@ -1431,6 +1445,501 @@ def test_two_photos_for_one_month_at_once_leave_one_and_name_every_other():
     assert replaced.count(None) == 1 and len(olds) == 5 and sorted(olds + [rows[0].image]) == sorted(names)
 
 
+# ---------- the karton again (25.11.2026): documents, "Tjelesna kompozicija", an exercise's history ----------
+
+# a PDF as small as can be (what is stored must be these bytes, as they came)
+PDF = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n"
+       b"trailer<</Root 1 0 R>>\n%%EOF\n")
+UNSUPPORTED_DOC = "Nepodržan format — dozvoljeno: pdf, jpg, png, webp."
+
+
+def send_doc(c: TestClient, data: bytes, name: str, kind: str = "application/pdf", naziv: str | None = None):
+    """A document under the limitations as the card's form posts it."""
+    form = {} if naziv is None else {"naziv": naziv}
+    return c.post("/karton/ogranicenja/dokument", data=form, files={"dokument": (name, data, kind)},
+                  follow_redirects=False)
+
+
+def doc_rows(chunk: str) -> list[tuple[str, str, str, str]]:
+    """The documents' rows of a piece of a page (its spans unwrapped), as
+    read: (the stored file it links to, its name, its chip, its date)."""
+    return [(f, unescape(n), unescape(re.sub(r"<[^>]+>", "", chip)), day) for f, n, chip, day in re.findall(
+        r'<li><div class="doc-main"><a class="tlink doc-name" href="/media/([^"]+)" target="_blank" rel="noopener">'
+        r'([^<]*)</a>\s*<div class="doc-meta">(.*?)<span>([^<]*)</span></div></div>', chunk, re.S)]
+
+
+def test_documents_under_the_limitations_for_the_member_and_the_trainer():
+    """POST /karton/ogranicenja/dokument (25.11.2026, Amir: "U ograničenja i
+    bolovi treba dodati mogućnost da se doda slika ili pdf"): the member's
+    "Dodaj dokument" beside Uredi opens its own form (the file, data-focus,
+    and "Naziv (neobavezno)", 80 characters) under the caption "Dokumenti",
+    which his card carries before he has one. A PDF named by hand (cleaned)
+    is stored as it came, nalaz-<id>-<hex>.pdf; a phone's photo with no name
+    is named by its own file name (its path gone, cut to 80), turned upright
+    and shrunk to 2400 px on its long side, a JPEG with no EXIF,
+    nalaz-<id>-<hex>.jpg. The list, newest first, each its name a link to
+    /media (a new tab), its chip ("PDF", "slika") and its date: the
+    member's with his ✕ (asking first, naming it), the trainer's read only,
+    whose amber "Ograničenja" shows with a document and no text. Refused,
+    nothing stored: another format, a GIF named .jpg, a fake PDF (a .pdf
+    that is no PDF, a JPEG named .pdf), no file, one over 15 MB. The ✕
+    deletes his own (the row, then the file); another member's, or one
+    gone, is 404; a guest is sent to log in."""
+    ivan = make_user("ivan@test.local")
+    ana = make_user("ana@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
+    lim = card(ci.get("/karton").text, "card limits")
+    assert ('<button type="button" class="act" onclick="qmtToggleForm(\'ogranicenja\')">Uredi</button>'
+            '<button type="button" class="act" onclick="qmtToggleForm(\'lim-docs\')">Dodaj dokument</button>') in lim
+    assert '<div class="lim-docs" id="lim-docs">\n    <h3>Dokumenti</h3>' in lim and 'class="doc-list"' not in lim
+    assert ('<form class="le-edit" method="post" action="/karton/ogranicenja/dokument" enctype="multipart/form-data">' in lim
+            and '<label for="doc-file">Dokument (pdf, jpg, png ili webp, do 15 MB)</label>' in lim
+            and ('<input id="doc-file" type="file" name="dokument" accept="application/pdf,image/jpeg,image/png,'
+                 'image/webp,.pdf,.jpg,.jpeg,.png,.webp" required data-focus>') in lim
+            and '<label for="doc-name">Naziv (neobavezno)</label>' in lim
+            and '<input id="doc-name" type="text" name="naziv" maxlength="80" autocomplete="off">' in lim)
+    seen = card(ct.get(f"/karton/{ivan}").text, "card limits")
+    assert "lim-docs" not in seen and "u-flag" not in seen and "<form" not in seen    # nothing to read, no flag
+
+    for name, data, kind, error in (("nalaz.txt", b"samo tekst", "text/plain", UNSUPPORTED_DOC),
+                                    ("nalaz.gif", picture(30, 20, "GIF"), "image/gif", UNSUPPORTED_DOC),
+                                    ("nalaz.jpg", picture(30, 20, "GIF"), "image/jpeg", UNSUPPORTED_DOC),
+                                    ("nalaz.pdf", b"ovo nije pdf", "application/pdf", UNSUPPORTED_DOC),
+                                    ("nalaz.pdf", picture(30, 20), "application/pdf", UNSUPPORTED_DOC),
+                                    ("", b"", "application/octet-stream", UNSUPPORTED_DOC),       # no file chosen
+                                    ("velik.pdf", b"%PDF-" + b"\0" * (16 * 1024 * 1024), "application/pdf",
+                                     "Dokument je veći od 15 MB.")):
+        assert location(send_doc(ci, data, name, kind)) == f"/karton?error={error}#ogranicenja", name
+    assert db.limitation_files(ivan) == [] and stored_files() == []
+
+    r = send_doc(ci, PDF, "nalaz.pdf", naziv="  Nalaz   MR\tkoljena  ")
+    assert location(r) == "/karton?ok=Dokument je spremljen.#ogranicenja"                  # the flash names no file
+    long = "fizijatar_" * 10 + ".JPG"
+    r = send_doc(ci, picture(3000, 4000, orientation=6), "C:\\Users\\ivan\\Slike\\" + long, "image/jpeg", naziv=" ")
+    assert location(r) == "/karton?ok=Dokument je spremljen.#ogranicenja"
+    img, pdf = db.limitation_files(ivan)                                                    # the newest first
+    assert pdf.name == "Nalaz MR koljena" and re.fullmatch(rf"nalaz-{ivan}-[0-9a-f]{{16}}\.pdf", pdf.file)
+    assert (config.MEDIA_DIR / pdf.file).read_bytes() == PDF                                # as it came
+    assert img.name == long[:80] and re.fullmatch(rf"nalaz-{ivan}-[0-9a-f]{{16}}\.jpg", img.file)
+    with Image.open(config.MEDIA_DIR / img.file) as im:
+        assert im.format == "JPEG" and im.size == (2400, 1800)                              # upright, 2400 on its long side
+        assert not im.getexif() and "exif" not in im.info
+    assert stored_files() == sorted([pdf.file, img.file])
+    assert db.doc_name("", "") == "Dokument" and db.doc_name(None, "/a/b/ ") == "Dokument"
+
+    today = config.today().strftime("%-d.%-m.%Y.")
+    rows = [(img.file, long[:80], "slika", today), (pdf.file, "Nalaz MR koljena", "PDF", today)]
+    page, seen = card(ci.get("/karton").text, "card limits"), card(ct.get(f"/karton/{ivan}").text, "card limits")
+    assert doc_rows(page) == rows and doc_rows(seen) == rows
+    assert (f'action="/karton/ogranicenja/dokument/{pdf.id}/obrisi"' in page
+            and 'data-confirm-title="Obrisati dokument?"' in page
+            and 'data-confirm="Dokument „Nalaz MR koljena” bit će trajno obrisan."' in page
+            and 'data-confirm-cta="Obriši dokument"' in page
+            and '<button type="submit" class="k-x" aria-label="Obriši dokument Nalaz MR koljena">✕</button>' in page)
+    assert "<form" not in seen and "k-x" not in seen and "Dodaj dokument" not in seen        # the trainer reads
+    assert '<h2 id="lim-h">Ograničenja i bolovi</h2>\n    <span class="u-flag pain">Ograničenja</span>' in seen
+    assert '<p class="kc-empty">Nema upisanih ograničenja.</p>' in seen                     # a document, no text: flagged
+
+    db.add_limitation_file(ana, f"nalaz-{ana}-0123456789abcdef.pdf", "Njen nalaz")
+    theirs = db.limitation_files(ana)[0].id
+    assert ci.post(f"/karton/ogranicenja/dokument/{theirs}/obrisi", follow_redirects=False).status_code == 404
+    assert [d.id for d in db.limitation_files(ana)] == [theirs]
+    r = ci.post(f"/karton/ogranicenja/dokument/{pdf.id}/obrisi", follow_redirects=False)
+    assert location(r) == "/karton?ok=Dokument je obrisan.#ogranicenja"
+    assert [d.id for d in db.limitation_files(ivan)] == [img.id] and stored_files() == [img.file]
+    assert ci.post(f"/karton/ogranicenja/dokument/{pdf.id}/obrisi", follow_redirects=False).status_code == 404   # gone
+    assert TestClient(app).post("/karton/ogranicenja/dokument", files={"dokument": ("a.pdf", PDF, "application/pdf")},
+                                follow_redirects=False).headers["location"] == "/login"
+
+
+def test_ten_documents_at_most_even_when_they_come_at_once():
+    """At most ten documents under a member's limitations
+    (db.MAX_LIMITATION_FILES): filed at nine by eight uploads at once
+    (three rounds, back to nine after each), they take turns under his row
+    lock, one is the tenth and every other is refused ("Najviše 10
+    dokumenata."), never eleven. At ten the route refuses before it stores
+    a byte, and the card offers no "Dodaj dokument" (nor its form), its ten
+    rows listed."""
+    ivan = make_user("ivan@test.local")
+    for k in range(9):
+        db.add_limitation_file(ivan, f"nalaz-{ivan}-{k:016x}.pdf", f"Nalaz {k}")
+    for round_ in range(3):
+        added, refused_with, start = [], [], threading.Barrier(8)
+
+        def file(k: int) -> None:
+            start.wait()
+            try:
+                added.append(db.add_limitation_file(ivan, f"nalaz-{ivan}-{k:016x}.pdf", f"Nalaz {k}"))
+            except ValueError as err:
+                refused_with.append(str(err))
+
+        threads = [threading.Thread(target=file, args=(100 * (round_ + 1) + k,)) for k in range(8)]
+        for th in threads: th.start()
+        for th in threads: th.join()
+        assert len(added) == 1 and refused_with == ["Najviše 10 dokumenata."] * 7, (round_, added, refused_with)
+        assert len(db.limitation_files(ivan)) == 10, round_
+        if round_ < 2:
+            db.delete_limitation_file(added[0], ivan)                              # nine again
+    ci = client_for("ivan@test.local")
+    r = send_doc(ci, PDF, "jedanaesti.pdf")
+    assert location(r) == "/karton?error=Najviše 10 dokumenata.#ogranicenja" and stored_files() == []
+    lim = card(ci.get("/karton").text, "card limits")
+    assert "Dodaj dokument" not in lim and 'id="doc-file"' not in lim and len(doc_rows(lim)) == 10
+    assert "<h3>Dokumenti</h3>" in lim
+
+
+def body_rows(chunk: str) -> list[str]:
+    """The entries of "Tjelesna kompozicija" in a piece of a page, as read:
+    "12.11.2026. · 82,5 kg · InBody.pdf"."""
+    return [text_of(x) for x in re.findall(r"<li><span>(.*?)</span>", chunk, re.S)]
+
+
+def body_links(chunk: str) -> list[tuple[str, str]]:
+    """The entries' documents in a piece of a page: (the stored file, the link's name)."""
+    return [(f, unescape(n)) for f, n in re.findall(
+        r'<a class="tlink" href="/media/([^"]+)" target="_blank" rel="noopener">([^<]*)</a>', chunk)]
+
+
+def test_a_body_entry_is_a_mass_a_document_or_both():
+    """POST /karton/masa, multipart since 25.11.2026 (Amir: "Tjelesna masa
+    tu bi promijenio u tjelesna kompozicija gdje opet mogu dodati pdf ili
+    sliku ili samo upisati ručno masu"): the card is "Tjelesna kompozicija",
+    its form Kilogrami (no longer required), Datum, the document and the
+    hint. An entry is a mass alone, a document alone (a PDF stored as it
+    came, sastav-<id>-<YYYYMMDD>-<hex>.pdf, its link named by the upload's
+    own name) or both (an image, shrunk to 2400 px); neither is refused
+    ("Upiši masu ili dodaj dokument."), and so is a bad mass beside a good
+    document and a fake PDF: nothing stored. A second save that day keeps
+    what it does not give (a mass keeps the day's document) and replaces
+    what it gives (a document: the old file goes). The big value and the
+    head line are the newest entry that has a mass, past a newer document
+    alone. The history: "12.11.2026. · 82,5 kg", "· 81 kg · vaga.jpg",
+    with no mass the date and the link alone, the trainer's the same with
+    no form; the ✕ deletes the entry and its file."""
+    ivan = make_user("ivan@test.local")
+    make_user("trener@test.local", is_trainer=True)
+    ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
+    today = config.today()
+    d1, d2, d3 = today - timedelta(days=5), today - timedelta(days=3), today - timedelta(days=1)
+
+    def send(day: date, kg: str = "", doc: tuple | None = None):
+        return ci.post("/karton/masa", data={"kg": kg, "day": day.isoformat()},
+                       files={"dokument": doc or ("", b"", "application/octet-stream")}, follow_redirects=False)
+
+    masa = card(ci.get("/karton").text, "card masa")
+    assert '<h2 id="masa-h">Tjelesna kompozicija</h2>' in masa
+    assert ('<form class="le-edit" method="post" action="/karton/masa" enctype="multipart/form-data">' in masa
+            and '<input id="ms-kg" type="number" name="kg" min="20" max="300" step="0.1" inputmode="decimal"></div>' in masa
+            and '<label for="ms-doc">Dokument (pdf, jpg, png ili webp, do 15 MB)</label>' in masa
+            and ('<input id="ms-doc" type="file" name="dokument" accept="application/pdf,image/jpeg,image/png,image/webp,'
+                 '.pdf,.jpg,.jpeg,.png,.webp"></div>') in masa
+            and ('<p class="hint ms-hint">Upiši masu, dodaj dokument (npr. ispis analize sastava tijela) ili oboje.</p>'
+                 in masa))
+    for kg, doc, error in (("", None, "Upiši masu ili dodaj dokument."),
+                           ("19", ("InBody.pdf", PDF, "application/pdf"), "Neispravna masa."),
+                           ("", ("InBody.pdf", b"nije pdf", "application/pdf"), UNSUPPORTED_DOC),
+                           ("", ("InBody.docx", b"PK", "application/octet-stream"), UNSUPPORTED_DOC)):
+        assert location(send(d1, kg, doc)) == f"/karton?error={error}#masa", (kg, doc and doc[0])
+    assert db.weights(ivan) == [] and stored_files() == []
+
+    assert location(send(d1, "82,5")) == "/karton?ok=Masa je spremljena.#masa"
+    assert location(send(d2, "81", ("vaga.jpg", picture(3000, 2000), "image/jpeg"))) == \
+        "/karton?ok=Masa i dokument su spremljeni.#masa"
+    assert location(send(d3, doc=("InBody 24.11.pdf", PDF, "application/pdf"))) == "/karton?ok=Dokument je spremljen.#masa"
+    rows = {w.measured_on: w for w in db.weights(ivan)}
+    assert (rows[d1].kg, rows[d1].file, rows[d1].file_name) == (Decimal("82.5"), None, "")
+    assert rows[d2].kg == Decimal("81.0") and rows[d2].file_name == "vaga.jpg"
+    assert re.fullmatch(rf"sastav-{ivan}-{d2:%Y%m%d}-[0-9a-f]{{16}}\.jpg", rows[d2].file)
+    with Image.open(config.MEDIA_DIR / rows[d2].file) as im:
+        assert im.format == "JPEG" and im.size == (2400, 1600)
+    assert rows[d3].kg is None and rows[d3].file_name == "InBody 24.11.pdf"
+    assert re.fullmatch(rf"sastav-{ivan}-{d3:%Y%m%d}-[0-9a-f]{{16}}\.pdf", rows[d3].file)
+    assert (config.MEDIA_DIR / rows[d3].file).read_bytes() == PDF
+    assert stored_files() == sorted([rows[d2].file, rows[d3].file])
+
+    for p in (ci.get("/karton").text, ct.get(f"/karton/{ivan}").text):
+        masa = card(p, "card masa")
+        assert f'<p class="ms-val">81 kg</p>\n  <p class="hint ms-date">{full(d2)}</p>' in masa     # past the newer document
+        assert body_rows(masa) == [f"{full(d3)} · InBody 24.11.pdf", f"{full(d2)} · 81 kg · vaga.jpg", f"{full(d1)} · 82,5 kg"]
+        assert body_links(masa) == [(rows[d3].file, "InBody 24.11.pdf"), (rows[d2].file, "vaga.jpg")]
+    assert head_line(ci.get("/karton").text).endswith(f"Masa 81 kg ({short(d2)})")
+    masa = card(ci.get("/karton").text, "card masa")
+    assert f'data-confirm="Unos od {full(d3)} i njegov dokument bit će trajno obrisani."' in masa
+    assert f'data-confirm="Unos 81 kg od {full(d2)} i njegov dokument bit će trajno obrisani."' in masa
+    assert f'data-confirm="Unos 82,5 kg od {full(d1)} bit će trajno obrisan."' in masa
+    assert "<form" not in card(ct.get(f"/karton/{ivan}").text, "card masa")
+
+    old = rows[d2].file                                       # the same days again: what is given replaces,
+    assert location(send(d3, "80,5")) == "/karton?ok=Masa je spremljena.#masa"            # the rest stays
+    assert location(send(d2, doc=("InBody 22.11.pdf", PDF, "application/pdf"))) == "/karton?ok=Dokument je spremljen.#masa"
+    rows = {w.measured_on: w for w in db.weights(ivan)}
+    assert (rows[d3].kg, rows[d3].file_name) == (Decimal("80.5"), "InBody 24.11.pdf")
+    assert (rows[d2].kg, rows[d2].file_name) == (Decimal("81.0"), "InBody 22.11.pdf") and rows[d2].file.endswith(".pdf")
+    assert stored_files() == sorted([rows[d2].file, rows[d3].file]) and old not in stored_files()   # the old file gone
+    assert len(db.weights(ivan)) == 3
+    assert head_line(ci.get("/karton").text).endswith(f"Masa 80,5 kg ({short(d3)})")
+
+    gone = rows[d3].file
+    r = ci.post(f"/karton/masa/{rows[d3].id}/obrisi", follow_redirects=False)            # the entry, then its file
+    assert location(r) == "/karton?ok=Unos je obrisan.#masa" and gone not in stored_files()
+    r = ci.post(f"/karton/masa/{rows[d1].id}/obrisi", follow_redirects=False)            # a mass alone: no file to go
+    assert location(r) == "/karton?ok=Unos je obrisan.#masa" and stored_files() == [rows[d2].file]
+    assert [w.measured_on for w in db.weights(ivan)] == [d2]
+    with pytest.raises(ValueError, match="Upiši masu ili dodaj dokument."):
+        db.set_weight(ivan, today)
+    with pytest.raises(ValueError, match="not a file name"):
+        db.set_weight(ivan, today, None, file="../etc/passwd")
+
+
+def test_documents_saved_for_one_day_at_once_leave_one_and_name_every_other():
+    """Six documents filed to one day at once (db.set_weight, as six uploads
+    landing together): under the member's row lock they take turns, so one
+    entry is left, holding one of them, and every other name comes back to
+    exactly one caller as the document it replaced, for its file to go: no
+    file is left behind, none is named twice, no save fails."""
+    ivan = make_user("ivan@test.local")
+    day = config.today()
+    names = [f"sastav-{ivan}-{day:%Y%m%d}-{k:016x}.pdf" for k in range(6)]
+    replaced, errors, start = [], [], threading.Barrier(6)
+
+    def file(name: str) -> None:
+        start.wait()
+        try:
+            replaced.append(db.set_weight(ivan, day, None, file=name, file_name="InBody.pdf"))
+        except Exception as err:                       # an IntegrityError here would be the race lost
+            errors.append(repr(err))
+
+    threads = [threading.Thread(target=file, args=(n,)) for n in names]
+    for th in threads: th.start()
+    for th in threads: th.join()
+    rows = db.weights(ivan)
+    assert errors == [] and len(rows) == 1 and rows[0].kg is None
+    olds = [r for r in replaced if r is not None]
+    assert replaced.count(None) == 1 and len(olds) == 5 and sorted(olds + [rows[0].file]) == sorted(names)
+
+
+def test_media_serves_every_karton_file_to_its_member_and_staff_only(monkeypatch):
+    """/media/<a karton file> since 25.11.2026 (db.file_owner: a progress
+    photo, a document under the limitations, a PDF or an image, and a
+    document of "Tjelesna kompozicija"): the member whose file it is and
+    staff (a trainer, the owner) 200, another member 403, a guest 303 to
+    log in; typed by the stored name (a PDF application/pdf, an image
+    image/jpeg), Cache-Control private, X-Content-Type-Options nosniff, and
+    a PDF inline under its stored name (no header carries the name he
+    typed). Under R2 the member and staff get the 307 to the presigned
+    link, private; another member is still 403."""
+    ivan = make_user("ivan@test.local", plans=())
+    make_user("ana@test.local")
+    make_user("trener@test.local", plans=())                                       # the owner (OWNER_EMAIL)
+    make_user("amir@test.local", is_trainer=True, plans=())
+    ci = client_for("ivan@test.local")
+    month = config.today().replace(day=1)
+    ci.post("/karton/slika", data={"mjesec": month.strftime("%Y-%m")}, files={"slika": ("a.jpg", picture(400, 300), "image/jpeg")})
+    send_doc(ci, PDF, "nalaz.pdf", naziv="Tajni nalaz")
+    send_doc(ci, picture(500, 400), "sken.png", "image/png")
+    ci.post("/karton/masa", data={"day": config.today().isoformat()}, files={"dokument": ("InBody.pdf", PDF, "application/pdf")})
+    names = {"photo": db.photos(ivan)[0].image, "pdf": next(d.file for d in db.limitation_files(ivan) if d.is_pdf),
+             "image": next(d.file for d in db.limitation_files(ivan) if not d.is_pdf), "body": db.weights(ivan)[0].file}
+    assert all(db.file_owner(n) == ivan for n in names.values()) and db.file_owner("nalaz-0-0000000000000000.pdf") is None
+    for kind, name in names.items():
+        pdf = name.endswith(".pdf")
+        body = (config.MEDIA_DIR / name).read_bytes()
+        for who in ("ivan@test.local", "trener@test.local", "amir@test.local"):
+            r = client_for(who).get(f"/media/{name}")
+            assert r.status_code == 200 and r.content == body, (kind, who)
+            assert r.headers["content-type"] == ("application/pdf" if pdf else "image/jpeg"), (kind, who)
+            assert r.headers["cache-control"] == "private" and r.headers["x-content-type-options"] == "nosniff", (kind, who)
+            if pdf:
+                assert r.headers["content-disposition"] == f'inline; filename="{name}"', (kind, who)
+                assert "Tajni" not in str(r.headers)
+            else:
+                assert "content-disposition" not in r.headers, (kind, who)
+        assert client_for("ana@test.local").get(f"/media/{name}").status_code == 403, kind
+        r = TestClient(app).get(f"/media/{name}", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/login", kind
+    monkeypatch.setattr(storage, "r2_enabled", lambda: True)
+    monkeypatch.setattr(storage, "presigned_url", lambda n, expires_s=600: f"https://r2.example/{n}?sig=1")
+    for name in names.values():
+        for who in ("ivan@test.local", "amir@test.local"):
+            r = client_for(who).get(f"/media/{name}", follow_redirects=False)
+            assert r.status_code == 307 and r.headers["location"] == f"https://r2.example/{name}?sig=1", (name, who)
+            assert r.headers["cache-control"] == "private", (name, who)
+        assert client_for("ana@test.local").get(f"/media/{name}", follow_redirects=False).status_code == 403, name
+
+
+def a_termin(uid: int, title: str, days_ago: int) -> int:
+    """A finished termin of `title` uid was booked into, days ago; its id."""
+    sid = db.add_oneoff_session(title, datetime.now(config.TZ) - timedelta(days=days_ago), 60, 8, None)
+    with db.session_scope() as s:
+        s.add(Booking(user_id=uid, session_id=sid))
+    return sid
+
+
+def a_pass(uid: int, pid: int, did: int, saves: list[tuple], days_ago: int) -> int:
+    """A finished online pass of uid's through day did, started days ago:
+    each save (the item, the sets, the similar exercise swapped in or
+    None) as the player makes it. Its id."""
+    log = db.start_pass(uid, db.get_program(pid), db.get_day(did))
+    for item_id, sets, swap in saves:
+        item = db.get_day_item(item_id)
+        if swap:
+            db.swap_exercise(log.id, uid, item, swap)
+        db.save_sets(log.id, uid, item, sets, db.exercise(swap or item.exercise_id))
+    db.finish_pass(log.id, uid, 6, None, "")
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("UPDATE workout_logs SET started_at = started_at - make_interval(days => :d), "
+                             "finished_at = finished_at - make_interval(days => :d) WHERE id = :i"),
+                     {"d": days_ago, "i": log.id})
+    return log.id
+
+
+def history_world() -> tuple[int, int, dict[str, int]]:
+    """ivan's trainings for the history's tests (ana's, a client's too): a
+    termin "Snaga" 10 days ago (Potisak s klupe twice, 6 × 90 and 8 × 80,
+    then 5 × 95; Iskorak 10 × 20), a training outside a termin 6 days ago
+    (Zgibovi 9, Potisak s klupe 6 × 92,5), two online passes of "Trening 1"
+    4 and 2 days ago (Goblet čučanj 10 × 20 and Plank 40 s; then Goblet
+    swapped for Prednji čučanj 8 × 30 and Plank 45 s); ana's training
+    (Potisak 5 × 150). Then Potisak is renamed and Iskorak deleted from the
+    library. (ivan, ana, the exercises' ids)."""
+    ivan, ana = make_user("ivan@test.local"), make_user("ana@test.local")
+    ex = library("Potisak s klupe", "Iskorak", "Zgibovi", "Goblet čučanj", "Prednji čučanj", "Plank")
+    db.add_session_feedback(ivan, a_termin(ivan, "Snaga", 10), 7, None, "", sets=[
+        logged(ex["Potisak s klupe"], "Potisak s klupe", (6, 90), (8, 80)), logged(ex["Iskorak"], "Iskorak", (10, 20)),
+        logged(ex["Potisak s klupe"], "Potisak s klupe", (5, 95))])
+    db.add_training_log(ivan, config.today() - timedelta(days=6), 6, "", sets=[
+        logged(ex["Zgibovi"], "Zgibovi", (9, 0)), logged(ex["Potisak s klupe"], "Potisak s klupe", (6, 92.5))])
+    pid = db.create_program("Online", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    goblet, plank = db.add_day_item(did, ex["Goblet čučanj"], "trening"), db.add_day_item(did, ex["Plank"], "trening")
+    db.update_day_item(plank, "trening", 2, None, 40, None, None, "")
+    db.update_exercise(ex["Goblet čučanj"], "Goblet čučanj", "", "", "", {ex["Prednji čučanj"]})
+    a_pass(ivan, pid, did, [(goblet, [{"reps": 10, "kg": 20.0}], None), (plank, [{"seconds": 40}], None)], 4)
+    a_pass(ivan, pid, did, [(goblet, [{"reps": 8, "kg": 30.0}], ex["Prednji čučanj"]), (plank, [{"seconds": 45}], None)], 2)
+    db.add_training_log(ana, config.today(), 9, "", sets=[logged(ex["Potisak s klupe"], "Potisak s klupe", (5, 150))])
+    db.update_exercise(ex["Potisak s klupe"], "Potisak s klupe (šipka)", "", "", "")
+    db.delete_exercise(ex["Iskorak"])
+    return ivan, ana, ex
+
+
+def test_logged_exercises_and_an_exercises_history():
+    """db.logged_exercises and db.exercise_history (25.11.2026) read what
+    the maxes read: a termin's osvrt (where: the termin's title), a training
+    outside a termin ("Trening izvan termina") and the finished online
+    passes (where: the day's label as the pass keeps it; a swapped exercise
+    under the swap, never the plan's), never another member's. Each
+    exercise once, in the alphabet's order, named by the library now
+    (renamed: the new name) or, deleted, by the name it was logged under;
+    `times` the trainings that hold it (logged twice in one training: once,
+    its sets in one row, in the order logged), `last_on` its newest day. A
+    history newest first, each its day, source, where and sets as the
+    history prints them ("6 × 92,5 kg", "9", "45 s"); none for an exercise
+    he never logged."""
+    ivan, ana, ex = history_world()
+    today = config.today()
+    ago = lambda n: today - timedelta(days=n)                                     # noqa: E731
+    assert [(e.name, e.exercise_id, e.times, e.last_on) for e in db.logged_exercises(ivan)] == [
+        ("Goblet čučanj", ex["Goblet čučanj"], 1, ago(4)), ("Iskorak", ex["Iskorak"], 1, ago(10)),
+        ("Plank", ex["Plank"], 2, ago(2)), ("Potisak s klupe (šipka)", ex["Potisak s klupe"], 2, ago(6)),
+        ("Prednji čučanj", ex["Prednji čučanj"], 1, ago(2)), ("Zgibovi", ex["Zgibovi"], 1, ago(6))]
+    assert [(e.name, e.times) for e in db.logged_exercises(ana)] == [("Potisak s klupe (šipka)", 1)]
+
+    def history(uid: int, name: str) -> list[tuple]:
+        return [(d.on, d.source, d.source_text, d.where, list(d.sets)) for d in db.exercise_history(uid, ex[name])]
+
+    assert history(ivan, "Potisak s klupe") == [
+        (ago(6), "gym", "dvorana", "Trening izvan termina", ["6 × 92,5 kg"]),
+        (ago(10), "gym", "dvorana", "Snaga", ["6 × 90 kg", "8 × 80 kg", "5 × 95 kg"])]
+    assert history(ivan, "Plank") == [(ago(2), "online", "online", "Trening 1", ["45 s"]),
+                                      (ago(4), "online", "online", "Trening 1", ["40 s"])]
+    assert history(ivan, "Goblet čučanj") == [(ago(4), "online", "online", "Trening 1", ["10 × 20 kg"])]   # not the swap's
+    assert history(ivan, "Prednji čučanj") == [(ago(2), "online", "online", "Trening 1", ["8 × 30 kg"])]
+    assert history(ivan, "Zgibovi") == [(ago(6), "gym", "dvorana", "Trening izvan termina", ["9"])]
+    assert history(ivan, "Iskorak") == [(ago(10), "gym", "dvorana", "Snaga", ["10 × 20 kg"])]       # deleted: still his
+    assert history(ana, "Potisak s klupe") == [(today, "gym", "dvorana", "Trening izvan termina", ["5 × 150 kg"])]
+    assert db.exercise_history(ivan, 999999) == [] and db.exercise_history(ana, ex["Plank"]) == []
+    assert [len(db.exercise_history(ivan, e.exercise_id)) for e in db.logged_exercises(ivan)] == \
+        [e.times for e in db.logged_exercises(ivan)]                                    # times: the rows of its history
+
+
+def hist_card(page: str) -> str:
+    """"Povijest vježbe", its texts' spans unwrapped."""
+    return bare(page.split('<section class="card hist" id="povijest-vjezbe"')[1].split("</section>")[0])
+
+
+def test_the_history_card_on_the_three_views():
+    """"Povijest vježbe" (25.11.2026), right after the maxes, on the
+    member's own karton, a staff member's own and the trainer's view of a
+    client: a GET form to that karton (back at the card), the exercises it
+    holds as a native select's options (the script's combobox reads
+    #hx-json: [id, name, "2× · zadnji put …"]), and "Prikaži". With
+    ?vjezba=<id>: the exercise's name, "Zadnji put: … · dvorana" and that
+    time's sets, its estimated max ("Procjena maksimuma: 111 kg", the maxes'
+    own number), then every time, newest first, the newest ten and the rest
+    under "prikaži sve". An id the karton does not hold (another member's
+    exercise, a word): "Ta vježba nije u ovom kartonu."; nothing logged:
+    "Još nema upisanih vježbi." and no form. A client never reaches another
+    member's karton. Each maxes row's name links to its history."""
+    ivan, ana, ex = history_world()
+    amir = make_user("amir@test.local", is_trainer=True, plans=())
+    ci, ct = client_for("ivan@test.local"), client_for("amir@test.local")
+    today = config.today()
+    ago = lambda n: (today - timedelta(days=n)).strftime("%-d.%-m.%Y.")          # noqa: E731
+    for c, path in ((ci, "/karton"), (ct, f"/karton/{ivan}")):
+        page = c.get(path).text
+        assert page.index('class="card maxes"') < page.index('id="povijest-vjezbe"') < page.index('class="card termini"')
+        hc = hist_card(page)
+        assert '<h2 id="hist-h">Povijest vježbe</h2>' in hc
+        assert f'<form class="hx-form" method="get" action="{path}#povijest-vjezbe">' in hc
+        assert '<label for="hx-ex">Vježba</label>' in hc and '<select id="hx-ex" name="vjezba" data-chosen="">' in hc
+        assert re.findall(r'<option value="(\d+)">([^<]*)</option>', hc) == [
+            (str(e.exercise_id), e.name) for e in db.logged_exercises(ivan)]
+        assert '<button type="submit" class="btn-sm btn-signal">Prikaži</button>' in hc and 'class="hx"' not in hc
+        rows = json.loads(hc.split('<script type="application/json" id="hx-json">')[1].split("</script>")[0])
+        assert rows[2] == [ex["Plank"], "Plank", f"2× · zadnji put {ago(2)}"] and len(rows) == 6
+        assert [(a, b) for a, b, _ in rows] == [(e.exercise_id, e.name) for e in db.logged_exercises(ivan)]
+        for m in db.estimated_maxes(ivan):                                            # the maxes link here
+            assert f'<a class="tlink" href="?vjezba={m.exercise_id}#povijest-vjezbe">' in maxes_section(page)
+
+        hc = hist_card(c.get(f"{path}?vjezba={ex['Potisak s klupe']}").text)
+        assert f'data-chosen="{ex["Potisak s klupe"]}"' in hc
+        assert f'<option value="{ex["Potisak s klupe"]}" selected>Potisak s klupe (šipka)</option>' in hc
+        assert '<h3 class="hx-name">Potisak s klupe (šipka)</h3>' in hc
+        assert f'<p class="hx-last">Zadnji put: {ago(6)} · dvorana</p>' in hc
+        assert '<p class="hx-sets"><span class="set">6 × 92,5 kg</span></p>' in hc
+        max_line = next(m.value_text for m in db.estimated_maxes(ivan) if m.exercise_id == ex["Potisak s klupe"])
+        assert max_line == "111 kg"                                                     # 92,5 × 6, its best set
+        assert '<p class="hx-max">Procjena maksimuma: <strong>111 kg</strong></p>' in hc
+        assert [text_of(li) for li in re.findall(r"<li>(.*?)</li>", hc, re.S)] == [
+            f"{ago(6)} dvorana · Trening izvan termina 6 × 92,5 kg",
+            f"{ago(10)} dvorana · Snaga 6 × 90 kg · 8 × 80 kg · 5 × 95 kg"]
+        assert "<details" not in hc
+        hc = hist_card(c.get(f"{path}?vjezba={ex['Plank']}").text)                    # timed: no max
+        assert '<p class="hx-last">Zadnji put: ' + ago(2) + " · online</p>" in hc and "hx-max" not in hc
+        for bad in ("999999", "abc", "0", "-1", "9" * 5000, str(ex["Iskorak"] + 1000)):
+            hc = hist_card(c.get(f"{path}?vjezba={bad}").text)
+            assert '<p class="kc-empty">Ta vježba nije u ovom kartonu.</p>' in hc and 'class="hx"' not in hc, bad
+            assert '<form class="hx-form"' in hc
+    hc = hist_card(client_for("ana@test.local").get(f"/karton?vjezba={ex['Plank']}").text)   # his exercise, her karton
+    assert '<p class="kc-empty">Ta vježba nije u ovom kartonu.</p>' in hc
+    assert ci.get(f"/karton/{ana}?vjezba={ex['Potisak s klupe']}").status_code == 403         # never another's karton
+
+    for k in range(12):                                         # twelve trainings more: ten shown, the rest folded
+        db.add_training_log(ivan, today - timedelta(days=20 + k), 5, "", sets=[logged(ex["Zgibovi"], "Zgibovi", (k + 1, 0))])
+    hc = hist_card(ci.get(f"/karton?vjezba={ex['Zgibovi']}").text)
+    shown, folded = hc.split('<details class="sets"><summary>prikaži sve</summary>')
+    assert len(re.findall(r"<li>", shown)) == 10 and len(re.findall(r"<li>", folded)) == 3
+    assert text_of(re.findall(r"<li>(.*?)</li>", folded, re.S)[-1]) == f"{(today - timedelta(days=31)).strftime('%-d.%-m.%Y.')} dvorana · Trening izvan termina 12"
+
+    hc = hist_card(client_for("amir@test.local").get("/karton").text)                 # a staff member's own: nothing yet
+    assert '<p class="kc-empty">Još nema upisanih vježbi.</p>' in hc and "<form" not in hc and "hx-json" not in hc
+    db.add_training_log(amir, today, 6, "", sets=[logged(ex["Plank"], "Plank", (3, 0))])
+    hc = hist_card(client_for("amir@test.local").get(f"/karton?vjezba={ex['Plank']}").text)
+    assert '<form class="hx-form" method="get" action="/karton#povijest-vjezbe">' in hc
+    assert f'<p class="hx-last">Zadnji put: {today.strftime("%-d.%-m.%Y.")} · dvorana</p>' in hc
+
+
 # ---------- the migration ----------
 
 def _migration(file: str):
@@ -1468,6 +1977,10 @@ def _schema_diffs(table: str) -> list:
 
 def _columns() -> dict[str, dict]:
     return {c["name"]: c for c in sa_inspect(db.engine).get_columns("training_logs")}
+
+
+# the karton's documents (25.11.2026): limitation_files, a weight's document
+DOCUMENTS = "2b7e4c9a61d3_karton_documents.py"
 
 
 def test_the_sets_migration_adds_the_column_and_takes_it_away():
@@ -1511,17 +2024,22 @@ def test_the_body_migration_adds_the_columns_and_the_tables_and_takes_them_away(
     text. In SQL: one value a day and one photo a month (a second row is
     refused), another day, month or member is a row of its own, and a
     member's rows go with him. Downgrade takes the tables and the columns
-    away, the members staying; a second upgrade brings them back, empty."""
+    away, the members staying; a second upgrade brings them back, empty.
+    The documents' revision (2b7e4c9a61d3, 25.11.2026) runs on top each way:
+    weights is the model's only with it."""
     mig = _migration("0401f7fb9861_karton_body_and_photos.py")
     assert (mig.revision, mig.down_revision) == ("0401f7fb9861", "f43e976906a1")
+    docs = _migration(DOCUMENTS)
     ivan = make_user("ivan@test.local")
     ana = make_user("ana@test.local", plans=())
     with db.engine.begin() as conn:                                          # the schema as before the revision
+        conn.execute(sa_text("DROP TABLE limitation_files"))                 # (2b7e4c9a61d3's: made again on top)
         conn.execute(sa_text("DROP TABLE progress_photos"))
         conn.execute(sa_text("DROP TABLE weights"))
         conn.execute(sa_text("ALTER TABLE users DROP COLUMN height_cm, DROP COLUMN limitations"))
     assert not {"weights", "progress_photos"} & set(sa_inspect(db.engine).get_table_names())
     _run(mig.upgrade)
+    _run(docs.upgrade)
     for table in ("users", "weights", "progress_photos"):
         assert _schema_diffs(table) == [], table
     cols = {c["name"]: c for c in sa_inspect(db.engine).get_columns("users")}
@@ -1547,15 +2065,75 @@ def test_the_body_migration_adds_the_columns_and_the_tables_and_takes_them_away(
         conn.execute(sa_text("DELETE FROM users WHERE id = :a"), {"a": ana})
         assert conn.execute(sa_text("SELECT count(*) FROM weights WHERE user_id = :a"), {"a": ana}).scalar_one() == 0
         assert conn.execute(sa_text("SELECT count(*) FROM progress_photos WHERE user_id = :a"), {"a": ana}).scalar_one() == 0
+    _run(docs.downgrade)
     _run(mig.downgrade)
     assert not {"weights", "progress_photos"} & set(sa_inspect(db.engine).get_table_names())
     assert not {"height_cm", "limitations"} & {c["name"] for c in sa_inspect(db.engine).get_columns("users")}
     with db.engine.connect() as conn:
         assert conn.execute(sa_text("SELECT email FROM users WHERE id = :i"), {"i": ivan}).scalar_one() == "ivan@test.local"
     _run(mig.upgrade)
+    _run(docs.upgrade)
     for table in ("users", "weights", "progress_photos"):
         assert _schema_diffs(table) == [], table
     assert db.weights(ivan) == [] and db.photos(ivan) == [] and db.get_user(ivan).limitations == ""
+
+
+def test_the_documents_migration_makes_the_mass_optional_and_takes_it_back():
+    """2b7e4c9a61d3 (25.11.2026), run on qmt_test as before it (weights
+    with kg NOT NULL and no document, no limitation_files, a weight in it):
+    the table and the weights' two columns and CHECK as the models have
+    them; the weight already there keeps its mass, no document, file_name
+    ''. In SQL an entry with neither a mass nor a document is refused
+    (ck_weights_kg_or_file); a member's documents go with him. Downgrade
+    deletes the entry with no mass (its file stays in storage: the
+    migration touches no file), keeps the one with a mass (its document's
+    name gone with the column), drops the table and the columns, kg NOT
+    NULL again; a second upgrade brings them back, the masses as they
+    were."""
+    mig = _migration(DOCUMENTS)
+    assert (mig.revision, mig.down_revision) == ("2b7e4c9a61d3", "fc1840b0a981")
+    ivan = make_user("ivan@test.local")
+    ana = make_user("ana@test.local", plans=())
+    with db.engine.begin() as conn:                                          # the schema as before the revision
+        conn.execute(sa_text("DROP TABLE limitation_files"))
+        conn.execute(sa_text("ALTER TABLE weights DROP CONSTRAINT ck_weights_kg_or_file, DROP COLUMN file, "
+                             "DROP COLUMN file_name, ALTER COLUMN kg SET NOT NULL"))
+        conn.execute(sa_text("INSERT INTO weights (user_id, measured_on, kg) VALUES (:i, '2026-11-12', 82.5)"), {"i": ivan})
+    assert "limitation_files" not in sa_inspect(db.engine).get_table_names()
+    _run(mig.upgrade)
+    for table in ("weights", "limitation_files"):
+        assert _schema_diffs(table) == [], table
+    cols = {c["name"]: c for c in sa_inspect(db.engine).get_columns("weights")}
+    assert cols["kg"]["nullable"] and cols["file"]["nullable"] and not cols["file_name"]["nullable"]
+    assert "ck_weights_kg_or_file" in {c["name"] for c in sa_inspect(db.engine).get_check_constraints("weights")}
+    assert [i["column_names"] for i in sa_inspect(db.engine).get_indexes("limitation_files")] == [["user_id"]]
+    assert [(w.measured_on, w.kg, w.file, w.file_name) for w in db.weights(ivan)] == [
+        (date(2026, 11, 12), Decimal("82.5"), None, "")]
+    with pytest.raises(IntegrityError, match="ck_weights_kg_or_file"):
+        with db.engine.begin() as conn:
+            conn.execute(sa_text("INSERT INTO weights (user_id, measured_on) VALUES (:i, '2026-11-13')"), {"i": ivan})
+    db.set_weight(ivan, date(2026, 11, 14), None, file=f"sastav-{ivan}-20261114-0123456789abcdef.pdf", file_name="InBody.pdf")
+    db.set_weight(ivan, date(2026, 11, 12), None, file=f"sastav-{ivan}-20261112-0123456789abcdef.pdf", file_name="Vaga.pdf")
+    db.add_limitation_file(ivan, f"nalaz-{ivan}-0123456789abcdef.pdf", "Nalaz")
+    db.add_limitation_file(ana, f"nalaz-{ana}-0123456789abcdef.pdf", "Njen")
+    assert [(w.measured_on, w.kg, w.file_name) for w in db.weights(ivan)] == [
+        (date(2026, 11, 14), None, "InBody.pdf"), (date(2026, 11, 12), Decimal("82.5"), "Vaga.pdf")]
+    with db.engine.begin() as conn:                                          # a member's documents go with him
+        conn.execute(sa_text("DELETE FROM users WHERE id = :a"), {"a": ana})
+        assert conn.execute(sa_text("SELECT count(*) FROM limitation_files WHERE user_id = :a"), {"a": ana}).scalar_one() == 0
+    _run(mig.downgrade)
+    assert "limitation_files" not in sa_inspect(db.engine).get_table_names()
+    cols = {c["name"]: c for c in sa_inspect(db.engine).get_columns("weights")}
+    assert not {"file", "file_name"} & set(cols) and not cols["kg"]["nullable"]
+    with db.engine.connect() as conn:                                        # the document alone is gone, the mass stays
+        assert conn.execute(sa_text("SELECT measured_on, kg FROM weights WHERE user_id = :i"), {"i": ivan}).all() == [
+            (date(2026, 11, 12), Decimal("82.5"))]
+    _run(mig.upgrade)
+    for table in ("weights", "limitation_files"):
+        assert _schema_diffs(table) == [], table
+    assert [(w.measured_on, w.kg, w.file, w.file_name) for w in db.weights(ivan)] == [
+        (date(2026, 11, 12), Decimal("82.5"), None, "")]
+    assert db.limitation_files(ivan) == []
 
 
 # ---------- in a browser, on a phone ----------
@@ -1648,7 +2226,8 @@ def test_the_exercise_log_on_a_phone(server):
         ctx, pg, errors = _phone(browser, server, "ivan@test.local")
         pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle")
         check(pg.evaluate(OVERFLOW) == 0, f"the karton overflows by {pg.evaluate(OVERFLOW)}px")
-        check(pg.locator("select:not([name=effort]):not([name=feeling]):not([name=mjesec])").count() == 0, "a select of the library is on the page")
+        # (vjezba: "Povijest vježbe"'s picker without the script, his logged exercises, not the library)
+        check(pg.locator("select:not([name=effort]):not([name=feeling]):not([name=mjesec]):not([name=vjezba])").count() == 0, "a select of the library is on the page")
         form = f"#s-{sid} form.le-edit"
         pg.tap(f"#s-{sid} button.act:has-text('Ispuni osvrt')")
         check(pg.is_visible(form), "Ispuni osvrt did not open the form")
@@ -1764,7 +2343,7 @@ def test_the_exercise_log_on_a_phone(server):
             edit = f"#log-{saved.id} form.le-edit"
             pg.evaluate(f"() => document.getElementById('log-{saved.id}').classList.add('editing')")   # as its toggle opens it
             check(pg.is_visible(edit) and not pg.is_visible(f"{edit} fieldset.xl") and pg.locator(f"{edit} .xb").count() == 0
-                  and pg.locator("select:not([name=effort]):not([name=feeling]):not([name=mjesec])").count() == 0
+                  and pg.locator("select:not([name=effort]):not([name=feeling]):not([name=mjesec]):not([name=vjezba])").count() == 0
                   and pg.locator(f'{edit} input[name="log"]').count() == 0, "without JS an exercise block or log=1 is there")
             pg.select_option(f"#ed-effort-{saved.id}", "3")
             pg.fill(f"#ed-note-{saved.id}", "Bez skripte.")
@@ -1871,6 +2450,120 @@ def test_the_body_cards_on_a_phone(server):
     assert not problems, f"{len(problems)} problems, listed above"
 
 
+# how much each card's content is wider than the card (0 for none), by its id
+WIDER = """() => Object.fromEntries(['ogranicenja', 'masa', 'povijest-vjezbe'].map(id => {
+  const el = document.getElementById(id); return [id, el.scrollWidth - el.clientWidth]; }))"""
+
+
+def test_the_documents_and_the_history_on_a_phone(server):
+    """At 390px, touch, on ivan's karton (25.11.2026): "Dodaj dokument"
+    opens the documents' own form (the text's stays shut), the focus on the
+    file: a PDF whose name is one long word and Spremi, back at the card,
+    its row there (cut to 80, "PDF", today), the name wrapping inside the
+    card. "Upiši" on "Tjelesna kompozicija", the focus in Kilogrami: no
+    mass, yesterday, a document and Spremi: a row of the date and the link,
+    the big value still the mass of before. "Povijest vježbe": "Prikaži"
+    with nothing picked stays, "Odaberi vježbu s popisa." under the box; a
+    tap in the picker opens its list (a row its name over "1× · zadnji put
+    …"), "pot" and Enter pick, "Prikaži" goes to ?vjezba= at the card,
+    which shows the exercise, its time and its max. At 360px the same page
+    with both forms open. Nothing is wider than its card, the page never
+    scrolls sideways; no page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    ivan = make_user("ivan@test.local")
+    ex = library("Potisak s klupe", "Zgibovi")
+    today, yday = config.today(), config.today() - timedelta(days=1)
+    db.set_weight(ivan, today - timedelta(days=3), Decimal("82"))
+    db.add_training_log(ivan, today - timedelta(days=2), 7, "", sets=[logged(ex["Potisak s klupe"], "Potisak s klupe", (6, 90))])
+    long = "Nalaz_magnetske_rezonance_desnog_koljena_s_misljenjem_specijalista_ortopedije_i_preporukama.pdf"
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx, pg, errors = _phone(browser, server, "ivan@test.local")
+        pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle")
+        check(pg.evaluate(OVERFLOW) == 0, f"the karton overflows by {pg.evaluate(OVERFLOW)}px")
+        # a document under the limitations
+        pg.tap("#ogranicenja .kc-head button:has-text('Dodaj dokument')")
+        check(pg.is_visible("#lim-docs form.le-edit") and not pg.is_visible("#lim-input")
+              and pg.evaluate("() => document.activeElement.id") == "doc-file",
+              "Dodaj dokument: its form, the text's shut, the focus on the file")
+        pg.set_input_files("#doc-file", files=[{"name": long, "mimeType": "application/pdf", "buffer": PDF}])
+        check(pg.evaluate(OVERFLOW) == 0, f"the documents' form overflows by {pg.evaluate(OVERFLOW)}px")
+        with pg.expect_navigation():
+            pg.tap("#lim-docs button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        check(pg.url.endswith("/karton?ok=Dokument%20je%20spremljen.#ogranicenja"), f"after the document: {pg.url}")
+        rows = pg.locator("#lim-docs .doc-list li").all_inner_texts()
+        check([r.split("\n")[:3] for r in rows] == [[long[:80], "PDF", today.strftime("%-d.%-m.%Y.")]], f"the documents: {rows}")
+        name = pg.locator("#lim-docs .doc-name").bounding_box()
+        box = pg.locator("#ogranicenja").bounding_box()
+        check(name["x"] + name["width"] <= box["x"] + box["width"] and name["height"] > 30,
+              f"the long name does not wrap inside the card: {name}, {box}")
+        # a document alone in "Tjelesna kompozicija"
+        pg.tap("#masa .kc-head .act")
+        check(pg.evaluate("() => document.activeElement.id") == "ms-kg", "Upiši: the focus is not in Kilogrami")
+        pg.fill("#ms-day", yday.isoformat())
+        pg.set_input_files("#ms-doc", files=[{"name": "InBody.pdf", "mimeType": "application/pdf", "buffer": PDF}])
+        check(pg.evaluate(OVERFLOW) == 0, f"the body form overflows by {pg.evaluate(OVERFLOW)}px")
+        with pg.expect_navigation():
+            pg.tap("#masa button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        check(pg.locator("#masa .ms-list li > span").all_text_contents()
+              == [f"{full(yday)} · InBody.pdf", f"{full(today - timedelta(days=3))} · 82 kg"]
+              and pg.text_content("#masa .ms-val") == "82 kg", "the body card after the document")
+        check(pg.get_attribute("#masa .ms-list a", "href") == "/media/" + db.weights(ivan)[0].file
+              and pg.get_attribute("#masa .ms-list a", "target") == "_blank", "the document's link")
+        # the history: nothing picked, then a pick
+        pg.locator("#povijest-vjezbe").scroll_into_view_if_needed()
+        url = pg.url
+        pg.tap("#povijest-vjezbe button[type=submit]")
+        pg.wait_for_timeout(300)
+        check(pg.url == url and pg.text_content("#hx-ex-err") == "Odaberi vježbu s popisa.",
+              f"Prikaži with nothing picked: {pg.url}, {pg.text_content('#hx-ex-err')!r}")
+        pg.tap("#hx-ex-q")
+        listed = pg.locator("#hx-ex-list [role=option]").all_inner_texts()
+        check(pg.is_visible("#hx-ex-list") and [x.split("\n") for x in listed] == [
+            ["Potisak s klupe", f"1× · zadnji put {(today - timedelta(days=2)).strftime('%-d.%-m.%Y.')}"]],
+              f"the picker's list: {listed}")
+        pg.keyboard.type("pot")
+        pg.keyboard.press("Enter")
+        check(pg.input_value("#hx-ex") == str(ex["Potisak s klupe"]), "pot and Enter did not pick")
+        with pg.expect_navigation():
+            pg.tap("#povijest-vjezbe button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        check(pg.url.endswith(f"/karton?vjezba={ex['Potisak s klupe']}#povijest-vjezbe"), f"Prikaži went to {pg.url}")
+        check(pg.text_content("#povijest-vjezbe .hx-name") == "Potisak s klupe"
+              and pg.text_content("#povijest-vjezbe .hx-max") == "Procjena maksimuma: 108 kg"
+              and pg.input_value("#hx-ex-q") == "Potisak s klupe", "the history after Prikaži")
+        check(pg.evaluate(OVERFLOW) == 0 and set(pg.evaluate(WIDER).values()) == {0},
+              f"390px: overflow {pg.evaluate(OVERFLOW)}, wider {pg.evaluate(WIDER)}")
+        problems += [f"390px {e}" for e in errors]
+        ctx.close()
+
+        ctx = browser.new_context(viewport={"width": 360, "height": 780}, has_touch=True, is_mobile=True)
+        pg = ctx.new_page(); errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(server + "/login"); pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        pg.goto(f"{server}/karton?vjezba={ex['Potisak s klupe']}"); pg.wait_for_load_state("networkidle")
+        pg.evaluate("() => { qmtToggleForm('lim-docs'); qmtToggleForm('masa'); document.activeElement.blur(); }")
+        check(pg.is_visible("#lim-docs form.le-edit") and pg.is_visible("#masa form.le-edit"), "360px: the forms shut")
+        check(pg.evaluate(OVERFLOW) == 0 and set(pg.evaluate(WIDER).values()) == {0},
+              f"360px: overflow {pg.evaluate(OVERFLOW)}, wider {pg.evaluate(WIDER)}")
+        problems += [f"360px {e}" for e in errors]
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
 # ---------- the page's order and columns (25.11.2026) ----------
 
 # The karton as it lies: the visible h2s' words in the page's order, each
@@ -1880,7 +2573,7 @@ LAYOUT = """() => {
   const vis = el => !!el && el.getClientRects().length > 0;
   const box = el => { const r = el.getBoundingClientRect();
     return {top: r.top + scrollY, bottom: r.bottom + scrollY, left: r.left, right: r.right, width: r.width}; };
-  const cards = ['.upitnik', '#ogranicenja', '#masa', '#napredak', '.maxes', '.termini']
+  const cards = ['.upitnik', '#ogranicenja', '#masa', '#napredak', '.maxes', '#povijest-vjezbe', '.termini']
     .map(s => [s, document.querySelector(s)]).filter(([, el]) => vis(el));
   return {heads: [...document.querySelectorAll('main h2')].filter(vis).map(h => h.textContent.replace(/\\s+/g, ' ').trim()),
           cards: cards.map(([s, el]) => ({name: s, ...box(el), wide: el.scrollWidth - el.clientWidth})),
@@ -1894,10 +2587,11 @@ def _lies_wrong(at: dict, heads: list[str], w: int) -> list[str]:
     its headings not `heads`, an overflow, a card whose content is wider than
     it, the diary not under every card. Below 1000px a card whose left edge
     is not the diary's, or that is not under the one before; from 1000px
-    the limitations and the weight, and the photos and the maxes, not each a
-    row of two equal columns (one top, one bottom, one width, 20px apart),
-    the upitnik block or the termini not across both, a row not under the
-    one before, the diary not as wide as the two columns."""
+    the limitations and the weight, and the photos and the maxes, not each
+    a row of two equal columns (one top, one bottom, one width, 20px
+    apart), the upitnik block, the exercise's history (since 25.11.2026)
+    or the termini not across both, a row not under the one before, the
+    diary not as wide as the two columns."""
     out, got, diary = [], at["cards"], at["diary"]
     if at["heads"] != heads:
         out.append(f"the headings {at['heads']}")
@@ -1918,11 +2612,11 @@ def _lies_wrong(at: dict, heads: list[str], w: int) -> list[str]:
         if (abs(a["top"] - b["top"]) > 1 or abs(a["bottom"] - b["bottom"]) > 1 or abs(a["width"] - b["width"]) > 1
                 or abs(b["left"] - a["right"] - 20) > 1 or abs(a["left"] - left) > 1 or abs(b["right"] - right) > 1):
             out.append(f"{a['name']} and {b['name']} are not one row of two equal columns: {a}, {b}")
-    for span in (".upitnik", ".termini"):
+    for span in (".upitnik", "#povijest-vjezbe", ".termini"):
         if span in named and (abs(named[span]["left"] - left) > 1 or abs(named[span]["right"] - right) > 1):
             out.append(f"{span} does not span both columns: {named[span]}")
     rows = [[named[n] for n in row if n in named]
-            for row in ((".upitnik",), ("#ogranicenja", "#masa"), ("#napredak", ".maxes"), (".termini",))]
+            for row in ((".upitnik",), ("#ogranicenja", "#masa"), ("#napredak", ".maxes"), ("#povijest-vjezbe",), (".termini",))]
     rows = [row for row in rows if row]
     if any(min(c["top"] for c in b) < max(c["bottom"] for c in a) - 1 for a, b in zip(rows, rows[1:])):
         out.append(f"a row is not under the one before: {[(c['name'], round(c['top'])) for c in got]}")
@@ -1934,20 +2628,23 @@ def _lies_wrong(at: dict, heads: list[str], w: int) -> list[str]:
 def test_the_karton_is_one_column_then_two_in_its_order(server):
     """The karton's order (25.11.2026, the owner: "Everything should be one
     above the other and the 'dnevnik treninga' should be last"): the
-    upitnik block, "Ograničenja i bolovi", "Tjelesna masa", "Napredak —
-    fotografije", "Procijenjeni maksimumi", "Nadolazeći termini" (not on a
-    staff member's own), "Dnevnik treninga" last, read from the headings on
-    the member's own karton, a staff member's own and the trainer's view of
-    the member, at 390 (touch), 999, 1000 and 1280px. Below 1000px one
-    column: every card's left edge the diary's, each under the one before,
-    none beside another. From 1000px (the owner: "if you have more room on
-    the PC layout, you can use more columns") two equal columns: the
-    upitnik block across both, the limitations beside the weight and the
-    photos beside the maxes (a top edge shared, one width, one height, 20px
-    apart), the termini alone in their row across both; the diary under
-    every card, as wide as the two columns. No card's content is wider than
-    the card (fourteen weights, a photo, the maxes, a booking); the page
-    never scrolls sideways."""
+    upitnik block, "Ograničenja i bolovi", "Tjelesna kompozicija"
+    ("Tjelesna masa" until the same day's later build), "Napredak —
+    fotografije", "Procijenjeni maksimumi", "Povijest vježbe" (the same
+    later build), "Nadolazeći termini" (not on a staff member's own),
+    "Dnevnik treninga" last, read from the headings on the member's own
+    karton, a staff member's own and the trainer's view of the member, at
+    390 (touch), 999, 1000 and 1280px. Below 1000px one column: every
+    card's left edge the diary's, each under the one before, none beside
+    another. From 1000px (the owner: "if you have more room on the PC
+    layout, you can use more columns") two equal columns: the upitnik
+    block across both, the limitations beside the weight and the photos
+    beside the maxes (a top edge shared, one width, one height, 20px
+    apart), the history across both under them, and the termini across
+    both, as they were before it; the diary under every card, as wide as
+    the two columns. No card's content is wider than
+    the card (fourteen weights, a document, a photo, the maxes, an
+    exercise's history, a booking); the page never scrolls sideways."""
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
     from qmt import upitnik
@@ -1967,13 +2664,16 @@ def test_the_karton_is_one_column_then_two_in_its_order(server):
         name = f"napredak-{uid}-{today:%Y%m}-0123456789abcdef.jpg"
         Image.new("RGB", (600, 800), (70, 92, 112)).save(config.MEDIA_DIR / name, "JPEG")
         db.set_photo(uid, today.replace(day=1), name)
+        db.add_limitation_file(uid, f"nalaz-{uid}-0123456789abcdef.pdf", "Nalaz MR koljena")
     sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=1), 60, 8, None)
     with db.session_scope() as s:
         s.add(Booking(user_id=ivan, session_id=sid))
     level = upitnik.LEVELS[db.get_onboarding(ivan).level]
-    cards = ["Ograničenja i bolovi", "Tjelesna masa", "Napredak — fotografije", "Procijenjeni maksimumi"]
-    views = (("ivan@test.local", "/karton", [level, *cards, "Nadolazeći termini", "Dnevnik treninga"]),
-             ("trener@test.local", "/karton", [*cards, "Dnevnik treninga"]),
+    cards = ["Ograničenja i bolovi", "Tjelesna kompozicija", "Napredak — fotografije", "Procijenjeni maksimumi",
+             "Povijest vježbe"]
+    bench = f"?vjezba={ex['Potisak s klupe']}"                                  # the history shown, the card at its tallest
+    views = (("ivan@test.local", "/karton" + bench, [level, *cards, "Nadolazeći termini", "Dnevnik treninga"]),
+             ("trener@test.local", "/karton" + bench, [*cards, "Dnevnik treninga"]),
              ("trener@test.local", f"/karton/{ivan}", [level, *cards, "Nadolazeći termini", "Dnevnik treninga"]))
     problems: list[str] = []
 

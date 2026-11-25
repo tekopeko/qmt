@@ -33,7 +33,7 @@ import httpx
 import pytest
 
 from qmt import auth, config, db
-from qmt.models import Base, User
+from qmt.models import Base, Booking, User
 from qmt.web.app import app
 
 PORT = 8112                      # test_copy.py's server is on 8111
@@ -141,9 +141,14 @@ def test_phone_shows_one_day_switches_it_and_opens_the_sheet(server):
     db.materialize_week(mon)
     mine = _session_at(mon, 7)
     db.book(uid, mine)
-    late = db.add_oneoff_session("Kasni trening", datetime.now(config.TZ) + timedelta(hours=5), 60, 8, None)
-    db.book(uid, late)                       # inside the 12 h: the sheet only says until when
-    late_day = (datetime.now(config.TZ) + timedelta(hours=5)).date()
+    # inside the 4 h cutoff (12 h until 25.11.2026): the sheet only says until
+    # when. Booked directly, as if earlier: an EMPTY termin closes 4 h before
+    # it starts, a booked one stays open until it starts
+    late_at = datetime.now(config.TZ) + timedelta(hours=3)
+    late = db.add_oneoff_session("Kasni trening", late_at, 60, 8, None)
+    with db.session_scope() as s:
+        s.add(Booking(user_id=uid, session_id=late))
+    late_day = late_at.date()
     late_mon = late_day - timedelta(days=late_day.weekday())
 
     problems = []
@@ -224,9 +229,9 @@ def test_phone_shows_one_day_switches_it_and_opens_the_sheet(server):
             pg.click(f".week .day-col.is-on button.sess-row[data-id='{late}']")
             sh = pg.evaluate(SHEET)
             if not sh["late"] or sh["buttons"] != ["✕", "U redu"] or sh["focus"] != "U redu":
-                problems.append(f"{where} the sheet inside the 12 h: {sh}")
-            if "Otkazivanje je moguće do 12 h prije termina." not in pg.inner_text("#sheetLate"):
-                problems.append(f"{where} the sheet inside the 12 h does not say until when")
+                problems.append(f"{where} the sheet inside the 4 h: {sh}")
+            if "Otkazivanje je moguće do 4 h prije termina." not in pg.inner_text("#sheetLate"):
+                problems.append(f"{where} the sheet inside the 4 h does not say until when")
             pg.click("#sheet [data-sheet-close] >> visible=true")
             problems += [f"{where} js: {e}" for e in errs]
             ctx.close()

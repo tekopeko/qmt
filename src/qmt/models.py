@@ -665,31 +665,72 @@ class TrainingLog(Base):
 
 
 class Weight(Base):
-    """One body weight of a member's, the karton's "Tjelesna masa"
-    (23.11.2026, Amir: "tjelesna masa"; the owner: "weight a dated
-    history"): `kg` on the day it was measured, typed by the member on his
-    karton (POST /karton/masa: db.read_weight, 20–300 in steps of 0.1, "82,5"
-    or "82.5"; db.read_day, not in the future, not before 2020). One a day
-    (uq_weights_user_day): a second save that day replaces it
-    (db.set_weight). The newest is the karton's value and its head line's
-    "Masa 82,5 kg (12.11.)"; the member deletes his own, the trainer reads
-    them on /karton/{id}."""
+    """One entry of a member's "Tjelesna kompozicija" on his karton (the
+    card was "Tjelesna masa" from 23.11.2026, Amir: "tjelesna masa"; the
+    owner: "weight a dated history"; since 25.11.2026, Amir: "Tjelesna masa
+    tu bi promijenio u tjelesna kompozicija gdje opet mogu dodati pdf ili
+    sliku ili samo upisati ručno masu", migration 2b7e4c9a61d3): a day with
+    a mass, a document, or both. `kg` is the mass on the day it was measured,
+    typed by the member (POST /karton/masa: db.read_weight, 20–300 in steps
+    of 0.1, "82,5" or "82.5"; db.read_day, not in the future, not before
+    2020), NULL for none; `file` a stored document (a body-composition
+    printout: a PDF as it came, or an image shrunk to app.DOC_PX, stored as
+    sastav-<user id>-<YYYYMMDD>-<hex>.<ext>, served by the auth-gated /media
+    to the member and staff only), NULL for none, and `file_name` what its
+    link says (the upload's own name, cleaned, db.doc_name; "" with no
+    file). One or the other at least (ck_weights_kg_or_file). One entry a day
+    (uq_weights_user_day): a second save that day replaces what it gives and
+    keeps what it does not (db.set_weight: a new document's old file goes).
+    The newest entry with a mass is the karton's value and its head line's
+    "Masa 82,5 kg (12.11.)"; the member deletes his own (the entry and its
+    file), the trainer reads them on /karton/{id}."""
 
     __tablename__ = "weights"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     measured_on: Mapped[SADate] = mapped_column(Date)
-    kg: Mapped[Decimal] = mapped_column(Numeric(5, 1))
+    kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 1), nullable=True)
+    file: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    file_name: Mapped[str] = mapped_column(String(120), server_default=text("''"), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # one value a day; its index (user_id first) serves a member's history
-    __table_args__ = (UniqueConstraint("user_id", "measured_on", name="uq_weights_user_day"),)
+    # one entry a day; its index (user_id first) serves a member's history
+    __table_args__ = (UniqueConstraint("user_id", "measured_on", name="uq_weights_user_day"),
+                      CheckConstraint("kg IS NOT NULL OR file IS NOT NULL", name="ck_weights_kg_or_file"))
 
     @property
     def kg_text(self) -> str:
-        """"82,5", "82" (kg_text: a comma for the decimal)."""
+        """"82,5", "82" (kg_text: a comma for the decimal); "" with no mass."""
         return kg_text(self.kg)
+
+
+class LimitationFile(Base):
+    """A document under a member's "Ograničenja i bolovi" on his karton
+    (25.11.2026, Amir: "U ograničenja i bolovi treba dodati mogućnost da se
+    doda slika ili pdf"; migration 2b7e4c9a61d3): a doctor's finding, a scan,
+    a photo of a printout. `file` is the stored file's name, a PDF as it came
+    or an image shrunk to app.DOC_PX (nalaz-<user id>-<hex>.<ext>), served by
+    the auth-gated /media to the member and staff only, never by /slika;
+    `name` is what the list shows, the member's (80 characters, or the
+    upload's own name, or "Dokument": db.doc_name). At most
+    db.MAX_LIMITATION_FILES (10) a member, held under his row lock
+    (db.add_limitation_file); the member deletes his own (the row, then the
+    file), the trainer reads them on /karton/{id}. These are health
+    documents: a name is never in a flash, a log line or a header."""
+
+    __tablename__ = "limitation_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    file: Mapped[str] = mapped_column(String(120))
+    name: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def is_pdf(self) -> bool:
+        """A PDF (its chip says "PDF"), else an image ("slika")."""
+        return self.file.lower().endswith(".pdf")
 
 
 class ProgressPhoto(Base):

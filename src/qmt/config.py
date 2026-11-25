@@ -181,14 +181,16 @@ def stripe_enabled() -> bool:
 
 
 # Booking rules. A client may cancel a booking until CANCEL_CUTOFF_HOURS before
-# the termin (12 h, the owner's call of 17.10.2026; db.cancel_deadline); a termin
-# the trainer canceled can always be dropped. A termin nobody has booked closes
-# CLOSE_EMPTY_HOURS before it starts (4 h, the owner's call of 29.10.2026;
-# db.is_closed): one booking keeps it open until it starts. Termini can be
-# booked in the running week and BOOKING_WEEKS - 1 more (db.booking_window:
-# this week and three more, the owner's "four weeks in total"), never past the
-# plan's dospijeće.
-CANCEL_CUTOFF_HOURS = int(os.environ.get("CANCEL_CUTOFF_HOURS", "12"))
+# the termin (4 h, the owner's call of 25.11.2026: "Instead of 12 hours ahead of
+# training for a cancellation, lets allow 4 hours"; 12 h from 17.10.2026;
+# db.cancel_deadline); a termin the trainer canceled can always be dropped. A
+# termin nobody has booked closes CLOSE_EMPTY_HOURS before it starts (4 h, the
+# owner's call of 29.10.2026; db.is_closed): one booking keeps it open until it
+# starts, so a booked termin inside the cutoff is still on the calendar, its
+# booking no longer cancellable. Termini can be booked in the running week and
+# BOOKING_WEEKS - 1 more (db.booking_window: this week and three more, the
+# owner's "four weeks in total"), never past the plan's dospijeće.
+CANCEL_CUTOFF_HOURS = int(os.environ.get("CANCEL_CUTOFF_HOURS", "4"))
 CLOSE_EMPTY_HOURS = int(os.environ.get("CLOSE_EMPTY_HOURS", "4"))
 BOOKING_WEEKS = int(os.environ.get("BOOKING_WEEKS", "4"))
 # An online pass (the player's, models.WorkoutLog) with no activity for

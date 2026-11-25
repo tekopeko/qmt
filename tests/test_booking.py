@@ -67,6 +67,15 @@ def future_session(hours_from_now: float = 24, capacity: int = 8, **kw) -> int:
                                  kw.get("duration_min", 60), capacity, None)
 
 
+def booked(uid: int, sid: int) -> None:
+    """uid's booking of sid, made directly, as if made earlier: since
+    25.11.2026 a termin inside the cancel cutoff (CANCEL_CUTOFF_HOURS, 4) is
+    inside the hours an EMPTY one closes too (CLOSE_EMPTY_HOURS, 4), so
+    book() refuses it now; once booked it stays open until it starts."""
+    with db.session_scope() as s:
+        s.add(Booking(user_id=uid, session_id=sid))
+
+
 # ---------- auth ----------
 
 def test_signup_allowlist_and_login():
@@ -195,44 +204,55 @@ def test_book_and_cancel_roundtrip():
     assert "error" not in r.headers["location"]
     assert db.user_booking_ids(uid, [sid]) == set()
 
-    # the 12 h cutoff through the route the calendar's ✕ posts to
+    # the 4 h cutoff through the route the calendar's ✕ posts to
     from urllib.parse import unquote
-    early, late = future_session(hours_from_now=13), future_session(hours_from_now=11)
+    early, late = future_session(hours_from_now=5), future_session(hours_from_now=3)
     db.book(uid, early)
-    db.book(uid, late)
+    booked(uid, late)
     r = c.post(f"/cancel/{early}", data={"week": ""}, follow_redirects=False)
     assert r.status_code == 303 and "ok=" in r.headers["location"]
     assert db.user_booking_ids(uid, [early]) == set()
     r = c.post(f"/cancel/{late}", data={"week": ""}, follow_redirects=False)
     assert r.status_code == 303 and "error=" in r.headers["location"]
-    assert "najkasnije 12 h prije termina" in unquote(r.headers["location"])
+    assert "Otkazivanje je moguće najkasnije 4 h prije termina." in unquote(r.headers["location"])
     assert db.user_booking_ids(uid, [late]) == {late}       # the booking stays
 
 
 def test_cancel_cutoff_enforced():
-    """A client cancels until 12 h before the termin (CANCEL_CUTOFF_HOURS, the
-    owner's call of 17.10.2026); after that the place is the trainer's to plan."""
+    """A client cancels until 4 h before the termin (CANCEL_CUTOFF_HOURS, the
+    owner's call of 25.11.2026: "Instead of 12 hours ahead of training for a
+    cancellation, lets allow 4 hours"; 12 h from 17.10.2026); after that the
+    place is the trainer's to plan. A booking 5 h ahead goes, one 3 h ahead
+    stays (booked before: a booked termin stays open until it starts)."""
     uid = make_user("ivan@test.local")
-    late = future_session(hours_from_now=11)    # inside the 12 h cutoff
-    db.book(uid, late)
-    with pytest.raises(db.BookingError, match="najkasnije 12 h prije termina"):
+    late = future_session(hours_from_now=3)     # inside the 4 h cutoff
+    booked(uid, late)
+    with pytest.raises(db.BookingError, match="^Otkazivanje je moguće najkasnije 4 h prije termina.$"):
         db.cancel_booking(uid, late)
     assert db.user_booking_ids(uid, [late]) == {late}
-    early = future_session(hours_from_now=13)   # outside it
+    early = future_session(hours_from_now=5)    # outside it
     db.book(uid, early)
     db.cancel_booking(uid, early)
     assert db.user_booking_ids(uid, [early]) == set()
 
 
-def test_cancel_deadline_is_twelve_hours_before_the_termin():
+def test_cancel_deadline_is_four_hours_before_the_termin(monkeypatch):
     """One rule, one place: cancel_booking(), the grid's Otkaži and the list's
-    ✕ all ask db.cancel_deadline, so the button and the refusal agree."""
-    assert config.CANCEL_CUTOFF_HOURS == 12
+    ✕ all ask db.cancel_deadline, so the button and the refusal agree. Four
+    hours by default since 25.11.2026 (twelve until then). The day-before
+    reminder's email says the same number (it said 3 h, a cutoff of
+    before 17.10.2026, until then)."""
+    from qmt import mailer
+    assert config.CANCEL_CUTOFF_HOURS == 4
     sid = future_session(hours_from_now=30)
     with db.session_scope() as s:
         sess = s.get(TrainingSession, sid)
-        assert db.cancel_deadline(sess) == sess.starts_at - timedelta(hours=12)
+        assert db.cancel_deadline(sess) == sess.starts_at - timedelta(hours=4)
         assert db.cancel_deadline(sess).tzinfo is not None
+    sent = []
+    monkeypatch.setattr(mailer, "_send", lambda to, subject, html: sent.append(html) or True)
+    assert mailer.send_termin_reminder("ivan@test.local", [("Grupni trening", "pon 8.9. 18:00")])
+    assert "najkasnije 4 h prije termina." in " ".join(sent[0].split())
 
 
 def test_past_and_canceled_sessions_refuse_booking():
@@ -493,8 +513,8 @@ def test_materialize_clamped_to_booking_window():
 def test_canceled_session_booking_can_be_dropped_inside_cutoff():
     """The cutoff protects the trainer's planning — meaningless once THEY canceled."""
     uid = make_user("ivan@test.local")
-    sid = future_session(hours_from_now=5)      # inside the 12 h cutoff (and open: 4 h is when an empty one closes)
-    db.book(uid, sid)
+    sid = future_session(hours_from_now=3)      # inside the 4 h cutoff (booked before: open, as a booked one stays)
+    booked(uid, sid)
     db.set_session_canceled(sid, True)
     db.cancel_booking(uid, sid)                 # must NOT raise
     assert db.user_booking_ids(uid, [sid]) == set()
@@ -503,15 +523,17 @@ def test_canceled_session_booking_can_be_dropped_inside_cutoff():
 def test_moje_rezervacije_x_asks_first_and_only_while_cancelling_is_allowed():
     """Each card in "Moje rezervacije" carries a ✕ that asks before it cancels
     (data-confirm → base.html's #confirmDlg), only while cancelling is allowed;
-    inside the 12 h the card says so instead. A termin the trainer canceled can
-    always be removed. The week grid's Otkaži asks the same way."""
+    inside the 4 h (12 h until 25.11.2026) the card says so instead. A termin
+    the trainer canceled can always be removed. The week grid's Otkaži asks
+    the same way."""
     from qmt.web.app import WEEKDAYS, WEEKDAYS_SHORT
     uid = make_user("ivan@test.local")
-    early = future_session(hours_from_now=13, title="Grupni trening")
-    late = future_session(hours_from_now=11, title="Jutarnji trening")
-    gone = future_session(hours_from_now=5, title="Večernji trening")
-    for sid in (early, late, gone):
-        db.book(uid, sid)
+    early = future_session(hours_from_now=5, title="Grupni trening")
+    late = future_session(hours_from_now=3, title="Jutarnji trening")
+    gone = future_session(hours_from_now=3, title="Večernji trening")
+    db.book(uid, early)
+    for sid in (late, gone):                     # booked before they came inside the cutoff
+        booked(uid, sid)
     db.set_session_canceled(gone, True)          # the trainer called it off
 
     def local(sid):
@@ -528,7 +550,7 @@ def test_moje_rezervacije_x_asks_first_and_only_while_cancelling_is_allowed():
     cards = {card.split('<div class="name">')[1].split("<")[0]: card
              for card in mine.split('<div class="sess')[1:]}
 
-    card = cards["Grupni trening"]               # 13 h ahead: the ✕
+    card = cards["Grupni trening"]               # 5 h ahead: the ✕
     assert f'<form method="post" action="/cancel/{early}" class="unbook"' in card
     assert 'data-confirm-title="Otkazati rezervaciju?"' in card
     assert (f'data-confirm="Grupni trening, {WEEKDAYS_SHORT[start.weekday()]} {start:%-d.%-m.} '
@@ -539,9 +561,9 @@ def test_moje_rezervacije_x_asks_first_and_only_while_cancelling_is_allowed():
             f'{start:%-d.%-m.} u {start:%H:%M}">✕</button>') in card
     assert "Otkazivanje do" not in card
 
-    card = cards["Jutarnji trening"]             # 11 h ahead: no ✕, the state instead
+    card = cards["Jutarnji trening"]             # 3 h ahead: no ✕, the state instead
     assert 'class="unbook"' not in card and f"/cancel/{late}" not in card
-    assert '<div class="cap">Otkazivanje do 12 h prije termina</div>' in card
+    assert '<div class="cap">Otkazivanje do 4 h prije termina</div>' in card
 
     card = cards["Večernji trening"]             # canceled by the trainer: always removable
     start, end = local(gone)
@@ -1871,11 +1893,11 @@ def test_next_termin_card_shows_the_soonest_booking_to_clients_only():
     assert '<span class="nt-off">OTKAZANO</span>' in nt and "nt-rel" not in nt
     assert 'data-confirm-title="Maknuti otkazani termin?"' in nt and 'data-confirm-cta="Makni"' in nt
 
-    soon = future_session(hours_from_now=5, title="Kasni trening")   # inside the 12 h: no ✕, says until when
-    db.book(uid, soon)
+    soon = future_session(hours_from_now=3, title="Kasni trening")   # inside the 4 h: no ✕, says until when
+    booked(uid, soon)
     nt = card(c.get("/raspored").text)
     assert "Kasni trening" in nt and "unbook" not in nt
-    assert '<div class="nt-late">Otkazivanje do 12 h prije termina</div>' in nt
+    assert '<div class="nt-late">Otkazivanje do 4 h prije termina</div>' in nt
 
     tid = make_user("trener@test.local", is_trainer=True)   # a trainer with a booking: no card
     db.book(tid, soon)
