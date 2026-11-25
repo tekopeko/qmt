@@ -58,6 +58,14 @@ the CHECK that refused it), its dose "3 × 5 × 30 s"; and a programme is
 online or dvoranski (`Program.venue`, migration 49a70497e58a): a dvoranski
 one is the trainer's own plan for the gym, which no client lists or opens.
 Both migrations run for real on qmt_test, there and back.
+
+Since 25.11.2026 (the owner, for Amir's circuits: "we need to allow Amir to
+add exercises which go into one circle of exercises. And for each of those
+exercises, the number of reps, the weight if applicable etc.") an item has a
+planned weight (`kg`, migration d0ed87d5c98f, run for real there and back),
+each part of the day editor ends with "+ Dodaj vježbu u ovaj dio", the add
+card takes the numbers too, and a circuit part's row form asks no rest at all
+(no pause between a circuit's exercises).
 """
 
 from __future__ import annotations
@@ -69,6 +77,7 @@ import pathlib
 import re
 import threading
 import time
+from decimal import Decimal
 from html import unescape
 from urllib.parse import quote, unquote
 
@@ -598,7 +607,9 @@ def test_the_demo_seed_makes_its_nine_programmes_none_of_them_core():
     srednja (the demo's ivan) sees that razina's three, Cijelo tijelo
     first. That one's Trening 1, the day the audit walks, does its Glavni
     dio A as a circuit (24.11.2026, DEMO_CIRCUIT: 2 rounds, 90 s between
-    them, 15 s after each of its four exercises), its other parts normal."""
+    them; since 25.11.2026 no pause between its exercises, so the seed gives
+    them none of their own: their stored rests do not apply there), its
+    other parts normal."""
     from qmt import upitnik
 
     path = pathlib.Path(__file__).parents[1] / "scripts" / "seed_demo.py"
@@ -615,10 +626,11 @@ def test_the_demo_seed_makes_its_nine_programmes_none_of_them_core():
     assert [p.title for p in mine] == [
         "Cijelo tijelo — srednja razina", "Gornji dio tijela — srednja razina", "Donji dio tijela — srednja razina"]
     first, second = mine[0].days
-    assert seed.DEMO_CIRCUIT == ("trening", 2, 90, 15)
+    assert seed.DEMO_CIRCUIT == ("trening", 2, 90)
     assert [(c.section, c.rounds, c.rest_seconds) for c in first.circuits] == [("trening", 2, 90)] and first.has_circuit
     assert [(it.exercise.name, it.rest_after_seconds) for it in first.by_section["trening"]] == [
-        ("Goblet čučanj", 15), ("Sklekovi", 15), ("Veslanje u pretklonu", 15), ("Plank", 15)]
+        ("Goblet čučanj", seed.DEMO_REST_AFTER), ("Sklekovi", seed.DEMO_REST_AFTER),
+        ("Veslanje u pretklonu", seed.DEMO_REST_AFTER), ("Plank", seed.DEMO_REST_AFTER)]   # stored, not applying
     assert second.circuits == [] and all(not p.days[0].circuits for p in mine[1:])
 
 
@@ -1556,8 +1568,9 @@ def test_days_are_numbered_once_when_adds_race():
 
 def test_items_go_into_a_section_and_say_what_the_day_asks():
     """An exercise goes last into the chosen section and the editor comes
-    back at its row; a choice that is no exercise, or a section that is
-    none, adds nothing ("Odaberi vježbu iz baze."). A row's form saves the
+    back at the add card (25.11.2026: until then at its row); a choice
+    that is no exercise, or a section that is none, adds nothing ("Odaberi
+    vježbu iz baze.": in the card, a section that is none at the top). A row's form saves the
     section, sets, reps and / or seconds (both since 24.11.2026: their own
     test, below), rest and the note (stripped); an empty number is none.
     Refused with the sentence, the row unchanged: a number out of range or
@@ -1573,7 +1586,9 @@ def test_items_go_into_a_section_and_say_what_the_day_asks():
     made = {}
     for eid, section in ((a, "trening"), (b, "zagrijavanje"), (c, "trening"), (d, "istezanje")):
         r = ct.post(f"{base}/stavke", data={"exercise_id": str(eid), "section": section}, follow_redirects=False)
-        made[eid] = int(re.fullmatch(rf"{base}/uredi#stavka-(\d+)", r.headers["location"]).group(1))
+        made[eid] = max(i.id for i in db.get_day(did).items)
+        assert location(r) == (f"{base}/uredi?dodaj={section}&ok=Dodano u {SECTIONS[section]}: "
+                               f"{db.get_day_item(made[eid]).exercise.name}.#dodaj")
     ia, ib, ic, id_ = (made[x] for x in (a, b, c, d))
 
     def layout():
@@ -1585,7 +1600,9 @@ def test_items_go_into_a_section_and_say_what_the_day_asks():
     for bad, section in (("", "trening"), ("abc", "trening"), ("²", "trening"), ("987654", "trening"),
                          ("99999999999", "trening"), (str(a), "kardio")):
         r = ct.post(f"{base}/stavke", data={"exercise_id": bad, "section": section}, follow_redirects=False)
-        assert location(r) == f"{base}/uredi?error=Odaberi vježbu iz baze.", (bad, section)
+        to = f"{base}/uredi?error=Odaberi vježbu iz baze." if section == "kardio" else \
+            f"{base}/uredi?dodaj=trening&error=Odaberi vježbu iz baze.#dodaj"
+        assert location(r) == to, (bad, section)
     assert len(db.get_day(did).items) == 4
     assert ct.post(f"/treninzi/{pid}/dan/987654/stavke", data={"exercise_id": str(a)}).status_code == 404
 
@@ -1696,6 +1713,64 @@ def test_an_item_asks_for_reps_and_seconds_together():
     assert stored() == (3, 5, None, None, "3 × 5")
 
 
+def test_an_item_asks_for_a_weight():
+    """Since 25.11.2026 (the owner, for Amir's circuits: "the number of
+    reps, the weight if applicable etc."; migration d0ed87d5c98f) an item
+    may ask for a weight, `kg`: "Kilaža (kg)" on its row form after
+    Ponavljanja and Sekunde, 0.5–500 in steps of 0.5, "2,5" or "2.5"
+    (db.read_item_kg; the input's value with a point), empty none; anything
+    else "Neispravan broj.", the row unchanged (db.update_day_item's own
+    check too). A caller of update_day_item that names no weight keeps it.
+    The dose says it after a middle dot, "3 × 10 · 20 kg", "10
+    ponavljanja · 20 kg", "30 s · 20 kg", "3 × 5 × 30 s · 20 kg" (round_dose
+    too: "5 × 30 s · 20 kg"), a half with a comma, the weight alone with
+    nothing else; the client's day page prints it."""
+    ct, *_ = trainer_with_clients()
+    pid = db.create_program("T", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    iid = hold(pid, db.create_exercise("Goblet čučanj"))
+    base = f"/treninzi/{pid}/dan/{did}"
+
+    def save(**fields):
+        data = {"section": "trening", "sets": "3", "reps": "10", "seconds": "", "kg": "", "rest": "", "rest_after": "",
+                "note": ""}
+        return ct.post(f"{base}/stavke/{iid}", data=data | fields, follow_redirects=False)
+
+    def kg_of():
+        return db.get_day_item(iid).kg
+
+    for typed, kept in (("20", Decimal(20)), ("2,5", Decimal("2.5")), ("2.5", Decimal("2.5")), (" 0,5 ", Decimal("0.5")),
+                        ("500", Decimal(500)), ("", None)):
+        r = save(kg=typed)
+        assert location(r) == f"{base}/uredi?ok=Spremljeno.&stavka={iid}#stavka-{iid}", typed
+        assert kg_of() == kept, typed
+    save(kg="22,5")
+    form = ct.get(f"{base}/uredi").text.split(f'id="stavka-{iid}"')[1].split('<form class="st-form"')[1].split("</form>")[0]
+    assert dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', form))["kg"] == "22.5"
+    for bad in ("0", "0,25", "500,5", "501", "-1", "abc", "2,55", "1e2", "²"):
+        r = save(kg=bad)
+        assert location(r) == f"{base}/uredi?error=Neispravan broj.&stavka={iid}#stavka-{iid}", bad
+    assert kg_of() == Decimal("22.5")
+    for bad in (0, Decimal("0.25"), Decimal("500.5"), 501, -1, True, "20"):
+        with pytest.raises(ValueError, match="^Neispravan broj.$"):
+            db.update_day_item(iid, "trening", 3, 10, None, None, None, "", kg=bad)
+    assert db.update_day_item(iid, "trening", 4, 10, None, None, None, "")    # no weight named: kept
+    assert kg_of() == Decimal("22.5")
+    assert db.read_item_kg("") is None and db.read_item_kg(" ") is None and db.read_item_kg("2,5") == Decimal("2.5")
+    page = client_for("ivan@test.local").get(base).text
+    assert '<span class="dx-name">Goblet čučanj</span><span class="dx-dose">4 × 10 · 22,5 kg</span>' in page
+
+    def doses(sets=None, reps=None, seconds=None, kg=None):
+        it = ProgramDayItem(sets=sets, reps=reps, seconds=seconds, kg=kg)
+        return it.dose, it.round_dose
+
+    assert [doses(3, 10, kg=20), doses(None, 10, kg=20), doses(None, None, 30, kg=Decimal("20.0")), doses(3, 5, 30, kg=20),
+            doses(3, kg=Decimal("2.5")), doses(kg=20), doses(3, 10)] == [
+        ("3 × 10 · 20 kg", "10 ponavljanja · 20 kg"), ("10 ponavljanja · 20 kg", "10 ponavljanja · 20 kg"),
+        ("30 s · 20 kg", "30 s · 20 kg"), ("3 × 5 × 30 s · 20 kg", "5 × 30 s · 20 kg"),
+        ("3 serije · 2,5 kg", "2,5 kg"), ("20 kg", "20 kg"), ("3 × 10", "10 ponavljanja")]
+
+
 def test_a_foreign_day_or_item_is_404():
     """A day under another programme's address, an item under another day's,
     and ids that are none: 404 on every page and route, nothing changed. A
@@ -1788,7 +1863,7 @@ def test_the_day_editor_shows_each_row_and_its_form():
             '<span class="here">Trening 1</span></nav>\n<h1>Trening 1</h1>') in page
     assert "<title>Uredi: Trening 1 — Cijelo tijelo — početna — QMT</title>" in page
     assert ("Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja, "
-            "sekunde, odmor i napomena.\n  Ponavljanja i sekunde mogu zajedno: 5 ponavljanja po 30 s.") in page
+            "sekunde, kilaža, odmor i napomena.\n  Ponavljanja i sekunde mogu zajedno: 5 ponavljanja po 30 s.") in page
     assert "ili sekunde" not in page and "ne oboje" not in page                 # both may be set (24.11.2026)
     assert ("„Odmor (s)” je odmor između serija, a „Nakon vježbe (s)” odmor prije sljedeće vježbe: polaznik za oba "
             "dobiva odbrojavanje koje može preskočiti.") in page
@@ -1810,12 +1885,14 @@ def test_the_day_editor_shows_each_row_and_its_form():
     assert '<option value="trening" selected>Glavni dio A</option>' in form and '<option value="zagrijavanje">Zagrijavanje</option>' in form
     assert '<option value="trening_b">Glavni dio B</option>' in form
     values = dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', form))
-    assert values == {"sets": "4", "reps": "10", "seconds": "", "rest": "60", "rest_after": "90", "note": "16 kg"}
+    assert values == {"sets": "4", "reps": "10", "seconds": "", "kg": "", "rest": "60", "rest_after": "90",
+                      "note": "16 kg"}
     assert 'name="sets" inputmode="numeric" min="1" max="99"' in form and 'name="reps" inputmode="numeric" min="1" max="999"' in form
     assert 'name="seconds" inputmode="numeric" min="1" max="3600"' in form and 'name="rest" inputmode="numeric" min="0" max="3600"' in form
     assert 'name="rest_after" inputmode="numeric" min="0" max="3600"' in form
+    assert 'name="kg" inputmode="decimal" min="0.5" max="500" step="0.5"' in form
     assert [lab for lab in re.findall(r'<label for="st-\d+-\w+">([^<]*)</label>', form)] == [
-        "Dio", "Serije", "Ponavljanja", "Sekunde", "Odmor (s)", "Nakon vježbe (s)", "Napomena"]
+        "Dio", "Serije", "Ponavljanja", "Sekunde", "Kilaža (kg)", "Odmor (s)", "Nakon vježbe (s)", "Napomena"]
     second = rows[1].split('<form class="st-form"')[1].split("</form>")[0]          # none set: an empty field
     assert dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', second))["rest_after"] == ""
     after = page.split('<h2 style="font-size:1.05rem; margin:30px 0 12px;">Dodaj vježbu</h2>')[0].split("</section>")[-1]
@@ -1858,13 +1935,98 @@ def test_the_day_editors_picker_adds_into_the_chosen_section():
     r = ct.post(f"/treninzi/{pid}/dan/{did}/stavke", data={"exercise_id": str(plank), "section": "istezanje"},
                 follow_redirects=False)
     item = db.get_day(did).items[0]
-    assert r.headers["location"] == f"{edit}#stavka-{item.id}"
+    assert location(r) == f"{edit}?dodaj=istezanje&ok=Dodano u Istezanje: Plank.#dodaj"   # the add card (25.11.2026)
     assert (item.exercise_id, item.section, item.position, item.exercise.name) == (plank, "istezanje", 1, "Plank")
+    assert (item.sets, item.reps, item.seconds, item.kg) == (None, None, None, None)      # nothing asked: none
     r = ct.post(f"/treninzi/{pid}/dan/{did}/stavke", data={"exercise_id": str(biceps)}, follow_redirects=False)
     assert db.get_day(did).items[1].section == "trening"                    # none named: trening
     page = ct.get(f"{edit}?vjezba={cucanj}").text
     assert f'<option value="{cucanj}" selected>Čučanj s vlastitom težinom</option>' in page
     assert '<option value="" disabled>Odaberi vježbu…</option>' in page
+
+
+def test_an_exercise_is_added_inside_a_part_with_its_numbers():
+    """"+ Dodaj vježbu u ovaj dio" (25.11.2026; the owner: "we need to allow
+    Amir to add exercises which go into one circle of exercises. And for
+    each of those exercises, the number of reps, the weight if applicable
+    etc."): each part of the day editor ends with it, an .act link to the
+    add card with that part chosen (?dodaj=<key>#dodaj: its Dio selected,
+    the picker the page's autofocus; a key that is none, neither). The add
+    card takes the numbers too, all optional: Serije, Ponavljanja, Sekunde,
+    Kilaža (kg), so a row is complete in one step (db.add_day_item); after
+    an add the page comes back to the card (?dodaj=<the part>#dodaj), its
+    Dio as it was and its picker focused, the card saying "Dodano u Glavni
+    dio A: Sklekovi." (the page's top none). A refused number adds nothing,
+    its sentence in the card, the Dio and the exercise kept (?vjezba=); no
+    exercise chosen "Odaberi vježbu iz baze.", in the card too."""
+    ct, *_ = trainer_with_clients()
+    pid = db.create_program("T", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    skl, plank = db.create_exercise("Sklekovi"), db.create_exercise("Plank")
+    db.set_circuit(did, "trening", 3, 60)
+    edit, add_url = f"/treninzi/{pid}/dan/{did}/uredi", f"/treninzi/{pid}/dan/{did}/stavke"
+    page = ct.get(edit).text
+    links = re.findall(r'<a class="act st-add" href="([^"]+)" data-dio="(\w+)">\+ Dodaj vježbu u ovaj dio</a>', page)
+    assert links == [(f"{edit}?dodaj={k}#dodaj", k) for k in SECTIONS]
+    for key in SECTIONS:                                                     # each its part's last line
+        part = page.split(f'<section class="st-sec" aria-labelledby="dio-{key}">')[1].split("</section>")[0]
+        assert part.rstrip().endswith(f'data-dio="{key}">+ Dodaj vježbu u ovaj dio</a>'), key
+
+    def card(page: str) -> str:
+        return page.split('<form id="dodaj"')[1].split("</form>")[0]
+
+    add = card(page)
+    assert '<option value="trening" selected>Glavni dio A</option>' in add and " autofocus" not in add
+    assert re.findall(r'<label for="add-(\w+)">([^<]*)</label>', add) == [
+        ("ex", "Vježba iz baze"), ("dio", "Dio"), ("sets", "Serije"), ("reps", "Ponavljanja"), ("secs", "Sekunde"),
+        ("kg", "Kilaža (kg)")]
+    nums = add.split('<div class="add-nums">')[1]
+    for attrs in ('name="sets" inputmode="numeric" min="1" max="99"', 'name="reps" inputmode="numeric" min="1" max="999"',
+                  'name="seconds" inputmode="numeric" min="1" max="3600"',
+                  'name="kg" inputmode="decimal" min="0.5" max="500" step="0.5"'):
+        assert attrs in nums, attrs
+    add = card(ct.get(f"{edit}?dodaj=trening_b").text)
+    assert '<option value="trening_b" selected>Glavni dio B</option>' in add and 'name="exercise_id" required autofocus>' in add
+    add = card(ct.get(f"{edit}?dodaj=kardio").text)
+    assert '<option value="trening" selected>Glavni dio A</option>' in add and " autofocus" not in add
+
+    r = ct.post(add_url, data={"exercise_id": str(skl), "section": "trening", "sets": "", "reps": "10", "seconds": "",
+                               "kg": "2,5"}, follow_redirects=False)
+    assert location(r) == f"{edit}?dodaj=trening&ok=Dodano u Glavni dio A: Sklekovi.#dodaj"
+    [it] = db.get_day(did).items
+    assert (it.exercise_id, it.section, it.sets, it.reps, it.seconds, it.kg, it.rest_seconds, it.rest_after_seconds,
+            it.note) == (skl, "trening", None, 10, None, Decimal("2.5"), None, None, "")
+    page = ct.get(r.headers["location"].split("#")[0]).text
+    assert page.count('<div class="alert') == 1                              # in the card, not at the top
+    add = card(page)
+    assert '<div class="alert ok" role="status">Dodano u Glavni dio A: Sklekovi.</div>' in add
+    assert '<option value="trening" selected>Glavni dio A</option>' in add and 'required autofocus>' in add
+    r = ct.post(add_url, data={"exercise_id": str(plank), "section": "trening", "sets": "3", "seconds": "40"},
+                follow_redirects=False)
+    assert location(r) == f"{edit}?dodaj=trening&ok=Dodano u Glavni dio A: Plank.#dodaj"
+    assert [(i.exercise_id, i.sets, i.reps, i.seconds, i.kg, i.round_dose) for i in db.get_day(did).items] == [
+        (skl, None, 10, None, Decimal("2.5"), "10 ponavljanja · 2,5 kg"), (plank, 3, None, 40, None, "40 s")]
+
+    for field, value in (("sets", "0"), ("reps", "1000"), ("seconds", "3601"), ("kg", "0,25"), ("kg", "x"),
+                         ("sets", "abc"), ("kg", "501")):
+        r = ct.post(add_url, data={"exercise_id": str(plank), "section": "trening_b", field: value},
+                    follow_redirects=False)
+        assert location(r) == f"{edit}?dodaj=trening_b&error=Neispravan broj.&vjezba={plank}#dodaj", (field, value)
+    assert len(db.get_day(did).items) == 2                                   # a refused number adds nothing
+    page = ct.get(f"{edit}?dodaj=trening_b&error=Neispravan+broj.&vjezba={plank}").text
+    add = card(page)
+    assert page.count('<div class="alert') == 1 and '<div class="alert" role="alert"><span>Neispravan broj.</span></div>' in add
+    assert '<option value="trening_b" selected>Glavni dio B</option>' in add and f'<option value="{plank}" selected>Plank</option>' in add
+    r = ct.post(add_url, data={"exercise_id": "", "section": "istezanje", "reps": "10"}, follow_redirects=False)
+    assert location(r) == f"{edit}?dodaj=istezanje&error=Odaberi vježbu iz baze.#dodaj"
+    for numbers in ({"sets": 0}, {"reps": 1000}, {"seconds": 0}, {"kg": Decimal("0.25")}, {"kg": 600}):
+        with pytest.raises(ValueError, match="^Neispravan broj.$"):
+            db.add_day_item(did, skl, "trening_b", **numbers)
+    assert len(db.get_day(did).items) == 2
+    made = db.add_day_item(did, skl, "trening_b", 3, 10, None, 20)
+    it = db.get_day_item(made)
+    assert (it.section, it.position, it.sets, it.reps, it.seconds, it.kg, it.dose) == (
+        "trening_b", 3, 3, 10, None, Decimal(20), "3 × 10 · 20 kg")
 
 
 def test_nova_vjezba_comes_back_to_the_editor_and_ignores_a_foreign_path():
@@ -2312,14 +2474,17 @@ def test_the_editor_makes_a_part_a_circuit_and_back():
     assert (r.status_code, r.headers["location"]) == (303, "/login") and circuits_of(did) == {}
 
 
-def test_a_circuit_parts_rows_ask_no_sets_and_keep_them():
-    """In a circuit part (24.11.2026) a muted hint says what changes ("U
-    kružnom dijelu svaka vježba ide jednom po krugu: …"), and each row's form
-    asks no Serije and no Odmor (s), which do not apply there: Dio,
-    Ponavljanja, Sekunde, Nakon vježbe (s), Napomena, Spremi, and a hidden
-    `circuit`. Its save keeps the item's stored sets and rest between sets
-    (into a normal part too, where they apply again), the other numbers
-    saved as ever; a normal part's rows ask all of them, as before."""
+def test_a_circuit_parts_rows_ask_no_sets_and_no_rests_and_keep_them():
+    """In a circuit part a muted hint says what changes (since 25.11.2026:
+    "U kružnom dijelu vježbe idu jedna za drugom, bez pauze: upiši
+    ponavljanja ili sekunde i kilažu. Odmor je nakon kruga."), and each
+    row's form asks no Serije, no Odmor (s) (24.11.2026) and no Nakon vježbe
+    (s) (25.11.2026: no pause between a circuit's exercises), none of which
+    applies there: Dio, Ponavljanja, Sekunde, Kilaža (kg), Napomena,
+    Spremi, and a hidden `circuit`. Its save keeps the item's stored sets,
+    rest between sets and rest after it (into a normal part too, where they
+    apply again), the other numbers saved as ever; a normal part's rows ask
+    all of them, as before."""
     ct, *_ = trainer_with_clients()
     pid = db.create_program("T", None, "pocetna", "cijelo")
     goblet, plank = hold(pid, db.create_exercise("Goblet čučanj")), hold(pid, db.create_exercise("Plank"), "trening_b")
@@ -2329,8 +2494,8 @@ def test_a_circuit_parts_rows_ask_no_sets_and_keep_them():
     db.set_circuit(did, "trening", 3, 120)
     edit, base = f"/treninzi/{pid}/dan/{did}/uredi", f"/treninzi/{pid}/dan/{did}"
     page = ct.get(edit).text
-    hint = ("U kružnom dijelu svaka vježba ide jednom po krugu: upiši ponavljanja ili sekunde, a „Nakon vježbe (s)” je "
-            "kratka pauza do sljedeće vježbe.")
+    hint = ("U kružnom dijelu vježbe idu jedna za drugom, bez pauze: upiši ponavljanja ili sekunde i kilažu. "
+            "Odmor je nakon kruga.")
     assert f'<p class="hint st-circ-hint">{hint}</p>' in circuit_section(page, "trening")
     assert page.count('<p class="hint st-circ-hint">') == 1                 # the circuit part's alone
 
@@ -2339,41 +2504,46 @@ def test_a_circuit_parts_rows_ask_no_sets_and_keep_them():
 
     circ_form, normal_form = form_of(page, goblet), form_of(page, plank)
     assert re.findall(r'<label for="st-\d+-\w+">([^<]*)</label>', circ_form) == [
-        "Dio", "Ponavljanja", "Sekunde", "Nakon vježbe (s)", "Napomena"]
+        "Dio", "Ponavljanja", "Sekunde", "Kilaža (kg)", "Napomena"]
     assert '<input type="hidden" name="circuit" value="1">' in circ_form and 'name="sets"' not in circ_form
-    assert 'name="rest"' not in circ_form and '<div class="st-go"><button type="submit" class="btn btn-sm">Spremi</button></div>' in circ_form
+    assert 'name="rest"' not in circ_form and 'name="rest_after"' not in circ_form
+    assert '<div class="st-go"><button type="submit" class="btn btn-sm">Spremi</button></div>' in circ_form
     assert dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', circ_form)) == {
-        "circuit": "1", "reps": "10", "seconds": "", "rest_after": "15", "note": "16 kg"}
+        "circuit": "1", "reps": "10", "seconds": "", "kg": "", "note": "16 kg"}
     assert re.findall(r'<label for="st-\d+-\w+">([^<]*)</label>', normal_form) == [
-        "Dio", "Serije", "Ponavljanja", "Sekunde", "Odmor (s)", "Nakon vježbe (s)", "Napomena"]
+        "Dio", "Serije", "Ponavljanja", "Sekunde", "Kilaža (kg)", "Odmor (s)", "Nakon vježbe (s)", "Napomena"]
     assert 'name="circuit"' not in normal_form
 
     def stored(iid):
         it = db.get_day_item(iid)
-        return it.section, it.sets, it.reps, it.seconds, it.rest_seconds, it.rest_after_seconds, it.note
+        return it.section, it.sets, it.reps, it.seconds, it.rest_seconds, it.rest_after_seconds, it.note, it.kg
 
     r = ct.post(f"{base}/stavke/{goblet}", data={"circuit": "1", "section": "trening", "reps": "12", "seconds": "",
-                                                 "rest_after": "10", "note": "20 kg"}, follow_redirects=False)
+                                                 "kg": "20", "note": "pete na podu", "sets": "9", "rest": "9",
+                                                 "rest_after": "9"}, follow_redirects=False)
     assert location(r) == f"{edit}?ok=Spremljeno.&stavka={goblet}#stavka-{goblet}"
-    assert stored(goblet) == ("trening", 3, 12, None, 60, 10, "20 kg")      # sets and the rest between them kept
+    assert stored(goblet) == ("trening", 3, 12, None, 60, 15, "pete na podu", 20)   # the three kept, whatever is posted
     r = ct.post(f"{base}/stavke/{goblet}", data={"circuit": "1", "section": "trening", "reps": "0"}, follow_redirects=False)
     assert location(r) == f"{edit}?error=Neispravan broj.&stavka={goblet}#stavka-{goblet}"
-    assert stored(goblet) == ("trening", 3, 12, None, 60, 10, "20 kg")
-    ct.post(f"{base}/stavke/{goblet}", data={"circuit": "1", "section": "trening_b", "reps": "12", "rest_after": "10"})
-    assert stored(goblet) == ("trening_b", 3, 12, None, 60, 10, "")         # into a normal part: they apply again
+    assert stored(goblet) == ("trening", 3, 12, None, 60, 15, "pete na podu", 20)
+    ct.post(f"{base}/stavke/{goblet}", data={"circuit": "1", "section": "trening_b", "reps": "12", "kg": "20"})
+    assert stored(goblet) == ("trening_b", 3, 12, None, 60, 15, "", 20)    # into a normal part: they apply again
     form = form_of(ct.get(edit).text, goblet)
-    assert dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', form))["sets"] == "3" and 'name="circuit"' not in form
+    values = dict(re.findall(r'name="(\w+)"[^>]*?value="([^"]*)"', form))
+    assert (values["sets"], values["rest"], values["rest_after"], values["kg"]) == ("3", "60", "15", "20")
+    assert 'name="circuit"' not in form
     ct.post(f"{base}/stavke/{plank}", data={"section": "trening_b", "sets": "", "reps": "", "seconds": "40", "rest": "",
                                             "rest_after": "", "note": ""})
-    assert stored(plank) == ("trening_b", None, None, 40, None, None, "")   # a normal part's form: as ever
+    assert stored(plank) == ("trening_b", None, None, 40, None, None, "", None)   # a normal part's form: as ever
 
 
 def test_the_day_page_and_the_programme_say_a_circuit():
     """A circuit part on the client's day page (24.11.2026): its caption,
     then the muted line "Kružno · 3 kruga · odmor između krugova 120 s" (the
     rest only when set), its rows the dose of a round ("10 ponavljanja",
-    "40 s", "5 × 30 s") and under it the rest after the exercise and the
-    note, never the rest between sets; a normal part as before. The day's
+    "40 s", "5 × 30 s") and under it the note alone (since 25.11.2026 no
+    rest of an exercise's applies there: no pause between a circuit's
+    exercises); a normal part as before. The day's
     lead and its card on the programme's page say "kružni trening"; a
     circuit on a part that holds no exercise does not. While a pass is open
     a circuit's row is "2/3" (muted, its words for a screen reader) when
@@ -2414,9 +2584,9 @@ def test_the_day_page_and_the_programme_say_a_circuit():
                      r'<p class="dx-circ">Kružno · 3 kruga · odmor između krugova 120 s</p>\s*<div class="dx-list">', page)
     assert page.count('class="dx-circ"') == 1                               # the warm-up is a normal part
     assert heads(page) == [("Vježba 1", "Čučanj", "2 × 15", "Odmor između serija: 30 s · Odmor nakon vježbe: 20 s"),
-                           ("Vježba 2", "Goblet čučanj", "10 ponavljanja", "Odmor nakon vježbe: 15 s · 16 kg"),
+                           ("Vježba 2", "Goblet čučanj", "10 ponavljanja", "16 kg"),
                            ("Vježba 3", "Plank", "40 s", None),
-                           ("Vježba 4", "Bočni plank", "5 × 30 s", "Odmor nakon vježbe: 10 s")]
+                           ("Vježba 4", "Bočni plank", "5 × 30 s", None)]
     db.set_circuit(did, "trening", 2, None)
     assert '<p class="dx-circ">Kružno · 2 kruga</p>' in ci.get(base).text
 
@@ -2424,10 +2594,9 @@ def test_the_day_page_and_the_programme_say_a_circuit():
     ci.post(f"{base}/kreni")
     log = db.open_pass(ivan, did)
     db.save_sets(log.id, ivan, db.get_day_item(warm), [{"reps": 15, "kg": 0.0}], db.exercise(ex["Čučanj"]))
-    db.save_round(log.id, ivan, db.get_day_item(goblet), 1, {"reps": 10, "kg": 16.0}, db.exercise(ex["Goblet čučanj"]))
-    db.save_round(log.id, ivan, db.get_day_item(goblet), 2, {"reps": 10, "kg": 16.0}, db.exercise(ex["Goblet čučanj"]))
-    for r in (1, 2, 3):
-        db.save_round(log.id, ivan, db.get_day_item(plank), r, {"seconds": 40}, db.exercise(ex["Plank"]))
+    items = db.get_day(did).by_section["trening"]                           # one write a round (25.11.2026)
+    for r, goblet_set in ((1, {"reps": 10, "kg": 16.0}), (2, {"reps": 10, "kg": 16.0}), (3, None)):
+        db.save_circuit_round(log.id, ivan, items, r, {goblet: goblet_set, plank: {"seconds": 40}, side: None})
     page = ci.get(base).text
     assert [h[2] for h in heads(page)] == [
         '<span class="dx-ok" role="img" aria-label="spremljeno">✓</span> 2 × 15',
@@ -2492,6 +2661,10 @@ REPS_AND_SECONDS = "30815c99e7d2_program_day_items_reps_and_seconds.py"
 # points at program_days, so a test that drops the days drops it first and
 # makes it again on top
 CIRCUITS = "fc1840b0a981_program_day_circuits.py"
+# d0ed87d5c98f (25.11.2026): program_day_items.kg, the planned weight, a
+# column the models have: a test that builds the items' table again runs it
+# on top too
+KG = "d0ed87d5c98f_program_day_items_kg.py"
 
 
 def _old_items() -> list[tuple]:
@@ -2560,7 +2733,8 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     them) and drops the tables; a second upgrade folds them again into the
     same library and the same notes, printing nothing. Then 7c3bf996c983 on
     top makes the items days (and 4f9d6f7103ad gives them the rest after an
-    exercise; fc1840b0a981 the days' circuits), and every table is the
+    exercise; fc1840b0a981 the days' circuits; d0ed87d5c98f the items'
+    planned weight), and every table is the
     models'."""
     mig = _migration("4c2e8a6f1d39_exercise_library.py")
     assert (mig.revision, mig.down_revision) == ("4c2e8a6f1d39", "b18ebed39701")
@@ -2625,6 +2799,7 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     _run(_migration(CASCADE).upgrade)                                        # and their key to it, CASCADE
     _run(_migration(REPS_AND_SECONDS).upgrade)                               # and reps with seconds, no CHECK
     _run(_migration(CIRCUITS).upgrade)                                       # and the days' circuits
+    _run(_migration(KG).upgrade)                                             # and the items' planned weight
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI | {"program_day_circuits"}) == []
     assert _library() == library
     assert [[(i.exercise.name, i.sets, i.reps, i.seconds, i.note) for i in items_of(p)] for p in (p1, p2, p3)] == [
@@ -2671,10 +2846,12 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     key to the exercise CASCADE, as the models have it; and 30815c99e7d2,
     which drops the reps-or-seconds CHECK the models no longer have; and
     fc1840b0a981, the days' circuits, a later table every day is loaded
-    with, whose key points at the days: it goes before the downgrade.)"""
+    with, whose key points at the days: it goes before the downgrade; and
+    d0ed87d5c98f, the items' planned weight, a later column the models
+    have.)"""
     mig = _migration("7c3bf996c983_program_days.py")
     rest_after, cascade, both = _migration(REST_AFTER), _migration(CASCADE), _migration(REPS_AND_SECONDS)
-    circuits = _migration(CIRCUITS)
+    circuits, kg = _migration(CIRCUITS), _migration(KG)
     assert (mig.revision, mig.down_revision) == ("7c3bf996c983", "4c2e8a6f1d39")
     with db.engine.begin() as conn:                                         # the tables as before the revision
         # (workout_logs, 3890252ee50f's, and program_day_circuits, fc1840b0a981's,
@@ -2699,6 +2876,7 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     _run(cascade.upgrade)
     _run(both.upgrade)
     _run(circuits.upgrade)
+    _run(kg.upgrade)
     assert capsys.readouterr().out == f"[7c3bf996c983] programs {p1} ('Cijelo tijelo — srednja'): Dan 1 with 7 exercises\n"
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI | {"program_day_circuits"}) == []
     days = db.get_program(p1).days
@@ -2728,6 +2906,7 @@ def test_the_days_migration_folds_the_items_into_days_and_back(capsys):
     _run(cascade.upgrade)
     _run(both.upgrade)
     _run(circuits.upgrade)
+    _run(kg.upgrade)
     assert capsys.readouterr().out.endswith("Dan 1 with 10 exercises\n")
     assert "program_items" not in _tables() and _schema_diffs(TRENINZI | {"program_day_circuits"}) == []
     assert [(i.exercise_id, i.section, i.sets, i.reps, i.seconds, i.note) for i in items_of(p1)][:3] == [
@@ -2969,6 +3148,38 @@ def test_the_circuit_migration_makes_the_table_and_takes_it_away():
     assert _schema_diffs({"program_day_circuits"}) == [] and circuits_of(did) == {} and db.get_day(did).circuits == []
 
 
+def test_the_kg_migration_adds_the_column_and_takes_it_away():
+    """d0ed87d5c98f (25.11.2026), run on qmt_test as before it
+    (program_day_items without kg, an item in it): the column as the model
+    has it (Numeric(5, 1), NULL), the item already there with none (nothing
+    planned until Amir types one), the rest of its row as it was; a weight
+    saved then; downgrade drops the column, the item staying, and a second
+    upgrade adds it again, empty."""
+    mig = _migration(KG)
+    assert (mig.revision, mig.down_revision) == ("d0ed87d5c98f", "2b7e4c9a61d3")
+    pid = db.create_program("T", None, "pocetna", "cijelo")
+    iid = hold(pid, db.create_exercise("Goblet čučanj"))
+    db.update_day_item(iid, "trening", 3, 10, None, 60, 90, "pete na podu")
+    with db.engine.begin() as conn:                                         # the table as before the revision
+        conn.execute(sa_text("ALTER TABLE program_day_items DROP COLUMN kg"))
+    assert _schema_diffs(TRENINZI) != []
+    _run(mig.upgrade)
+    assert _schema_diffs(TRENINZI) == []
+    col = {c["name"]: c for c in sa_inspect(db.engine).get_columns("program_day_items")}["kg"]
+    assert col["nullable"] and str(col["type"]) == "NUMERIC(5, 1)"
+    it = db.get_day_item(iid)
+    assert (it.sets, it.reps, it.rest_seconds, it.rest_after_seconds, it.note, it.kg) == (3, 10, 60, 90, "pete na podu", None)
+    db.update_day_item(iid, "trening", 3, 10, None, 60, 90, "pete na podu", kg=Decimal("22.5"))
+    assert (db.get_day_item(iid).kg, db.get_day_item(iid).dose) == (Decimal("22.5"), "3 × 10 · 22,5 kg")
+    _run(mig.downgrade)
+    assert "kg" not in {c["name"] for c in sa_inspect(db.engine).get_columns("program_day_items")}
+    with db.engine.connect() as conn:
+        assert conn.execute(sa_text("SELECT sets, reps, note FROM program_day_items WHERE id = :i"),
+                            {"i": iid}).one() == (3, 10, "pete na podu")
+    _run(mig.upgrade)
+    assert _schema_diffs(TRENINZI) == [] and db.get_day_item(iid).kg is None
+
+
 def test_nutricionizam_links_to_mojimakrosi():
     make_user("ivan@test.local")
     c = client_for("ivan@test.local")
@@ -3094,13 +3305,17 @@ def test_the_trainer_builds_the_library_on_a_phone(server):
 
 def test_the_trainer_builds_a_day_on_a_phone(server):
     """At 390px, touch: the trainer opens a programme's editor, adds a day
-    ("+ Dodaj trening", which opens its editor), adds "Goblet čučanj" into
-    Zagrijavanje with the picker, sets 2 × 15 and 30 s of rest on its row
-    and saves, then follows "pogledaj kako polaznik vidi →" to the client's
-    day page and sees the row: "Vježba 1", the name, "2 × 15", "Odmor između
-    serija: 30 s"; a tap opens it in place. The matched client sees the
-    same. The programme's editor, the day's editor and the day's page never
-    scroll sideways; no page errors."""
+    ("+ Dodaj trening", which opens its editor), taps "+ Dodaj vježbu u
+    ovaj dio" under Zagrijavanje (25.11.2026: in place, no reload: the add
+    card's Dio set to it, the card scrolled to, the focus in the picker,
+    its list shut), picks "Goblet čučanj" and types 2 × 15 in the card's
+    numbers, adds it (back at the card: "Dodano u Zagrijavanje: Goblet
+    čučanj.", its Dio as it was, the focus in the picker), sets 30 s of
+    rest on its row and saves, then follows "pogledaj kako polaznik vidi →"
+    to the client's day page and sees the row: "Vježba 1", the name, "2 ×
+    15", "Odmor između serija: 30 s"; a tap opens it in place. The matched
+    client sees the same. The programme's editor, the day's editor and the
+    day's page never scroll sideways; no page errors."""
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
     make_user("trener@test.local", is_trainer=True)
@@ -3128,20 +3343,40 @@ def test_the_trainer_builds_a_day_on_a_phone(server):
         pg.wait_for_load_state("networkidle")
         days = db.get_program(pid).days
         did = days[0].id if days else 0
-        check(len(days) == 1 and pg.url == f"{server}/treninzi/{pid}/dan/{did}/uredi", f"+ Dodaj trening led to {pg.url}")
-        pg.fill("#add-ex-q", "goblet")             # the combobox (23.11.2026): typed, Enter picks the first row
+        edit = f"{server}/treninzi/{pid}/dan/{did}/uredi"
+        check(len(days) == 1 and pg.url == edit, f"+ Dodaj trening led to {pg.url}")
+        picker = """() => { const q = document.getElementById('add-ex-q').getBoundingClientRect();
+                            return {dio: document.getElementById('add-dio').value,
+                                    focused: document.activeElement && document.activeElement.id,
+                                    open: !document.getElementById('add-ex-list').hidden,
+                                    seen: q.top >= 0 && q.bottom <= innerHeight}; }"""
+        st = pg.evaluate(picker)
+        check(not st["seen"] and st["focused"] != "add-ex-q", f"the add card in view before the tap: {st}")
+        pg.tap('a.st-add[data-dio="zagrijavanje"]')                         # in place: no navigation
+        pg.wait_for_timeout(300)
+        st = pg.evaluate(picker)
+        check(pg.url == edit and st["dio"] == "zagrijavanje" and st["focused"] == "add-ex-q" and not st["open"]
+              and st["seen"], f"+ Dodaj vježbu u ovaj dio: {pg.url}, {st}")
+        pg.keyboard.type("goblet")                 # the combobox (23.11.2026): typed, Enter picks the first row
         pg.keyboard.press("Enter")
-        pg.select_option("#add-dio", "zagrijavanje")
+        pg.fill("#add-sets", "2")
+        pg.fill("#add-reps", "15")
+        check(pg.evaluate(OVERFLOW) == 0, f"the add card overflows by {pg.evaluate(OVERFLOW)}px")
         with pg.expect_navigation():
             pg.tap("#dodaj button[type=submit]")
         pg.wait_for_load_state("networkidle")
+        pg.wait_for_timeout(200)
         items = db.get_day(did).items if did else []
-        check([(i.exercise_id, i.section) for i in items] == [(goblet, "zagrijavanje")], f"the day holds {items}")
+        check([(i.exercise_id, i.section, i.sets, i.reps) for i in items] == [(goblet, "zagrijavanje", 2, 15)],
+              f"the day holds {[(i.exercise_id, i.section, i.sets, i.reps) for i in items]}")
+        st = pg.evaluate(picker)
+        check(unquote(pg.url) == f"{edit}?dodaj=zagrijavanje&ok=Dodano u Zagrijavanje: Goblet čučanj.#dodaj",
+              f"Dodaj led to {unquote(pg.url)}")
+        check((pg.text_content("#dodaj .alert.ok") or "") == "Dodano u Zagrijavanje: Goblet čučanj."
+              and st["dio"] == "zagrijavanje" and st["focused"] == "add-ex-q" and not st["open"],
+              f"back at the card: {pg.text_content('#dodaj .alert.ok')!r}, {st}")
         if items:
             row = f"#stavka-{items[0].id}"
-            check(pg.url.endswith(f"/uredi{row}"), f"Dodaj led to {pg.url}")
-            pg.fill(f"{row} input[name=sets]", "2")
-            pg.fill(f"{row} input[name=reps]", "15")
             pg.fill(f"{row} input[name=rest]", "30")
             with pg.expect_navigation():
                 pg.tap(f"{row} .st-go button")

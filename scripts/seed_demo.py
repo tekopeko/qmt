@@ -259,10 +259,11 @@ DAYS = [
 # The circuit's demo (24.11.2026, kružni trening): ivan's Trening 1 does its
 # Glavni dio A (Goblet čučanj, Sklekovi, Veslanje u pretklonu, Plank) as a
 # circuit, so the day's page, its editor and the player the audit walks show
-# one: (the part, its rounds, the rest between two rounds, each of its
-# exercises' rest after it, the short pause to the next). Their rest between
-# sets (DEMO_REST) stays stored and does not apply there.
-DEMO_CIRCUIT = ("trening", 2, 90, 15)
+# one: (the part, its rounds, the rest after a round). Its exercises' sets and
+# rests (DEMO_REST between sets, DEMO_REST_AFTER after each) stay stored and
+# do not apply there: since 25.11.2026 there is no pause between a circuit's
+# exercises (until then this demo gave each 15 s after it).
+DEMO_CIRCUIT = ("trening", 2, 90)
 
 
 def seed_program() -> None:
@@ -309,10 +310,8 @@ def seed_program() -> None:
         for name, section, sets, reps, seconds, rest, note in items:
             item_id = db.add_day_item(day_id, ids[name], section)
             db.update_day_item(item_id, section, sets, reps, seconds, rest, DEMO_REST_AFTER, note)
-    section, rounds, rest, short = DEMO_CIRCUIT
+    section, rounds, rest = DEMO_CIRCUIT
     first = db.get_program(pid).days[0]
-    for it in first.by_section[section]:
-        db.update_day_item(it.id, section, it.sets, it.reps, it.seconds, it.rest_seconds, short, it.note)
     db.set_circuit(first.id, section, rounds, rest)
     print(f"  {made} demo programa (razina × tip), svaki s Treningom 1 ({made_items} stavki u svima); "
           f"{len(ids)} vježbi u bazi; srednja × cijelo: {len(DAYS)} dana, sva tri dijela, "
@@ -453,7 +452,7 @@ def seed_passes() -> None:
                 sets = [{"seconds": sec} if sec is not None else {"reps": reps, "kg": float(kg)}
                         for reps, kg, sec in PASS_SETS[it.exercise.name][n]]
                 circ = day.circuit(it.section)
-                if circ is not None:             # a circuit's exercise: a set per round, as db.save_round writes it
+                if circ is not None:             # a circuit's exercise: a set per round, as db.save_circuit_round writes it
                     sets = [{**st, "round": r} for r, st in zip(range(1, circ.rounds + 1), sets)]
                 done[str(it.id)] = {"exercise_id": it.exercise_id, "name": it.exercise.name, "section": it.section,
                                     "sets": sets,

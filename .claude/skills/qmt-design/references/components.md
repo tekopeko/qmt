@@ -688,28 +688,42 @@ field's bottom so a label that wraps keeps the two level; 40px inputs, 44px on a
 pointer) and Spremi (`.btn.btn-sm`) across both; from 600px three columns, the two and
 Spremi on one line. A save's alert (`?dio=<key>`) stands between the caption and the
 summary (`.st-sec > .st-alert`), the details open again after a refusal. In a circuit
-part a muted `.hint.st-circ-hint` under the details ("U kružnom dijelu svaka vježba ide
-jednom po krugu: …"), and each row's form drops Serije and Odmor (s): the same grid, two
-fields fewer, Dio | Ponavljanja, Sekunde | Nakon vježbe (s), Napomena, Spremi on a
-phone, its lines level at 360 and 390 px (measured). A row is `.card.it-row`, `id="stavka-<id>"`: line 1 the
+part a muted `.hint.st-circ-hint` under the details (since 25.11.2026 "U kružnom dijelu
+vježbe idu jedna za drugom, bez pauze: upiši ponavljanja ili sekunde i kilažu. Odmor je
+nakon kruga."), and each row's form drops Serije, Odmor (s) and since 25.11.2026 Nakon
+vježbe (s) (no pause between a circuit's exercises): the same grid, three fields fewer,
+Dio | Ponavljanja, Sekunde | Kilaža (kg), Napomena, Spremi on a phone, its lines level at
+360 and 390 px. Each part ends with **"+ Dodaj vježbu u ovaj dio"** (25.11.2026,
+`a.act.st-add`, 10px under the rows or "Nema vježbi.": the part's quiet row action): a
+link to the add card with this part chosen (`?dodaj=<key>#dodaj`), which the script
+follows in place (the card's Dio set, the card scrolled to, the focus in the picker
+with its list shut: the combobox's `focus()`, base.html). A row is `.card.it-row`, `id="stavka-<id>"`: line 1 the
 exercise's `.it-name` (to its library page), `.it-video`, ↑ / ↓ (within its
 section; disabled at the section's ends) / ✕ — buttons naming forms that stand
 after the list (`form="st-gore-<id>"`, `st-dolje-`, `st-x-` with `data-confirm`
 "Maknuti vježbu iz treninga?" / "„Goblet čučanj” izlazi iz ovog treninga; u bazi
 vježbi ostaje." / "Makni"): a form holds no form; after a save (`?ok=` / `?error=` with `?stavka=<id>`, the row's id) the row carries the page's alert itself (`.alert.st-alert`, the row's width, above its form; the top prints none: a phone comes back scrolled to the row), a stavka that names no row leaving the alert at the top; line 2 the row's own `form.st-form`
 (`flex: 1 0 100%`), a compact grid of labelled fields in the caption style:
-Dio (a select), Serije, Ponavljanja, Sekunde, Odmor (s) (`type=number`,
-`inputmode=numeric`, `min` / `max`), Napomena, Spremi (`.btn.btn-sm`); two
-columns on a phone (Dio, Napomena and Spremi across both), four from 600px (Dio
-and the dose on line 1, then the rest, the note over two columns and Spremi);
+Dio (a select), Serije, Ponavljanja, Sekunde, Kilaža (kg) (25.11.2026, the planned
+weight: `inputmode=decimal`, `min` 0.5, `max` 500, `step` 0.5), Odmor (s), Nakon
+vježbe (s) (`type=number`, `inputmode=numeric`, `min` / `max`), Napomena, Spremi
+(`.btn.btn-sm`); two columns on a phone (Dio, Napomena and Spremi across both),
+four from 600px (Dio and the dose on line 1, then the weight and the rests, the
+note over two columns and Spremi);
 every control 40px tall, 44px on a coarse pointer, so the grid is one
 footprint. "Dodaj vježbu" (`form#dodaj.card.add-ex`): `.add-fields` (Vježba iz
 baze, the combobox over the library's select, name · tags (Forms, above; 23.11.2026);
 Dio, opening on Glavni dio A (four options since 23.11.2026: Glavni dio B after it); one column on a phone, the combobox and a 180px Dio from
 600px), the tag chips above them (Forms, above; 23.11.2026: a tap opens the combobox's list
-filtered, under the input, so the chips stay in reach), and `.add-row` (Dodaj
-`.btn.btn-sm`, "Nova vježba →" `.btn-ghost.btn-sm`, `natrag=` this editor). Last
-"Obriši trening" (`form.ex-delete`, asks first).
+filtered, under the input, so the chips stay in reach), since 25.11.2026 `.add-nums`
+(Serije, Ponavljanja, Sekunde, Kilaža (kg), all optional: the row form's grid and
+look, two columns on a phone, four from 600px, 40px controls, 44px on a coarse
+pointer, 16px over the buttons), and `.add-row` (Dodaj `.btn.btn-sm`, "Nova vježba →"
+`.btn-ghost.btn-sm`, `natrag=` this editor). After an add (`?dodaj=<part>&ok=…`) the
+card's first line is the page's ok alert, "Dodano u Glavni dio A: Sklekovi." (a
+refusal its error alert; the page's top none), its Dio as it was and the focus in the
+picker (at the load: the browser's move to `#dodaj` takes a focus given before it).
+Last "Obriši trening" (`form.ex-delete`, asks first).
 
 **The programme page (`trening_view.html`) and the day page (`trening_day.html`,
 30.10.2026).** The programme: crumbs, the h1 (a dvoranski programme's, for staff, its
@@ -741,8 +755,11 @@ since 30.10.2026: the player's list is the same rows. **A circuit part** (24.11.
 kružni trening): its caption followed by `p.dx-circ`, one muted line in the `.dx-sub`
 size (.85rem), pulled 6px up to the caption, 10px above the list ("Kružno · 3 kruga ·
 odmor između krugova 120 s", the rest only when set); its rows the dose of a round
-("10 ponavljanja", "40 s", "5 × 30 s") and in `.dx-sub` the rest after the exercise and
-the note, never a rest between sets. A day with one says "· kružni trening" in its muted
+("10 ponavljanja", "40 s", "5 × 30 s", "10 ponavljanja · 20 kg") and in `.dx-sub` the
+note alone (since 25.11.2026: no pause between a circuit's exercises, no rest of an
+exercise's applies there). Any dose carries the planned weight after a middle dot
+(25.11.2026, "3 × 10 · 20 kg"). An exercise the client rated ends its Povijest's
+Serije with "težina 8/10" (the karton's too). A day with one says "· kružni trening" in its muted
 lines (the lead under the h1, the programme page's day card). While a pass is open a
 circuit row's dose starts with `.dx-ok` once every round is saved, and with
 `.dx-rounds` "2/3" (base.html: `--muted` in the dose's tabular 700; `role="img"`,
@@ -795,14 +812,24 @@ step `.pl-round` "Krug 2 od 3" after it (24.11.2026: a pill in `--accent-dim` wi
 broken; at 360px it wraps under the kicker, the eyebrow being a wrapping row) and
 `.pl-saved` "✓ Spremljeno"
 (`--good`), `h1.pl-name` (`clamp(1.35rem, 5vw, 1.9rem)`), `.pl-for` "Zamjena za:
-…" (muted), the alert, `.pl-dose` (700 1.05rem), `.pl-sub` lines (rest, note),
+…" (muted), the alert, `.pl-dose` (700 1.05rem), since 25.11.2026 **`.pl-next`**, the line for the next time
+(2px under the dose, `--muted` .88rem, the `.pl-sub` lines' look, wrapping anywhere;
+only when the client rated the exercise last time: "Prošli put (23.11.): 10 × 20 kg,
+težina 5 — malo više: 21 kg." / "…, težina 8 — ostaje isto." / "…, težina 9 — malo
+lakše: 18 kg."), `.pl-sub` lines (rest, note),
 `details.pl-how` "Kako se izvodi" (a 32px summary, a › that turns). The set log
 `form.pl-log`: `table.pl-sets` (base.html's since 23.11.2026, the karton's exercise log prints it too; rows 8px apart; `thead` SET · PON. · KG (the item's fields, `db.set_fields`, in the order reps, kg, seconds: a timed exercise's SET · SEK., and since 24.11.2026 one that asks reps and seconds SET · PON. · SEK., `reps_n` / `sec_n` prefilled with the plan's two, no KG column; the same widths: two value columns or one), 700
 .72rem muted, the value columns centred; `tbody th` the set's number, 700 1rem,
 `tr.extra`'s muted with `.pl-x` "dodatna serija" under it; inputs 44px,
 centred, 600 tabular), then `.pl-foot`: "+" (`.btn-ghost.pl-add`, 40px round, at
-the right; rendered `hidden`, the script's) over "Spremi" (`.btn.pl-save`, the
-card's width on a phone, 200px from 600px). **The ✓ column** (30.10.2026): the
+the right; rendered `hidden`, the script's), since 25.11.2026 **`.pl-rate`, the
+rating** (the foot's width, 4px more above it): `.pl-rate-h` "Koliko je bilo teško?"
+(Inter 600 .9rem `--text`) with `.pl-opt` "(neobavezno)" (500 .8rem muted), 10px over
+the finish screen's `.scale-box` / `.scale` of ten `label.sc` radios (`effort`, none
+chosen; `role="radiogroup"` named by the question), their circles at 36px (.92rem),
+40px on a coarse pointer, five and five where ten do not fit (the scale's container
+query); then "Spremi" (`.btn.pl-save`, the card's width on a phone, 200px from
+600px). **The ✓ column** (30.10.2026): the
 log's last, SET · PON. · KG · ✓ (SET · SEK. · ✓, SET · PON. · SEK. · ✓), its `.pl-tick` cells rendered
 `hidden` (the script's, as "+"), as narrow as their button: `button.pl-done`, a
 44px circle (`--surface`, a 1px `--line` hairline, a muted ✓, 700 1.05rem),
@@ -812,22 +839,37 @@ under `--good-ink` (hover `--good-strong`), its row `tr.is-done`, the set's numb
 `.pl-sr` "Odrađena serija", screen-reader text that is NOT the usual 1px box (its
 text overflows that box, which the audit's element-overflow check fails): the
 text at its own width, `clip-path: inset(50%)`, set against its cell's right edge
-(the `th` is `position: relative`). **A circuit's step** (24.11.2026, kružni trening)
-logs ONE row, its round's set: the same `table.pl-sets` with no ✓ column (no rest
-between sets there) and no "+" (neither rendered), its `tbody th` the round's number,
-its inputs "Krug n: ponavljanja" for a screen reader; its `.pl-dose` the dose of a
-round and its `.pl-sub` "Odmor nakon vježbe: 15 s" or, on the round's last exercise,
-"Odmor nakon kruga: 120 s". `.pl-more`: "Preskoči →"
+(the `th` is `position: relative`). **A circuit's round** (25.11.2026, kružni trening; from 24.11.2026 a step per exercise
+per round, one row of `.pl-sets`, gone) is one screen, the player's layout with no
+`.pl-stage` (no clip box, so no ‹ ›): `.card.pl-card.cr-card`, its `.pl-eyebrow`
+"KRUŽNI DIO" with `.pl-chip` "2/5" and `.pl-round` "Krug 1 od 3" (`.pl-saved` once
+saved), `h1.pl-name` the part's name ("Glavni dio A"), `.cr-intro` one muted .88rem
+line ("Vježbe idu jedna za drugom, bez pauze. Odmor nakon kruga: 120 s."), the alert,
+then `.cr-rows` (14px under, 10px apart), a `.cr-row` per exercise: a hairline box
+(`--line`, `--r-md`, `--surface`, 4px 14px 12px), its name the summary of a native
+`details.cr-ex` (700, 40px tall, 44px on a coarse pointer, a muted › that turns down when
+open, a 2px accent ring on focus; open, `.cr-body.ex-video`: the clip `preload="none"` or
+"Vježba još nema videa.", "Jedno ponavljanje: …", the instructions, .92rem), `.cr-dose`
+lines (muted .88rem tabular: the dose of a round with its weight and, after a rating,
+the word for the next time, "10 ponavljanja · 16 kg · malo više"; the note), and
+`.cr-in`, two columns 10px apart, each a small label (the set log's header words: PON.,
+KG, SEK.; 700 .72rem .12em, the global label's uppercase muted) over a 44px centred 600
+tabular input (one field: its column alone), named for a screen reader by the
+exercise's name and the label (`aria-labelledby`). Then `.pl-foot` (14px under) with the
+round's `.pl-rate` ("Koliko je bio težak ovaj krug?") and ONE `.btn.pl-save` "Krug 1
+odrađen" ("Krug 3 odrađen — završi" on the day's last step), no "+", no ✓, no swap.
+`.pl-more`: "Preskoči →"
 (`.act.act-quiet`) and `details.swap` (its summary the same quiet pill "⇄
 Zamijeni vježbu"; open, it takes the line: `.swap-h` "Slične vježbe", `.swap-row`s
 (a hairline row, the name 600 and `.swap-tags` muted, an `.act` ⇄), "Vrati …"
 first when swapped). `aside.pl-side#popis`: `h2` "Vježbe", the sections'
 `h3.dx-cap` (a circuit part's "Glavni dio A · kružno · 3 kruga", 24.11.2026), `ol.dx-list` of `a.card.pl-row` (56px, the day page's row words; the
 current one `.is-cur`, a 2px inset `--accent` ring and `aria-current="step"`: the
-exercise on screen, whichever round; a
+exercise on screen, on a round's screen every exercise of the round; a
 swapped one's name with `.pl-swapped` "(zamjena)" muted; a saved one `.dx-ok`, a
 circuit's once every round is, `.dx-rounds` "2/3" while some are; each a link to its
-first step not saved).
+first step not saved, a circuit's exercise its part's first round not saved; a
+circuit's rows the dose of a round and the note alone).
 `.pl-dock` (phones): a fixed dark pill, the topbar's glass (theme-free), 48px,
 700 .9rem tabular "Vježbe · 3/8 ✓" (by exercise) → `#popis`, centred 12px over
 `env(safe-area-inset-bottom)`, 70px when staff's ✎ pill is on the page; `.pl`

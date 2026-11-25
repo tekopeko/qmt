@@ -1935,7 +1935,10 @@
   // default; opts.tagbar, the tags' chips (qmtTagbar) that put their word
   // in the input and take it out, the focus left there, so the list opens
   // filtered; a pick puts the name in the input, and the chips let go.
-  // Returns {input, fail}, or null without a value or a form.
+  // Returns {input, fail, focus}, or null without a value or a form; focus()
+  // (25.11.2026, the day editor's "+ Dodaj vježbu u ovaj dio" and the page
+  // back after an add) puts the focus in the input with the list shut, as a
+  // pick leaves it: typing or a tap opens it.
   function qmtCombobox(src, opts) {
     opts = opts || {};
     var given = !!(src && Array.isArray(src.rows));            // rows given, the value a hidden input's
@@ -2064,7 +2067,8 @@
       fail();
       input.focus();
     });
-    return {input: input, fail: fail};
+    function quiet() { picking = true; input.focus(); picking = false; }
+    return {input: input, fail: fail, focus: quiet};
   }
 
   // Mjesečno / Godišnje (.period, _period.html): each switch works the

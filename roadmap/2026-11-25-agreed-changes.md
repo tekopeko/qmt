@@ -57,9 +57,10 @@ room on the PC layout, you can use more columns, you can be the judge."
 
 ## The order of the builds (one at a time: one tree, one test database)
 
-1. The karton's texts editable in place, with the new layout (in progress).
+1. The karton's texts editable in place, with the new layout (live, `aa4dad6`).
 2. The karton again: Amir's documents and "Tjelesna kompozicija", the exercise search,
-   and the 4-hour cancellation.
+   and the 4-hour cancellation (live, `6a1d598`).
 3. The player: circuits ticked a round at a time, a planned weight, exercises added
-   inside a part; then the per-exercise rating and the adjusted load.
+   inside a part; then the per-exercise rating and the adjusted load (built 25.11.2026:
+   STATUS.md).
 4. Editable text on every member-facing page.

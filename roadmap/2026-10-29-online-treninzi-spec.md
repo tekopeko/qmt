@@ -37,6 +37,29 @@ it round by round (a step per exercise per round, "Krug 2 od 3", one set per rou
 carrying its `round`), the rest bar counting the short pause and, after a round, the one
 between rounds. A day may mix normal and circuit parts.
 
+**Note (25.11.2026): a circuit is ticked a round at a time; an exercise has a planned weight
+and a rating** (`roadmap/2026-11-25-agreed-changes.md`, points 2 and 6). The owner's note to
+Amir: "Za krugove dodat da može dodat vježbe i onda on označi koje krugove koje je odradio.
+Pauza ide na kraju kruga a između vježbi nikakva pauza. (Broj krugova, kilaža, itd iste
+vježbe kao i ove ubaci)". A day's item has a planned weight, `kg` (migration
+`d0ed87d5c98f`, "Kilaža (kg)", 0.5–500; the dose says it, "3 × 10 · 20 kg", and the
+player's KG starts from it where the client has no weight of his own); each part of the day
+editor ends with "+ Dodaj vježbu u ovaj dio", and the add card takes the numbers too, so a
+row is complete in one step; a circuit has no pause between its exercises (their "Nakon
+vježbe (s)" no longer asked there), only the rest after a round; and the player shows a
+circuit one screen per round, every exercise of it with its inputs and ONE button, "Krug 2
+odrađen" (`db.save_circuit_round`; the screen per exercise per round above went). And the
+owner's rule for the next time ("if someone gave a feedback on a particular exercise of 7 or
+harder then the next appearance of that particular exercise does not increase its
+difficulty but stays the same or if its 9 or 10 out of 10 difficulty, then it gets slightly
+reduced by a certain percentage"): each exercise may be rated 1–10 under its set log ("Koliko
+je bilo teško?", a round once on its screen), the rating stored in the pass's entry, and the
+next time starts from it (`db.next_load`): rated 6 or lower a little more (+5 % of the
+weight, a rep, 5 s), 7 or 8 the same, 9 or 10 a little less (−10 %), the card saying so
+("Prošli put (23.11.): 10 × 20 kg, težina 9 — malo lakše: 18 kg."); the numbers are env vars
+(`PROGRESS_*`). The finish screen's napor stays the whole training's; the karton's gym log
+is untouched.
+
 ## What the owner asked
 
 "For each group he needs to add the training programme per days which the user will

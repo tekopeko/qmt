@@ -59,9 +59,12 @@ ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana",
 # by their links (a reseed gives new ids). The player (30.10.2026, stage 3):
 # "kreni:1" presses Kreni on dan:1 and lands on its first exercise, "kraj:1"
 # is the finish screen the player's "Završi trening" leads to; after it the
-# walk drops that pass (…/odustani), so the next run starts clean.
+# walk drops that pass (…/odustani), so the next run starts clean. "krug:1"
+# (25.11.2026) is the first round's screen of that day's circuit part (the
+# seed's DEMO_CIRCUIT: Glavni dio A), found by the list's first row under a
+# caption that says "kružno".
 CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "/moja-clanarina", "/prehrana", "/profil", "/treninzi",
-          "trening:1", "dan:1", "kreni:1", "kraj:1", "/upitnik", "/upitnik?od=1", "/vodic"]
+          "trening:1", "dan:1", "kreni:1", "krug:1", "kraj:1", "/upitnik", "/upitnik?od=1", "/vodic"]
 # the library of exercises (30.10.2026): its list, and one exercise's page,
 # "vjezba:<name>", found on the list by the seed's name (scripts/seed_demo.py:
 # a reseed gives the exercises new ids). Goblet čučanj has tags, similar
@@ -75,6 +78,10 @@ FIND_EXERCISE = """n => { const row = [...document.querySelectorAll('a.ex-row')]
   .find(a => (a.querySelector('.ex-name') || {}).textContent === n); return row ? row.getAttribute('href') : null; }"""
 # the n-th link of a kind on a page: a programme's card on /treninzi, a day's on its programme's page
 NTH_LINK = """([sel, n]) => { const a = document.querySelectorAll(sel)[n - 1]; return a ? a.getAttribute('href') : null; }"""
+# the player's list (#popis): the first row of a circuit part, whose link is its first round not saved
+FIRST_ROUND = """() => { const cap = [...document.querySelectorAll('#popis .dx-cap')].find(h => /kružno/.test(h.textContent));
+  const a = cap && cap.nextElementSibling && cap.nextElementSibling.querySelector('a.pl-row');
+  return a ? a.getAttribute('href') : null; }"""
 FOUND: dict[str, str] = {}               # "trening:1" / "dan:1" -> the path the client's walk found
 
 CHECKS = r"""
@@ -205,9 +212,20 @@ def player(pg, r: str) -> str | None:
     """The player's pages of the pass the walk opens on day N (dan:N, found
     first): "kreni:N" presses the day's Kreni (Nastavi, should a pass be in
     progress already: the same form) and is the exercise it lands on;
-    "kraj:N" is where that exercise's "Završi trening" leads. Both kept in
-    FOUND."""
+    "kraj:N" is where that exercise's "Završi trening" leads; "krug:N"
+    (25.11.2026) the first round's screen of the day's circuit part, by the
+    list's link. Each kept in FOUND."""
     kind, n = r.split(":")[:2]
+    if kind == "krug":
+        start = FOUND.get(f"kreni:{n}")
+        if not start:
+            return None
+        pg.goto(BASE + start)
+        pg.wait_for_load_state("networkidle")
+        path = pg.evaluate(FIRST_ROUND)
+        if path:
+            FOUND[r] = path
+        return path
     if kind == "kreni":
         day = FOUND.get(f"dan:{n}") or resolve(pg, f"dan:{n}")
         if not day:
@@ -252,7 +270,7 @@ def run(pg, routes, who, theme, width, findings):
             if not path:
                 findings["head"].append((key, f"nothing found for {r!r} (the demo seed? the client's walk first?)"))
                 continue
-        elif r.startswith(("kreni:", "kraj:")):        # the player, on the pass the walk opens
+        elif r.startswith(("kreni:", "krug:", "kraj:")):   # the player, on the pass the walk opens
             path = player(pg, r)
             if not path:
                 findings["head"].append((key, f"nothing found for {r!r} (the demo seed? dan:N first?)"))

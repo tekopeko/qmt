@@ -1062,7 +1062,12 @@ class ProgramDayItem(Base):
     rest after the exercise, before the next one; 30.10.2026, the player's
     rest timers) are NULL when not set, `note` "" for none ("8 kg", "po
     nozi"). Migration 7c3bf996c983 parsed each old item's note, its razina's
-    dose ("3 × 8 · 8 kg"), into these.
+    dose ("3 × 8 · 8 kg"), into these. `kg` (25.11.2026, migration
+    d0ed87d5c98f; the owner, for Amir's circuits: "the number of reps, the
+    weight if applicable etc.") is the weight the day asks, 0.5–500 in steps
+    of 0.5 (db.ITEM_LIMITS), NULL for none: the dose says it ("3 × 10 · 20
+    kg"), and the player's KG field starts from it when the client has no
+    weight of his own for the exercise.
 
     The exercise's foreign key is CASCADE since 4.11.2026 (RESTRICT until
     migration 45c543c860f3): an exercise deleted from the library takes its
@@ -1084,6 +1089,8 @@ class ProgramDayItem(Base):
     # the rest before the next exercise (migration 4f9d6f7103ad)
     rest_after_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    # the planned weight in kg (migration d0ed87d5c98f)
+    kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 1), nullable=True)
 
     __table_args__ = (
         # deferred: ↑ / ↓ swap two positions, checked when the swap commits
@@ -1103,34 +1110,43 @@ class ProgramDayItem(Base):
         reps), "3 × 30 s" (sets and seconds), "3 × 5 × 30 s" (sets, reps
         and seconds: 3 sets of 5 reps of 30 s, since 24.11.2026), "5 × 30 s"
         (reps and seconds), "10 ponavljanja" (reps alone), "30 s" (seconds
-        alone), "3 serije" (sets alone), "" (none)."""
+        alone), "3 serije" (sets alone), "" (none); since 25.11.2026 the
+        planned weight after a middle dot, "3 × 10 · 20 kg" ("20 kg" with
+        nothing else)."""
         sets, reps, seconds = self.sets, self.reps, self.seconds
+        if sets is None:
+            return self.round_dose                       # reps and / or seconds alone, the weight after them
         if reps is not None and seconds is not None:
-            return f"{sets} × {reps} × {seconds} s" if sets is not None else f"{reps} × {seconds} s"
-        if sets is not None and reps is not None:
-            return f"{sets} × {reps}"
-        if sets is not None and seconds is not None:
-            return f"{sets} × {seconds} s"
-        if reps is not None:
-            return f"{reps} {plural(reps, 'ponavljanje', 'ponavljanja', 'ponavljanja')}"
-        if seconds is not None:
-            return f"{seconds} s"
-        if sets is not None:
-            return f"{sets} {plural(sets, 'serija', 'serije', 'serija')}"
-        return ""
+            words = f"{sets} × {reps} × {seconds} s"
+        elif reps is not None:
+            words = f"{sets} × {reps}"
+        elif seconds is not None:
+            words = f"{sets} × {seconds} s"
+        else:
+            words = f"{sets} {plural(sets, 'serija', 'serije', 'serija')}"
+        return self._with_kg(words)
 
     @property
     def round_dose(self) -> str:
         """The dose without its sets, what one round of a circuit asks
         (24.11.2026, kružni trening: an exercise is done once per round, its
         sets do not apply): "10 ponavljanja", "30 s", "5 × 30 s" (reps and
-        seconds), "" for none."""
+        seconds), "" for none; since 25.11.2026 the planned weight after a
+        middle dot, "10 ponavljanja · 20 kg"."""
         reps, seconds = self.reps, self.seconds
         if reps is not None and seconds is not None:
-            return f"{reps} × {seconds} s"
-        if reps is not None:
-            return f"{reps} {plural(reps, 'ponavljanje', 'ponavljanja', 'ponavljanja')}"
-        return "" if seconds is None else f"{seconds} s"
+            words = f"{reps} × {seconds} s"
+        elif reps is not None:
+            words = f"{reps} {plural(reps, 'ponavljanje', 'ponavljanja', 'ponavljanja')}"
+        else:
+            words = "" if seconds is None else f"{seconds} s"
+        return self._with_kg(words)
+
+    def _with_kg(self, words: str) -> str:
+        """A dose's words and the planned weight after them, " · " between
+        ("10 ponavljanja · 2,5 kg"), the weight alone with no words."""
+        weight = f"{kg_text(self.kg)} kg" if self.kg else ""
+        return " · ".join(w for w in (words, weight) if w)
 
     @property
     def rest_text(self) -> str:
@@ -1152,15 +1168,18 @@ class ProgramDayCircuit(Base):
     sets"; migration fc1840b0a981). A row means: that part (`section`, a
     SECTIONS key, which db.py checks) of that day is a circuit. Its
     exercises are done back to back, each once per round, `rounds` rounds
-    (2–20, a CHECK); the short pause between two exercises is each
-    exercise's own rest after it (ProgramDayItem.rest_after_seconds), and
-    `rest_seconds` (0–3600, a CHECK; NULL for none) is the longer one
-    between two rounds, after the round's last exercise. In such a part an
-    item's `sets` and `rest_seconds` (between sets) do not apply; they stay
-    stored and apply again once the circuit is switched off. One row per
-    part (the primary key); a day deleted takes its circuits (CASCADE).
-    Written by db.set_circuit / db.clear_circuit only; the player walks such
-    a part round by round (app._steps)."""
+    (2–20, a CHECK), and `rest_seconds` (0–3600, a CHECK; NULL for none) is
+    the rest after a round. Since 25.11.2026 (the owner's note to Amir:
+    "Pauza ide na kraju kruga a između vježbi nikakva pauza") there is no
+    pause between two exercises: in such a part an item's `sets`, its
+    `rest_seconds` (between sets) and its `rest_after_seconds` (after it)
+    do not apply; they stay stored and apply again once the circuit is
+    switched off (until then the item's rest after it was the short pause
+    between two exercises). One row per part (the primary key); a day
+    deleted takes its circuits (CASCADE). Written by db.set_circuit /
+    db.clear_circuit only; the player shows such a part one round per
+    screen (app._steps) and saves a round at a time
+    (db.save_circuit_round)."""
 
     __tablename__ = "program_day_circuits"
 
@@ -1244,15 +1263,20 @@ class WorkoutLog(Base):
     [{"reps": 5, "seconds": 30}, …] since 24.11.2026: db.set_fields),
     "at": "<iso>"}}; a re-save
     replaces the entry. An exercise of a circuit part (24.11.2026, kružni
-    trening: ProgramDayCircuit) is saved a round at a time (db.save_round):
-    its entry holds one set per round saved, each carrying its round
+    trening: ProgramDayCircuit) is saved a round at a time (since 25.11.2026
+    every exercise of the round in one write, db.save_circuit_round): its
+    entry holds one set per round saved, each carrying its round
     ({"reps": 10, "kg": 20.0, "round": 2}), sorted by round; a round
-    re-saved replaces that round's set alone. The exercise is the one
+    re-saved replaces that round's set alone. Since 25.11.2026 an entry may
+    carry the client's rating of the exercise, "effort": 7 (1–10, the
+    player's "Koliko je bilo teško?"; a circuit's the round's, the last
+    rated round's standing), which sets its load the next time
+    (db.next_load); none: no key. The exercise is the one
     done, the swapped one when the client swapped it. `swaps` is a JSON object {"<item id>": <exercise
     id>}, the similar exercise swapped in for this pass (absent: the plan's).
     Both are written by db.py only (json), read through done_items and
     swap_items. `effort` (1–10), `feeling` (a FEELING_LABELS key) and `note`
-    are the osvrt."""
+    are the osvrt (the whole training's napor, beside each entry's own)."""
 
     __tablename__ = "workout_logs"
 
@@ -1380,12 +1404,25 @@ class WorkoutLog(Base):
         """Each exercise saved, (its name, its sets as the history says them:
         ["10 × 20 kg", "10 × 20 kg"]), the history's "Serije": in `order`
         (item ids, the day's display order) first, the rest in the order
-        they were saved."""
+        they were saved. Since 25.11.2026 an exercise the client rated ends
+        with it: [..., "težina 8/10"] (effort_of)."""
         rank = {item_id: n for n, item_id in enumerate(order)}
         entries = sorted(self.done_items.items(),
                          key=lambda kv: (rank.get(kv[0], len(rank)), str(kv[1].get("at", ""))))
-        return [(str(e.get("name", "")), [set_text(s) for s in e.get("sets", []) if isinstance(s, dict)])
-                for _, e in entries]
+        out = []
+        for _, e in entries:
+            words = [set_text(s) for s in e.get("sets", []) if isinstance(s, dict)]
+            if effort_of(e) is not None:
+                words.append(f"težina {effort_of(e)}/10")
+            out.append((str(e.get("name", "")), words))
+        return out
+
+
+def effort_of(entry) -> int | None:
+    """A pass's entry's rating (25.11.2026, "effort": the client's 1–10 for
+    the exercise, WorkoutLog.done), None for none or one that is not 1–10."""
+    effort = entry.get("effort") if isinstance(entry, dict) else None
+    return effort if type(effort) is int and 1 <= effort <= 10 else None
 
 
 def duration_text(seconds: int | None) -> str:

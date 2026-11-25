@@ -29,8 +29,8 @@ from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSIO
                      Exercise, GymCard, LimitationFile, Membership, OnboardingResponse, Payment, Program, ProgramDay,
                      ProgramDayCircuit, ProgramDayItem, ProgressPhoto, ReminderLog, SessionTemplate, SiteCopy,
                      TrainingLog, TrainingSession,
-                     UpitnikQuestion, User, Weight, WorkoutLog, alpha_key, exercise_alternatives, fold, kg_text,
-                     matches, plural, set_text)
+                     UpitnikQuestion, User, Weight, WorkoutLog, alpha_key, effort_of, exercise_alternatives, fold,
+                     kg_text, matches, plural, set_text)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -2570,10 +2570,51 @@ def delete_program(program_id: int) -> list[str] | None:
 
 DAY_TITLE_MAX = 160              # the column's length
 ITEM_NOTE_MAX = 500
-# what an item's numbers may be, (least, most); else BAD_NUMBER
+# what an item's numbers may be, (least, most); else BAD_NUMBER. The planned
+# weight (25.11.2026, "Kilaža (kg)") goes in steps of half a kilo.
 ITEM_LIMITS = {"sets": (1, 99), "reps": (1, 999), "seconds": (1, 3600), "rest_seconds": (0, 3600),
-               "rest_after_seconds": (0, 3600)}
+               "rest_after_seconds": (0, 3600), "kg": (Decimal("0.5"), Decimal(500))}
 BAD_NUMBER = "Neispravan broj."
+
+
+def _checked_item_kg(kg) -> Decimal:
+    """An item's planned weight as stored (Numeric(5, 1)): a number in steps
+    of 0.5 within ITEM_LIMITS["kg"] (0.5–500), else ValueError BAD_NUMBER."""
+    if isinstance(kg, bool) or not isinstance(kg, (Decimal, int, float)):
+        raise ValueError(BAD_NUMBER)
+    kg = Decimal(str(kg))
+    least, most = ITEM_LIMITS["kg"]
+    if not kg.is_finite() or (kg * 2) % 1 or not least <= kg <= most:
+        raise ValueError(BAD_NUMBER)
+    return kg.quantize(Decimal("0.1"))
+
+
+def read_item_kg(raw: str | None) -> Decimal | None:
+    """An item's "Kilaža (kg)" as the day editor's forms post it: "" (or
+    spaces) is none; else ASCII digits, a decimal comma or point ("2,5" or
+    "2.5", as a set's kilograms), in steps of 0.5 within 0.5–500; else
+    ValueError BAD_NUMBER ("Neispravan broj.")."""
+    value = (raw or "").strip()
+    if not value:
+        return None
+    if not re.fullmatch(r"[0-9]{1,3}(?:[.,][0-9]{1,2})?", value):
+        raise ValueError(BAD_NUMBER)
+    return _checked_item_kg(Decimal(value.replace(",", ".")))
+
+
+def _checked_item_numbers(**numbers) -> None:
+    """An item's numbers as given (None for none, KEEP for one kept as
+    stored), each within ITEM_LIMITS, the weight in steps of 0.5; else
+    ValueError BAD_NUMBER."""
+    for field, value in numbers.items():
+        if value is None or value is KEEP:
+            continue
+        if field == "kg":
+            _checked_item_kg(value)
+            continue
+        least, most = ITEM_LIMITS[field]
+        if not least <= value <= most:
+            raise ValueError(BAD_NUMBER)
 
 
 def _day_locked(s: Session, day_id: int) -> tuple[Program, ProgramDay] | None:
@@ -2705,11 +2746,16 @@ def set_day_video(day_id: int, name: str | None) -> str | None:
         return old
 
 
-def add_day_item(day_id: int, exercise_id: int, section: str) -> int | None:
-    """Put a library exercise last in a day, in a section (SECTIONS), nothing
-    asked of it yet; the new item's id. None when the section is not one,
-    or the day or the exercise is gone (deleted while it was added too: the
-    foreign key). The exercise's row is taken FOR KEY SHARE first (the lock
+def add_day_item(day_id: int, exercise_id: int, section: str, sets: int | None = None, reps: int | None = None,
+                 seconds: int | None = None, kg=None) -> int | None:
+    """Put a library exercise last in a day, in a section (SECTIONS); the
+    new item's id. Since 25.11.2026 (the day editor's add card: a row
+    complete in one step) it may come with what the day asks of it, its
+    sets, reps, seconds and planned weight in kg, each optional (None:
+    none) and within ITEM_LIMITS, else ValueError BAD_NUMBER and nothing is
+    added; the rests and the note are its row form's. None when the section
+    is not one, or the day or the exercise is gone (deleted while it was
+    added too: the foreign key). The exercise's row is taken FOR KEY SHARE first (the lock
     the foreign key's check takes), then the programme's, the order
     delete_exercise follows after the table's lock (the exercise, then the
     programmes that hold it), so an add and a delete of one exercise never
@@ -2719,6 +2765,7 @@ def add_day_item(day_id: int, exercise_id: int, section: str) -> int | None:
     saves."""
     if section not in SECTIONS:
         return None
+    _checked_item_numbers(sets=sets, reps=reps, seconds=seconds, kg=kg)
     try:
         with session_scope() as s:
             if s.get(Exercise, exercise_id, with_for_update={"read": True, "key_share": True}) is None:
@@ -2729,7 +2776,9 @@ def add_day_item(day_id: int, exercise_id: int, section: str) -> int | None:
             p, day = found
             last = s.scalar(select(func.coalesce(func.max(ProgramDayItem.position), 0))
                             .where(ProgramDayItem.day_id == day_id))
-            it = ProgramDayItem(day_id=day_id, position=last + 1, section=section, exercise_id=exercise_id, note="")
+            it = ProgramDayItem(day_id=day_id, position=last + 1, section=section, exercise_id=exercise_id, note="",
+                                sets=sets, reps=reps, seconds=seconds,
+                                kg=None if kg is None else _checked_item_kg(kg))
             s.add(it)
             p.updated_at = func.now()
             s.flush()
@@ -2746,24 +2795,25 @@ def get_day_item(item_id: int) -> ProgramDayItem | None:
 
 
 def update_day_item(item_id: int, section: str, sets: int | None, reps: int | None, seconds: int | None,
-                    rest_seconds: int | None, rest_after_seconds: int | None, note: str) -> bool:
+                    rest_seconds: int | None, rest_after_seconds: int | None, note: str, kg=KEEP) -> bool:
     """Save what a day asks of an exercise: its section, sets, reps and
     seconds (either or both since 24.11.2026: "5 ponavljanja po 30 s"),
-    the rest between sets, the rest after it (before the next exercise)
-    and a note (stripped); None for a number not set. `sets` or
-    `rest_seconds` given as KEEP (24.11.2026: a circuit part's row form
-    asks neither, they do not apply there) stays what it is, read under
-    the lock. An item moved to another section goes last in it. False for
-    an item that is gone. ValueError with the sentence to show: a number
-    out of ITEM_LIMITS ("Neispravan broj."), a note past ITEM_NOTE_MAX, a
-    section that is none."""
+    the rest between sets, the rest after it (before the next exercise),
+    a note (stripped) and since 25.11.2026 its planned weight in kg (0.5–
+    500 in steps of 0.5); None for a number not set. `sets`, `rest_seconds`
+    or `rest_after_seconds` given as KEEP (a circuit part's row form asks
+    none of them, they do not apply there: the first two since 24.11.2026,
+    the rest after it since 25.11.2026, no pause between a circuit's
+    exercises) stays what it is, read under the lock, and so does `kg`
+    when not given (a caller that names no weight keeps it). An item moved
+    to another section goes last in it. False for an item that is gone.
+    ValueError with the sentence to show: a number out of ITEM_LIMITS
+    ("Neispravan broj."), a note past ITEM_NOTE_MAX, a section that is
+    none."""
     if section not in SECTIONS:
         raise ValueError("Odaberi dio treninga.")
-    for field, value in (("sets", sets), ("reps", reps), ("seconds", seconds), ("rest_seconds", rest_seconds),
-                         ("rest_after_seconds", rest_after_seconds)):
-        least, most = ITEM_LIMITS[field]
-        if value is not None and value is not KEEP and not least <= value <= most:
-            raise ValueError(BAD_NUMBER)
+    _checked_item_numbers(sets=sets, reps=reps, seconds=seconds, rest_seconds=rest_seconds,
+                          rest_after_seconds=rest_after_seconds, kg=kg)
     note = (note or "").strip()
     if len(note) > ITEM_NOTE_MAX:
         raise ValueError(f"Napomena može imati najviše {ITEM_NOTE_MAX} znakova.")
@@ -2780,8 +2830,11 @@ def update_day_item(item_id: int, section: str, sets: int | None, reps: int | No
             it.sets = sets
         if rest_seconds is not KEEP:
             it.rest_seconds = rest_seconds
+        if rest_after_seconds is not KEEP:
+            it.rest_after_seconds = rest_after_seconds
+        if kg is not KEEP:
+            it.kg = None if kg is None else _checked_item_kg(kg)
         it.reps, it.seconds, it.note = reps, seconds, note
-        it.rest_after_seconds = rest_after_seconds
         p.updated_at = func.now()
         return True
 
@@ -2791,7 +2844,8 @@ def update_day_item(item_id: int, section: str, sets: int | None, reps: int | No
 # he has sections of multiple exercises with no pause or a very short pause
 # between them and then a longer pause between these multiple sets."
 # models.ProgramDayCircuit: a row per part done as a circuit, its rounds and
-# its rest between rounds. Written under _day_locked, as every write to a
+# its rest after a round (since 25.11.2026 the only rest there: no pause
+# between its exercises). Written under _day_locked, as every write to a
 # day: the programme's row, then the day's.
 
 CIRCUIT_LIMITS = {"rounds": (2, 20), "rest_seconds": (0, 3600)}
@@ -2895,9 +2949,11 @@ def move_day_item(item_id: int, direction: str) -> bool:
 # what a logged set's numbers may be, (least, most); else BAD_NUMBER. A weight
 # goes in steps of half a kilo.
 SET_LIMITS = {"reps": (0, 999), "kg": (0, 500), "seconds": (0, 3600)}
-ROUND_LIMITS = (1, 99)           # a circuit's set's round (24.11.2026: save_round), (least, most)
+ROUND_LIMITS = (1, 99)           # a circuit's set's round (24.11.2026: save_circuit_round), (least, most)
+EFFORT_LIMITS = (1, 10)          # an exercise's rating (25.11.2026, "Koliko je bilo teško?"), (least, most)
 MAX_SETS = 12
 NO_SET = "Upiši bar jednu seriju."
+NO_ROUND_EXERCISE = "Upiši bar jednu vježbu."    # a circuit's round with every exercise empty
 TOO_MANY_SETS = f"Najviše {MAX_SETS} serija."
 NOT_SIMILAR = "Ta vježba nije među sličnima."
 BAD_OSVRT = "Neispravan osvrt."                  # the karton's sentence for the same three fields
@@ -2969,12 +3025,34 @@ def read_sets(rows: list[dict[str, str]], fields: tuple[str, ...]) -> list[dict]
     return _checked_sets(sets)
 
 
+def read_effort(raw: str | None) -> int | None:
+    """An exercise's rating as the player posts it (25.11.2026: "Koliko je
+    bilo teško?", the radio `effort`): "" (or spaces) is none; else ASCII
+    digits within EFFORT_LIMITS (1–10); else ValueError BAD_NUMBER."""
+    value = (raw or "").strip()
+    if not value:
+        return None
+    if not re.fullmatch(r"[0-9]{1,2}", value):
+        raise ValueError(BAD_NUMBER)
+    return _checked_effort(int(value))
+
+
+def _checked_effort(effort) -> int | None:
+    """A rating as written into a pass's entry: None, or an int within
+    EFFORT_LIMITS (never a bool), else ValueError BAD_NUMBER."""
+    if effort is None:
+        return None
+    if type(effort) is not int or not EFFORT_LIMITS[0] <= effort <= EFFORT_LIMITS[1]:
+        raise ValueError(BAD_NUMBER)
+    return effort
+
+
 def _checked_sets(sets: list[dict]) -> list[dict]:
     """Sets as stored (read_sets'), checked again where they are written:
     each holds the fields of one of SET_SHAPES, each number within
     SET_LIMITS, whole (a weight in halves of a kilo). Any of them may carry
-    its round (24.11.2026, a circuit's: save_round), an integer within
-    ROUND_LIMITS, which is kept, after the fields."""
+    its round (24.11.2026, a circuit's: save_circuit_round), an integer
+    within ROUND_LIMITS, which is kept, after the fields."""
     if not sets:
         raise ValueError(NO_SET)
     if len(sets) > MAX_SETS:
@@ -3041,16 +3119,21 @@ def get_pass(log_id: int, user_id: int) -> WorkoutLog | None:
         return s.scalar(select(WorkoutLog).where(WorkoutLog.id == log_id, WorkoutLog.user_id == user_id))
 
 
-def save_sets(log_id: int, user_id: int, item: ProgramDayItem, sets: list[dict], exercise: Exercise) -> bool:
+def save_sets(log_id: int, user_id: int, item: ProgramDayItem, sets: list[dict], exercise: Exercise,
+              effort: int | None = None) -> bool:
     """Write an exercise's set log into a pass in progress: `item`'s entry
     (the exercise done, its name as it is now, the item's section, `sets`,
-    stamped now), replacing the one it had. `exercise` is the item's, or the
+    stamped now, and since 25.11.2026 the client's rating of it, `effort`
+    1–10, "effort": 7; none: no key), replacing the one it had (a re-save
+    with no rating leaves none). `exercise` is the item's, or the
     similar one swapped in for this pass. False for no such pass of this
     client, or an item of another day. ValueError: the sets' sentences
-    (read_sets), PASS_FINISHED for a pass already finished, PASS_STALE for
-    one open too long (WorkoutLog.stale), NOT_SIMILAR for an exercise that
-    is neither the item's nor its swap."""
+    (read_sets), BAD_NUMBER for a rating that is none of 1–10,
+    PASS_FINISHED for a pass already finished, PASS_STALE for one open too
+    long (WorkoutLog.stale), NOT_SIMILAR for an exercise that is neither
+    the item's nor its swap."""
     sets = _checked_sets(sets)
+    effort = _checked_effort(effort)
     with session_scope() as s:
         log = _pass_row(s, log_id, user_id)
         if log is None or log.day_id != item.day_id:
@@ -3062,47 +3145,87 @@ def save_sets(log_id: int, user_id: int, item: ProgramDayItem, sets: list[dict],
         if exercise.id != item.exercise_id and log.swap_items.get(item.id) != exercise.id:
             raise ValueError(NOT_SIMILAR)
         done = WorkoutLog._object(log.done)
-        done[str(item.id)] = {"exercise_id": exercise.id, "name": exercise.name, "section": item.section,
-                              "sets": sets, "at": datetime.now(config.TZ).isoformat()}
+        entry = {"exercise_id": exercise.id, "name": exercise.name, "section": item.section,
+                 "sets": sets, "at": datetime.now(config.TZ).isoformat()}
+        if effort is not None:
+            entry["effort"] = effort
+        done[str(item.id)] = entry
         log.done = _json(done)
         return True
 
 
-def save_round(log_id: int, user_id: int, item: ProgramDayItem, round: int, one_set: dict,
-               exercise: Exercise) -> bool:
-    """Write one round of a circuit's exercise into a pass in progress
-    (24.11.2026, kružni trening: the player saves a circuit round by round,
-    one set per exercise per round): `item`'s entry keeps its sets of the
-    other rounds and gets `one_set` as round `round`'s (a set carrying its
-    round, {"reps": 10, "kg": 20.0, "round": 2}; one of that round saved
-    before is replaced), its sets sorted by round; the entry names the
-    exercise done, its name as it is now and the item's section, stamped
-    now, as save_sets writes it (a set with no round, saved while the part
-    was a normal one, is not of a round: it goes). Under the pass's row
-    lock, as save_sets: two rounds saved at once keep both. False for no
-    such pass of this client, or an item of another day. ValueError as
-    save_sets': the set's sentences (_checked_sets; a round outside
-    ROUND_LIMITS BAD_NUMBER), PASS_FINISHED, PASS_STALE, NOT_SIMILAR."""
-    if not isinstance(one_set, dict):
-        raise ValueError(BAD_NUMBER)
-    [st] = _checked_sets([{**one_set, "round": round}])
+def save_circuit_round(log_id: int, user_id: int, part_items, round: int, sets_by_item: dict,
+                       effort: int | None = None) -> bool:
+    """Write one round of a circuit part into a pass in progress, every
+    exercise of it at once (25.11.2026, the owner's note to Amir: "on
+    označi koje krugove koje je odradio": the player shows a circuit one
+    round per screen and its one button saves the round; until then each
+    exercise of each round was a screen of its own, db.save_round).
+    `part_items` are the part's items, `sets_by_item` item id -> its one
+    set of this round as read_sets reads it ({"reps": 10, "kg": 20.0}), or
+    None for an exercise not done in this round. In one write, under the
+    pass's row lock (as save_sets: two rounds saved at once keep both),
+    each exercise done gets its set as round `round`'s ({"reps": 10, "kg":
+    20.0, "round": 2}, its entry's sets sorted by round; one of that round
+    saved before replaced, the other rounds kept; a set with no round,
+    saved while the part was a normal one, is not of a round: it goes), the
+    entry naming the exercise done (the similar one the pass swapped in, an
+    exercise still in the library; else the plan's), its name now and the
+    item's section, stamped now; an exercise not done loses the set of this
+    round it had (the round saved again replaces itself), its entry going
+    when no set is left. `effort` (1–10, "Koliko je bio težak ovaj
+    krug?"), when given, is written on every exercise the round saved; with
+    none, an entry keeps the rating it had (the last rated round's
+    stands). False for no such pass of this client, or an item of another
+    day. ValueError with the sentence to show: NO_ROUND_EXERCISE ("Upiši bar
+    jednu vježbu.") when no exercise is done, a set's sentences
+    (_checked_sets; a round outside ROUND_LIMITS BAD_NUMBER), BAD_NUMBER
+    for a rating that is none of 1–10, PASS_FINISHED, PASS_STALE."""
+    items = list(part_items)
+    effort = _checked_effort(effort)
+    checked: dict[int, dict] = {}
+    for it in items:
+        one = sets_by_item.get(it.id)
+        if one is None:
+            continue
+        if not isinstance(one, dict):
+            raise ValueError(BAD_NUMBER)
+        [checked[it.id]] = _checked_sets([{**one, "round": round}])
+    if not checked:
+        raise ValueError(NO_ROUND_EXERCISE)
     with session_scope() as s:
         log = _pass_row(s, log_id, user_id)
-        if log is None or log.day_id != item.day_id:
+        if log is None or not items or any(it.day_id != log.day_id for it in items):
             return False
         if log.finished_at is not None:
             raise ValueError(PASS_FINISHED)
         if log.stale():
             raise ValueError(PASS_STALE)
-        if exercise.id != item.exercise_id and log.swap_items.get(item.id) != exercise.id:
-            raise ValueError(NOT_SIMILAR)
-        done = WorkoutLog._object(log.done)
-        old = done.get(str(item.id))
-        old_sets = old.get("sets") if isinstance(old, dict) and isinstance(old.get("sets"), list) else []
-        kept = [x for x in old_sets if isinstance(x, dict) and type(x.get("round")) is int and x["round"] != st["round"]]
-        done[str(item.id)] = {"exercise_id": exercise.id, "name": exercise.name, "section": item.section,
-                              "sets": sorted(kept + [st], key=lambda x: x["round"]),
-                              "at": datetime.now(config.TZ).isoformat()}
+        done, swaps = WorkoutLog._object(log.done), log.swap_items
+        wanted = {it.exercise_id for it in items} | {swaps[it.id] for it in items if it.id in swaps}
+        names = dict(s.execute(select(Exercise.id, Exercise.name).where(Exercise.id.in_(wanted))).all())
+        at = datetime.now(config.TZ).isoformat()
+        for it in items:
+            old = done.get(str(it.id))
+            old_sets = old.get("sets") if isinstance(old, dict) and isinstance(old.get("sets"), list) else []
+            st = checked.get(it.id)
+            if st is None:                               # not done in this round: its set of this round goes
+                left = [x for x in old_sets if not (isinstance(x, dict) and x.get("round") == round)]
+                if len(left) == len(old_sets):
+                    continue
+                if left:
+                    old["sets"] = left
+                else:
+                    done.pop(str(it.id))
+                continue
+            kept = [x for x in old_sets if isinstance(x, dict) and type(x.get("round")) is int and x["round"] != round]
+            ex_id = swaps.get(it.id) if swaps.get(it.id) in names else it.exercise_id
+            entry = {"exercise_id": ex_id, "name": names.get(ex_id, it.exercise.name), "section": it.section,
+                     "sets": sorted(kept + [st], key=lambda x: x["round"]), "at": at}
+            rating = effort if effort is not None else effort_of(old)
+            if rating is not None:
+                entry["effort"] = rating
+            done[str(it.id)] = entry
         log.done = _json(done)
         return True
 
@@ -3187,18 +3310,27 @@ def passes(user_id: int, day_id: int | None = None, limit: int | None = None) ->
         return list(s.scalars(q))
 
 
-def last_sets(user_id: int, exercise_id: int) -> list[dict] | None:
-    """The sets the client last saved for an exercise, in any pass of his,
-    finished or in progress, any day of any programme (the newest entry for
-    it by when it was saved): what the player prefills the weights from.
-    None when he never logged it."""
+def _newest_entries(user_id: int, exercise_ids, skip=()) -> dict[int, tuple[dict, datetime]]:
+    """The client's newest saved entry of each of these exercises, in any
+    pass of his, finished or in progress, any day of any programme (by when
+    it was saved, its "at"; on a tie the later pass's), with its pass's
+    start: exercise id -> (entry, started_at). `skip` names entries not to
+    read, (pass id, item id) pairs: the screen's own (25.11.2026, next_load:
+    this pass's entry of the step on screen is not "last time"). An
+    exercise he never logged is not in it."""
+    wanted, skip = set(exercise_ids), set(skip)
+    if not wanted:
+        return {}
     with session_scope() as s:
-        rows = list(s.scalars(select(WorkoutLog.done).where(WorkoutLog.user_id == user_id)
-                              .order_by(WorkoutLog.started_at, WorkoutLog.id)))
-    newest, sets = None, None
-    for raw in rows:                     # oldest pass first: on a tie the later pass's entry wins
-        for entry in WorkoutLog._object(raw).values():
-            if not isinstance(entry, dict) or entry.get("exercise_id") != exercise_id:
+        rows = s.execute(select(WorkoutLog.id, WorkoutLog.started_at, WorkoutLog.done)
+                         .where(WorkoutLog.user_id == user_id)
+                         .order_by(WorkoutLog.started_at, WorkoutLog.id)).all()
+    newest: dict[int, tuple[datetime, dict, datetime]] = {}
+    for log_id, started, raw in rows:    # oldest pass first: on a tie the later pass's entry wins
+        for key, entry in WorkoutLog._object(raw).items():
+            if not isinstance(entry, dict) or entry.get("exercise_id") not in wanted:
+                continue
+            if key.isascii() and key.isdigit() and (log_id, int(key)) in skip:
                 continue
             try:
                 at = datetime.fromisoformat(str(entry.get("at")))
@@ -3206,9 +3338,173 @@ def last_sets(user_id: int, exercise_id: int) -> list[dict] | None:
                 continue
             if at.tzinfo is None:
                 at = at.replace(tzinfo=config.TZ)
-            if newest is None or at >= newest:
-                newest, sets = at, [x for x in entry.get("sets", []) if isinstance(x, dict)]
-    return sets
+            ex = entry["exercise_id"]
+            if ex not in newest or at >= newest[ex][0]:
+                newest[ex] = (at, entry, started)
+    return {ex: (entry, started) for ex, (_, entry, started) in newest.items()}
+
+
+def last_sets(user_id: int, exercise_id: int) -> list[dict] | None:
+    """The sets the client last saved for an exercise, in any pass of his,
+    finished or in progress, any day of any programme (the newest entry for
+    it by when it was saved), as he did them. None when he never logged
+    it. Since 25.11.2026 the player reads next_load, which starts from the
+    same entry."""
+    found = _newest_entries(user_id, [exercise_id]).get(exercise_id)
+    return None if found is None else [x for x in found[0].get("sets", []) if isinstance(x, dict)]
+
+
+# ---------- the load next time (25.11.2026) ----------
+# The owner (his note to Amir: "Ako je odradio sklek na prvom treningu i
+# teška mu je, neka ta ista vježba idući put bude ista ili mrvicu lakša
+# ovisno kaj je recenzirao"): "if someone gave a feedback on a particular
+# exercise of 7 or harder then the next appearance of that particular
+# exercise does not increase its difficulty but stays the same or if its 9
+# or 10 out of 10 difficulty, then it gets slightly reduced by a certain
+# percentage." Fable's numbers, put to the owner, settings so they change
+# without a build (config.PROGRESS_*): rated 6 or lower, a little more next
+# time; 7 or 8, the same; 9 or 10, a little less.
+
+# the bands of a rating: 1–6 a little more, 7–8 the same, 9–10 a little less
+LOAD_WORDS = {"up": "malo više", "same": "ostaje isto", "down": "malo lakše"}
+# a circuit round's word after an exercise's planned dose
+LOAD_SHORT = {"up": "malo više", "same": "isto", "down": "malo lakše"}
+
+
+def _band(effort: int | None) -> str | None:
+    if effort is None:
+        return None
+    return "up" if effort <= 6 else "same" if effort <= 8 else "down"
+
+
+def next_set(st: dict, band: str | None) -> dict:
+    """One set as the next time fills it (next_load), by the band of the
+    rating it was given: none or "same", as he did it; "up" (rated 6 or
+    lower) a weighted set's kg × (1 + PROGRESS_UP_PERCENT %), to the nearest
+    0.5 and at least 0.5 more (500 at most), a set with no weight its reps
+    + PROGRESS_REPS_STEP (999 at most), a timed set (it holds seconds, with
+    its reps or without) its seconds + PROGRESS_SECONDS_STEP (3600 at most);
+    "down" (9 or 10) the kg × (1 − PROGRESS_DOWN_PERCENT %), to the nearest
+    0.5 and at least 0.5 less (never below 0.5), the reps × (1 − down %)
+    rounded down and at least one less (never below 1), the seconds the
+    same way (never below 5); never more than it was. The set's other
+    fields (its round) are kept."""
+    out = dict(st)
+    if band not in ("up", "down"):
+        return out
+    up = band == "up"
+    if "seconds" in st:
+        field, value, step, least, most = "seconds", st.get("seconds") or 0, config.PROGRESS_SECONDS_STEP, 5, 3600
+    elif (st.get("kg") or 0) > 0:
+        kg = Fraction(st["kg"])
+        if up:
+            x = max(Fraction(_to_half(kg * (100 + config.PROGRESS_UP_PERCENT) / 100)), kg + Fraction(1, 2))
+            out["kg"] = float(min(x, Fraction(SET_LIMITS["kg"][1])))
+        else:
+            x = min(Fraction(_to_half(kg * (100 - config.PROGRESS_DOWN_PERCENT) / 100)), kg - Fraction(1, 2))
+            out["kg"] = float(min(max(x, Fraction(1, 2)), kg))
+        return out
+    else:
+        field, value, step, least, most = "reps", st.get("reps") or 0, config.PROGRESS_REPS_STEP, 1, 999
+    if up:
+        out[field] = max(value, min(value + step, most))
+    else:
+        x = min(math.floor(Fraction(value * (100 - config.PROGRESS_DOWN_PERCENT), 100)), value - 1)
+        out[field] = min(max(x, least), value)
+    return out
+
+
+@dataclass(frozen=True)
+class NextLoad:
+    """An exercise's load the next time (next_load): from the client's
+    newest saved entry of it, `on` the day of its pass (Zagreb), `effort`
+    its rating (1–10, None for none), `sets` as he did them, `next` each
+    set as the next time fills it (next_set, by the rating's band: as he
+    did them for none or 7–8), and `kind`, what the exercise was for him:
+    "seconds" (a set holds seconds: a timed one), "kg" (a set holds a
+    weight) or "reps" (kg 0 in every set: no weight)."""
+    on: date
+    effort: int | None
+    sets: tuple[dict, ...]
+    next: tuple[dict, ...]
+    kind: str
+
+    @property
+    def band(self) -> str | None:
+        """"up" (rated 1–6), "same" (7–8), "down" (9–10); None with no rating."""
+        return _band(self.effort)
+
+    @property
+    def rated(self) -> bool:
+        return self.effort is not None
+
+    @property
+    def word(self) -> str:
+        """"malo više", "ostaje isto", "malo lakše" ("" with no rating): the
+        card's line."""
+        return LOAD_WORDS.get(self.band, "")
+
+    @property
+    def short(self) -> str:
+        """"malo više", "isto", "malo lakše" ("" with no rating): a circuit
+        round's word after an exercise's planned dose."""
+        return LOAD_SHORT.get(self.band, "")
+
+    @property
+    def _first(self) -> int:
+        """The set the card's line names, by its place: a weighted
+        exercise's first set with a weight, else the first (the first row
+        of the set log is filled from it)."""
+        if self.kind == "kg":
+            return next((n for n, x in enumerate(self.sets) if (x.get("kg") or 0) > 0), 0)
+        return 0
+
+    def _words(self, st: dict, value: bool = False) -> str:
+        if self.kind == "kg":
+            return f"{kg_text(st.get('kg'))} kg" if value else set_text(st)
+        if self.kind == "seconds":
+            return f"{st.get('seconds') or 0} s" if value else set_text(st)
+        reps = st.get("reps") or 0
+        return f"{reps} {plural(reps, 'ponavljanje', 'ponavljanja', 'ponavljanja')}"
+
+    @property
+    def done_text(self) -> str:
+        """That set as he did it, in the line's words: "10 × 20 kg", "12
+        ponavljanja" (no weight), "40 s", "5 × 30 s"."""
+        return self._words(self.sets[self._first])
+
+    @property
+    def next_text(self) -> str:
+        """What that set becomes the next time: "21 kg", "13 ponavljanja",
+        "45 s"."""
+        return self._words(self.next[self._first], value=True)
+
+
+def next_loads(user_id: int, exercise_ids, skip=()) -> dict[int, NextLoad]:
+    """next_load for several exercises at once, in one query (a circuit
+    round's screen): exercise id -> its NextLoad, an exercise he never
+    logged not in it."""
+    out = {}
+    for ex, (entry, started) in _newest_entries(user_id, exercise_ids, skip).items():
+        sets = tuple(x for x in entry.get("sets", []) if isinstance(x, dict))
+        if not sets:
+            continue
+        kind = ("seconds" if any("seconds" in x for x in sets)
+                else "kg" if any((x.get("kg") or 0) > 0 for x in sets) else "reps")
+        effort = effort_of(entry)
+        out[ex] = NextLoad(started.astimezone(config.TZ).date(), effort, sets,
+                           tuple(next_set(x, _band(effort)) for x in sets), kind)
+    return out
+
+
+def next_load(user_id: int, exercise_id: int, skip=()) -> NextLoad | None:
+    """An exercise's load the next time (25.11.2026), read where the player
+    read last_sets: from the client's newest saved entry of it (any pass,
+    any day; `skip`, (pass id, item id) pairs, the screen's own entries
+    left out), set by set, by that entry's rating: none or 7–8, as he did
+    it; 6 or lower, a little more; 9 or 10, a little less (next_set). None
+    when he never logged it (the plan's numbers then)."""
+    return next_loads(user_id, [exercise_id], skip).get(exercise_id)
 
 
 def day_states(user_id: int, day_ids) -> dict[int, dict]:

@@ -60,8 +60,8 @@
   /* A circuit part (24.11.2026, kružni trening): under its caption one
      muted line, "Kružno · 3 kruga · odmor između krugova 120 s" (.dx-sub's
      size), pulled up to the caption; its rows the dose of a round and,
-     under them, the rest after the exercise and the note (never a rest
-     between sets: none applies). */
+     under them, the note alone (since 25.11.2026: no pause between a
+     circuit's exercises, so no rest of an exercise's applies there). */
   .dx-circ { margin: -6px 0 10px; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
   /* Povijest (30.10.2026): the viewer's last five passes of the day, newest
      first, a card each: one line of facts (the day, how many of its
@@ -134,7 +134,7 @@
           <span class="dx-main">
             <span class="dx-n">Vježba {{ ns.n }}</span>
             <span class="dx-line"><span class="dx-name">{{ ex.name }}</span>{% if mark and mark.full %}<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span>{% if dose %} {{ dose }}{% endif %}</span>{% elif mark %}<span class="dx-dose"><span class="dx-rounds" role="img" aria-label="{{ mark.label }}">{{ mark.text }}</span>{% if dose %} {{ dose }}{% endif %}</span>{% elif dose %}<span class="dx-dose">{{ dose }}</span>{% endif %}</span>
-            {% set sub = ([it.rest_after_text and "Odmor nakon vježbe: " ~ it.rest_after_text, it.note] if circ else [it.rest_text and "Odmor između serija: " ~ it.rest_text, it.rest_after_text and "Odmor nakon vježbe: " ~ it.rest_after_text, it.note])|select|list %}
+            {% set sub = ([it.note] if circ else [it.rest_text and "Odmor između serija: " ~ it.rest_text, it.rest_after_text and "Odmor nakon vježbe: " ~ it.rest_after_text, it.note])|select|list %}
             {% if sub %}<span class="dx-sub">{{ sub|join(" · ") }}</span>{% endif %}
           </span>
           <span class="dx-go" aria-hidden="true">▷</span>

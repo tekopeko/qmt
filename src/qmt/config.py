@@ -199,6 +199,19 @@ BOOKING_WEEKS = int(os.environ.get("BOOKING_WEEKS", "4"))
 # longer be continued, only finished with its osvrt or discarded, and its
 # length runs to its last save, not to the osvrt a day later.
 PASS_STALE_HOURS = int(os.environ.get("PASS_STALE_HOURS", "2"))
+# The load next time (25.11.2026, the owner: an exercise rated "7 or harder
+# then the next appearance of that particular exercise does not increase its
+# difficulty but stays the same or if its 9 or 10 out of 10 difficulty, then
+# it gets slightly reduced by a certain percentage"; db.next_load): rated 6
+# or lower, a weight goes up PROGRESS_UP_PERCENT % (5; to the nearest half
+# kilo, half a kilo at least), a set with no weight PROGRESS_REPS_STEP reps
+# (1), a timed one PROGRESS_SECONDS_STEP seconds (5); rated 9 or 10, a weight
+# and the reps or seconds go down PROGRESS_DOWN_PERCENT % (10; a step at
+# least); 7 or 8, and no rating, as he did it.
+PROGRESS_UP_PERCENT = int(os.environ.get("PROGRESS_UP_PERCENT", "5"))
+PROGRESS_DOWN_PERCENT = int(os.environ.get("PROGRESS_DOWN_PERCENT", "10"))
+PROGRESS_REPS_STEP = int(os.environ.get("PROGRESS_REPS_STEP", "1"))
+PROGRESS_SECONDS_STEP = int(os.environ.get("PROGRESS_SECONDS_STEP", "5"))
 
 
 def today() -> date:

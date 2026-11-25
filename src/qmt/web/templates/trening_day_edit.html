@@ -25,7 +25,9 @@
      bottom (a label that wraps keeps the two level) and Spremi across
      both on a phone; from 600px the two and Spremi on one line. In a
      circuit part a muted hint follows it, and each row's form drops
-     Serije and Odmor (s) (.st-form's grid as it is, two fields fewer). */
+     Serije, Odmor (s) and since 25.11.2026 Nakon vježbe (s) too: no pause
+     between a circuit's exercises (.st-form's grid as it is, three fields
+     fewer). */
   .st-circ { margin: 0 0 10px; }
   .st-circ > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
                        min-height: 32px; padding: 5px 13px; border: 1px solid var(--line); border-radius: 999px;
@@ -63,14 +65,19 @@
   .st-sec > .st-alert { margin: 0 0 10px; }
   .st-rows { display: flex; flex-direction: column; gap: 10px; }
   .st-none { padding: 2px 0 4px; }
+  /* "+ Dodaj vježbu u ovaj dio" (25.11.2026): the part's last line, a
+     quiet row action (.act), to the add card with this part chosen */
+  .st-add { margin-top: 10px; }
   /* A row's form, line 2: a compact grid of labelled fields, two columns on
-     a phone (Dio and the sets, the reps and the seconds, the two rests,
-     then the note and Spremi across both), four from 600px (Dio and the
-     dose, then the two rests and the note, then Spremi). Every control one
-     height, 44px on a coarse pointer, so the row is one footprint. A label
-     its column cannot hold on one line ("Nakon vježbe (s)" between 600 and
-     ~610px) wraps, and each field keeps its control at its bottom, so the
-     controls of a line stay level. */
+     a phone (Dio and the sets, the reps and the seconds, the weight and the
+     rest between sets, the rest after it, then the note and Spremi across
+     both), four from 600px (Dio and the dose, then the weight, the two
+     rests, then the note and Spremi). A circuit part's form (Dio, the reps
+     and the seconds, the weight, the note, Spremi) pairs the same way.
+     Every control one height, 44px on a coarse pointer, so the row is one
+     footprint. A label its column cannot hold on one line ("Nakon vježbe
+     (s)" between 600 and ~610px) wraps, and each field keeps its control at
+     its bottom, so the controls of a line stay level. */
   .st-form { flex: 1 0 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
              gap: 8px 10px; margin: 2px 0 4px; }
   .st-form > div { display: flex; flex-direction: column; justify-content: flex-end; }
@@ -91,10 +98,22 @@
     .st-form .st-go { grid-column: auto; align-self: end; }
   }
   /* "Dodaj vježbu": the library as a select (name · tags, the alphabet's
-     order) and the section to put it in, then Dodaj and "Nova vježba →" */
+     order) and the section to put it in, then since 25.11.2026 the numbers
+     (Serije, Ponavljanja, Sekunde, Kilaža (kg), all optional: the row
+     form's grid and look, two columns on a phone, four from 600px), then
+     Dodaj and "Nova vježba →". After an add the card says what went where
+     ("Dodano u Glavni dio A: Sklekovi.", the page's ok alert, first in the
+     card) and its picker has the focus, so the next one goes in at once. */
   .add-ex { max-width: 640px; padding: 18px 20px; scroll-margin-top: 90px; }
+  .add-ex > .alert { margin: 0 0 14px; }
   .add-fields { display: grid; gap: 0 12px; }
   @media (min-width: 600px) { .add-fields { grid-template-columns: minmax(0, 1fr) 180px; } }
+  .add-nums { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; margin: 0 0 16px; }
+  .add-nums > div { display: flex; flex-direction: column; justify-content: flex-end; }
+  .add-nums label { margin-bottom: 3px; }
+  .add-nums input { height: 40px; padding: 0 10px; }
+  @media (pointer: coarse) { .add-nums input { height: 44px; } }
+  @media (min-width: 600px) { .add-nums { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   .add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
   .add-row .btn-sm { white-space: nowrap; }
   /* The library's select as a combobox that filters as it is typed
@@ -120,13 +139,16 @@
 {% set in_row = focus in day.items|map(attribute="id")|map("string")|list %}
 {% set focus_dio = request.query_params.get("dio") %}
 {% set in_dio = not in_row and focus_dio in SECTIONS %}
-{% block error_alert %}{% if not in_row and not in_dio %}{{ super() }}{% endif %}{% endblock %}
-{% block ok_alert %}{% if not in_row and not in_dio %}{{ super() }}{% endif %}{% endblock %}
+{# an add's word (25.11.2026: ?dodaj=<key>, the part it went into, with ?ok=
+   or ?error=) stands in the add card, which the page comes back at #}
+{% set in_add = not in_row and not in_dio and add_dio %}
+{% block error_alert %}{% if not in_row and not in_dio and not in_add %}{{ super() }}{% endif %}{% endblock %}
+{% block ok_alert %}{% if not in_row and not in_dio and not in_add %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}/uredi">{{ p.title }}</a><span class="sep">/</span><span class="here">Trening {{ day.position }}</span></nav>
 <h1>Trening {{ day.position }}</h1>
 <p class="hint">
-  Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja, sekunde, odmor i napomena.
+  Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja, sekunde, kilaža, odmor i napomena.
   Ponavljanja i sekunde mogu zajedno: 5 ponavljanja po 30 s.
   „Odmor (s)” je odmor između serija, a „Nakon vježbe (s)” odmor prije sljedeće vježbe: polaznik za oba dobiva odbrojavanje koje može preskočiti.
   Svaki dio može biti kružni: vježbe idu jedna za drugom, s odmorom između krugova.
@@ -179,8 +201,13 @@
 {# Each part's "Kružno" (24.11.2026, kružni trening): a <details> whose
    summary says the part's state and whose one form makes it a circuit or a
    normal part again (POST …/dio/<key>/krug). In a circuit part the hint
-   says what changes, and the rows' forms ask no Serije and no Odmor (s):
-   they post `circuit`, so the route keeps the item's stored ones. #}
+   says what changes, and the rows' forms ask no Serije, no Odmor (s) and
+   since 25.11.2026 no Nakon vježbe (s) (no pause between a circuit's
+   exercises): they post `circuit`, so the route keeps the item's stored
+   ones. Each part ends with "+ Dodaj vježbu u ovaj dio" (25.11.2026): a
+   link to the add card with this part chosen (?dodaj=<key>#dodaj), which
+   the script follows in place (the Dio set, the card scrolled to, the
+   picker focused). #}
 {% for key, label in SECTIONS.items() %}{% set rows = day.by_section[key] %}{% set circ = day.circuit(key) %}
 {% set here = in_dio and focus_dio == key %}
 <section class="st-sec" aria-labelledby="dio-{{ key }}">
@@ -202,7 +229,7 @@
       <div class="st-go"><button type="submit" class="btn btn-sm">Spremi</button></div>
     </form>
   </details>
-  {% if circ %}<p class="hint st-circ-hint">U kružnom dijelu svaka vježba ide jednom po krugu: upiši ponavljanja ili sekunde, a „Nakon vježbe (s)” je kratka pauza do sljedeće vježbe.</p>{% endif %}
+  {% if circ %}<p class="hint st-circ-hint">U kružnom dijelu vježbe idu jedna za drugom, bez pauze: upiši ponavljanja ili sekunde i kilažu. Odmor je nakon kruga.</p>{% endif %}
   <div class="st-rows">
     {% for it in rows %}{% set ex = it.exercise %}
     <div class="card it-row" id="stavka-{{ it.id }}">
@@ -238,14 +265,17 @@
         <div><label for="st-{{ it.id }}-secs">Sekunde</label>
           <input id="st-{{ it.id }}-secs" type="number" name="seconds" inputmode="numeric" min="1" max="3600"
                  value="{{ it.seconds if it.seconds is not none else '' }}"></div>
+        <div><label for="st-{{ it.id }}-kg">Kilaža (kg)</label>
+          <input id="st-{{ it.id }}-kg" type="number" name="kg" inputmode="decimal" min="0.5" max="500" step="0.5"
+                 value="{{ it.kg|kg_value }}"></div>
         {% if not circ %}
         <div><label for="st-{{ it.id }}-rest">Odmor (s)</label>
           <input id="st-{{ it.id }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600"
                  value="{{ it.rest_seconds if it.rest_seconds is not none else '' }}"></div>
-        {% endif %}
         <div><label for="st-{{ it.id }}-after">Nakon vježbe (s)</label>
           <input id="st-{{ it.id }}-after" type="number" name="rest_after" inputmode="numeric" min="0" max="3600"
                  value="{{ it.rest_after_seconds if it.rest_after_seconds is not none else '' }}"></div>
+        {% endif %}
         <div class="st-note"><label for="st-{{ it.id }}-note">Napomena</label>
           <input id="st-{{ it.id }}-note" type="text" name="note" maxlength="500" value="{{ it.note }}"
                  placeholder="npr. 8 kg, po nozi"></div>
@@ -256,6 +286,7 @@
     <p class="hint st-none">Nema vježbi.</p>
     {% endfor %}
   </div>
+  <a class="act st-add" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/uredi?dodaj={{ key }}#dodaj" data-dio="{{ key }}">+ Dodaj vježbu u ovaj dio</a>
 </section>
 {% endfor %}
 {% for it in day.items %}
@@ -269,19 +300,36 @@
 
 <h2 style="font-size:1.05rem; margin:30px 0 12px;">Dodaj vježbu</h2>
 {% set natrag = "/treninzi/" ~ p.id ~ "/dan/" ~ day.id ~ "/uredi" %}
+{# the add card (25.11.2026: the numbers too, and back here after an add,
+   its Dio as it was, its picker focused, the card saying what went where:
+   ?dodaj=<key>; without JS the select takes the focus, autofocus) #}
 <form id="dodaj" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke" class="card add-ex">
+  {% if in_add %}
+    {% if request.query_params.get("error") %}<div class="alert" role="alert"><span>{{ request.query_params.get("error") }}</span></div>
+    {% elif request.query_params.get("ok") %}<div class="alert ok" role="status">{{ request.query_params.get("ok") }}</div>{% endif %}
+  {% endif %}
   {% if choices %}
   {{ tagbar(tags) }}
   <div class="add-fields">
     <div class="field"><label for="add-ex">Vježba iz baze</label>
-      <select id="add-ex" name="exercise_id" required>
+      <select id="add-ex" name="exercise_id" required{% if add_dio %} autofocus{% endif %}>
         <option value="" disabled{% if chosen not in choices|map(attribute="id")|list %} selected{% endif %}>Odaberi vježbu…</option>
         {% for ex in choices %}<option value="{{ ex.id }}"{% if ex.id == chosen %} selected{% endif %}>{{ ex.name }}{% if ex.tags %} · {{ ex.tags }}{% endif %}</option>{% endfor %}
       </select></div>
     <div class="field"><label for="add-dio">Dio</label>
       <select id="add-dio" name="section">
-        {% for k, l in SECTIONS.items() %}<option value="{{ k }}"{% if k == "trening" %} selected{% endif %}>{{ l }}</option>{% endfor %}
+        {% for k, l in SECTIONS.items() %}<option value="{{ k }}"{% if k == (add_dio or "trening") %} selected{% endif %}>{{ l }}</option>{% endfor %}
       </select></div>
+  </div>
+  <div class="add-nums">
+    <div><label for="add-sets">Serije</label>
+      <input id="add-sets" type="number" name="sets" inputmode="numeric" min="1" max="99"></div>
+    <div><label for="add-reps">Ponavljanja</label>
+      <input id="add-reps" type="number" name="reps" inputmode="numeric" min="1" max="999"></div>
+    <div><label for="add-secs">Sekunde</label>
+      <input id="add-secs" type="number" name="seconds" inputmode="numeric" min="1" max="3600"></div>
+    <div><label for="add-kg">Kilaža (kg)</label>
+      <input id="add-kg" type="number" name="kg" inputmode="decimal" min="0.5" max="500" step="0.5"></div>
   </div>
   <div class="add-row">
     <button type="submit" class="btn btn-sm">Dodaj</button>
@@ -316,10 +364,30 @@
   // the focus left there, so the list opens filtered (under the input: the
   // chips stay in reach); a pick puts the name in the input, and the chips
   // let go. ?vjezba=<id> (back from "Nova vježba") comes chosen.
+  // "+ Dodaj vježbu u ovaj dio" (25.11.2026) under each part: in place of
+  // its link (?dodaj=<key>#dodaj, a reload), its part chosen in the card's
+  // Dio, the card scrolled to and the picker focused; the page that comes
+  // back with ?dodaj= (an add, or the link without the script) focuses the
+  // picker too. A focus given here leaves the list shut (the combobox's
+  // focus()): typing or a tap opens it.
   (function () {
     var sel = document.getElementById("add-ex"), form = document.getElementById("dodaj");
+    var dio = document.getElementById("add-dio");
     if (!sel || !form) return;
-    qmtCombobox(sel, {form: form, tagbar: form.querySelector(".tagbar")});
+    var cbx = qmtCombobox(sel, {form: form, tagbar: form.querySelector(".tagbar")});
+    var picker = function () { if (cbx) cbx.focus(); else sel.focus(); };
+    [].forEach.call(document.querySelectorAll("a.st-add[data-dio]"), function (a) {
+      a.addEventListener("click", function (e) {
+        if (!dio) return;
+        e.preventDefault();
+        dio.value = a.getAttribute("data-dio");
+        form.scrollIntoView({block: "start"});
+        picker();
+      });
+    });
+    // ?dodaj=<a part> (the select's autofocus, the input's now): after the
+    // load, as the browser's move to #dodaj takes away a focus given before it
+    if (sel.hasAttribute("autofocus")) window.addEventListener("load", function () { setTimeout(picker, 0); });
   })();
 </script>
 {% endblock %}
