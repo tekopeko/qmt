@@ -49,7 +49,7 @@
     </div>
     <div class="row-acts">
       <a class="btn-sm btn-ghost" href="/karton/{{ row.user.id }}">Karton →</a>
-      {# into the member's account, his app as he has it (26.11.2026: "Gledaj kao člana"), back here at "Izađi" #}
+      {# into the member's account, his app as he has it (26.11.2026: "Gledaj kao član"), back here at "Izađi" #}
       {% if row.can_act %}
       <form method="post" action="/kao/{{ row.user.id }}">
         <input type="hidden" name="natrag" value="/clanarine">

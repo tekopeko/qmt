@@ -12,7 +12,7 @@
    open too long: WorkoutLog.stale) is "Nedovršen trening", says it cannot be
    continued, and has no way back to the exercises. Leaving the page asks
    first (_pass_leave.html: #leaveDlg). #}
-{% set solo_page = not user.is_trainer %}
+{% set solo_page = not can_edit_copy %}
 {% import "_copy.html" as c with context %}
 {% block title %}{{ "Nedovršen trening" if stale else "Trening odrađen" }} — {{ day.label }} — QMT{% endblock %}
 {% block head %}

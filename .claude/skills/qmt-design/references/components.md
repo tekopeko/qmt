@@ -14,7 +14,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 | `.kao-bar` | base (staff acting as a member, 26.11.2026) | the strip over every page while a trainer or the owner is in a member's account (`kao` in the context; the one-task pages and the error page too): the first child of `body`, sticky at the very top, `--kao-h` tall (44px, 52px on a coarse pointer), `z-index` 45; the topbar's pill sits under it (`body[data-kao] .topbar`'s sticky top is `--kao-h` + 10px) and html's `scroll-padding-top` is `--kao-h`, so a jump to an anchor clears both (its own `scroll-margin` on top); a drawer under it scrolls in the window less the strip. The karton's amber: `--warn` text on `--warn-soft` laid over `--bg` (`linear-gradient(var(--warn-soft), var(--warn-soft)) var(--bg)`: solid, no page text shows through; 4.6:1 light, 8.5:1 dark), a 30% `--warn` hairline under it, Inter 500 .88rem. ONE line at every width, its content on the pill's column (`padding: 0 max(16px, (100% − 1100px) / 2)`): `.kao-as` "Gledaš kao: **name**" (700), cut with an ellipsis (its `title` the whole name and the email), then "Izađi" (`.kao-exit`, a form posting `/kao/izlaz`): a `--warn` pill with `--bg` ink (5.5:1 light, 11:1 dark), 700 .82rem, 32px, 44px on a coarse pointer, never pushed off a 360px screen; its hover a 18% `--text` mix, never the base red. `role="status"`. Staff's own chrome: fixed words, no slot. The page carries the member's id (`body[data-kao]`), whose script marks every form that posts (`?kao=`) and every fetch that is no GET (`X-QMT-Kao`): the server runs a write only for the identity it was drawn for |
 | `.menu-wrap` / `.menu` | base | the topbar's dropdown, one component for two menus (26.10.2026): a `.menu-wrap` (`position: relative`) holds a button (`aria-controls`, `aria-haspopup`, `aria-expanded`) and its `.menu` panel, `role="menu"`, `--surface`, hairline, 12px radius, `--shadow`, hung `calc(100% + 9px)` under the button; rows (`role="menuitem"`) full-bleed, 10px 16px, 500 .92rem, a 22px line icon (`.mi`, 24px viewBox, stroke 1.7) on one gutter, hover / focus `--surface-2`; `.sep` a hairline. One script in base.html: a click on the button opens it and the next shuts it, one menu open at a time (the account menu also shuts the ☰ drawer), a click outside or Escape shuts it (Escape gives the focus back to the button when it was in the menu); an open panel is moved in to stay 12px inside the window. Tab reaches its rows; no arrow keys |
 | `.avatar` / `.user-menu` | base | initials circle → the account menu (`.menu.user-menu`, 288px, right-aligned to the avatar) on the YouTube pattern: identity header (the email ellipsized on a desktop with the whole address in its `title`, wrapped ≤900px), icon gutter rows: Profil, theme, Odjava — for everyone since 26.10.2026 (the Moja članarina tab is everyone's way to that page) |
-| `.admin-menu` | base (trainer, owner) | Admin ▾'s menu (`.menu.admin-menu`, as wide as its longest row, left-aligned to its tab): Gledaj kao člana (eye; 26.11.2026, first) → `/kao` (its record, `/kao/zapisi`, lights it too), Termini (calendar icon) → `/admin`, Trenutne članarine (card) → `/clanarine`, Upitnik (clipboard) → `/upitnik` (in normal mode, as every page opens: the ✎ pill turns edit mode on), Vježbe (dumbbell) → `/treninzi/vjezbe` (30.10.2026: the library's pages are under /treninzi, yet they light Admin ▾ and this item, never the Online treninzi tab), and the owner's Korisnici (people) and Statistika (chart). The page that is open: `aria-current="page"`, an inset 3px `--accent` bar on the row's left edge and the label in 700. In the ☰ drawer it is static rows under the "Admin" caption |
+| `.admin-menu` | base (trainer, owner) | Admin ▾'s menu (`.menu.admin-menu`, as wide as its longest row, left-aligned to its tab): Gledaj kao član (eye; 26.11.2026, first) → `/kao` (its record, `/kao/zapisi`, lights it too), Termini (calendar icon) → `/admin`, Trenutne članarine (card) → `/clanarine`, Upitnik (clipboard) → `/upitnik` (in normal mode, as every page opens: the ✎ pill turns edit mode on), Vježbe (dumbbell) → `/treninzi/vjezbe` (30.10.2026: the library's pages are under /treninzi, yet they light Admin ▾ and this item, never the Online treninzi tab), and the owner's Korisnici (people) and Statistika (chart). The page that is open: `aria-current="page"`, an inset 3px `--accent` bar on the row's left edge and the label in 700. In the ☰ drawer it is static rows under the "Admin" caption |
 | `main` | base | max-width 1100px, `clamp(14px,4vw,40px)` side padding; `main.full` for the landing |
 | `main > h1`, `main > h1 + .hint` | base | the page header: title `clamp(1.6rem,3vw,2rem)` + one lead sentence, 70ch max — templates write bare `<h1>` / `<p class="hint">` with no inline style |
 | `.card` | base | `--surface`, hairline, `--r-lg` (20px), `--shadow`; hero-grade cards (`.svc`, `.plan`, `.upitnik`; the karton's `.termini` until 25.11.2026) take `--r-xl` (28px) with 26px padding |
@@ -540,7 +540,7 @@ text (`dd`, .92rem, an `.ed` a click opens in edit mode). An emptied text reads
 "(prazno)" (`.tx-empty`, muted) outside edit mode, its empty box in it. Its own
 words are the editor's, no slot.
 
-**Gledaj kao člana (`kao.html`, `kao_zapisi.html`, 26.11.2026; Admin ▾'s first
+**Gledaj kao član (`kao.html`, `kao_zapisi.html`, 26.11.2026; Admin ▾'s first
 item).** Staff open a member's app as he has it (`app.current_user` is the
 member while they do; the strip `.kao-bar` over every page then, above). The
 picker is the /admin pages' look, `.kao` a 720px column under the h1 and its
@@ -570,7 +570,7 @@ beside "Karton →" in one `.row-acts` pair (`.btn-sm.btn-ghost` both, the
 link given the button's font so the two are one height); on a termin's roster
 (`roster.html`) "Kao član →" (`.act`) at each member's row's end (`.roster-row`
 wraps on a phone, the email breaking anywhere); on the trainer's view of a karton
-"Otvori kao člana" (`.act`, `form.kao-open`, under the head line). All their
+"Otvori kao član" (`.act`, `form.kao-open`, under the head line). All their
 words are staff's own, no slot.
 
 **Every member page's optional text** (25.11.2026): `_copy.html`'s
@@ -720,8 +720,8 @@ auto`: one group at the right end, wrapping under the name whole on a phone),
 
 **The programme editor (`trening_edit.html`).** The h1 "Uredi program" (a dvoranski
 programme's followed by `.venue-chip` "dvoranski", 24.11.2026); its lead:
-"Program ima treninge; svaki trening ima zagrijavanje, glavni dio A i B te istezanje, a
-vježbe biraš iz baze vježbi." (A and B since 23.11.2026) (a `.tlink` to the library), since 24.11.2026 "Svaki
+"Program ima treninge; svaki trening ima zagrijavanje, glavni dio A, B i C te istezanje, a
+vježbe biraš iz baze vježbi." (A and B since 23.11.2026, C since 26.11.2026) (a `.tlink` to the library), since 24.11.2026 "Svaki
 dio može biti kružni: vježbe idu jedna za drugom, s odmorom između krugova.", and "pogledaj kako
 polaznik vidi →" (`.act.act-quiet`). The programme's form (`.card`, 640px: Tip treninga,
 Razina and since 24.11.2026 Vrsta, Online / Dvoranski, three selects in one grid,
@@ -796,7 +796,7 @@ note over two columns and Spremi);
 every control 40px tall, 44px on a coarse pointer, so the grid is one
 footprint. "Dodaj vježbu" (`form#dodaj.card.add-ex`): `.add-fields` (Vježba iz
 baze, the combobox over the library's select, name · tags (Forms, above; 23.11.2026);
-Dio, opening on Glavni dio A (four options since 23.11.2026: Glavni dio B after it); one column on a phone, the combobox and a 180px Dio from
+Dio, opening on Glavni dio A (four options since 23.11.2026: Glavni dio B after it; five since 26.11.2026, Glavni dio C after B, each as the day names it); one column on a phone, the combobox and a 180px Dio from
 600px), the tag chips above them (Forms, above; 23.11.2026: a tap opens the combobox's list
 filtered, under the input, so the chips stay in reach), since 25.11.2026 `.add-nums`
 (Serije, Ponavljanja, Sekunde, Kilaža (kg), all optional: the row form's grid and
@@ -807,6 +807,46 @@ card's first line is the page's ok alert, "Dodano u Glavni dio A: Sklekovi." (a
 refusal its error alert; the page's top none), its Dio as it was and the focus in the
 picker (at the load: the browser's move to `#dodaj` takes a focus given before it).
 Last "Obriši trening" (`form.ex-delete`, asks first).
+**A part's own name (26.11.2026, build 2; the owner: "Lets have Glavni dio A, B and C but
+lets also allow Amir to rename them.").** Five parts since that day (Glavni dio C after
+B). Under each caption `.st-tools`, a wrapping flex row (8px gap, the player's `.pl-more`
+idiom): "Kružno" and **"Preimenuj"**, a native `details.st-circ.st-name` in the "Kružno"
+pill's look (32px, 5px 13px, 600 .8rem, a › that turns; 8px 15px on a coarse pointer).
+The one open takes the row's width (`flex: 1 0 100%`), its form under its own pill; a
+closed one is its pill alone (its form `display: none`: Chromium lays a closed
+`<details>`' content out at the pill's width when it is measured, which the audit read as
+a 5px overflow). Open, ONE `form.st-name-form` in the "Kružno" form's hairline box
+(`--line`, `--r-md`, `--surface`, 12px 14px, 10px under the pill): "Naziv dijela" (a 40px
+text input, 44px on a coarse pointer, maxlength 60, its placeholder the default name, its
+value the day's) and Spremi (`.btn.btn-sm`), one under the other on a phone (Spremi the
+box's width), side by side from 600px (`minmax(0, 1fr) auto`, Spremi 120px at least). Its
+save answers in the part as "Kružno"'s does (`?dio=<key>&naziv=1`; a refusal opens
+"Preimenuj" again, not "Kružno"). A renamed part's caption (`h3.st-cap`) is its name, then
+the default in brackets in `.st-cap-def` (Inter 500 .8rem, its own case, no letter-spacing:
+"KRUG 1 (Glavni dio A)"), so Amir sees which of the five it is; everywhere else, the Dio
+options of that day's forms among them, the name alone.
+**A dvoranski day's empty slots (26.11.2026, build 2: Amir's templates).** A slot's row is
+an `.it-row` whose name is `span.it-slot-name` ("Prazno mjesto", 700, no link, no hover,
+32px tall) with its hint after it in `.it-note` ("· čučanj", muted .85rem); no `.it-video`;
+↑ / ↓ / ✕ as any row (`aria-label` "Pomakni gore: Prazno mjesto · čučanj"; ✕ asks
+"Maknuti prazno mjesto?" / "Prazno mjesto „čučanj” izlazi iz ovog treninga." / "Makni").
+Its form is the row form plus "Natuknica" (`.st-hint`, maxlength 80), which lies as the
+note does (across both columns on a phone, two of four from 600px, before Napomena).
+Under the form **"Popuni vježbom"**: `details.st-circ.st-fill` (the "Kružno" pill, the
+row's width, 4px above), its `form.st-fill-form` the rename form's box and grid:
+"Vježba iz baze", the library's combobox (base.html's `qmtCombobox` in its rows mode, the
+rows the add card's select's options: the library on the page once; its value a hidden
+`exercise_id`; the input 40px, 44px on a coarse pointer), and "Postavi" (`.btn.btn-sm`).
+Rendered `hidden` and shown by the script, which types the slot's hint into the input
+(`data-hint`) and gives it the focus when the details opens, so its list is already
+narrowed ("čučanj": the squats); its list lies over the rows below (z-index 5). Without
+JS nothing fills a slot. The add card's second way (dvoranski only), `.add-slot` under a
+hairline (16px above and inside): "Natuknica (neobavezno)" (a 40px text input, 44px
+coarse) over its hint (`.ex-hint`, "npr. čučanj, potisak — sužava popis vježbi kad se
+mjesto popunjava") and "Dodaj prazno mjesto" (`.btn.btn-sm`, `formaction` →
+`…/mjesto`, `formnovalidate`: the card's Dio and numbers posted with it; Enter in its
+field presses it, never the card's "Dodaj"). With an empty library the card keeps its Dio,
+its numbers and this way.
 
 **The programme page (`trening_view.html`) and the day page (`trening_day.html`,
 30.10.2026).** The programme: crumbs, the h1 (a dvoranski programme's, for staff, its
@@ -832,7 +872,15 @@ turns 90° (points down) on `details[open]`. Open, `.dx-body` (also `.ex-video`)
 the clip (`controls playsinline preload="none"`) or a muted "Vježba još nema
 videa.", "Jedno ponavljanje: …" and the instructions (`pre-line`). Native
 `<details>`: it opens without JS. A day with no item says "Trening još nema vježbi."
-(the trainer: "… — dodaj ih u uređivanju."). The row's words (`.dx-cap`,
+(the trainer: "… — dodaj ih u uređivanju."). A dvoranski day's slot (26.11.2026,
+staff's: no client reaches such a day) is `div.card.dx-slot`, a muted row in the list's
+place: no fill, no shadow, a dashed `--line` border, `--muted` text, 56px at least, 12px
+14px 12px 18px; its `.dx-line` "Prazno mjesto · čučanj" (the words the copy slot
+`dan.slot`, the hint after them) and its dose at the right, `.dx-sub` its rests and note
+as a row's; no `<details>`, no "Vježba n" (the exercises are counted alone). The lead
+and the programme page's day card say the slots after the count, "0 vježbi · 3 prazna
+mjesta". Each caption says the part as the day names it (`part_label`, "KRUG 1").
+The row's words (`.dx-cap`,
 `.dx-list`, `.dx-n`, `.dx-line`, `.dx-name`, `.dx-dose`, `.dx-sub`) are base.html's
 since 30.10.2026: the player's list is the same rows. **A circuit part** (24.11.2026,
 kružni trening): its caption followed by `p.dx-circ`, one muted line in the `.dx-sub`
@@ -871,7 +919,7 @@ each set a `.set` that never breaks across lines.
 
 **The player (`trening_player.html`) and the finish screen (`trening_kraj.html`,
 30.10.2026).** Shape's Gym Program training page in QMT's tokens, the one-task
-layout (`solo_page = not user.is_trainer`). `.pl`: 640px, centred; from 1000px
+layout (`solo_page = not can_edit_copy`: a member's; staff, the trainer and the owner whatever his flag, keep their bar). `.pl`: 640px, centred; from 1000px
 1044px with `.pl-grid`, two columns (`minmax(0, 640px) minmax(0, 380px)`, 24px
 apart: the list keeps 380px, the player takes the rest), the dock hidden. On top
 `.pl-segs`: a 4px segment per step (an exercise; in a circuit part one round of it,

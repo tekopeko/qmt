@@ -188,7 +188,7 @@ def _safe_next(nxt: str | None) -> str:
 
 def current_user(request: Request):
     """Who the request is for. While a staff member acts as a member (since
-    26.11.2026, "Gledaj kao člana": the session's as_user_id) it is that
+    26.11.2026, "Gledaj kao član": the session's as_user_id) it is that
     MEMBER, so every page and route behaves exactly as for him; the staff
     member is the actor, kept beside him (request.state.actor, and the pair
     as request.state.acting: _acting / _actor). Only a staff member acts, only as a member:
@@ -235,16 +235,29 @@ def _is_owner(user) -> bool:
                 and (user.email or "").strip().lower() == config.OWNER_EMAIL)
 
 
-def _can_edit_copy(user) -> bool:
-    """May this viewer edit the public copy in place, the announcements
-    among it? The trainer and the owner."""
+def _is_staff(user) -> bool:
+    """Staff: a trainer or the owner, by rule (26.11.2026, the owner: "can
+    we add everything the trainer sees the admin (me) sees"). The owner sees
+    and may do everything a trainer does whatever his trainer flag (on prod
+    his account carries it; this takes the dependence away), and keeps what
+    is his alone (_require_owner: roles, /statistika, the acting record).
+    Every decision about what a viewer sees or may do as staff asks this,
+    never `is_trainer` alone; the flag itself is the datum /korisnici reads
+    and grants (db.set_trainer*)."""
     return bool(user and (user.is_trainer or _is_owner(user)))
 
 
+def _can_edit_copy(user) -> bool:
+    """May this viewer edit the public copy in place, the announcements
+    among it? Staff (_is_staff): the trainer and the owner."""
+    return _is_staff(user)
+
+
 def _has_online(user) -> bool:
-    """May this user see Online treninzi at all? Trainer always; clients only
-    with an active `online` plan (the tab is a paid product, not a teaser)."""
-    return bool(user) and (user.is_trainer or "online" in db.active_plan_kinds(user.id))
+    """May this user see Online treninzi at all? Staff always (the trainer
+    and, since 26.11.2026 whatever his flag, the owner); clients only with
+    an active `online` plan (the tab is a paid product, not a teaser)."""
+    return bool(user) and (_is_staff(user) or "online" in db.active_plan_kinds(user.id))
 
 
 def _pop_feedback_prompt(request: Request, user):
@@ -312,12 +325,12 @@ def login(request: Request, email: str = Form(...), password: str = Form(...),
     request.session["user_id"] = u.id
     # Owed osvrti are asked for once, on the first page this login renders —
     # the flag only arms the prompt, _pop_feedback_prompt decides if there is
-    # anything to ask about.
-    if not u.is_trainer:
+    # anything to ask about. Staff (the trainer, the owner) book no termini.
+    if not _is_staff(u):
         request.session["fb_prompt"] = True
     # New clients first complete their basic info (ime, prezime, datum) —
-    # the profil page explains itself; trainers are exempt.
-    if not u.is_trainer and not u.profile_complete:
+    # the profil page explains itself; staff are exempt.
+    if not _is_staff(u) and not u.profile_complete:
         return RedirectResponse("/profil?dopuni=1", status_code=303)
     # Homepage by default; back to the page that bounced them here otherwise —
     # someone who clicked "Rezerviraj termin" must land in the calendar, not
@@ -1325,6 +1338,10 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/raspored')}", status_code=303)
+    # the trainer's week, by rule staff's (_is_staff, 26.11.2026: the owner's
+    # too, whatever his trainer flag): no month view, no booking window, no
+    # gate, the rosters, no series
+    staff = _is_staff(user)
 
     today = config.today()
     now = datetime.now(config.TZ)
@@ -1338,7 +1355,7 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
     beyond_window, period_until = False, None
     # ?view=month: a client's month overview (the phone's "Mjesec") in the
     # week grid's place. A trainer has no month view: the week page it is.
-    month_view = view == "month" and not user.is_trainer
+    month_view = view == "month" and not staff
     if month_view:
         shown_month = _month_start(month, today)
         # no grid, strip or sheet to fill: the week is only where "Tjedan"
@@ -1352,7 +1369,7 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
             monday = _monday_of(today)               # garbage ?week= falls back to now
         db.materialize_week(monday)
 
-        beyond_window = not user.is_trainer and monday > last_monday
+        beyond_window = not staff and monday > last_monday
         start = datetime(monday.year, monday.month, monday.day, tzinfo=config.TZ)
         rows = [] if beyond_window else db.sessions_between(start, start + timedelta(days=7), now)
         mine = db.user_booking_ids(user.id, [r["session"].id for r in rows])
@@ -1362,7 +1379,7 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
         # nothing and the week says until when the plan runs; a weekly
         # repeat stops at the earlier of it and the window's last day
         # (db._series_dates). Never the trainer's: he does not book.
-        paid_until = {} if user.is_trainer else {m.plan: m.dospijece for m in plans if m.is_active(today)}
+        paid_until = {} if staff else {m.plan: m.dospijece for m in plans if m.is_active(today)}
 
         # Group into 7 day columns; precompute everything the template needs so it
         # stays logic-free.
@@ -1394,7 +1411,7 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
                     "can_cancel": sess.id in mine and now < db.cancel_deadline(sess),
                     "one_on_one": sess.capacity == 1,
                     # may this client book this kind? (trainer never books via UI)
-                    "allowed": user.is_trainer or sess.kind in my_plans,
+                    "allowed": staff or sess.kind in my_plans,
                     # after his plan's dospijeće: nothing to book here yet
                     "after_period": after_period,
                     # from the weekly timetable: the phone's sheet offers the
@@ -1444,7 +1461,7 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
     # "Tvoj sljedeći termin": the soonest booking (a trainer-canceled one
     # included, it says so), answered at the top of the page. Clients only.
     next_booking = None
-    if mine_days and not user.is_trainer:
+    if mine_days and not staff:
         first = mine_days[0]
         next_booking = dict(first["sessions"][0], name=first["name"],
                             relative=_relative_day(first["date"], today))
@@ -1458,7 +1475,7 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
         series_id = int(series) if series else None
     except ValueError:
         series_id = None
-    if series_id and 0 < series_id < 2**31 and not user.is_trainer \
+    if series_id and 0 < series_id < 2**31 and not staff \
             and db.user_booking_ids(user.id, [series_id]):
         preview = db.series_preview(user.id, series_id)
         if preview:
@@ -1476,13 +1493,13 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
         days=days, monday=monday, series_offer=series_offer, selected_day=selected_day,
         prev_week=(monday - timedelta(days=7)).isoformat(),
         # none past the window's last week for a client (the phone's swipe too)
-        next_week=(None if not user.is_trainer and monday >= last_monday
+        next_week=(None if not staff and monday >= last_monday
                    else (monday + timedelta(days=7)).isoformat()),
         beyond_window=beyond_window, weeks_ahead=db.weeks_text(config.BOOKING_WEEKS),
         # the week's termini after a running plan's dospijeće: the earliest
         # such dospijeće, said once under the termini
         period_until=period_until,
-        series_report=None if user.is_trainer else _read_series_report(booked, skipped, paket),
+        series_report=None if staff else _read_series_report(booked, skipped, paket),
         mine_days=mine_days, next_booking=next_booking, cutoff_hours=config.CANCEL_CUTOFF_HOURS,
         # with no plan running a client is told booking needs one (the plans
         # themselves are on /moja-clanarina since 18.10.2026)
@@ -1682,10 +1699,11 @@ def reset(request: Request, token: str = Form(...), password: str = Form(...)):
 # ---------- trainer admin ----------
 
 def _require_trainer(request: Request):
+    """A staff route (_is_staff: the trainer and the owner)."""
     user = current_user(request)
     if user is None:
         return None, RedirectResponse("/login", status_code=303)
-    if not (user.is_trainer or _is_owner(user)):
+    if not _is_staff(user):
         raise HTTPException(status_code=403, detail="Samo trener")
     return user, None
 
@@ -1699,7 +1717,7 @@ def _require_owner(request: Request):
     return user, None
 
 
-# ---------- staff act as a member ("Gledaj kao člana", 26.11.2026) ----------
+# ---------- staff act as a member ("Gledaj kao član", 26.11.2026) ----------
 #
 # The owner: "What if we have a user selection somewhere in the app for the
 # admins much higher in the hierarchy and then Amir can look at the app just
@@ -1830,7 +1848,7 @@ async def _acting_guard(app_, scope, receive, send) -> None:
 
 @app.get("/kao", response_class=HTMLResponse)
 def kao_page(request: Request):
-    """"Gledaj kao člana" (Admin ▾'s first item): every member (an account
+    """"Gledaj kao član" (Admin ▾'s first item): every member (an account
     that is neither a trainer nor the owner) in the alphabet's order (his
     full name, the email for one with none: models.alpha_key), his running
     plans by their names (PLAN_LABELS, PLAN_TYPES' order; none: "bez
@@ -2303,7 +2321,7 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         docs=docs, docs_max=db.MAX_LIMITATION_FILES, doc_name_max=db.DOC_NAME_MAX,
         logged=logged, hx=hx, hx_unknown=hx_unknown, hx_rows=hx_rows, hx_shown=HISTORY_SHOWN,
         karton_path="/karton" if own else f"/karton/{subject.id}",
-        # the trainer's view of a member's karton: "Otvori kao člana" (26.11.2026)
+        # the trainer's view of a member's karton: "Otvori kao član" (26.11.2026)
         can_act=not own and not _can_edit_copy(subject),
         today=config.today(), tz=config.TZ,
     ))
@@ -3028,7 +3046,7 @@ def _program_or_403(request: Request, program_id: int):
     p = db.get_program(program_id)
     if p is None:
         raise HTTPException(status_code=404)
-    if not user.is_trainer:
+    if not _is_staff(user):                          # staff see every programme (the owner too, 26.11.2026)
         # Paid product first, onboarding second: no active `online` plan means
         # no programme content at all; with a plan, the upitnik must still
         # route the client into a razina before assignments show.
@@ -3047,7 +3065,7 @@ def treninzi(request: Request):
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/treninzi')}", status_code=303)
-    if user.is_trainer:
+    if _is_staff(user):                              # staff's table (the owner's too, whatever his flag)
         rows = db.all_programs()
         goal_order = list(upitnik.GOALS)
         # one section per razina, goals in a fixed order inside each
@@ -3058,8 +3076,12 @@ def treninzi(request: Request):
                                                  r[0].title))}
                   for level, label in upitnik.LEVELS.items()]
         untagged = [r for r in rows if r[0].level not in upitnik.LEVELS]
+        # a template's empty slots, said beside its count of exercises
+        # (26.11.2026): "0 · 7 praznih mjesta", not "0 prazno!"
+        slots = {pid: f"{n} {plural(n, 'prazno mjesto', 'prazna mjesta', 'praznih mjesta')}"
+                 for pid, n in db.program_slot_counts().items()}
         return templates.TemplateResponse(request, "treninzi_admin.html", _ctx(
-            request, user, groups=groups, untagged=untagged,
+            request, user, groups=groups, untagged=untagged, slots=slots,
             levels=upitnik.LEVELS, goals=upitnik.GOALS))
     has_plan = _has_online(user)
     onboarding = db.get_onboarding(user.id) if has_plan else None
@@ -3322,8 +3344,10 @@ def _day_or_404(program_id: int, day_id: int):
 def _day_items(day) -> list:
     """The day's exercises in its display order, its sections in their
     order, each in position order (ProgramDay.by_section). The player walks
-    them as steps (_steps: a circuit part round by round)."""
-    return [it for rows in day.by_section.values() for it in rows]
+    them as steps (_steps: a circuit part round by round). A slot
+    (26.11.2026: a dvoranski day's row with no exercise yet) is none of
+    them: no step, no mark, not counted (ProgramDay.exercise_items)."""
+    return day.exercise_items
 
 
 @dataclass(frozen=True)
@@ -3683,8 +3707,9 @@ def _player(request: Request, user, p, day, steps: list[Step], k: int, log, erro
     # each after its words, copy slots since 25.11.2026 ("Odmor nakon kruga:",
     # "Odmor između serija:", "Odmor nakon vježbe:")
     if it is None:                                   # a round of a circuit part (25.11.2026)
+        # its h1 and the page's title the part as the day names it (26.11.2026: "Krug 1", else "Glavni dio A")
         view.update(it=None, blocks=posted if posted is not None else _round_blocks(user, log, step, by_id),
-                    effort=effort, title=SECTIONS.get(circ.section, ""), round_rest=circ.rest_text)
+                    effort=effort, title=day.part_label(circ.section), round_rest=circ.rest_text)
     else:
         planned = by_id.get(it.exercise_id) or it.exercise
         swapped = by_id.get(swaps[it.id]) if it.id in swaps else None
@@ -4030,7 +4055,9 @@ def program_edit(request: Request, program_id: int, title: str = Form(...),
                  intro: str = Form(""), level: str = Form(...), goal: str = Form(...),
                  venue: str | None = Form(None)):
     """"Uredi program"'s form: its type, razina, Vrsta (24.11.2026; one not
-    posted keeps the programme's), title and intro."""
+    posted keeps the programme's), title and intro. A dvoranski programme
+    that holds a slot is not made online (26.11.2026: db.SLOTS_NOT_ONLINE,
+    nothing saved)."""
     from urllib.parse import quote
 
     user, redirect = _require_trainer(request)
@@ -4041,8 +4068,11 @@ def program_edit(request: Request, program_id: int, title: str = Form(...),
                                 status_code=303)
     if venue is not None and venue not in VENUES:
         return RedirectResponse(f"/treninzi/{program_id}/uredi?error={quote(BAD_VENUE)}", status_code=303)
-    db.update_program(program_id, title.strip() or "Program", intro.strip() or None,
-                      level, goal, venue)
+    try:
+        db.update_program(program_id, title.strip() or "Program", intro.strip() or None,
+                          level, goal, venue)
+    except ValueError as err:
+        return RedirectResponse(f"/treninzi/{program_id}/uredi?error={quote(str(err))}", status_code=303)
     return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Spremljeno.", status_code=303)
 
 
@@ -4115,7 +4145,12 @@ def day_edit_page(request: Request, program_id: int, day_id: int, vjezba: str = 
     add named), the library's tags as chips under it (23.11.2026,
     _tag_chips), its Dio the part `dodaj` names (Glavni dio A without one)
     and the picker focused then, and the numbers (25.11.2026). The add's
-    word (?ok= / ?error= with ?dodaj=) stands in that card."""
+    word (?ok= / ?error= with ?dodaj=) stands in that card. Since
+    26.11.2026 each part's "Preimenuj" (day_part_name_save) beside its
+    "Kružno", every part named as the day names it (ProgramDay.part_label),
+    and on a dvoranski programme's day the slots: the add card's "Dodaj
+    prazno mjesto" (day_slot_add) and a slot's row with "Popuni vježbom"
+    (day_slot_fill)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -4230,7 +4265,7 @@ def day_item_add(request: Request, program_id: int, day_id: int, exercise_id: st
     if redirect:
         return redirect
     from urllib.parse import quote
-    _program_day(program_id, day_id)
+    _, day = _program_day(program_id, day_id)
     back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
     chosen = _id(exercise_id)
     if section not in SECTIONS:                      # no part to come back to: the top, as before
@@ -4244,14 +4279,48 @@ def day_item_add(request: Request, program_id: int, day_id: int, exercise_id: st
         return RedirectResponse(f"{card}&error={quote(str(err))}{keep}#dodaj", status_code=303)
     if item_id is None:
         return RedirectResponse(f"{card}&error=Odaberi+vje%C5%BEbu+iz+baze.#dodaj", status_code=303)
-    said = f"Dodano u {SECTIONS[section]}: {db.get_day_item(item_id).exercise.name}."
+    # the part as the day names it (26.11.2026: "Dodano u Krug 1: Sklekovi.")
+    said = f"Dodano u {day.part_label(section)}: {db.get_day_item(item_id).exercise.name}."
+    return RedirectResponse(f"{card}&ok={quote(said)}#dodaj", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/mjesto")
+def day_slot_add(request: Request, program_id: int, day_id: int, section: str = Form("trening"),
+                 hint: str = Form(""), sets: str = Form(""), reps: str = Form(""), seconds: str = Form(""),
+                 kg: str = Form("")):
+    """"Dodaj prazno mjesto" (26.11.2026, a dvoranski programme's day: the
+    add card's second way, its own button posting the card's Dio and
+    numbers here, with "Natuknica"): a slot last in the chosen section, no
+    exercise yet, its hint and numbers (db.add_day_slot). Back at the add
+    card as after an exercise (?dodaj=<the part>#dodaj), "Dodano u Krug 1:
+    prazno mjesto."; a refusal there too (a number, "Neispravan broj."; an
+    online programme's day, "Prazna mjesta idu samo u dvoranske
+    programe."), nothing added; a section that is none at the top."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    from urllib.parse import quote
+    _, day = _program_day(program_id, day_id)
+    back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
+    if section not in SECTIONS:
+        return RedirectResponse(f"{back}?error={quote(db.NO_SECTION)}", status_code=303)
+    card = f"{back}?dodaj={section}"
+    try:
+        numbers = {"sets": _count(sets), "reps": _count(reps), "seconds": _count(seconds), "kg": db.read_item_kg(kg)}
+        item_id = db.add_day_slot(day_id, section, hint, **numbers)
+    except ValueError as err:
+        return RedirectResponse(f"{card}&error={quote(str(err))}#dodaj", status_code=303)
+    if item_id is None:                              # the day deleted meanwhile
+        raise HTTPException(status_code=404)
+    said = f"Dodano u {day.part_label(section)}: prazno mjesto."
     return RedirectResponse(f"{card}&ok={quote(said)}#dodaj", status_code=303)
 
 
 @app.post("/treninzi/{program_id}/dan/{day_id}/stavke/{item_id}")
 def day_item_save(request: Request, program_id: int, day_id: int, item_id: int, section: str = Form("trening"),
                   sets: str = Form(""), reps: str = Form(""), seconds: str = Form(""), rest: str = Form(""),
-                  rest_after: str = Form(""), note: str = Form(""), circuit: str = Form(""), kg: str = Form("")):
+                  rest_after: str = Form(""), note: str = Form(""), circuit: str = Form(""), kg: str = Form(""),
+                  hint: str | None = Form(None)):
     """A row's form: its section, sets, reps and seconds (either or both
     since 24.11.2026), its planned weight (Kilaža (kg), 25.11.2026), rest
     (between sets), rest after it (before the next exercise) and note; an
@@ -4262,7 +4331,9 @@ def day_item_save(request: Request, program_id: int, day_id: int, item_id: int, 
     asks no sets, no rest between sets (24.11.2026) and no rest after it
     (25.11.2026: no pause between a circuit's exercises), which do not
     apply there, and says so (`circuit`): the item keeps the ones it has
-    stored (db.KEEP), wherever its Dio takes it."""
+    stored (db.KEEP), wherever its Dio takes it. A slot's row form
+    (26.11.2026) posts its "Natuknica" too (`hint`); an exercise's posts
+    none, and its row keeps the one it has."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -4275,12 +4346,40 @@ def day_item_save(request: Request, program_id: int, day_id: int, item_id: int, 
         else:
             kept = _count(sets), _count(rest), _count(rest_after)
         saved = db.update_day_item(item_id, section, kept[0], _count(reps), _count(seconds), kept[1], kept[2], note,
-                                   kg=db.read_item_kg(kg))
+                                   kg=db.read_item_kg(kg), hint=db.KEEP if hint is None else hint)
     except ValueError as err:
         return RedirectResponse(f"{back}?error={quote(str(err))}&stavka={item_id}#stavka-{item_id}", status_code=303)
     if not saved:
         raise HTTPException(status_code=404)
     return RedirectResponse(f"{back}?ok=Spremljeno.&stavka={item_id}#stavka-{item_id}", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/stavke/{item_id}/vjezba")
+def day_slot_fill(request: Request, program_id: int, day_id: int, item_id: int, exercise_id: str = Form("")):
+    """A slot's "Popuni vježbom" → "Postavi" (26.11.2026): the exercise
+    chosen from the library goes into the slot, which is an ordinary row
+    from then on (db.fill_slot). Back at the row (?stavka=<id>#stavka-<id>)
+    with "Spremljeno." or the refusal's sentence in it (none chosen
+    "Odaberi vježbu s popisa.", "Nepoznata vježba.", a row that is no slot
+    "Mjesto je već popunjeno."), and after a refusal its "Popuni vježbom"
+    open again (`popuni`)."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    from urllib.parse import quote
+    _day_item(program_id, day_id, item_id)
+    at = f"&stavka={item_id}#stavka-{item_id}"
+    back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
+    chosen = _id(exercise_id)
+    try:
+        if chosen is None:
+            raise ValueError(db.NO_EXERCISE)
+        saved = db.fill_slot(item_id, chosen)
+    except ValueError as err:
+        return RedirectResponse(f"{back}?error={quote(str(err))}&popuni=1{at}", status_code=303)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"{back}?ok=Spremljeno.{at}", status_code=303)
 
 
 @app.post("/treninzi/{program_id}/dan/{day_id}/dio/{section}/krug")
@@ -4307,6 +4406,32 @@ def day_circuit_save(request: Request, program_id: int, day_id: int, section: st
             saved = db.set_circuit(day_id, section, _count(rounds), _count(rest))
         else:
             saved = db.clear_circuit(day_id, section)
+    except ValueError as err:
+        return RedirectResponse(f"{back}?error={quote(str(err))}{at}", status_code=303)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"{back}?ok=Spremljeno.{at}", status_code=303)
+
+
+@app.post("/treninzi/{program_id}/dan/{day_id}/dio/{section}/naziv")
+def day_part_name_save(request: Request, program_id: int, day_id: int, section: str, title: str = Form("")):
+    """A part's "Preimenuj" form in the day editor (26.11.2026; the owner:
+    "Lets have Glavni dio A, B and C but lets also allow Amir to rename
+    them."): "Naziv dijela", this day's own name for the part
+    (db.set_part_name: one line; empty, the default back). Back at the part
+    as its "Kružno" form answers (?dio=<key>#dio-<key>, the word printed
+    there), and `naziv` says it was this form: after a refusal ("Najviše 60
+    znakova.") its "Preimenuj" opens again, not "Kružno". A section that is
+    none comes back at the top ("Odaberi dio treninga.")."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    from urllib.parse import quote
+    _program_day(program_id, day_id)
+    back = f"/treninzi/{program_id}/dan/{day_id}/uredi"
+    at = f"&dio={section}&naziv=1#dio-{section}" if section in SECTIONS else ""
+    try:
+        saved = db.set_part_name(day_id, section, title)
     except ValueError as err:
         return RedirectResponse(f"{back}?error={quote(str(err))}{at}", status_code=303)
     if not saved:
@@ -4356,7 +4481,7 @@ def media(request: Request, name: str):
         return RedirectResponse("/login", status_code=303)
     if "/" in name or "\\" in name or ".." in name:
         raise HTTPException(status_code=404)
-    staff = user.is_trainer or _is_owner(user)
+    staff = _is_staff(user)
     owner = db.file_owner(name)
     if owner is not None:
         if not staff and owner != user.id:

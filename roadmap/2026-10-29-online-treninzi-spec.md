@@ -60,6 +60,19 @@ weight, a rep, 5 s), 7 or 8 the same, 9 or 10 a little less (−10 %), the card 
 (`PROGRESS_*`). The finish screen's napor stays the whole training's; the karton's gym log
 is untouched.
 
+**Note (26.11.2026): Glavni dio C, a part's own name, and a dvoranski day's empty slots**
+(build 2 of `roadmap/2026-11-26-gym-training-plan.md`; the owner: "Lets have Glavni dio A,
+B and C but lets also allow Amir to rename them.", and for the gym trainings, templates
+"with no particular exercises connected to them … only slots to put them in"). Migration
+`a7d3c5e9f214`: a day has five parts (`trening_c`, "Glavni dio C", after B); any part of
+any day may carry a name of its own, the day's alone (`program_day_parts`; the day editor's
+"Preimenuj" beside "Kružno"), which every page that names that part prints, a pass keeping
+the part's key; and in a dvoranski programme's day an item may hold no exercise yet: a slot
+(`exercise_id` NULL, a `hint`), added by the add card's "Dodaj prazno mjesto" and filled by
+its row's "Popuni vježbom" (the library's combobox, opening on the hint). A slot is no step
+of the player, no mark, not counted ("0 vježbi · 3 prazna mjesta"); a programme holding one
+is not made online. Members copying a template are build 3's.
+
 ## What the owner asked
 
 "For each group he needs to add the training programme per days which the user will

@@ -399,11 +399,11 @@
     {# none past the booking window's last week for a client #}
     {% if next_week %}<a class="btn btn-ghost btn-sm" href="/raspored?week={{ next_week }}">{{ c.t("raspored.week.next") }}</a>{% endif %}
   </div>
-  {% if not user.is_trainer %}{{ view_switch("week") }}{% endif %}
+  {% if not can_edit_copy %}{{ view_switch("week") }}{% endif %}
   {% endif %}
 </div>
 
-{% if next_booking and not user.is_trainer %}
+{% if next_booking and not can_edit_copy %}
 {% set nb = next_booking %}
 {# the most common question, answered before any scrolling #}
 <section class="card next-termin" aria-labelledby="ntKicker">
@@ -476,9 +476,9 @@
 {% if beyond_window %}
   {# a client past the booking window (a month's day, a typed ?week=): nothing to book yet #}
   <p class="hint" style="padding: 30px 0 10px;">{{ c.t("raspored.week.beyond") }} {{ weeks_ahead }} unaprijed.</p>
-{% elif week_empty and (user.is_trainer or copy_on("raspored.week.empty")) %}
+{% elif week_empty and (can_edit_copy or copy_on("raspored.week.empty")) %}
   <p class="hint" style="padding: 30px 0 10px;">{{ c.t("raspored.week.empty") }}
-  {% if user.is_trainer %}<a class="act act-quiet" href="/admin">{{ c.t("raspored.week.add") }}</a>{% endif %}</p>
+  {% if can_edit_copy %}<a class="act act-quiet" href="/admin">{{ c.t("raspored.week.add") }}</a>{% endif %}</p>
 {% endif %}
 <div class="week{% if week_empty %} all-empty{% endif %}" data-selected="{{ selected_day.isoformat() }}"
      data-week="{{ monday.isoformat() }}" data-prev="{{ prev_week }}" data-next="{{ next_week or '' }}">
@@ -492,7 +492,7 @@
         <div class="name">{{ s.title }}{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
         {# capacity line: for the trainer the Polaznici button already carries it,
            so only the canceled/closed states show here; clients still need "X/8 mjesta" #}
-        {% set show_cap = s.canceled or s.closed or not user.is_trainer %}
+        {% set show_cap = s.canceled or s.closed or not can_edit_copy %}
         {# the state's word (a copy slot since 25.11.2026: emptied, no line),
            or the free places, a count #}
         {% set cap = "raspored.state.canceled" if s.canceled else "raspored.state.closed" if s.closed
@@ -506,7 +506,7 @@
           {% else %}<span{% if not s.full %} style="color:var(--good); font-weight:700;"{% endif %}>{{ s.booked }}</span>/{{ s.capacity }} mjesta{% endif %}
         </div>
         {% endif %}
-        {% if user.is_trainer %}
+        {% if can_edit_copy %}
           <form method="get" action="/admin/session/{{ s.id }}">
             {# one flex child so the button's gap:8px doesn't split "5" from "/8" #}
             <button class="btn-sm btn-ghost" type="submit"><span>{{ c.t("raspored.trainer.roster") }} <span style="font-weight:700; color:{{ 'var(--accent)' if s.full else 'var(--good)' }};">{{ s.booked }}</span><span style="color:var(--muted);">/{{ s.capacity }}</span></span></button>
@@ -538,7 +538,7 @@
         {% endif %}
       </div>
       {# the same termin as a phone's row (shown only in the one-day view) #}
-      {% if user.is_trainer %}
+      {% if can_edit_copy %}
       <a class="sess-row{% if s.past %} past{% endif %}{% if s.canceled %} canceled{% endif %}{% if s.closed %} closed{% endif %}" href="/admin/session/{{ s.id }}">
         <span class="rt">{{ s.time }}–{{ s.end }}</span>
         <span class="rn">{{ s.title }}</span>{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}
@@ -582,7 +582,7 @@
 </div>
 {% endif %}
 
-{% if not user.is_trainer and not has_active_plan and view != "month" %}{# the month page has its own note #}
+{% if not can_edit_copy and not has_active_plan and view != "month" %}{# the month page has its own note #}
 {# the moment they most want to know what a plan costs — so say it here;
    how to join is on that page #}
 <p class="hint gate-line">{{ c.t("raspored.gate.none") }} <a class="btn btn-sm" href="/moja-clanarina">{{ c.t("raspored.gate.link") }}</a></p>
@@ -594,7 +594,7 @@
 <p class="hint gate-line"><span>{{ c.t("raspored.plan.until") }} {{ period_until.strftime("%-d.%-m.") }} {{ c.t("raspored.gate.renew") }}</span> <a class="btn btn-sm" href="/moja-clanarina">{{ c.t("raspored.gate.renew_link") }}</a></p>
 {% endif %}
 
-{% if mine_days and not user.is_trainer %}
+{% if mine_days and not can_edit_copy %}
 <div class="mine-list">
   <h2>{{ c.t("raspored.mine.title") }}</h2>
   <div class="mine-week">
@@ -616,7 +616,7 @@
 </div>
 {% endif %}
 
-{% if not user.is_trainer and view != "month" %}
+{% if not can_edit_copy and view != "month" %}
 {# the phone's bottom sheet: ONE dialog, filled by the script from the row
    tapped (its data-*): the termin's facts and one action. The sheet is the
    confirmation, so its forms carry no data-confirm. #}

@@ -95,7 +95,7 @@ ALLOWED: dict[str, set[str]] = {
         # the nav: the tabs, Admin ▾ and its items, the drawer's captions,
         # the account menu (the bar's room is measured: tests/test_nav.py)
         "Kao član", "Početna", "Raspored", "Karton", "Online treninzi", "Moja članarina", "Prehrana", "Admin",
-        "Gledaj kao člana", "Termini", "Trenutne članarine", "Upitnik", "Vježbe", "Tekstovi", "Korisnici",
+        "Gledaj kao član", "Termini", "Trenutne članarine", "Upitnik", "Vježbe", "Tekstovi", "Korisnici",
         "Statistika", "Prijava", "Registriraj se", "Kontakt", "Profil", "Tamna tema", "Odjava",
         # the strip over every page while staff act as a member (26.11.2026):
         # staff's own chrome, which a member never reads
@@ -135,7 +135,7 @@ ALLOWED: dict[str, set[str]] = {
         "se nakon osvježavanja stranice.",
         # the trainer's view's way into the member's account (26.11.2026):
         # staff's own chrome, as the strip over a page while acting
-        "Otvori kao člana",
+        "Otvori kao član",
     },
     "trening_view.html": {
         "Treninzi",                          # the crumb
@@ -264,8 +264,9 @@ def test_every_slot_of_this_build_is_printed_by_a_template_or_the_code():
     app.py gives it). Every one a plain Slot of every text's cap, its label
     unique in the editor's bar. 270 since 26.11.2026: the profile's
     "Visina (cm)" left (the karton's since), the phone reminder's three
-    came (app.phone.*)."""
-    assert len(BUILD) == 270
+    came (app.phone.*); 271 the same day, a dvoranski day's empty slot on
+    the day's page (dan.slot, "Prazno mjesto")."""
+    assert len(BUILD) == 271
     sources = APP + "".join((TEMPLATES / n).read_text() for n in MEMBER_TEMPLATES)
     why = {k for k in BUILD if k.startswith("raspored.report.why_")}
     chips = {k for k in BUILD if k.startswith("clanarina.chip.")}

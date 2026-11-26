@@ -2475,8 +2475,10 @@ def test_every_new_text_is_a_slot_with_the_words_the_page_printed():
     what the pages printed, character for character (spot-checked against
     their old texts), each as clean() keeps a text. 270 since 26.11.2026:
     the profile's "Visina (cm)" left (the karton's since), the phone
-    reminder's three came (app.phone.*, its lead optional)."""
-    assert len(NEW) == 270
+    reminder's three came (app.phone.*, its lead optional); 271 the same
+    day, a dvoranski day's empty slot on the day's page (dan.slot,
+    "Prazno mjesto", required)."""
+    assert len(NEW) == 271
     for key in NEW:
         slot = copy.SLOTS[key]
         assert isinstance(slot, copy.Slot) and slot.max == copy.CAP, key

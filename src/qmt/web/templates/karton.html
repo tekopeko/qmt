@@ -241,7 +241,7 @@
      .editing shows the .le-edit under the head); the trainer's view reads
      them. A save or a refusal comes back to the card (#masa, #ogranicenja,
      #napredak), clear of the floating bar. ===== */
-  /* "Otvori kao člana" under the trainer's view's head line (26.11.2026):
+  /* "Otvori kao član" under the trainer's view's head line (26.11.2026):
      one .act, tucked under the lead, the cards below it */
   .kao-open { margin:-8px 0 22px; }
   .k-body { display:block; font-variant-numeric:tabular-nums; }
@@ -593,13 +593,13 @@
 </p>
 {% endif %}
 {# the trainer's view of a member's karton (26.11.2026): the way into his
-   account, his app as he has it ("Gledaj kao člana"; staff's own chrome,
+   account, his app as he has it ("Gledaj kao član"; staff's own chrome,
    no slot), back here at "Izađi". This view itself stays: it shows what a
    member never sees. #}
 {% if can_act %}
 <form class="kao-open" method="post" action="/kao/{{ subject.id }}">
   <input type="hidden" name="natrag" value="/karton/{{ subject.id }}">
-  <button type="submit" class="act">Otvori kao člana</button>
+  <button type="submit" class="act">Otvori kao član</button>
 </form>
 {% endif %}
 

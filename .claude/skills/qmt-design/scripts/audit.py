@@ -72,10 +72,17 @@ CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?vie
 # client's walk found as "dan:1" (staff's /treninzi is the table of every
 # programme, so the owner's walk takes the path the client's found).
 # /tekstovi (25.11.2026): every text of the app on one page, Admin ▾'s.
-# /kao (26.11.2026): "Gledaj kao člana", the picker of members to act as;
+# /kao (26.11.2026): "Gledaj kao član", the picker of members to act as;
 # /kao/zapisi its record, the owner's.
+# The template (26.11.2026, build 2: the seed's dvoranski "Predložak —
+# kružni trening", empty slots, its Glavni dio A renamed "Krug 1" and a
+# circuit): "predlozak:uredi" its Trening 1's editor, "predlozak:dan" that
+# day's page, found from staff's /treninzi table by its title (no client
+# reaches a dvoranski programme).
 OWNER = ["/", "/raspored", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi",
-         "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi", "/profil", "/tekstovi", "/kao", "/kao/zapisi"]
+         "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi", "predlozak:uredi", "predlozak:dan", "/profil",
+         "/tekstovi", "/kao", "/kao/zapisi"]
+TEMPLATE_TITLE = "Predložak — kružni trening"          # scripts/seed_demo.py's TEMPLATE
 
 FIND_EXERCISE = """n => { const row = [...document.querySelectorAll('a.ex-row')]
   .find(a => (a.querySelector('.ex-name') || {}).textContent === n); return row ? row.getAttribute('href') : null; }"""
@@ -86,6 +93,10 @@ FIRST_ROUND = """() => { const cap = [...document.querySelectorAll('#popis .dx-c
   const a = cap && cap.nextElementSibling && cap.nextElementSibling.querySelector('a.pl-row');
   return a ? a.getAttribute('href') : null; }"""
 FOUND: dict[str, str] = {}               # "trening:1" / "dan:1" -> the path the client's walk found
+# staff's /treninzi table: the "Uredi" link of the programme titled so
+FIND_PROGRAM_EDIT = """t => { const row = [...document.querySelectorAll('main tr')]
+  .find(r => (r.querySelector('strong') || {}).textContent === t);
+  const a = row && row.querySelector('a[href$="/uredi"]'); return a ? a.getAttribute('href') : null; }"""
 
 CHECKS = r"""
 () => {
@@ -257,6 +268,26 @@ def player(pg, r: str) -> str | None:
     return path
 
 
+def template(pg, r: str) -> str | None:
+    """The seed's template (TEMPLATE_TITLE): "predlozak:uredi" its first
+    day's editor, "predlozak:dan" that day's page; found once, kept in
+    FOUND."""
+    if "predlozak" not in FOUND:
+        pg.goto(BASE + "/treninzi")
+        pg.wait_for_load_state("networkidle")
+        edit = pg.evaluate(FIND_PROGRAM_EDIT, TEMPLATE_TITLE)
+        if not edit:
+            return None
+        pg.goto(BASE + edit)
+        pg.wait_for_load_state("networkidle")
+        day = pg.evaluate(NTH_LINK, ['main a.it-name[href*="/dan/"]', 1])
+        if not day:
+            return None
+        FOUND["predlozak"] = day                    # /treninzi/<id>/dan/<id>/uredi
+    day = FOUND["predlozak"]
+    return day if r.endswith(":uredi") else day.removesuffix("/uredi")
+
+
 def run(pg, routes, who, theme, width, findings):
     for r in routes:
         key = f"{who}/{theme}/{width}px{r}"
@@ -277,6 +308,11 @@ def run(pg, routes, who, theme, width, findings):
             path = player(pg, r)
             if not path:
                 findings["head"].append((key, f"nothing found for {r!r} (the demo seed? dan:N first?)"))
+                continue
+        elif r.startswith("predlozak:"):               # the seed's template of slots (26.11.2026)
+            path = template(pg, r)
+            if not path:
+                findings["head"].append((key, f"nothing found for {r!r} (the demo seed's TEMPLATE?)"))
                 continue
         pg.goto(BASE + path)
         pg.wait_for_load_state("networkidle")

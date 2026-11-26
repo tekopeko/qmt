@@ -55,7 +55,7 @@ guardrails, none objected to:
 - Closed there: card payments, and sending the upitnik (its consent is the member's own).
 - Every change made this way is recorded (who, as whom, what, when) — "Only a record for
   me": the owner reads it, the member sees no mark.
-- It lives in Admin ▾ ("Gledaj kao člana", a search by name), with shortcuts on a termin's
+- It lives in Admin ▾ ("Gledaj kao član", a search by name), with shortcuts on a termin's
   roster, on Trenutne članarine and on the trainer's view of a karton, which stays (it
   shows what a member never sees).
 - It replaces the two things Fable had proposed first: a member search on the Karton tab
@@ -121,13 +121,20 @@ the app on the phone".
   stays for a training with no booking.
 - A cancelled booking takes its training with it.
 
+**Added the same day, after build 1 went live** —
+- "can we add everything the trainer sees the admin (me) sees": the owner is staff by rule
+  (`app._is_staff`), whatever his trainer flag; built with build 2.
+- "the grammatically correct term should be 'otvori kao član' not 'člana'": the button is
+  "Otvori kao član", and Fable applied the same rule to the feature's name, "Gledaj kao
+  član"; built with build 2.
+
 Not asked for, so not built: Amir preparing a termin's training for the whole group; a
 gym/online flag on an exercise; blocks beyond the five parts ("if Amir needs more, he will
 ask for a bigger change").
 
 ## The builds, in order (one at a time: one tree, one test database)
 
-1. **Acting as a member, and the small things**: "Gledaj kao člana" with its bar, its
+1. **Acting as a member, and the small things**: "Gledaj kao član" with its bar, its
    record and its shortcuts; seconds in steps of 5; 20 sets; the height on the karton; the
    phone reminder. (Live 26.11.2026, `65121a6`: STATUS.md.)
 2. **A training's parts**: Glavni dio C, a part's own name, and in a dvoranski programme

@@ -1008,7 +1008,7 @@
 </head>
 <body{% if kao %} data-kao="{{ kao.id }}"{% endif %}>
 {% if kao %}
-{# A staff member in a member's account (26.11.2026, "Gledaj kao člana"):
+{# A staff member in a member's account (26.11.2026, "Gledaj kao član"):
    the strip over every page says whose it is and ends it (POST /kao/izlaz).
    Its words are staff's own chrome, fixed text. The page carries the
    member's id (body data-kao): every write it sends names him (the script
@@ -1102,7 +1102,7 @@
          /upitnik its own. Moja članarina is the members' page, which they
          edit in place: everyone has the tab, nobody an account-menu item
          for it. #}
-      {% set staff = user.is_trainer or is_owner %}
+      {% set staff = can_edit_copy %}{# staff by rule (26.11.2026): the trainer or the owner, app._is_staff #}
       {# the library of exercises is under /treninzi but Admin ▾'s (30.10.2026):
          its pages light Vježbe there, not the Online treninzi tab #}
       {% set at_vjezbe = staff and path.startswith('/treninzi/vjezbe') %}
@@ -1116,7 +1116,7 @@
       <a href="/moja-clanarina" class="{% if path.startswith('/moja-clanarina') %}on{% endif %}">Moja članarina</a>
       <a href="/prehrana" class="{% if path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
       {% if staff %}
-      {# Admin ▾, the account menu's component (.menu): Gledaj kao člana
+      {# Admin ▾, the account menu's component (.menu): Gledaj kao član
          (26.11.2026: a member's account as he has it, /kao; its record,
          /kao/zapisi, lights it too), Termini, Trenutne
          članarine, Upitnik (in normal mode, as every page opens: the ✎ pill
@@ -1142,7 +1142,7 @@
           <a href="/kao" role="menuitem"{% if at_kao %} aria-current="page"{% endif %}>
             <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>
-            </svg><span>Gledaj kao člana</span>
+            </svg><span>Gledaj kao član</span>
           </a>
           <a href="/admin" role="menuitem"{% if at_termini %} aria-current="page"{% endif %}>
             <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
@@ -1799,7 +1799,7 @@
   })();
 </script>
 {% endif %}
-{% if user and not user.is_trainer and not is_owner and not user.phone and not solo
+{% if user and not can_edit_copy and not user.phone and not solo
       and not request.url.path.startswith('/profil') %}
 {# the phone reminder (26.11.2026): a member with no phone number, on every
    page but a one-task page and the profile (whose field it leads to),
@@ -1816,7 +1816,7 @@
   <div class="phone-actions"><a class="btn btn-sm" href="/profil#p-phone">{{ c.t("app.phone.go") }}</a></div>
 </div>
 {% endif %}
-{% if user and not user.is_trainer and not actor %}
+{% if user and not can_edit_copy and not actor %}
 {# the install banner — a PWA nobody installs is a website. JS decides whether
    to show it (phone, browser tab, not the first page, not dismissed in the
    last week, not installed, not with the phone reminder). Never while a
@@ -2249,8 +2249,11 @@
       var li = e.target.closest('[role="option"]');
       if (li) pick(li);
     });
+    // a button that skips the form's checks (formnovalidate: the day
+    // editor's "Dodaj prazno mjesto", 26.11.2026, a slot needs no exercise)
+    // skips this one too
     if (opts.submit !== false) form.addEventListener("submit", function (e) {
-      if (sel.value) return;
+      if (sel.value || (e.submitter && e.submitter.formNoValidate)) return;
       e.preventDefault();
       fail();
       input.focus();

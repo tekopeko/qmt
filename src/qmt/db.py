@@ -27,7 +27,8 @@ from sqlalchemy.orm import Session, aliased, joinedload, load_only, selectinload
 from . import config, copy, upitnik
 from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, ActingLog, Announcement, Base, Booking,
                      Exercise, GymCard, LimitationFile, Membership, OnboardingResponse, Payment, Program, ProgramDay,
-                     ProgramDayCircuit, ProgramDayItem, ProgressPhoto, ReminderLog, SessionTemplate, SiteCopy,
+                     ProgramDayCircuit, ProgramDayItem, ProgramDayPart, ProgressPhoto, ReminderLog, SessionTemplate,
+                     SiteCopy,
                      TrainingLog, TrainingSession,
                      UpitnikQuestion, User, Weight, WorkoutLog, alpha_key, effort_of, exercise_alternatives, fold,
                      kg_text, matches, plural, set_text)
@@ -1461,9 +1462,12 @@ def remove_membership(user_id: int, plan: str) -> bool:
 
 
 def memberships_overview() -> list[dict]:
-    """Every client with their plans — the trainer's Članarine page."""
+    """Every client with their plans — the trainer's Članarine page. Staff
+    are no clients: no trainer, and since 26.11.2026 never the owner either,
+    whatever his trainer flag (OWNER_EMAIL, as app._is_owner reads it)."""
     with session_scope() as s:
-        users = list(s.scalars(select(User).where(~User.is_trainer)
+        users = list(s.scalars(select(User).where(~User.is_trainer,
+                                                  func.lower(func.trim(User.email)) != config.OWNER_EMAIL)
                                .order_by(User.name, User.email)))
         all_m = list(s.scalars(select(Membership).order_by(Membership.plan)))
     by_user: dict[int, list[Membership]] = {}
@@ -2244,12 +2248,14 @@ def programs_for_level(level: str) -> list[Program]:
     the trainer's own plan for the gym, Program.venue). No hand-outs —
     matching IS the access. In GOALS' order (cijelo, gornji, donji, core; a
     type not among them last), each type by title; each with its days and
-    their items loaded (the list says how many days), and their circuits."""
+    their items loaded (the list says how many days), and their circuits
+    and their parts' own names (26.11.2026)."""
     with session_scope() as s:
         rows = list(s.scalars(
             select(Program).where(Program.level == level, Program.venue == "online")
             .options(selectinload(Program.days).options(selectinload(ProgramDay.items),
-                                                        selectinload(ProgramDay.circuits)))
+                                                        selectinload(ProgramDay.circuits),
+                                                        selectinload(ProgramDay.parts)))
             .order_by(Program.title)))
     order = list(upitnik.GOALS)
     return sorted(rows, key=lambda p: order.index(p.goal) if p.goal in upitnik.GOALS else len(order))
@@ -2415,6 +2421,7 @@ def exercises(q: str = "") -> list[tuple[Exercise, int]]:
     with session_scope() as s:
         used = dict(s.execute(select(ProgramDayItem.exercise_id, func.count(func.distinct(ProgramDay.program_id)))
                               .join(ProgramDay, ProgramDay.id == ProgramDayItem.day_id)
+                              .where(ProgramDayItem.exercise_id.is_not(None))      # a slot holds none (26.11.2026)
                               .group_by(ProgramDayItem.exercise_id)).all())
         rows = list(s.scalars(select(Exercise)))
     rows = [e for e in rows if matches(q, e.name, e.tags)]
@@ -2542,12 +2549,13 @@ def video_programs(name: str) -> list[Program] | None:
 
 def all_programs() -> list[tuple[Program, int, int]]:
     """Trainer library: every programme with its number of days and of
-    exercises across them, combos first."""
+    exercises across them (a slot is none: 26.11.2026), combos first."""
     with session_scope() as s:
         days = (select(ProgramDay.program_id, func.count().label("n"))
                 .group_by(ProgramDay.program_id).subquery())
         items = (select(ProgramDay.program_id, func.count(ProgramDayItem.id).label("n"))
                  .join(ProgramDayItem, ProgramDayItem.day_id == ProgramDay.id)
+                 .where(ProgramDayItem.exercise_id.is_not(None))
                  .group_by(ProgramDay.program_id).subquery())
         rows = s.execute(
             select(Program, func.coalesce(days.c.n, 0), func.coalesce(items.c.n, 0))
@@ -2556,6 +2564,19 @@ def all_programs() -> list[tuple[Program, int, int]]:
             .order_by(Program.level.desc(), Program.goal, Program.title)
         ).all()
         return [(p, nd, ni) for p, nd, ni in rows]
+
+
+def program_slot_counts() -> dict[int, int]:
+    """How many empty slots each programme holds across its days
+    (26.11.2026), for the ones that hold any: staff's /treninzi table says
+    them beside the count of exercises, so a template of slots alone is not
+    flagged "prazno!"."""
+    with session_scope() as s:
+        return {pid: n for pid, n in s.execute(
+            select(ProgramDay.program_id, func.count(ProgramDayItem.id))
+            .join(ProgramDayItem, ProgramDayItem.day_id == ProgramDay.id)
+            .where(ProgramDayItem.exercise_id.is_(None))
+            .group_by(ProgramDay.program_id))}
 
 
 def create_program(title: str, intro: str | None,
@@ -2571,20 +2592,34 @@ def create_program(title: str, intro: str | None,
 
 def get_program(program_id: int) -> Program | None:
     """A programme with its days and their items, each item with its
-    exercise (ProgramDayItem's joined load), and the days' circuits."""
+    exercise (ProgramDayItem's joined load), and the days' circuits and
+    their parts' own names (26.11.2026)."""
     with session_scope() as s:
         return s.scalar(select(Program).where(Program.id == program_id)
                         .options(selectinload(Program.days).options(selectinload(ProgramDay.items),
-                                                                    selectinload(ProgramDay.circuits))))
+                                                                    selectinload(ProgramDay.circuits),
+                                                                    selectinload(ProgramDay.parts))))
+
+
+# a programme made online while one of its days holds a slot (26.11.2026: a
+# client must never meet a slot; an online programme's days hold none)
+SLOTS_NOT_ONLINE = "Program ima prazna mjesta — popuni ih ili obriši prije nego postane online."
 
 
 def update_program(program_id: int, title: str, intro: str | None,
                    level: str | None = None, goal: str | None = None, venue: str | None = None) -> None:
     """The programme's form saved; `venue` a VENUES key (24.11.2026), None
-    keeps the one it has."""
+    keeps the one it has. Since 26.11.2026 a programme that would be online
+    while a day of it holds a slot is refused, ValueError SLOTS_NOT_ONLINE,
+    nothing saved; its row is locked first (FOR UPDATE, as add_day_slot
+    takes it), so a slot added at once and the switch never both pass."""
     with session_scope() as s:
-        p = s.get(Program, program_id)
+        p = s.get(Program, program_id, with_for_update=True)
         if p is not None:
+            if (venue or p.venue) == "online" and s.scalar(
+                    select(func.count(ProgramDayItem.id)).join(ProgramDay, ProgramDay.id == ProgramDayItem.day_id)
+                    .where(ProgramDay.program_id == program_id, ProgramDayItem.exercise_id.is_(None))):
+                raise ValueError(SLOTS_NOT_ONLINE)
             p.title, p.intro, p.level, p.goal = title, intro, level, goal
             if venue is not None:
                 p.venue = venue
@@ -2702,12 +2737,13 @@ def add_day(program_id: int) -> int | None:
 
 
 def get_day(day_id: int) -> ProgramDay | None:
-    """A day with its programme, its items, each with its exercise, and its
-    circuits loaded (usable once the session is closed)."""
+    """A day with its programme, its items, each with its exercise (a
+    slot's none), its circuits and its parts' own names loaded (usable once
+    the session is closed)."""
     with session_scope() as s:
         return s.scalar(select(ProgramDay).where(ProgramDay.id == day_id)
                         .options(selectinload(ProgramDay.items), selectinload(ProgramDay.circuits),
-                                 joinedload(ProgramDay.program)))
+                                 selectinload(ProgramDay.parts), joinedload(ProgramDay.program)))
 
 
 def update_day(day_id: int, title: str, weekday: int | None, intro: str) -> bool:
@@ -2831,15 +2867,91 @@ def add_day_item(day_id: int, exercise_id: int, section: str, sets: int | None =
         return None
 
 
+# ---------- a dvoranski programme's empty slots (26.11.2026) ----------
+# The owner: "for gym trainings, we will devise two templates with no
+# particular exercises connected to them … only slots to put them in." A
+# slot is a day's item with no exercise (models.ProgramDayItem.is_slot): its
+# place, its numbers, its note and its hint, filled from the library later.
+
+HINT_MAX = 80                    # the column's length: a slot's hint is cut to it
+SLOTS_GYM_ONLY = "Prazna mjesta idu samo u dvoranske programe."
+SLOT_FILLED = "Mjesto je već popunjeno."
+
+
+def clean_hint(text: str | None) -> str:
+    """A slot's hint as stored: one line, its spaces single (clean_name),
+    cut to HINT_MAX characters."""
+    return clean_name(clean_name(text or "")[:HINT_MAX])
+
+
+def add_day_slot(day_id: int, section: str, hint: str = "", sets: int | None = None, reps: int | None = None,
+                 seconds: int | None = None, kg=None) -> int | None:
+    """Put an empty slot last in a day, in a section (SECTIONS): no exercise
+    yet, its hint (clean_hint: one line, cut to 80; "" for none) and what
+    the day asks of it, the numbers an item's (ITEM_LIMITS, else ValueError
+    BAD_NUMBER, nothing added); the new item's id. Under _day_locked, as
+    every write to a day; a day of an online programme refuses it,
+    ValueError SLOTS_GYM_ONLY ("Prazna mjesta idu samo u dvoranske
+    programe.": a client must never meet a slot; update_program refuses the
+    other way round under the same row's lock). None when the section is
+    not one or the day is gone."""
+    if section not in SECTIONS:
+        return None
+    _checked_item_numbers(sets=sets, reps=reps, seconds=seconds, kg=kg)
+    with session_scope() as s:
+        found = _day_locked(s, day_id)
+        if found is None:
+            return None
+        p, day = found
+        if p.venue != "dvorana":
+            raise ValueError(SLOTS_GYM_ONLY)
+        last = s.scalar(select(func.coalesce(func.max(ProgramDayItem.position), 0))
+                        .where(ProgramDayItem.day_id == day_id))
+        it = ProgramDayItem(day_id=day_id, position=last + 1, section=section, exercise_id=None, hint=clean_hint(hint),
+                            note="", sets=sets, reps=reps, seconds=seconds,
+                            kg=None if kg is None else _checked_item_kg(kg))
+        s.add(it)
+        p.updated_at = func.now()
+        s.flush()
+        return it.id
+
+
+def fill_slot(item_id: int, exercise_id: int) -> bool:
+    """Put a library exercise into a slot ("Popuni vježbom"): from then on it
+    is an ordinary row of its day, its place, numbers and note as they were
+    (its hint kept, unshown). The exercise's row is taken FOR KEY SHARE
+    first, then the day's locks (_item_locked), add_day_item's order. False
+    for an item that is gone. ValueError with the sentence to show: an
+    exercise that is not in the library UNKNOWN_EXERCISE ("Nepoznata
+    vježba."), an item that is no slot SLOT_FILLED ("Mjesto je već
+    popunjeno.")."""
+    try:
+        with session_scope() as s:
+            if s.get(Exercise, exercise_id, with_for_update={"read": True, "key_share": True}) is None:
+                raise ValueError(UNKNOWN_EXERCISE)
+            found = _item_locked(s, item_id)
+            if found is None:
+                return False
+            p, _, it = found
+            if it.exercise_id is not None:
+                raise ValueError(SLOT_FILLED)
+            it.exercise_id = exercise_id
+            p.updated_at = func.now()
+            return True
+    except IntegrityError:                           # the exercise deleted under it: the foreign key
+        raise ValueError(UNKNOWN_EXERCISE) from None
+
+
 def get_day_item(item_id: int) -> ProgramDayItem | None:
-    """An item with its exercise and its day loaded."""
+    """An item with its exercise (a slot's none) and its day loaded."""
     with session_scope() as s:
         return s.scalar(select(ProgramDayItem).where(ProgramDayItem.id == item_id)
                         .options(joinedload(ProgramDayItem.day)))
 
 
 def update_day_item(item_id: int, section: str, sets: int | None, reps: int | None, seconds: int | None,
-                    rest_seconds: int | None, rest_after_seconds: int | None, note: str, kg=KEEP) -> bool:
+                    rest_seconds: int | None, rest_after_seconds: int | None, note: str, kg=KEEP,
+                    hint=KEEP) -> bool:
     """Save what a day asks of an exercise: its section, sets, reps and
     seconds (either or both since 24.11.2026: "5 ponavljanja po 30 s"),
     the rest between sets, the rest after it (before the next exercise),
@@ -2849,7 +2961,9 @@ def update_day_item(item_id: int, section: str, sets: int | None, reps: int | No
     none of them, they do not apply there: the first two since 24.11.2026,
     the rest after it since 25.11.2026, no pause between a circuit's
     exercises) stays what it is, read under the lock, and so does `kg`
-    when not given (a caller that names no weight keeps it). An item moved
+    when not given (a caller that names no weight keeps it), and since
+    26.11.2026 a slot's `hint` (its row form's "Natuknica", clean_hint; an
+    exercise's row posts none: kept). An item moved
     to another section goes last in it. False for an item that is gone.
     ValueError with the sentence to show: a number out of ITEM_LIMITS
     ("Neispravan broj."), a note past ITEM_NOTE_MAX, a section that is
@@ -2878,6 +2992,8 @@ def update_day_item(item_id: int, section: str, sets: int | None, reps: int | No
             it.rest_after_seconds = rest_after_seconds
         if kg is not KEEP:
             it.kg = None if kg is None else _checked_item_kg(kg)
+        if hint is not KEEP:
+            it.hint = clean_hint(hint)
         it.reps, it.seconds, it.note = reps, seconds, note
         p.updated_at = func.now()
         return True
@@ -2939,6 +3055,45 @@ def clear_circuit(day_id: int, section: str) -> bool:
         p, day = found
         s.execute(sa_delete(ProgramDayCircuit).where(ProgramDayCircuit.day_id == day_id,
                                                     ProgramDayCircuit.section == section))
+        p.updated_at = func.now()
+        return True
+
+
+# ---------- a part of a day with a name of its own (26.11.2026) ----------
+# The owner: "Lets have Glavni dio A, B and C but lets also allow Amir to
+# rename them." models.ProgramDayPart: a row per renamed part of a day.
+
+PART_TITLE_MAX = 60              # the column's length
+PART_TITLE_TOO_LONG = f"Najviše {PART_TITLE_MAX} znakova."
+
+
+def set_part_name(day_id: int, section: str, title: str) -> bool:
+    """Give a part of a day (SECTIONS' key `section`) a name of its own,
+    "Krug 1", which every page that names that part of that day prints
+    (ProgramDay.part_label); cleaned to one line (clean_name), and an empty
+    one deletes the row: the part reads its default again. Another day's
+    parts are untouched. Under _day_locked, the programme's updated_at
+    moved; the row written with ON CONFLICT on its key, so two renames at
+    once leave one row (the later name). False for a day that is gone.
+    ValueError with the sentence to show: NO_SECTION for a section that is
+    none, PART_TITLE_TOO_LONG ("Najviše 60 znakova.") past 60 characters,
+    nothing changed."""
+    if section not in SECTIONS:
+        raise ValueError(NO_SECTION)
+    title = clean_name(title)
+    if len(title) > PART_TITLE_MAX:
+        raise ValueError(PART_TITLE_TOO_LONG)
+    with session_scope() as s:
+        found = _day_locked(s, day_id)
+        if found is None:
+            return False
+        p, day = found
+        if title:
+            s.execute(pg_insert(ProgramDayPart).values(day_id=day_id, section=section, title=title)
+                      .on_conflict_do_update(index_elements=["day_id", "section"], set_={"title": title}))
+        else:
+            s.execute(sa_delete(ProgramDayPart).where(ProgramDayPart.day_id == day_id,
+                                                      ProgramDayPart.section == section))
         p.updated_at = func.now()
         return True
 
@@ -3596,15 +3751,16 @@ def day_state(user_id: int, day_id: int) -> dict:
 def day_item_ids(day_ids) -> dict[int, set[int]]:
     """The items (their ids) each of these days holds now: the karton counts
     a pass's exercises against them, its day's size and the entries still
-    in it (WorkoutLog.done_in). A day that is gone, or holds none, is not in
-    it."""
+    in it (WorkoutLog.done_in). A slot (26.11.2026) is no exercise: not in
+    it. A day that is gone, or holds none, is not in it."""
     day_ids = list(day_ids)
     if not day_ids:
         return {}
     out: dict[int, set[int]] = {}
     with session_scope() as s:
         for day_id, item_id in s.execute(select(ProgramDayItem.day_id, ProgramDayItem.id)
-                                         .where(ProgramDayItem.day_id.in_(day_ids))):
+                                         .where(ProgramDayItem.day_id.in_(day_ids),
+                                                ProgramDayItem.exercise_id.is_not(None))):
             out.setdefault(day_id, set()).add(item_id)
     return out
 

@@ -7,7 +7,7 @@ online plan runs) · Moja članarina · Prehrana. Staff's, the trainer's and the
 owner's: that row (without Karton until 24.11.2026, when staff got a karton
 of their own; the owner: "Lets show the Karton tab in the Admin view as
 well"), then "Admin ▾", a menu in the account
-menu's component: Gledaj kao člana (/kao, staff act as a member, 26.11.2026),
+menu's component: Gledaj kao član (/kao, staff act as a member, 26.11.2026),
 Termini (/admin), Trenutne članarine (/clanarine), Upitnik
 (/upitnik), Vježbe (/treninzi/vjezbe, the library of exercises, 30.10.2026),
 Tekstovi (/tekstovi, every text of the app on one page, 25.11.2026)
@@ -126,8 +126,8 @@ def account_menu(page: str) -> list[str]:
 
 MEMBER_ROW = [("/", "Početna"), ("/raspored", "Raspored"), ("/karton", "Karton"), ("/treninzi", "Online treninzi"),
               ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")]
-# "Gledaj kao člana" first since 26.11.2026 (staff act as a member: /kao)
-TRAINER_ITEMS = [("/kao", "Gledaj kao člana"), ("/admin", "Termini"), ("/clanarine", "Trenutne članarine"),
+# "Gledaj kao član" first since 26.11.2026 (staff act as a member: /kao)
+TRAINER_ITEMS = [("/kao", "Gledaj kao član"), ("/admin", "Termini"), ("/clanarine", "Trenutne članarine"),
                  ("/upitnik", "Upitnik"), ("/treninzi/vjezbe", "Vježbe"), ("/tekstovi", "Tekstovi")]
 OWNER_ITEMS = TRAINER_ITEMS + [("/korisnici", "Korisnici"), ("/statistika", "Statistika")]
 ACCOUNT = ["Profil", "Tamna tema", "Odjava"]
@@ -155,7 +155,7 @@ def test_staff_get_the_members_row_and_admin_with_their_items():
     of their own now; the owner: "Lets show the Karton tab in the Admin
     view as well so that Amir can check out the changes we made there"),
     then Admin ▾: six items for a trainer who is not the owner (Tekstovi
-    since 25.11.2026, "Gledaj kao člana" first since 26.11.2026), eight for
+    since 25.11.2026, "Gledaj kao član" first since 26.11.2026), eight for
     the owner. Two captions for the drawer, Karton under "Kao član", and the
     account menu without a Moja članarina item: the tab is in their row."""
     make_user("trener@test.local", is_trainer=True)                     # the owner, who trains too (the demo's trener)
@@ -174,17 +174,73 @@ def test_staff_get_the_members_row_and_admin_with_their_items():
 def test_an_owner_who_does_not_train_is_staff_too():
     """Staff is the trainer or the owner (the routes' _require_trainer): an
     owner without is_trainer gets the same bar, Karton in it (24.11.2026),
-    all eight items. Online treninzi follows his plans, as for anyone but a
-    trainer (show_online, unchanged)."""
+    all eight items, and since 26.11.2026 Online treninzi as a trainer does,
+    whatever his plans (the owner is staff by rule: app._is_staff; until
+    then the tab followed his plans, as a client's)."""
     make_user("trener@test.local", plans=("grupni",))                  # the owner, not a trainer, no online plan
     page = client_for("trener@test.local").get("/raspored").text
-    assert [label for _, label, _ in tabs(page)] == ["Početna", "Raspored", "Karton", "Moja članarina", "Prehrana"]
+    assert [label for _, label, _ in tabs(page)] == ["Početna", "Raspored", "Karton", "Online treninzi", "Moja članarina",
+                                                     "Prehrana"]
     assert [(href, label) for href, label, _ in admin_items(page)] == OWNER_ITEMS
     assert account_menu(page) == ACCOUNT
 
 
+def test_the_owner_is_staff_by_rule_whatever_his_trainer_flag():
+    """The owner is staff by rule (26.11.2026, the owner: "can we add
+    everything the trainer sees the admin (me) sees"; app._is_staff, the
+    templates' can_edit_copy): with his trainer flag OFF he logs in as a
+    trainer does (no profile asked first), and gets the trainer's /raspored
+    (the rosters' links, no gate line, no "Tjedan | Mjesec" switch), the
+    Online treninzi tab and staff's /treninzi table, a programme's and a
+    day's page with "Uredi …", the player and its finish screen with
+    staff's bar (not the one-task pill), his own /karton as staff's, every
+    Admin ▾ item, no install banner and no phone reminder; he is listed on
+    neither /clanarine nor /kao, and nobody enters his account (POST
+    /kao/<his id>). A member, beside him, keeps a member's page."""
+    from datetime import datetime, timedelta
+    from urllib.parse import unquote
+
+    owner = db.create_user("trener@test.local", "trener", auth.hash_password("lozinka123")).id
+    db.mark_email_verified("trener@test.local")                         # no profile yet, no trainer flag
+    r = TestClient(app).post("/login", data={"email": "trener@test.local", "password": "lozinka123"},
+                             follow_redirects=False)
+    assert (r.status_code, r.headers["location"]) == (303, "/")         # not /profil?dopuni=1: staff are exempt
+    db.update_profile(owner, "Trener", "Test", date(1990, 1, 1), "")    # no phone: no reminder for staff either
+    make_user("coach@test.local", is_trainer=True)
+    ivan = make_user("ivan@test.local", plans=("grupni",))
+    assert not db.get_user(owner).is_trainer
+    starts = datetime.now(config.TZ).replace(second=0, microsecond=0) + timedelta(days=1)
+    sid = db.add_oneoff_session("Grupni trening", starts, 60, 8, None)
+    c, ci = client_for("trener@test.local"), client_for("ivan@test.local")
+
+    week = f"/raspored?week={starts.date().isoformat()}"
+    raspored, theirs = c.get(week).text, ci.get(week).text
+    assert f'action="/admin/session/{sid}"' in raspored and f'action="/admin/session/{sid}"' not in theirs
+    assert 'class="view-switch"' not in raspored and 'class="view-switch"' in theirs
+    assert 'class="hint gate-line"' not in raspored
+    assert ("/treninzi", "Online treninzi") in [(href, label) for href, label, _ in tabs(raspored)]
+    assert [(href, label) for href, label, _ in admin_items(raspored)] == OWNER_ITEMS
+    assert 'id="a2hs"' not in raspored and 'id="phoneCard"' not in raspored and 'id="a2hs"' in theirs
+    assert "Programi po razinama" in c.get("/treninzi").text            # staff's table
+    pid = db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
+    did = db.add_day(pid)
+    db.add_day_item(did, db.create_exercise("Plank"), "trening")
+    assert f'href="/treninzi/{pid}/uredi"' in c.get(f"/treninzi/{pid}").text
+    assert f'href="/treninzi/{pid}/dan/{did}/uredi"' in c.get(f"/treninzi/{pid}/dan/{did}").text
+    r = c.post(f"/treninzi/{pid}/dan/{did}/kreni", follow_redirects=False)
+    assert r.headers["location"] == f"/treninzi/{pid}/dan/{did}/vjezba/1"
+    for page in (c.get(r.headers["location"]).text, c.get(f"/treninzi/{pid}/dan/{did}/kraj").text):
+        assert '<header class="topbar">' in page and 'class="avatar' in page    # staff's bar, not the solo pill
+    assert 'data-copy="karton.staff.own_lead"' in c.get("/karton").text  # his own karton, as staff's
+    clanarine, kao = c.get("/clanarine").text, c.get("/kao").text
+    assert f'href="/karton/{owner}"' not in clanarine and f'href="/karton/{ivan}"' in clanarine
+    assert f'action="/kao/{owner}"' not in kao and f'action="/kao/{ivan}"' in kao
+    r = client_for("coach@test.local").post(f"/kao/{owner}", follow_redirects=False)
+    assert unquote(r.headers["location"]) == "/kao?error=U račun trenera ili vlasnika se ne ulazi."
+
+
 def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
-    """On Gledaj kao člana (26.11.2026: /kao, and its record, /kao/zapisi),
+    """On Gledaj kao član (26.11.2026: /kao, and its record, /kao/zapisi),
     Termini (its sub-pages too), Trenutne članarine (and since
     24.11.2026 a client's karton, /karton/<id>, which is reached from it),
     Upitnik, Vježbe (an exercise's page too: under /treninzi, yet Online
@@ -199,7 +255,7 @@ def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
     tid = db.add_template("Grupni trening", 0, 7 * 60, 60, 8, None)
     eid = db.create_exercise("Plank")
     c = client_for("trener@test.local")
-    for path, item in (("/kao", "Gledaj kao člana"), ("/kao/zapisi", "Gledaj kao člana"),
+    for path, item in (("/kao", "Gledaj kao član"), ("/kao/zapisi", "Gledaj kao član"),
                        ("/admin", "Termini"), (f"/admin/templates/{tid}", "Termini"),
                        ("/clanarine", "Trenutne članarine"), (f"/karton/{ivan}", "Trenutne članarine"),
                        ("/upitnik", "Upitnik"),
@@ -355,7 +411,7 @@ def test_the_bar_menu_and_drawer_in_a_browser(server):
                     # the keyboard: Enter opens it, Tab reaches the first item, Escape gives the focus back
                     pg.focus("#adminBtn"); pg.keyboard.press("Enter")
                     pg.keyboard.press("Tab")
-                    check(pg.evaluate("document.activeElement.textContent.trim()") == "Gledaj kao člana",
+                    check(pg.evaluate("document.activeElement.textContent.trim()") == "Gledaj kao član",
                           f"Tab after Enter is on {pg.evaluate('document.activeElement.textContent.trim()')!r}")
                     pg.keyboard.press("Escape")
                     check(pg.evaluate(OPEN) == [False, "false"] and pg.evaluate("document.activeElement.id") == "adminBtn",

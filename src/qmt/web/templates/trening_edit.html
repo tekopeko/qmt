@@ -13,7 +13,7 @@
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Uređivanje</span></nav>
 <h1>Uredi program{% if p.venue == "dvorana" %} <span class="venue-chip">dvoranski</span>{% endif %}</h1>
 <p class="hint" style="margin-bottom:20px;">
-  Program ima treninge; svaki trening ima zagrijavanje, glavni dio A i B te istezanje, a vježbe biraš iz <a class="tlink" href="/treninzi/vjezbe">baze vježbi</a>.
+  Program ima treninge; svaki trening ima zagrijavanje, glavni dio A, B i C te istezanje, a vježbe biraš iz <a class="tlink" href="/treninzi/vjezbe">baze vježbi</a>.
   Svaki dio može biti kružni: vježbe idu jedna za drugom, s odmorom između krugova.
   <a class="act act-quiet" href="/treninzi/{{ p.id }}">pogledaj kako polaznik vidi →</a>
 </p>
@@ -47,10 +47,10 @@
    holds in muted words, then Uredi, ↑ / ↓ (its number moves with it:
    Trening 2 above Trening 1 becomes Trening 1) and ✕, which asks first. #}
 <div class="days-edit">
-  {% for d in p.days %}{% set k = d.items|length %}
+  {% for d in p.days %}{% set k = d.exercise_items|length %}
   <div class="card it-row" id="dan-{{ d.id }}">
     <a class="it-name" href="/treninzi/{{ p.id }}/dan/{{ d.id }}/uredi">{{ d.label }}</a>
-    <span class="it-note">{% if d.weekday is not none %}{{ WEEKDAYS[d.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}</span>
+    <span class="it-note">{% if d.weekday is not none %}{{ WEEKDAYS[d.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}{% if d.slots_text %} · {{ d.slots_text }}{% endif %}</span>
     <span class="it-end">
       <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/dan/{{ d.id }}/uredi">Uredi</a>
       <span class="it-acts">

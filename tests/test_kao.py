@@ -1,4 +1,4 @@
-"""Staff act as a member ("Gledaj kao člana", 26.11.2026), and the phone
+"""Staff act as a member ("Gledaj kao član", 26.11.2026), and the phone
 reminder of the same build.
 
 The owner: "What if we have a user selection somewhere in the app for the
@@ -331,9 +331,11 @@ def test_the_bar_is_on_every_page_while_acting_and_never_otherwise():
     "Izađi" a form to /kao/izlaz; the page carries his id. Never without
     the view: not on the staff member's own pages, nor on the member's
     own. The install banner is not offered while acting (it is about the
-    device), and entering arms no osvrt prompt: the owner's login armed
-    one (an owner who does not train gets it), and ivan's finished termin
-    with no osvrt would show in it."""
+    device), and entering arms no osvrt prompt (ivan's finished termin with
+    no osvrt would show in it): since 26.11.2026 no staff login arms one,
+    the owner's neither, whatever his trainer flag (staff by rule; until
+    then the login of an owner who does not train armed one, and entering
+    took it)."""
     coach, owner, ivan, ana, sara = people()
     sid = db.add_oneoff_session("Jutarnji trening", datetime.now(config.TZ) - timedelta(hours=3), 60, 8, None)
     with db.session_scope() as s:                                      # a termin behind him, no osvrt
@@ -345,11 +347,9 @@ def test_the_bar_is_on_every_page_while_acting_and_never_otherwise():
     own = client_for("ivan@test.local")
     mine = own.get("/raspored").text
     assert bar(mine) is None and 'data-kao="' not in mine and 'id="a2hs"' in mine
-    c = client_for("trener@test.local")                                # the owner: his login armed the prompt
+    c = client_for("trener@test.local")                                # the owner, staff by rule: no prompt armed
+    assert "fb_prompt" not in session_of(c)
     assert bar(c.get("/kao").text) is None
-    assert session_of(c).get("fb_prompt") is None                      # (the picker's page took it)
-    c = client_for("trener@test.local")
-    assert session_of(c)["fb_prompt"] is True
     enter(c, ivan, kamo="/raspored")
     pages = {"raspored": c.get("/raspored").text, "error": c.get("/admin").text, "upitnik": c.get("/upitnik").text}
     step = c.post(f"/treninzi/{pid}/dan/{did}/kreni?kao={ivan}", follow_redirects=False)
@@ -633,7 +633,7 @@ def test_the_owner_reads_the_record_and_nobody_else():
 # ---------- the picker and the shortcuts ----------
 
 def test_the_picker_lists_every_member_in_the_alphabets_order():
-    """/kao, "Gledaj kao člana": every member (no trainer, not the owner),
+    """/kao, "Gledaj kao član": every member (no trainer, not the owner),
     in the alphabet's order by his full name (Čedo after Cvita, before
     Dario), by the email for one with none; a row each, the name in 700,
     the email, his running plans by their names in the plans' order ("bez
@@ -673,9 +673,9 @@ def test_the_picker_lists_every_member_in_the_alphabets_order():
 
 def test_the_shortcuts_lead_into_the_members_account():
     """"Kao član →" beside each member's "Karton →" on /clanarine (the same
-    button class; none on the owner's row, who is listed there when he
-    does not train), at the end of each booked member's row of a termin's
-    roster (none for staff), and "Otvori kao člana" on the trainer's view
+    button class; the owner, who does not train here, is not listed there
+    since 26.11.2026: staff by rule, db.memberships_overview), at the end of each booked member's row of a termin's
+    roster (none for staff), and "Otvori kao član" on the trainer's view
     of a member's karton (none on a staff member's): each a form into his
     account whose "Izađi" comes back to where it was pressed."""
     coach, owner, ivan, ana, sara = people()
@@ -691,6 +691,7 @@ def test_the_shortcuts_lead_into_the_members_account():
 
     clanarine = c.get("/clanarine").text
     assert form(ivan, "/clanarine") in clanarine and form(owner, "/clanarine").split("\n")[0] not in clanarine
+    assert f'href="/karton/{owner}"' not in clanarine                  # not listed at all (26.11.2026)
     assert re.search(rf'href="/karton/{ivan}">Karton →</a>.*?<button type="submit" class="btn-sm btn-ghost">Kao član →</button>',
                      clanarine, re.S)
     roster = c.get(f"/admin/session/{sid}").text
@@ -699,7 +700,7 @@ def test_the_shortcuts_lead_into_the_members_account():
     assert f'action="/kao/{coach}"' not in roster
     view = c.get(f"/karton/{ivan}").text
     assert (f'<form class="kao-open" method="post" action="/kao/{ivan}">\n  <input type="hidden" name="natrag" '
-            f'value="/karton/{ivan}">\n  <button type="submit" class="act">Otvori kao člana</button>') in view
+            f'value="/karton/{ivan}">\n  <button type="submit" class="act">Otvori kao član</button>') in view
     assert 'class="kao-open"' not in c.get(f"/karton/{owner}").text and 'class="kao-open"' not in c.get("/karton").text
     for back in ("/clanarine", f"/admin/session/{sid}", f"/karton/{ivan}"):
         assert enter(c, ivan, natrag=back).headers["location"] == "/karton"

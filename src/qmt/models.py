@@ -52,8 +52,12 @@ FEELING_LABELS = {"slabo": "Slabo", "dobro": "Dobro", "odlicno": "Odlično"}
 # and 'glavni dio B', so two separate main parts of a training"):
 # `trening` reads "Glavni dio A", every item and pass already there in it,
 # and `trening_b` is "Glavni dio B" (migration dc22ce1ed7e6, the CHECK).
+# Since 26.11.2026 a third, `trening_c`, "Glavni dio C" (the owner: "Lets
+# have Glavni dio A, B and C but lets also allow Amir to rename them.";
+# migration a7d3c5e9f214, the CHECK), and any part of a day may carry a
+# name of its own (ProgramDayPart): these are the default names.
 SECTIONS = {"zagrijavanje": "Zagrijavanje", "trening": "Glavni dio A", "trening_b": "Glavni dio B",
-            "istezanje": "Istezanje"}
+            "trening_c": "Glavni dio C", "istezanje": "Istezanje"}
 WEEKDAYS = ("ponedjeljak", "utorak", "srijeda", "četvrtak", "petak", "subota", "nedjelja")
 # What a programme is (24.11.2026, the owner: "A training can be of online
 # training class or gym training class ('dvoranski' or 'online') and he would
@@ -962,7 +966,11 @@ class Program(Base):
     clients, or "dvorana", the trainer's own plan for the gym: no client
     lists it or opens it, its days, its player or its clips
     (db.programs_for_level, db.client_can_view); staff see and run it as
-    any. Every programme made before it is online.
+    any. Every programme made before it is online. Since 26.11.2026 only a
+    dvoranski programme's days hold empty slots (ProgramDayItem.is_slot,
+    Amir's templates): db.add_day_slot refuses an online one's, and
+    db.update_program refuses to make one online while it holds any, so a
+    client never meets a slot.
     """
 
     __tablename__ = "programs"
@@ -1009,8 +1017,18 @@ class ProgramDay(Base):
 
     `circuits` (24.11.2026, kružni trening: ProgramDayCircuit) are the parts
     of the day done as a circuit, a row per such part; a part with none is a
-    normal one. Loaded with the day wherever its items are (db.get_day,
-    db.get_program, db.programs_for_level)."""
+    normal one. `parts` (26.11.2026: ProgramDayPart) are the parts of this
+    day that carry a name of their own ("Krug 1" for Glavni dio A), a row
+    per renamed part; part_label says a part's name either way. Both are
+    loaded with the day wherever its items are (db.get_day, db.get_program,
+    db.programs_for_level).
+
+    Since 26.11.2026 a row of `items` may hold no exercise: a slot of a
+    dvoranski programme's day (ProgramDayItem.is_slot). `items` and
+    by_section keep every row in its place; exercise_items and
+    exercises_by_section are the rows that hold an exercise, which is what
+    the player walks, what "7 vježbi" counts and what kružni trening asks
+    of a part (has_circuit); slot_count and slots_text say the rest."""
 
     __tablename__ = "program_days"
 
@@ -1035,6 +1053,8 @@ class ProgramDay(Base):
     )
     # the parts done as a circuit; the database's CASCADE deletes them with the day
     circuits: Mapped[list["ProgramDayCircuit"]] = relationship(cascade="all, delete-orphan", passive_deletes=True)
+    # the parts with a name of their own (26.11.2026); the CASCADE deletes them with the day
+    parts: Mapped[list["ProgramDayPart"]] = relationship(cascade="all, delete-orphan", passive_deletes=True)
 
     @property
     def label(self) -> str:
@@ -1046,25 +1066,61 @@ class ProgramDay(Base):
         rounds), None for a normal part."""
         return next((c for c in self.circuits if c.section == section), None)
 
+    def part_title(self, section: str) -> str:
+        """The name of its own this day gives the part `section` ("Krug
+        1"), "" for none (the editor's "Preimenuj" field)."""
+        return next((p.title for p in self.parts if p.section == section), "")
+
+    def part_label(self, section: str) -> str:
+        """The part `section` as this day names it (26.11.2026): its own
+        name when it has one ("Krug 1"), else its default (SECTIONS: "Glavni
+        dio A"). Every place that names a part of a day prints it."""
+        return self.part_title(section) or SECTIONS.get(section, "")
+
     @property
     def has_circuit(self) -> bool:
         """Whether a part of the day that holds an exercise is a circuit:
         the day's "kružni trening" (the programme's day card, the day's
         lead). A circuit on a part with no exercise does not count: nothing
-        of it is done."""
-        held = {it.section for it in self.items}
+        of it is done; nor does one on a part of slots alone (26.11.2026)."""
+        held = {it.section for it in self.items if not it.is_slot}
         return any(c.section in held for c in self.circuits)
 
     @property
     def by_section(self) -> dict[str, list["ProgramDayItem"]]:
         """The items per section, in SECTIONS' order, each section's in
-        position order: the day's display order. A section with none holds
-        an empty list."""
+        position order: the day's display order, every row (a slot too). A
+        section with none holds an empty list."""
         out: dict[str, list[ProgramDayItem]] = {key: [] for key in SECTIONS}
         for it in self.items:                          # in position order
             if it.section in out:
                 out[it.section].append(it)
         return out
+
+    @property
+    def exercises_by_section(self) -> dict[str, list["ProgramDayItem"]]:
+        """by_section with the rows that hold an exercise only: the slots
+        (26.11.2026) left out. The player's list."""
+        return {key: [it for it in rows if not it.is_slot] for key, rows in self.by_section.items()}
+
+    @property
+    def exercise_items(self) -> list["ProgramDayItem"]:
+        """The rows that hold an exercise, in the day's display order: what
+        the player walks (app._steps) and "7 vježbi" counts."""
+        return [it for rows in self.exercises_by_section.values() for it in rows]
+
+    @property
+    def slot_count(self) -> int:
+        """How many of its rows are slots (26.11.2026)."""
+        return sum(1 for it in self.items if it.is_slot)
+
+    @property
+    def slots_text(self) -> str:
+        """Its slots counted, "1 prazno mjesto", "3 prazna mjesta", "5
+        praznih mjesta" (models.plural's forms), "" for none: said after
+        the count of its exercises ("0 vježbi · 3 prazna mjesta")."""
+        n = self.slot_count
+        return f"{n} {plural(n, 'prazno mjesto', 'prazna mjesta', 'praznih mjesta')}" if n else ""
 
 
 class ProgramDayItem(Base):
@@ -1100,7 +1156,20 @@ class ProgramDayItem(Base):
     migration 45c543c860f3): an exercise deleted from the library takes its
     items out of every day that holds them, the days staying, one left with
     none too (db.delete_exercise). A pass keeps what it saved of it
-    (WorkoutLog.done: the name, the sets)."""
+    (WorkoutLog.done: the name, the sets).
+
+    Since 26.11.2026 (migration a7d3c5e9f214; the owner, for the gym
+    trainings: templates "with no particular exercises, only slots to put
+    them in") `exercise_id` may be NULL: the row is a SLOT (is_slot), a
+    place in a dvoranski programme's day with no exercise yet, filled from
+    the library later (db.fill_slot; build 3: in a member's own copy).
+    `hint` (String(80), "" for none: "čučanj") says what goes there, and
+    narrows the library's list when the slot is filled; it stays once the
+    slot is an ordinary row, unshown. A slot keeps the numbers and the note
+    as any row. It is no exercise anywhere else: no step of the player, no
+    mark, not counted (ProgramDay.exercise_items), not in db.day_item_ids.
+    `section` is one of SECTIONS' five since the same day (trening_c,
+    "Glavni dio C", the CHECK widened)."""
 
     __tablename__ = "program_day_items"
 
@@ -1108,7 +1177,11 @@ class ProgramDayItem(Base):
     day_id: Mapped[int] = mapped_column(ForeignKey("program_days.id", ondelete="CASCADE"), index=True)
     position: Mapped[int] = mapped_column(Integer)
     section: Mapped[str] = mapped_column(String(12), server_default=text("'trening'"), default="trening")
-    exercise_id: Mapped[int] = mapped_column(ForeignKey("exercises.id", ondelete="CASCADE"), index=True)
+    # NULL: a slot (26.11.2026, migration a7d3c5e9f214)
+    exercise_id: Mapped[int | None] = mapped_column(ForeignKey("exercises.id", ondelete="CASCADE"), index=True,
+                                                    nullable=True)
+    # what goes into a slot, "" for none (26.11.2026)
+    hint: Mapped[str] = mapped_column(String(80), server_default=text("''"), default="")
     sets: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -1123,13 +1196,22 @@ class ProgramDayItem(Base):
         # deferred: ↑ / ↓ swap two positions, checked when the swap commits
         UniqueConstraint("day_id", "position", name="uq_program_day_items_position",
                          deferrable=True, initially="DEFERRED"),
-        CheckConstraint("section IN ('zagrijavanje', 'trening', 'trening_b', 'istezanje')",
+        CheckConstraint("section IN ('zagrijavanje', 'trening', 'trening_b', 'trening_c', 'istezanje')",
                         name="ck_program_day_items_section"),
     )
 
     day: Mapped[ProgramDay] = relationship(back_populates="items")
-    # every page that shows an item shows its exercise: loaded with it
-    exercise: Mapped[Exercise] = relationship(lazy="joined", innerjoin=True)
+    # every page that shows an item shows its exercise: loaded with it, an
+    # outer join since 26.11.2026 (a slot has none: an inner join would drop
+    # it from its day)
+    exercise: Mapped[Exercise | None] = relationship(lazy="joined")
+
+    @property
+    def is_slot(self) -> bool:
+        """A row with no exercise yet (26.11.2026): a slot of a dvoranski
+        programme's day (a row made with its exercise and not yet flushed
+        is none)."""
+        return self.exercise_id is None and self.exercise is None
 
     @property
     def dose(self) -> str:
@@ -1237,6 +1319,27 @@ class ProgramDayCircuit(Base):
         """The part in words, the editor's and the day page's: "Kružno · 3
         kruga · odmor između krugova 120 s", the rest only when set."""
         return f"Kružno · {self.rounds_text}" + (f" · odmor između krugova {self.rest_text}" if self.rest_text else "")
+
+
+class ProgramDayPart(Base):
+    """A part of a day with a name of its own (26.11.2026; the owner: "Lets
+    have Glavni dio A, B and C but lets also allow Amir to rename them.";
+    migration a7d3c5e9f214). A row means: that part (`section`, a SECTIONS
+    key, which db.py checks) of that day is called `title` ("Krug 1",
+    "Snaga": one line, 60 characters at most) on every page that names it
+    (ProgramDay.part_label); a part with none keeps its default name. The
+    name is the day's own: another day of the same programme keeps the
+    defaults. One row per part (the primary key); a day deleted takes its
+    rows (CASCADE). A pass keeps the part's key, not its name: a renamed or
+    deleted day never rewrites it. Written by db.set_part_name only (an
+    empty name deletes the row)."""
+
+    __tablename__ = "program_day_parts"
+
+    day_id: Mapped[int] = mapped_column(ForeignKey("program_days.id", ondelete="CASCADE"), primary_key=True,
+                                        autoincrement=False)
+    section: Mapped[str] = mapped_column(String(12), primary_key=True)
+    title: Mapped[str] = mapped_column(String(60))
 
 
 def kg_text(kg: float | int | None) -> str:

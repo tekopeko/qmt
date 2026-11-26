@@ -64,6 +64,14 @@
      under them, the note alone (since 25.11.2026: no pause between a
      circuit's exercises, so no rest of an exercise's applies there). */
   .dx-circ { margin: -6px 0 10px; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+  /* An empty slot (26.11.2026, a dvoranski programme's day: staff's, no
+     client reaches one): a muted row in the list's place, "Prazno mjesto ·
+     čučanj" and its dose, a dashed hairline and no fill or shadow (a place
+     to fill, not an exercise), no <details>: nothing to open, no "Vježba n"
+     (it is not counted) */
+  .dx-slot { display: flex; flex-direction: column; justify-content: center; min-height: 56px;
+             padding: 12px 14px 12px 18px; color: var(--muted); background: none; box-shadow: none;
+             border-style: dashed; }
   /* Povijest (30.10.2026): the viewer's last five passes of the day, newest
      first, a card each: one line of facts (the day, how many of its
      exercises, how long, napor, osjećaj; tabular), the comment under it,
@@ -79,8 +87,9 @@
 {% block content %}
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Trening {{ day.position }}</span></nav>
 <h1>{{ day.label }}</h1>
-{% set k = day.items|length %}
-<p class="hint">{% if day.weekday is not none %}{{ c.t("dan.meta.suggested") }} {{ WEEKDAYS[day.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}{% if day.has_circuit and copy_on("dan.meta.circuit") %} · {{ c.t("dan.meta.circuit") }}{% endif %}</p>
+{# k counts the exercises: a slot (26.11.2026) is none, its count after them #}
+{% set k = day.exercise_items|length %}
+<p class="hint">{% if day.weekday is not none %}{{ c.t("dan.meta.suggested") }} {{ WEEKDAYS[day.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}{% if day.slots_text %} · {{ day.slots_text }}{% endif %}{% if day.has_circuit and copy_on("dan.meta.circuit") %} · {{ c.t("dan.meta.circuit") }}{% endif %}</p>
 {# the viewer's state on the day, and the way into the player (30.10.2026):
    "Kreni" opens a pass, "Nastavi" goes on with the one in progress (the
    same form: the route lands on the first exercise it has not saved); a
@@ -117,7 +126,7 @@
 {% endif %}
 <div class="day-body">
   {% if day.intro %}<p class="day-intro">{{ day.intro }}</p>{% endif %}
-  {% if user.is_trainer %}
+  {% if can_edit_copy %}
   <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/uredi">{{ c.t("dan.edit") }}</a>
   {% endif %}
   {% if day.intro_video %}
@@ -131,11 +140,20 @@
   {% for key, label in SECTIONS.items() %}{% set rows = day.by_section[key] %}
   {% if rows %}{% set circ = day.circuit(key) %}
   <section aria-labelledby="dio-{{ key }}">
-    <h2 class="dx-cap" id="dio-{{ key }}">{{ label }}</h2>
+    {# the part as this day names it (26.11.2026: "Krug 1", else "Glavni dio A") #}
+    <h2 class="dx-cap" id="dio-{{ key }}">{{ day.part_label(key) }}</h2>
     {% if circ %}<p class="dx-circ">{{ circ.line }}</p>{% endif %}
     <div class="dx-list">
-      {% for it in rows %}{% set ns.n = ns.n + 1 %}{% set ex = it.exercise %}
+      {% for it in rows %}{% set ex = it.exercise %}
       {% set dose = it.round_dose if circ else it.dose %}{% set mark = marks.get(it.id) %}
+      {% if not ex %}
+      {# a slot (26.11.2026): a muted row, its words a slot, its hint after them #}
+      {% set sub = ([it.note] if circ else [it.rest_text and c.t("dan.exercise.rest_between") ~ " " ~ it.rest_text, it.rest_after_text and c.t("dan.exercise.rest_after") ~ " " ~ it.rest_after_text, it.note])|select|list %}
+      <div class="card dx-slot">
+        <span class="dx-line"><span class="dx-name">{{ c.t("dan.slot") }}{% if it.hint %} · {{ it.hint }}{% endif %}</span>{% if dose %}<span class="dx-dose">{{ dose }}</span>{% endif %}</span>
+        {% if sub %}<span class="dx-sub">{{ sub|join(" · ") }}</span>{% endif %}
+      </div>
+      {% else %}{% set ns.n = ns.n + 1 %}
       <details class="card ex">
         <summary>
           <span class="dx-main">
@@ -153,13 +171,14 @@
           {% if ex.instructions %}<p class="pre">{{ ex.instructions }}</p>{% endif %}
         </div>
       </details>
+      {% endif %}
       {% endfor %}
     </div>
   </section>
   {% endif %}
   {% endfor %}
   {% if not k %}
-  {{ c.opt("dan.empty_staff" if user.is_trainer else "dan.empty", "p", ' class="hint" style="margin-top:22px;"') }}
+  {{ c.opt("dan.empty_staff" if can_edit_copy else "dan.empty", "p", ' class="hint" style="margin-top:22px;"') }}
   {% endif %}
 
   {% if history %}

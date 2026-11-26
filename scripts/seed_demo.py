@@ -10,7 +10,9 @@ Idempotent — safe to re-run. Passwords are for LOCAL DEV ONLY.
 Also the upitnik's questions (the gym owner's fifteen, ids 1–15, and the two
 asked after the safety questions, 16 and 17) and ivan's answers to them, and
 (30.10.2026, the player) ivan's two finished passes of his Trening 1, whose
-Glavni dio A is done as a circuit since 24.11.2026 (DEMO_CIRCUIT).
+Glavni dio A is done as a circuit since 24.11.2026 (DEMO_CIRCUIT); and since
+26.11.2026 one dvoranski programme, a template of empty slots with a renamed
+circuit part (TEMPLATE, seed_template).
 """
 
 from __future__ import annotations
@@ -303,7 +305,8 @@ def seed_program() -> None:
         e = db.exercise(ids[name])
         db.update_exercise(e.id, e.name, e.instructions, rep_note or e.rep_note, tags, {ids[x] for x in swaps})
     with db.session_scope() as s:
-        pid = s.scalar(select(Program.id).where(Program.level == "srednja", Program.goal == "cijelo"))
+        pid = s.scalar(select(Program.id).where(Program.level == "srednja", Program.goal == "cijelo",
+                                                Program.venue == "online"))
     for n, (title, weekday, items) in enumerate(DAYS, start=1):
         day_id = db.get_program(pid).days[0].id if n == 1 else db.add_day(pid)
         db.update_day(day_id, title, weekday, "")
@@ -316,6 +319,42 @@ def seed_program() -> None:
     print(f"  {made} demo programa (razina × tip), svaki s Treningom 1 ({made_items} stavki u svima); "
           f"{len(ids)} vježbi u bazi; srednja × cijelo: {len(DAYS)} dana, sva tri dijela, "
           f"Glavni dio A Treninga 1 kružno ({rounds} {db.plural(rounds, 'krug', 'kruga', 'krugova')})")
+
+
+# The template's demo (26.11.2026, build 2 of
+# roadmap/2026-11-26-gym-training-plan.md; the owner: "for gym trainings, we
+# will devise two templates with no particular exercises connected to them …
+# only slots to put them in"): one dvoranski programme, (title, razina,
+# tip), whose one training holds empty slots only, part by part: (the part,
+# its name of its own or "", its circuit (rounds, rest after a round) or
+# None, its slots (hint, sets, reps, seconds, kg)). Glavni dio A is "Krug 1",
+# a circuit, so the audit walks an editor with slots and a renamed part.
+TEMPLATE = ("Predložak — kružni trening", "srednja", "cijelo")
+TEMPLATE_PARTS = [
+    ("zagrijavanje", "", None, [("mobilnost", None, None, None, None), ("aktivacija", None, None, None, None)]),
+    ("trening", "Krug 1", (3, 90), [(hint, None, 10, None, None) for hint in ("čučanj", "potisak", "povlačenje", "core")]),
+    ("istezanje", "", None, [("", None, None, None, None)]),
+]
+
+
+def seed_template() -> None:
+    """The template (TEMPLATE, TEMPLATE_PARTS): a dvoranski programme, no
+    client sees it, its Trening 1 of slots, its Glavni dio A renamed and
+    done as a circuit. After seed_program, which has dropped every
+    programme."""
+    title, level, goal = TEMPLATE
+    pid = db.create_program(title, None, level, goal, "dvorana")
+    day_id = db.add_day(pid)
+    n = 0
+    for section, name, circuit, slots in TEMPLATE_PARTS:
+        if name:
+            db.set_part_name(day_id, section, name)
+        if circuit:
+            db.set_circuit(day_id, section, *circuit)
+        for hint, sets, reps, seconds, kg in slots:
+            db.add_day_slot(day_id, section, hint, sets, reps, seconds, kg)
+            n += 1
+    print(f"  dvoranski predložak „{title}”: Trening 1, {n} praznih mjesta, Glavni dio A „Krug 1” kružno")
 
 
 def seed_announcements() -> None:
@@ -438,7 +477,8 @@ def seed_passes() -> None:
 
     ivan = db.get_user_by_email("ivan@qmt.local")
     with db.session_scope() as s:
-        pid = s.scalar(select(Program.id).where(Program.level == "srednja", Program.goal == "cijelo"))
+        pid = s.scalar(select(Program.id).where(Program.level == "srednja", Program.goal == "cijelo",
+                                                Program.venue == "online"))     # not the template (seed_template)
     p = db.get_program(pid)
     day = p.days[0]
     items = [it for rows in day.by_section.values() for it in rows]
@@ -471,6 +511,7 @@ if __name__ == "__main__":
     fill_bookings()
     print("treninzi:")
     seed_program()
+    seed_template()
     print("upitnik:")
     seed_upitnik()
     print("karton:")

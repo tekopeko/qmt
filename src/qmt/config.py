@@ -199,7 +199,7 @@ BOOKING_WEEKS = int(os.environ.get("BOOKING_WEEKS", "4"))
 # longer be continued, only finished with its osvrt or discarded, and its
 # length runs to its last save, not to the osvrt a day later.
 PASS_STALE_HOURS = int(os.environ.get("PASS_STALE_HOURS", "2"))
-# Staff acting as a member ("Gledaj kao člana", 26.11.2026, the owner: "Amir
+# Staff acting as a member ("Gledaj kao član", 26.11.2026, the owner: "Amir
 # can look at the app just like the user sees the app and he can do
 # everything the user does in the same way"): after ACT_AS_IDLE_MINUTES (30)
 # with no request the view ends, and the first request after it, GET or POST,

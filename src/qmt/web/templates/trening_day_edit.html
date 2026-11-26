@@ -63,6 +63,51 @@
   }
   .st-circ-hint { margin: -2px 0 10px; overflow-wrap: anywhere; }
   .st-sec > .st-alert { margin: 0 0 10px; }
+  /* A part's own name (26.11.2026; the owner: "Lets have Glavni dio A, B
+     and C but lets also allow Amir to rename them."): beside "Kružno" a
+     quiet "Preimenuj", a native <details> in its look; the two in one
+     wrapping row (.st-tools, the player's .pl-more idiom), and the one open
+     takes the row's width, its form under its pill. Its ONE form in the
+     "Kružno" form's hairline box: "Naziv dijela" (its placeholder the
+     default name) and Spremi, one under the other on a phone, side by side
+     from 600px. A renamed part's caption is its name, then the default in
+     brackets (.st-cap-def: the body font in its own case, so "KRUG 1
+     (Glavni dio A)"), so Amir sees which of the five it is. */
+  .st-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin: 0 0 10px; }
+  .st-tools > .st-circ { margin: 0; }
+  .st-tools > details[open] { flex: 1 0 100%; }
+  /* a closed one is its pill's width: its form, which shows nothing then,
+     is out of the layout too (Chromium lays a closed <details>' content
+     out when it is measured, at the pill's width) */
+  .st-tools > details:not([open]) > :not(summary) { display: none; }
+  .st-cap-def { font: 500 .8rem var(--font-body); text-transform: none; letter-spacing: 0; }
+  .st-name-form, .st-fill-form { display: grid; gap: 8px 10px; margin-top: 10px; padding: 12px 14px;
+                                 border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+  .st-name-form > div, .st-fill-form > div { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+  .st-name-form label, .st-fill-form label { margin-bottom: 3px; }
+  .st-name-form input[type=text], .st-fill-form .cbx > input { height: 40px; padding: 0 10px; }
+  .st-name-form .st-go .btn, .st-fill-form .st-go .btn { width: 100%; height: 40px; }
+  @media (pointer: coarse) {
+    .st-name-form input[type=text], .st-fill-form .cbx > input,
+    .st-name-form .st-go .btn, .st-fill-form .st-go .btn { height: 44px; }
+  }
+  @media (min-width: 600px) {
+    .st-name-form, .st-fill-form { grid-template-columns: minmax(0, 1fr) auto; }
+    .st-name-form .st-go .btn, .st-fill-form .st-go .btn { width: auto; min-width: 120px; }
+  }
+  /* An empty slot (26.11.2026, a dvoranski programme's day: Amir's
+     templates): its row says "Prazno mjesto" where an exercise's name
+     stands (700, no link) and its hint muted after a middle dot; ↑ / ↓ / ✕
+     as any row; its form the row form plus "Natuknica"; under it "Popuni
+     vježbom", a <details> in the "Kružno" pill's look over its own form,
+     the library's combobox (base.html's qmtCombobox, its rows the add
+     card's select's: the library on the page once) opening with the hint
+     typed in, and Postavi. Rendered hidden, the script's: without it a
+     slot is filled nowhere (the karton's exercise log's precedent: one
+     library a page). */
+  .it-slot-name { min-width: 0; min-height: 32px; display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px;
+                  font-weight: 700; overflow-wrap: anywhere; }
+  .it-row > .st-fill { flex: 1 0 100%; margin: 4px 0 2px; }
   .st-rows { display: flex; flex-direction: column; gap: 10px; }
   .st-none { padding: 2px 0 4px; }
   /* "+ Dodaj vježbu u ovaj dio" (25.11.2026): the part's last line, a
@@ -84,7 +129,8 @@
   .st-form label { margin-bottom: 3px; }
   .st-form :is(input, select) { height: 40px; padding: 0 10px; }
   .st-form .st-go .btn { width: 100%; height: 40px; }
-  .st-form :is(.st-note, .st-go) { grid-column: 1 / -1; }
+  /* a slot's "Natuknica" (26.11.2026) lies as the note does, across the row */
+  .st-form :is(.st-note, .st-hint, .st-go) { grid-column: 1 / -1; }
   /* a row's own word after its save ("Spremljeno.", a refusal): the page's
      alert, inside the row (the page comes back scrolled to the row, and the
      top is out of view on a phone), the row's width, above its form */
@@ -94,7 +140,7 @@
   }
   @media (min-width: 600px) {
     .st-form { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .st-form .st-note { grid-column: span 2; }
+    .st-form :is(.st-note, .st-hint) { grid-column: span 2; }
     .st-form .st-go { grid-column: auto; align-self: end; }
   }
   /* "Dodaj vježbu": the library as a select (name · tags, the alphabet's
@@ -116,6 +162,15 @@
   @media (min-width: 600px) { .add-nums { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   .add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
   .add-row .btn-sm { white-space: nowrap; }
+  /* "Dodaj prazno mjesto" (26.11.2026, a dvoranski programme's day only):
+     the card's second way, under its first behind a hairline: "Natuknica
+     (neobavezno)" and its hint, then its own button, which posts the
+     card's Dio and numbers with it (formaction, formnovalidate: no
+     exercise is needed for a slot) */
+  .add-slot { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .add-slot .field { margin-bottom: 10px; }
+  .add-slot input[type=text] { height: 40px; padding: 0 10px; }
+  @media (pointer: coarse) { .add-slot input[type=text] { height: 44px; } }
   /* The library's select as a combobox that filters as it is typed
      (23.11.2026; base.html's qmtCombobox builds it and its look, .cbx, is
      base's since the karton's exercise log needed it too; the select stays
@@ -139,6 +194,12 @@
 {% set in_row = focus in day.items|map(attribute="id")|map("string")|list %}
 {% set focus_dio = request.query_params.get("dio") %}
 {% set in_dio = not in_row and focus_dio in SECTIONS %}
+{# a part's "Preimenuj" save (26.11.2026) answers as its "Kružno" does,
+   ?naziv=1 beside ?dio= saying it was this form: a refusal opens it again,
+   not "Kružno"; a slot's "Popuni vježbom" refusal (?popuni=1 beside
+   ?stavka=) opens that one again #}
+{% set by_name = request.query_params.get("naziv") == "1" %}
+{% set refused = request.query_params.get("error") %}
 {# an add's word (25.11.2026: ?dodaj=<key>, the part it went into, with ?ok=
    or ?error=) stands in the add card, which the page comes back at #}
 {% set in_add = not in_row and not in_dio and add_dio %}
@@ -148,10 +209,12 @@
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}/uredi">{{ p.title }}</a><span class="sep">/</span><span class="here">Trening {{ day.position }}</span></nav>
 <h1>Trening {{ day.position }}</h1>
 <p class="hint">
-  Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima — serije, ponavljanja, sekunde, kilaža, odmor i napomena.
+  Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima (zagrijavanje, glavni dio A, B i C te istezanje) — serije, ponavljanja, sekunde, kilaža, odmor i napomena.
   Ponavljanja i sekunde mogu zajedno: 5 ponavljanja po 30 s.
   „Odmor (s)” je odmor između serija, a „Nakon vježbe (s)” odmor prije sljedeće vježbe: polaznik za oba dobiva odbrojavanje koje može preskočiti.
   Svaki dio može biti kružni: vježbe idu jedna za drugom, s odmorom između krugova.
+  Svaki dio možeš preimenovati za ovaj trening.
+  {% if p.venue == "dvorana" %}U dvoranskom programu dio može imati i prazna mjesta, koja se kasnije popune vježbom iz baze.{% endif %}
   <a class="act act-quiet" href="/treninzi/{{ p.id }}/dan/{{ day.id }}">pogledaj kako polaznik vidi →</a>
 </p>
 
@@ -209,14 +272,16 @@
    the script follows in place (the Dio set, the card scrolled to, the
    picker focused). #}
 {% for key, label in SECTIONS.items() %}{% set rows = day.by_section[key] %}{% set circ = day.circuit(key) %}
-{% set here = in_dio and focus_dio == key %}
+{% set here = in_dio and focus_dio == key %}{% set own = day.part_title(key) %}
 <section class="st-sec" aria-labelledby="dio-{{ key }}">
-  <h3 class="st-cap" id="dio-{{ key }}">{{ label }}</h3>
+  {# the part as this day names it (26.11.2026), a renamed one with its default after it #}
+  <h3 class="st-cap" id="dio-{{ key }}">{{ own or label }}{% if own %} <span class="st-cap-def">({{ label }})</span>{% endif %}</h3>
   {% if here %}
-    {% if request.query_params.get("error") %}<div class="alert st-alert" role="alert"><span>{{ request.query_params.get("error") }}</span></div>
+    {% if refused %}<div class="alert st-alert" role="alert"><span>{{ refused }}</span></div>
     {% elif request.query_params.get("ok") %}<div class="alert ok st-alert" role="status">{{ request.query_params.get("ok") }}</div>{% endif %}
   {% endif %}
-  <details class="st-circ{% if circ %} on{% endif %}"{% if here and request.query_params.get("error") %} open{% endif %}>
+  <div class="st-tools">
+  <details class="st-circ{% if circ %} on{% endif %}"{% if here and refused and not by_name %} open{% endif %}>
     <summary>{{ circ.line if circ else "Kružno: isključeno" }}</summary>
     <form class="st-circ-form" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/dio/{{ key }}/krug">
       <label class="st-check"><input type="checkbox" name="circuit" value="1"{% if circ %} checked{% endif %}> Kružni dio</label>
@@ -229,30 +294,43 @@
       <div class="st-go"><button type="submit" class="btn btn-sm">Spremi</button></div>
     </form>
   </details>
+  <details class="st-circ st-name"{% if here and refused and by_name %} open{% endif %}>
+    <summary>Preimenuj</summary>
+    <form class="st-name-form" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/dio/{{ key }}/naziv">
+      <div><label for="naziv-{{ key }}">Naziv dijela</label>
+        <input id="naziv-{{ key }}" type="text" name="title" maxlength="60" value="{{ own }}" placeholder="{{ label }}"></div>
+      <div class="st-go"><button type="submit" class="btn btn-sm">Spremi</button></div>
+    </form>
+  </details>
+  </div>
   {% if circ %}<p class="hint st-circ-hint">U kružnom dijelu vježbe idu jedna za drugom, bez pauze: upiši ponavljanja ili sekunde i kilažu. Odmor je nakon kruga.</p>{% endif %}
   <div class="st-rows">
     {% for it in rows %}{% set ex = it.exercise %}
+    {# a slot (26.11.2026) is named by its words and its hint, an exercise by its name #}
+    {% set name = ex.name if ex else "Prazno mjesto" ~ (" · " ~ it.hint if it.hint else "") %}
+    {% set here_row = in_row and focus == it.id|string %}
     <div class="card it-row" id="stavka-{{ it.id }}">
-      <a class="it-name" href="/treninzi/vjezbe/{{ ex.id }}">{{ ex.name }}</a>
+      {% if ex %}<a class="it-name" href="/treninzi/vjezbe/{{ ex.id }}">{{ ex.name }}</a>
+      {% else %}<span class="it-slot-name">Prazno mjesto{% if it.hint %} <span class="it-note">· {{ it.hint }}</span>{% endif %}</span>{% endif %}
       <span class="it-end">
-        {% if ex.video %}<span class="it-video has">video ✓</span>{% else %}<span class="it-video">bez videa</span>{% endif %}
+        {% if ex %}{% if ex.video %}<span class="it-video has">video ✓</span>{% else %}<span class="it-video">bez videa</span>{% endif %}{% endif %}
         <span class="it-acts">
           <button type="submit" form="st-gore-{{ it.id }}" class="btn-ghost btn-sm"
-                  {% if loop.first %}disabled style="opacity:.35;"{% endif %} aria-label="Pomakni gore: {{ ex.name }}">↑</button>
+                  {% if loop.first %}disabled style="opacity:.35;"{% endif %} aria-label="Pomakni gore: {{ name }}">↑</button>
           <button type="submit" form="st-dolje-{{ it.id }}" class="btn-ghost btn-sm"
-                  {% if loop.last %}disabled style="opacity:.35;"{% endif %} aria-label="Pomakni dolje: {{ ex.name }}">↓</button>
-          <button type="submit" form="st-x-{{ it.id }}" class="btn-ghost btn-sm" aria-label="Makni iz treninga: {{ ex.name }}">✕</button>
+                  {% if loop.last %}disabled style="opacity:.35;"{% endif %} aria-label="Pomakni dolje: {{ name }}">↓</button>
+          <button type="submit" form="st-x-{{ it.id }}" class="btn-ghost btn-sm" aria-label="Makni iz treninga: {{ name }}">✕</button>
         </span>
       </span>
-      {% if in_row and focus == it.id|string %}
-        {% if request.query_params.get("error") %}<div class="alert st-alert" role="alert"><span>{{ request.query_params.get("error") }}</span></div>
+      {% if here_row %}
+        {% if refused %}<div class="alert st-alert" role="alert"><span>{{ refused }}</span></div>
         {% elif request.query_params.get("ok") %}<div class="alert ok st-alert" role="status">{{ request.query_params.get("ok") }}</div>{% endif %}
       {% endif %}
       <form class="st-form" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}">
         {% if circ %}<input type="hidden" name="circuit" value="1">{% endif %}
         <div class="st-dio"><label for="st-{{ it.id }}-dio">Dio</label>
           <select id="st-{{ it.id }}-dio" name="section">
-            {% for k, l in SECTIONS.items() %}<option value="{{ k }}"{% if k == it.section %} selected{% endif %}>{{ l }}</option>{% endfor %}
+            {% for k, l in SECTIONS.items() %}<option value="{{ k }}"{% if k == it.section %} selected{% endif %}>{{ day.part_label(k) }}</option>{% endfor %}
           </select></div>
         {% if not circ %}
         <div><label for="st-{{ it.id }}-sets">Serije</label>
@@ -276,11 +354,28 @@
           <input id="st-{{ it.id }}-after" type="number" name="rest_after" inputmode="numeric" min="0" max="3600"
                  value="{{ it.rest_after_seconds if it.rest_after_seconds is not none else '' }}"></div>
         {% endif %}
+        {% if not ex %}
+        <div class="st-hint"><label for="st-{{ it.id }}-hint">Natuknica</label>
+          <input id="st-{{ it.id }}-hint" type="text" name="hint" maxlength="80" value="{{ it.hint }}"
+                 placeholder="npr. čučanj"></div>
+        {% endif %}
         <div class="st-note"><label for="st-{{ it.id }}-note">Napomena</label>
           <input id="st-{{ it.id }}-note" type="text" name="note" maxlength="500" value="{{ it.note }}"
                  placeholder="npr. 8 kg, po nozi"></div>
         <div class="st-go"><button type="submit" class="btn btn-sm">Spremi</button></div>
       </form>
+      {% if not ex and choices %}
+      {# "Popuni vježbom" (26.11.2026): the library's combobox, the script's
+         (its rows the add card's select's), opening with the hint typed in #}
+      <details class="st-circ st-fill" data-hint="{{ it.hint }}" hidden{% if here_row and refused and request.query_params.get("popuni") %} open{% endif %}>
+        <summary>Popuni vježbom</summary>
+        <form class="st-fill-form" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/vjezba">
+          <div><label for="st-{{ it.id }}-fill">Vježba iz baze</label>
+            <input type="hidden" id="st-{{ it.id }}-fill" name="exercise_id" value=""></div>
+          <div class="st-go"><button type="submit" class="btn btn-sm">Postavi</button></div>
+        </form>
+      </details>
+      {% endif %}
     </div>
     {% else %}
     <p class="hint st-none">Nema vježbi.</p>
@@ -292,33 +387,47 @@
 {% for it in day.items %}
 <form id="st-gore-{{ it.id }}" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/pomak"><input type="hidden" name="smjer" value="gore"></form>
 <form id="st-dolje-{{ it.id }}" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/pomak"><input type="hidden" name="smjer" value="dolje"></form>
+{% if it.exercise %}
 <form id="st-x-{{ it.id }}" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/obrisi"
       data-confirm-title="Maknuti vježbu iz treninga?"
       data-confirm="„{{ it.exercise.name }}” izlazi iz ovog treninga; u bazi vježbi ostaje."
       data-confirm-cta="Makni"></form>
+{% else %}
+<form id="st-x-{{ it.id }}" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}/obrisi"
+      data-confirm-title="Maknuti prazno mjesto?"
+      data-confirm="Prazno mjesto{% if it.hint %} „{{ it.hint }}”{% endif %} izlazi iz ovog treninga."
+      data-confirm-cta="Makni"></form>
+{% endif %}
 {% endfor %}
 
 <h2 style="font-size:1.05rem; margin:30px 0 12px;">Dodaj vježbu</h2>
 {% set natrag = "/treninzi/" ~ p.id ~ "/dan/" ~ day.id ~ "/uredi" %}
 {# the add card (25.11.2026: the numbers too, and back here after an add,
    its Dio as it was, its picker focused, the card saying what went where:
-   ?dodaj=<key>; without JS the select takes the focus, autofocus) #}
+   ?dodaj=<key>; without JS the select takes the focus, autofocus). On a
+   dvoranski programme's day (26.11.2026) its second way, "Dodaj prazno
+   mjesto": a slot in the card's Dio with the card's numbers and its
+   Natuknica (its own button: formaction, formnovalidate), there with an
+   empty library too #}
+{% set slots_here = p.venue == "dvorana" %}
 <form id="dodaj" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke" class="card add-ex">
   {% if in_add %}
     {% if request.query_params.get("error") %}<div class="alert" role="alert"><span>{{ request.query_params.get("error") }}</span></div>
     {% elif request.query_params.get("ok") %}<div class="alert ok" role="status">{{ request.query_params.get("ok") }}</div>{% endif %}
   {% endif %}
-  {% if choices %}
-  {{ tagbar(tags) }}
+  {% if choices or slots_here %}
+  {% if choices %}{{ tagbar(tags) }}{% endif %}
   <div class="add-fields">
+    {% if choices %}
     <div class="field"><label for="add-ex">Vježba iz baze</label>
       <select id="add-ex" name="exercise_id" required{% if add_dio %} autofocus{% endif %}>
         <option value="" disabled{% if chosen not in choices|map(attribute="id")|list %} selected{% endif %}>Odaberi vježbu…</option>
         {% for ex in choices %}<option value="{{ ex.id }}"{% if ex.id == chosen %} selected{% endif %}>{{ ex.name }}{% if ex.tags %} · {{ ex.tags }}{% endif %}</option>{% endfor %}
       </select></div>
+    {% endif %}
     <div class="field"><label for="add-dio">Dio</label>
       <select id="add-dio" name="section">
-        {% for k, l in SECTIONS.items() %}<option value="{{ k }}"{% if k == (add_dio or "trening") %} selected{% endif %}>{{ l }}</option>{% endfor %}
+        {% for k, l in SECTIONS.items() %}<option value="{{ k }}"{% if k == (add_dio or "trening") %} selected{% endif %}>{{ day.part_label(k) }}</option>{% endfor %}
       </select></div>
   </div>
   <div class="add-nums">
@@ -331,6 +440,8 @@
     <div><label for="add-kg">Kilaža (kg)</label>
       <input id="add-kg" type="number" name="kg" inputmode="decimal" min="0.5" max="500" step="0.5"></div>
   </div>
+  {% endif %}
+  {% if choices %}
   <div class="add-row">
     <button type="submit" class="btn btn-sm">Dodaj</button>
     <a class="btn-ghost btn-sm" href="/treninzi/vjezbe/nova?natrag={{ natrag }}">Nova vježba →</a>
@@ -339,6 +450,14 @@
   <div class="add-row">
     <p class="hint" style="flex:1 1 220px;">Baza vježbi je prazna — prvo dodaj vježbu.</p>
     <a class="btn-ghost btn-sm" href="/treninzi/vjezbe/nova?natrag={{ natrag }}">Nova vježba →</a>
+  </div>
+  {% endif %}
+  {% if slots_here %}
+  <div class="add-slot">
+    <div class="field"><label for="add-hint">Natuknica (neobavezno)</label>
+      <input id="add-hint" type="text" name="hint" maxlength="80" aria-describedby="add-hint-h">
+      <p class="hint ex-hint" id="add-hint-h" style="margin:6px 0 0;">npr. čučanj, potisak — sužava popis vježbi kad se mjesto popunjava</p></div>
+    <button type="submit" class="btn btn-sm" formaction="/treninzi/{{ p.id }}/dan/{{ day.id }}/mjesto" formnovalidate>Dodaj prazno mjesto</button>
   </div>
   {% endif %}
 </form>
@@ -388,6 +507,45 @@
     // ?dodaj=<a part> (the select's autofocus, the input's now): after the
     // load, as the browser's move to #dodaj takes away a focus given before it
     if (sel.hasAttribute("autofocus")) window.addEventListener("load", function () { setTimeout(picker, 0); });
+  })();
+  // "Dodaj prazno mjesto" (26.11.2026, a dvoranski programme's day): Enter
+  // in its "Natuknica" adds the slot, its own button, never the exercise
+  // the card's first button would (the form's default).
+  (function () {
+    var hint = document.getElementById("add-hint"), form = document.getElementById("dodaj");
+    var slot = form && form.querySelector('button[formaction$="/mjesto"]');
+    if (!hint || !slot) return;
+    hint.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (form.requestSubmit) form.requestSubmit(slot); else slot.click();
+    });
+  })();
+  // "Popuni vježbom" (26.11.2026): each slot's combobox over the library
+  // (base.html's qmtCombobox in its rows mode), its rows the add card's
+  // select's options (the library on the page once, as the karton's
+  // exercise log carries it), its value the form's hidden exercise_id. It
+  // opens with the slot's hint typed in, so the list is already narrowed:
+  // the <details> shown here (rendered hidden: without the script nothing
+  // fills a slot), and when it opens the input takes the focus, its list
+  // open. Postavi with nothing picked stops at "Odaberi vježbu s popisa.".
+  (function () {
+    var src = document.getElementById("add-ex"), fills = document.querySelectorAll("details.st-fill");
+    if (!src || !fills.length) return;
+    var rows = [];
+    [].forEach.call(src.options, function (o) {
+      if (!o.value) return;                                   // "Odaberi vježbu…"
+      var text = o.textContent, cut = text.indexOf(" · ");    // "name · tags", as the add card's combobox reads it
+      rows.push({id: o.value, name: cut < 0 ? text : text.slice(0, cut), tags: cut < 0 ? "" : text.slice(cut + 3)});
+    });
+    [].forEach.call(fills, function (d) {
+      var value = d.querySelector("form input[type=hidden]");
+      var cbx = value && qmtCombobox({rows: rows, value: value}, {form: value.form});
+      if (!cbx) return;
+      cbx.input.value = d.getAttribute("data-hint") || "";
+      d.hidden = false;
+      d.addEventListener("toggle", function () { if (d.open) cbx.input.focus(); });
+    });
   })();
 </script>
 {% endblock %}

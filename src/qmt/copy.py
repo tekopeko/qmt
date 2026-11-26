@@ -1048,6 +1048,10 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "dan.exercise.no_video": Slot("Vježba još nema videa.", CAP, "Online treninzi · vježba: bez videa (i u izvođenju)"),
     "dan.exercise.rep": Slot("Jedno ponavljanje:", CAP, "Online treninzi · vježba: Jedno ponavljanje: (i u izvođenju)",
                              required=True),
+    # a dvoranski programme's empty slot on the day's page (26.11.2026: staff's,
+    # no client reaches such a day), its hint after it: "Prazno mjesto · čučanj"
+    "dan.slot": Slot("Prazno mjesto", CAP, "Online treninzi · trening: Prazno mjesto (dvoranski, trener)",
+                     required=True),
     "dan.empty": Slot("Trening još nema vježbi.", CAP, "Online treninzi · trening: bez vježbi"),
     "dan.empty_staff": Slot("Trening još nema vježbi — dodaj ih u uređivanju.", CAP,
                             "Online treninzi · trening: bez vježbi (trener)"),
@@ -1270,8 +1274,8 @@ _TEXT_RULES = (
     ("Online treninzi", "/treninzi", False, (
         ("Popis programa", ("treninzi.",)),
         ("Program", ("program.",)),
-        ("Trening", ("dan.meta.", "dan.state.", "dan.go.", "dan.drop.", "dan.edit", "dan.video.", "dan.empty",
-                     "dan.history.")),
+        ("Trening", ("dan.meta.", "dan.state.", "dan.go.", "dan.drop.", "dan.edit", "dan.video.", "dan.slot",
+                     "dan.empty", "dan.history.")),
         ("Vježba", ("dan.exercise.",)))),
     ("Trening (izvođenje)", None, False, (
         ("Traka i zajedničko", ("player.top.", "player.finish", "player.saved", "player.optional", "player.skip",

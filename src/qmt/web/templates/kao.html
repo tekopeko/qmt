@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Gledaj kao člana — QMT{% endblock %}
+{% block title %}Gledaj kao član — QMT{% endblock %}
 {% block head %}
 <style>
-  /* "Gledaj kao člana" (26.11.2026, Admin ▾'s first item; the owner: "Amir
+  /* "Gledaj kao član" (26.11.2026, Admin ▾'s first item; the owner: "Amir
      can look at the app just like the user sees the app and he can do
      everything the user does in the same way"): every member, the /admin
      pages' look, a 720px column. The search filters as it is typed (the
@@ -28,7 +28,7 @@
 </style>
 {% endblock %}
 {% block content %}
-<h1>Gledaj kao člana</h1>
+<h1>Gledaj kao član</h1>
 <p class="hint">Otvori aplikaciju kao član: vidiš što on vidi i radiš što on može. Sve što ovako promijeniš bilježi se.</p>
 {% if is_owner %}<p class="hint kao-log"><a class="tlink" href="/kao/zapisi">Zapis svih radnji →</a></p>{% endif %}
 <div class="kao">

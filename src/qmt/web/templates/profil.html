@@ -54,7 +54,7 @@
   <p class="hint">{{ c.t("profil.account.since") }} {{ user.created_at.astimezone(tz).strftime("%-d.%-m.%Y.") }}</p>
 </div>
 
-{% if not user.is_trainer %}
+{% if not can_edit_copy %}
 <div class="card mc-link">
   <a class="act" href="/moja-clanarina">{{ c.t("profil.link") }}</a>
 </div>

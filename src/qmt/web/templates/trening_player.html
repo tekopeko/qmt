@@ -24,7 +24,7 @@
    no ✓, no "+", no swap). Since 25.11.2026 too, each exercise is rated
    (optional, "Koliko je bilo teško?", the round once on a round's screen)
    and the card says what the last rating does to the load (.pl-next). #}
-{% set solo_page = not user.is_trainer %}
+{% set solo_page = not can_edit_copy %}
 {% import "_copy.html" as c with context %}
 {% block title %}{{ title }} — {{ day.label }} — QMT{% endblock %}
 {% block head %}
@@ -493,13 +493,15 @@
        not saved: a circuit's exercise its part's first round not saved,
        25.11.2026), the ones on screen ringed (a round's every exercise); a
        circuit part's caption says so, its rows the dose of a round and the
-       note (no rest applies there), their mark the rounds saved ("2/3") #}
+       note (no rest applies there), their mark the rounds saved ("2/3").
+       Since 26.11.2026 a part as the day names it ("Krug 1"), and its
+       exercises alone: a slot is no step, so no row #}
     <aside class="pl-side" id="popis" aria-labelledby="popis-h">
       <h2 class="pl-side-h" id="popis-h">{{ c.t("player.list.title") }}</h2>
       {% set ns = namespace(n=0) %}
-      {% for key, label in SECTIONS.items() %}{% set section_items = day.by_section[key] %}
+      {% for key, label in SECTIONS.items() %}{% set section_items = day.exercises_by_section[key] %}
       {% if section_items %}{% set circ = day.circuit(key) %}
-      <h3 class="dx-cap">{{ label }}{% if circ %}{% if copy_on("player.list.circuit") %} · {{ c.t("player.list.circuit") }}{% endif %} · {{ circ.rounds_text }}{% endif %}</h3>
+      <h3 class="dx-cap">{{ day.part_label(key) }}{% if circ %}{% if copy_on("player.list.circuit") %} · {{ c.t("player.list.circuit") }}{% endif %} · {{ circ.rounds_text }}{% endif %}</h3>
       <ol class="dx-list pl-rows">
         {% for x in section_items %}{% set ns.n = ns.n + 1 %}{% set mark = marks.get(x.id) %}{% set xdose = x.round_dose if circ else x.dose %}
         <li><a class="card pl-row{% if x.id in cur %} is-cur{% endif %}" href="{{ base }}/vjezba/{{ links[x.id] }}"{% if x.id in cur %} aria-current="step"{% endif %}>
