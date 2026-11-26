@@ -483,27 +483,31 @@ def test_the_no_plan_card_is_the_owners_text_and_the_editor_sees_it_as_a_preview
     assert "Pretplati se karticom" not in section(page, "mcAdd")    # no card payments for anyone
 
 
-def test_the_trainers_page_leads_to_the_members_page():
+def test_the_tab_not_a_line_on_clanarine_leads_to_the_members_page():
     """The trainer's way to the members' page was an account-menu item that
     was easy to miss (the owner, 18.10.2026: "How will my friend be able to
-    even change the 'moja članarina' tab then?"). So /clanarine, the
-    trainer's and the owner's page for the members' payments ("Trenutne
-    članarine" since 26.10.2026, Admin ▾'s item), says under its lead where
-    the members' page is and that its texts and prices are edited there.
-    The bar's way there is one, never two: since 26.10.2026 the Moja
-    članarina tab in staff's member row, for the trainer and for an owner
-    who does not train alike, and no menu item. A client never reaches
-    /clanarine."""
-    make_user("ivan@test.local", plans=("grupni",))
+    even change the 'moja članarina' tab then?"), so /clanarine said under
+    its lead where the members' page is, until 26.11.2026 (build 4; the
+    owner: "I would also remove this, this is now obsolete"): /clanarine,
+    the trainer's and the owner's page for the members' payments
+    ("Trenutne članarine" since 26.10.2026, Admin ▾'s item), has its lead
+    and then the members' cards, each card neither "Karton →" nor "Kao
+    član →" (the same day). The bar's way there is one, never two: since
+    26.10.2026 the Moja članarina tab in staff's member row, for the
+    trainer and for an owner who does not train alike, and no menu item. A
+    client never reaches /clanarine."""
+    ivan = make_user("ivan@test.local", plans=("grupni",))
     make_user("trener@test.local")                                   # the owner (OWNER_EMAIL), not a trainer
     make_user("coach@test.local", is_trainer=True)                   # a trainer
-    link = '<a class="act" href="/moja-clanarina">Moja članarina →</a>'
     for email in ("coach@test.local", "trener@test.local"):
         page = client_for(email).get("/clanarine").text
-        assert "Stranica koju vide članovi — cjenik, tekstovi i cijene uređuju se tamo:" in text(page), email
+        main = page.split("<main")[1]
+        assert "Stranica koju vide članovi" not in text(page) and "Moja članarina →" not in page, email
+        assert 'href="/moja-clanarina"' not in main, email               # no link to it on the page itself
+        assert 'action="/kao' not in main and 'href="/karton/' not in main, email   # nor a member's two buttons
+        assert "Karton →" not in main and "Kao član →" not in main, email
+        assert f'action="/clanarine/{ivan}/uplata"' in main, email      # his card is there
         assert "<title>Trenutne članarine — QMT</title>" in page, email
-        assert page.index("<h1>Trenutne članarine</h1>") < page.index(link), email
-        assert page.index(link) < page.index('href="/karton/'), email   # above the roster
         assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page, email   # the nav tab
         assert "<span>Moja članarina</span>" not in page, email        # no account-menu item
     assert client_for("ivan@test.local").get("/clanarine").status_code == 403
@@ -884,7 +888,7 @@ def test_the_clanarine_forms_offer_the_tiers_by_name():
 
     page = t.get("/clanarine").text
     add = member_card(page, "sara@test.local")
-    start = add.index('<select name="plan"')                         # the add form (its card's head has "Kao član →"'s form, 26.11.2026)
+    start = add.index('<select name="plan"')                         # the add form
     add = add[start:add.index("</form>", start)]
     assert select_in(add, '<select name="tier" aria-label="Paket (samo online)"') == [(v, False, n) for v, n in names]
     assert select_in(add, '<select name="sessions" aria-label="Treninga mjesečno (samo grupni)"')[0] == ("", False, "neograničeno")

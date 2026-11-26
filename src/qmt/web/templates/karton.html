@@ -70,6 +70,17 @@
                                       overflow-wrap:anywhere; }
   .upitnik .u-flag.review { background:var(--accent-dim); color:var(--accent-tint-ink); }
   .upitnik .u-flag.pain, .limits .u-flag.pain { background:var(--warn-soft); color:var(--warn); }
+  /* staff acting as the member (26.11.2026, build 4): what only the
+     trainer's view showed (the two flags, every answer under "Odgovori")
+     prints on his karton too, each group under one small muted caption,
+     "Vidi samo trener", so nobody takes it for what the member sees; the
+     group 4px under it, the caption in the group's own place */
+  .upitnik .u-staff { font-size:.78rem; margin-top:10px; }
+  .upitnik .u-staff.u-answers { margin-top:14px; }
+  .upitnik .u-staff + :is(.u-flags, details) { margin-top:4px; }
+  /* there "Odgovori" is a thumb's target on a touch screen, 32px at least
+     (the trainer's view keeps its own as it was) */
+  @media (pointer: coarse) { .upitnik .u-staff + details > summary { padding:6px 0; } }
   /* q14 at 7 or more: početna, and see the trainer first — said to the client too */
   .upitnik .u-note { margin-top:12px; padding:10px 14px; border-radius:var(--r-md); font-size:.9rem;
                      background:var(--warn-soft); color:var(--text); overflow-wrap:anywhere; white-space:pre-line; }
@@ -242,8 +253,31 @@
      them. A save or a refusal comes back to the card (#masa, #ogranicenja,
      #napredak), clear of the floating bar. ===== */
   /* "Otvori kao član" under the trainer's view's head line (26.11.2026):
-     one .act, tucked under the lead, the cards below it */
+     one .act, tucked under the lead, the cards below it; since build 4 in
+     base.html's amber tint (.act-kao), as every way into a member's app */
   .kao-open { margin:-8px 0 22px; }
+  /* The Karton tab of the trainer and the owner (26.11.2026, build 4; the
+     owner: "the 'Otvori kao član' amber button on the Karton tab of the
+     Admin and Trainer with a search bar where a user can be searched"):
+     ONE form under the lead, above the cards, the way into a member's app.
+     "Član" (the page's label look) over a row: the member's field
+     (base.html's combobox over #kp-json; the native select without the
+     script), 420px at most, and "Otvori kao član" beside it (.btn-kao, the
+     strip's solid amber: someone else's account), both 40px, 44px on a
+     coarse pointer, their tops level (the "nothing picked" line under the
+     field lengthens its own column alone). Under 600px one under the
+     other, the button the column's width. The list lies over the cards
+     (.cbx-list, absolute), never pushes them. Staff's own chrome: no slot. */
+  .kao-pick { margin:0 0 26px; }
+  .kao-pick .kp-row { display:flex; flex-direction:column; gap:10px; }
+  .kao-pick .kp-field { min-width:0; }
+  .kao-pick :is(.cbx > input, select) { height:40px; padding:0 13px; }
+  @media (pointer: coarse) { .kao-pick :is(.cbx > input, select) { height:44px; } }
+  @media (min-width: 600px) {
+    .kao-pick .kp-row { flex-direction:row; align-items:flex-start; }
+    .kao-pick .kp-field { flex:1 1 auto; max-width:420px; }
+    .kao-pick .btn-kao { flex:none; }
+  }
   .k-body { display:block; font-variant-numeric:tabular-nums; }
   span.t:not(:empty) + .k-body { margin-top:4px; }     /* under the lead; an emptied lead leaves no gap */
   .kc-head { display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap; }
@@ -538,9 +572,35 @@
 {% if can_act %}
 <form class="kao-open" method="post" action="/kao/{{ subject.id }}">
   <input type="hidden" name="natrag" value="/karton/{{ subject.id }}">
-  <button type="submit" class="act">Otvori kao član</button>
+  <button type="submit" class="act act-kao">Otvori kao član</button>
 </form>
 {% endif %}
+{#- the Karton tab of the trainer and the owner (26.11.2026, build 4): the
+   way into a member's app, every member /kao lists in its order (a native
+   select, which the page's script turns into base.html's combobox over
+   #kp-json: the name over "email · plans", typed into by the name and the
+   email), POST /kao, back here at "Izađi". Never while acting (the page is
+   then the member's own karton), on the trainer's view or a member's; no
+   member at all, no form. Staff's own chrome, no slot. Its tags trim the
+   lines they stand on: every other page is byte for byte as before. #}
+{%- if staff_own and kao_members %}
+<form class="kao-pick" method="post" action="/kao">
+  <input type="hidden" name="natrag" value="/karton">
+  <label for="kp-clan">Član</label>
+  <div class="kp-row">
+    <div class="kp-field">
+      <select id="kp-clan" name="clan" required>
+        <option value="" disabled selected>Odaberi člana…</option>
+        {%- for m in kao_members %}
+        <option value="{{ m.user.id }}">{{ m.name }}{% if m.name != m.user.email %} · {{ m.user.email }}{% endif %}</option>
+        {%- endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn-kao">Otvori kao član</button>
+  </div>
+  <script type="application/json" id="kp-json">{{ kao_rows|tojson }}</script>
+</form>
+{%- endif %}
 
 {# the cards above the diary, in their reading order (25.11.2026): one
    column below 1000px; from 1000px two (.k-cards' grid), the upitnik block
@@ -575,7 +635,11 @@
   </div>
   {% set review = onboarding.needs_review and (can_edit_copy or copy_text("karton.staff.review", copy_texts)) %}
   {% set pain = (onboarding.pain_level or 0) >= pain_ask %}
-  {% if not own and (review or pain) %}
+  {#- the trainer's view's, and since 26.11.2026 (build 4) staff's acting as
+     the member (actor): under "Vidi samo trener", staff's own chrome. The
+     tags stand inline, so a member's page and the trainer's view are byte
+     for byte as before. #}
+  {% if (not own or actor) and (review or pain) %}{% if actor %}<p class="hint u-staff">Vidi samo trener</p>{% endif %}
   <div class="u-flags">
     {% if review %}<span class="u-flag review">{{ c.t("karton.staff.review") }}</span>{% endif %}
     {% if pain %}<span class="u-flag pain">Bolovi {{ onboarding.pain_level }}/10{% if pain_where %} · {{ pain_where | truncate(60) }}{% endif %}</span>{% endif %}
@@ -595,9 +659,10 @@
   {% if v2 and onboarding.pain_high and pain_note %}<p class="u-note">{{ pain_note }}</p>{% endif %}
   {% if not v2 and own %}<p class="u-old">{{ c.t("karton.upitnik.old") }} <a class="tlink" href="/upitnik">{{ c.t("karton.upitnik.old_link") }}</a>.</p>
   {% elif not v2 and (can_edit_copy or copy_text("karton.staff.old", copy_texts)) %}<p class="u-old">{{ c.t("karton.staff.old") }}</p>{% endif %}
-  {% if not own %}
+  {% if not own or actor %}{% if actor %}<p class="hint u-staff u-answers">Vidi samo trener</p>{% endif %}
   {# the trainer has no "Ispuni ponovno" — for them the answers (ozljede!) are
-     the only place this information exists #}
+     the only place this information exists; staff acting as the member read
+     them too, under their caption (26.11.2026, build 4) #}
   <details>
     <summary>{{ c.t("karton.staff.answers") }}</summary>
     <ul>
@@ -1223,6 +1288,28 @@
     sel.parentNode.replaceChild(value, sel);
     value.id = sel.id;
     qmtCombobox({rows: rows, value: value}, {form: value.form});
+  })();
+
+  // The Karton tab's way into a member's app (26.11.2026, build 4): the
+  // members as base.html's combobox, typed into (#kp-json: [id, name,
+  // "email · plans", the email], each row its name over that line, matched
+  // by the name and the email alone), in the member's words; a hidden clan
+  // takes the select's place and is what POST /kao gets. "Otvori kao član"
+  // with nothing picked stops at "Odaberi člana s popisa.". Without the
+  // script the select is the picker.
+  (function () {
+    var sel = document.getElementById("kp-clan"), data = document.getElementById("kp-json");
+    if (!sel || !data || !window.qmtCombobox) return;
+    var rows;
+    try {
+      rows = JSON.parse(data.textContent).map(function (x) { return {id: String(x[0]), name: x[1], tags: x[2] || "", find: x[3] || ""}; });
+    } catch (e) { return; }
+    var value = document.createElement("input");
+    value.type = "hidden"; value.name = sel.name;
+    sel.parentNode.replaceChild(value, sel);
+    value.id = sel.id;
+    qmtCombobox({rows: rows, value: value}, {form: value.form, placeholder: "Ime ili email člana", listLabel: "Članovi",
+                                              missing: "Odaberi člana s popisa.", noMatch: "Nijedan član ne odgovara traženju."});
   })();
 
 </script>

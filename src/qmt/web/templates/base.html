@@ -412,6 +412,27 @@
                  border-color: color-mix(in srgb, var(--text) 40%, transparent); }
     .act-quiet { background: none; color: var(--muted); }
     .act-quiet:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+    /* ===== amber = someone else's account (26.11.2026, build 4; the owner:
+       "The button to open as another user should also be in amber"): every
+       control that opens a member's app as he has it wears the strip's
+       amber, so nobody takes it for an action on his own account. Two
+       looks, AA in both themes. .act-kao, on an .act (/kao's "Otvori →", a roster's
+       "Kao član →", the trainer's view's "Otvori kao član"): the karton's
+       amber tint, --warn on --warn-soft as its .act-absent, the hover a
+       deeper tint, never a flood, its background declared so a <button>
+       and an <a> look the same. .btn-kao (the Karton tab's "Otvori kao
+       član"): the strip's solid pill, .kao-exit's colours and hover, at a
+       form button's size, 40px, 44px on a coarse pointer, no glow. ===== */
+    .act-kao { background: var(--warn-soft); color: var(--warn);
+               border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+    .act-kao:hover { background: color-mix(in srgb, var(--warn) 26%, transparent); color: var(--warn);
+                     border-color: var(--warn); }
+    .btn-kao { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+               min-height: 40px; padding: 0 20px; border: 1px solid transparent; border-radius: 999px;
+               box-shadow: none; cursor: pointer; text-decoration: none;
+               font: 600 .92rem var(--font-body); background: var(--warn); color: var(--bg); }
+    .btn-kao:hover { background: color-mix(in srgb, var(--warn) 82%, var(--text)); color: var(--bg); transform: none; }
+    @media (pointer: coarse) { .btn-kao { min-height: 44px; } }
     /* fingers need more than 31px — grow the small controls only where the
        pointer is coarse, so desktop density is untouched. This block must sit
        BELOW .btn-sm/.act: same specificity, so source order decides, and above
@@ -2204,6 +2225,13 @@
   // (25.11.2026, the day editor's "+ Dodaj vježbu u ovaj dio" and the page
   // back after an add) puts the focus in the input with the list shut, as a
   // pick leaves it: typing or a tap opens it.
+  // Its words are the library's by default; a list of something else gives
+  // its own (26.11.2026, build 4: the Karton tab's members): opts.placeholder
+  // the input's, opts.listLabel the list's aria-label, opts.missing the
+  // sentence with nothing picked, opts.noMatch the line when nothing
+  // matches. A given row may carry `find`, what it matches by besides its
+  // name, in place of its tags (a member's email, not the plans his line
+  // shows).
   function qmtCombobox(src, opts) {
     opts = opts || {};
     var given = !!(src && Array.isArray(src.rows));            // rows given, the value a hidden input's
@@ -2212,7 +2240,7 @@
     if (!sel || !form) return null;
     var id = sel.id, MAX = 60, rows = [], byId = {};
     if (given) src.rows.forEach(function (r) {
-      if (r.fname == null) { r.fname = qmtFold(r.name); r.ftags = qmtFold(r.tags || ""); }
+      if (r.fname == null) { r.fname = qmtFold(r.name); r.ftags = qmtFold(r.find != null ? r.find : (r.tags || "")); }
       rows.push(r); byId[r.id] = r;
     });
     else [].forEach.call(sel.options, function (o) {
@@ -2226,11 +2254,11 @@
     var input = document.createElement("input"), list = document.createElement("ul"), err = document.createElement("p");
     wrap.className = "cbx";
     input.type = "text"; input.id = id + "-q"; input.autocomplete = "off";
-    input.placeholder = "Upiši dio naziva ili oznaku…";
+    input.placeholder = opts.placeholder || "Upiši dio naziva ili oznaku…";
     [["role", "combobox"], ["aria-expanded", "false"], ["aria-controls", id + "-list"],
      ["aria-autocomplete", "list"], ["aria-describedby", id + "-err"]].forEach(function (a) { input.setAttribute(a[0], a[1]); });
     list.id = id + "-list"; list.className = "cbx-list"; list.hidden = true;
-    list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Vježbe iz baze");
+    list.setAttribute("role", "listbox"); list.setAttribute("aria-label", opts.listLabel || "Vježbe iz baze");
     err.id = id + "-err"; err.className = "cbx-err"; err.setAttribute("aria-live", "polite");
     wrap.appendChild(input); wrap.appendChild(list);
     sel.parentNode.insertBefore(wrap, sel); sel.parentNode.insertBefore(err, sel);
@@ -2284,7 +2312,7 @@
         var note = document.createElement("li");
         note.className = "cbx-note"; note.setAttribute("role", "presentation");
         note.textContent = found.length ? "… još " + (found.length - MAX) + " — nastavi tipkati"
-                                        : "Nijedna vježba ne odgovara traženju.";
+                                        : opts.noMatch || "Nijedna vježba ne odgovara traženju.";
         list.appendChild(note);
       }
       list.scrollTop = 0;
@@ -2298,7 +2326,7 @@
       err.textContent = ""; input.removeAttribute("aria-invalid");
       picking = true; input.focus(); picking = false;          // the focus stays, the list stays shut
     }
-    function fail() { err.textContent = "Odaberi vježbu s popisa."; input.setAttribute("aria-invalid", "true"); }
+    function fail() { err.textContent = opts.missing || "Odaberi vježbu s popisa."; input.setAttribute("aria-invalid", "true"); }
     input.addEventListener("focus", function () { if (!picking) open(); });
     input.addEventListener("click", function () { if (list.hidden) open(); });
     input.addEventListener("input", function () { sel.value = ""; open(); });

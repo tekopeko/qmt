@@ -1856,18 +1856,13 @@ async def _acting_guard(app_, scope, receive, send) -> None:
         await run_in_threadpool(_record_acting, actor, member, method, path, status)
 
 
-@app.get("/kao", response_class=HTMLResponse)
-def kao_page(request: Request):
-    """"Gledaj kao član" (Admin ▾'s first item): every member (an account
-    that is neither a trainer nor the owner) in the alphabet's order (his
-    full name, the email for one with none: models.alpha_key), his running
-    plans by their names (PLAN_LABELS, PLAN_TYPES' order; none: "bez
-    članarine"), and "Otvori →", POST /kao/<id>. A search filters the rows
-    as it is typed (the page's script; the whole list without it). The
-    owner also gets the way to the record (/kao/zapisi)."""
-    user, redirect = _require_trainer(request)
-    if redirect:
-        return redirect
+def _kao_members() -> list[dict]:
+    """Every member staff may act as (an account that is neither a trainer
+    nor the owner), in the alphabet's order (his full name, the email for
+    one with none: models.alpha_key), each {"user", "name" (his full name,
+    else his email), "plans" (his running plans by their names, PLAN_LABELS
+    in PLAN_TYPES' order, joined by " · "; "" for none)}: /kao's rows and,
+    since 26.11.2026 (build 4), the Karton tab's picker, one list."""
     today = config.today()
     order = {p: i for i, p in enumerate(PLAN_TYPES)}
     members = []
@@ -1879,7 +1874,20 @@ def kao_page(request: Request):
         members.append({"user": u, "name": u.full_name or u.email,
                         "plans": " · ".join(PLAN_LABELS.get(p, p) for p in running)})
     members.sort(key=lambda m: (alpha_key(m["name"]), m["user"].email))
-    return templates.TemplateResponse(request, "kao.html", _ctx(request, user, members=members))
+    return members
+
+
+@app.get("/kao", response_class=HTMLResponse)
+def kao_page(request: Request):
+    """"Gledaj kao član" (Admin ▾'s first item): every member (_kao_members)
+    with his running plans (none: "bez članarine"), and "Otvori →", POST
+    /kao/<id>. A search filters the rows as it is typed (the page's script;
+    the whole list without it). The owner also gets the way to the record
+    (/kao/zapisi)."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    return templates.TemplateResponse(request, "kao.html", _ctx(request, user, members=_kao_members()))
 
 
 @app.get("/kao/zapisi", response_class=HTMLResponse)
@@ -1910,23 +1918,16 @@ def kao_izlaz(request: Request):
     return RedirectResponse(_safe_next(back) if back else "/kao", status_code=303)
 
 
-@app.post("/kao/{user_id}")
-def kao_enter(request: Request, user_id: int, natrag: str = Form(""), kamo: str = Form("")):
-    """Into a member's account: a trainer or the owner (a member, a guest
-    never reaches it; while acting this is the member's, who is refused
-    too), into a member's only ("U račun trenera ili vlasnika se ne
-    ulazi."). `natrag`, where "Izađi" returns (/kao by default), and
-    `kamo`, where to land (his karton by default), each a local path
-    (_safe_next). The entry is the record's first row; the osvrt prompt is
-    not armed by it."""
+def _enter_member(request: Request, user, member, natrag: str, kamo: str):
+    """Into `member`'s account as `user` (staff: the routes ask
+    _require_trainer first), the one way in for POST /kao/{id} and POST
+    /kao: into a member's only ("U račun trenera ili vlasnika se ne
+    ulazi.", back to /kao). `natrag`, where "Izađi" returns (/kao by
+    default), and `kamo`, where to land (his karton by default), each a
+    local path (_safe_next). The entry is the record's first row (the
+    route's own path); the osvrt prompt is not armed by it."""
     from urllib.parse import quote
 
-    user, redirect = _require_trainer(request)
-    if redirect:
-        return redirect
-    member = db.get_user(user_id)
-    if member is None:
-        raise HTTPException(status_code=404)
     if _can_edit_copy(member):
         return RedirectResponse("/kao?error=" + quote(ACTING_REFUSED), status_code=303)
     request.session["as_user_id"] = member.id
@@ -1935,6 +1936,50 @@ def kao_enter(request: Request, user_id: int, natrag: str = Form(""), kamo: str 
     request.session.pop("fb_prompt", None)
     _record_acting(user, member, "POST", request.url.path, 303)
     return RedirectResponse(_safe_next(kamo) if kamo.strip() else "/karton", status_code=303)
+
+
+KAO_PICK = "Odaberi člana s popisa."
+
+
+@app.post("/kao")
+def kao_pick(request: Request, clan: str = Form(""), natrag: str = Form("")):
+    """The Karton tab's way into a member's app (26.11.2026, build 4; the
+    owner: "the 'Otvori kao član' amber button on the Karton tab of the
+    Admin and Trainer with a search bar where a user can be searched"): a
+    trainer or the owner (a member, a guest never; while acting this is the
+    member's, who is refused too). `clan`, the member's id, naming an
+    account: what POST /kao/{id} does (_enter_member: a staff account
+    refused, the session's keys, the record's first row), landing on his
+    karton. Nothing, junk or an id that names nobody (a member gone since
+    the page was drawn): back to `natrag` (_safe_next; /kao when none was
+    given) saying "Odaberi člana s popisa.", nothing entered."""
+    from urllib.parse import quote
+
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    raw = clan.strip()
+    member = db.get_user(int(raw)) if re.fullmatch(r"[0-9]{1,9}", raw) else None
+    if member is None:
+        back = _safe_next(natrag) if natrag.strip() else "/kao"
+        return RedirectResponse(f"{back}{'&' if '?' in back else '?'}error={quote(KAO_PICK)}", status_code=303)
+    return _enter_member(request, user, member, natrag, "")
+
+
+@app.post("/kao/{user_id}")
+def kao_enter(request: Request, user_id: int, natrag: str = Form(""), kamo: str = Form("")):
+    """Into a member's account from the picker (/kao's "Otvori →"), a
+    termin's roster or the trainer's view of a karton: a trainer or the
+    owner (a member, a guest never reaches it; while acting this is the
+    member's, who is refused too), _enter_member's rules; an account that
+    is not there is 404."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    member = db.get_user(user_id)
+    if member is None:
+        raise HTTPException(status_code=404)
+    return _enter_member(request, user, member, natrag, kamo)
 
 
 @app.get("/tekstovi", response_class=HTMLResponse)
@@ -2317,6 +2362,19 @@ def _render_karton(request: Request, viewer, subject, own: bool):
     # as a member's; no upitnik card (staff never fill it: POST /upitnik
     # refuses them) and no termini (they book none)
     staff_own = own and _can_edit_copy(subject)
+    # and since 26.11.2026 (build 4) the way into a member's app at its top:
+    # every member /kao lists, in its order (_kao_members), a native select
+    # without the script, base.html's combobox over kao_rows with it: [id,
+    # the name (the row's first line), "email · plans" (its muted second
+    # line; the plans alone for one named by his email), the email (what
+    # typing matches besides the name: never the plans)]
+    kao_members = _kao_members() if staff_own else []
+    kao_rows = []
+    for m in kao_members:
+        email = m["user"].email
+        named = m["name"] != email
+        plans = m["plans"] or "bez članarine"
+        kao_rows.append([m["user"].id, m["name"], f"{email} · {plans}" if named else plans, email if named else ""])
     return templates.TemplateResponse(request, "karton.html", _ctx(
         request, viewer, copy_texts=texts, subject=subject, own=own, age=age, staff_own=staff_own,
         can_upitnik=own and not staff_own and _has_online(subject),
@@ -2340,6 +2398,7 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         karton_path="/karton" if own else f"/karton/{subject.id}",
         # the trainer's view of a member's karton: "Otvori kao član" (26.11.2026)
         can_act=not own and not _can_edit_copy(subject),
+        kao_members=kao_members, kao_rows=kao_rows,
         today=config.today(), tz=config.TZ,
     ))
 
@@ -4923,9 +4982,6 @@ def clanarine_page(request: Request):
     today = config.today()
     rows = db.memberships_overview()
     for row in rows:
-        # "Kao član →" beside "Karton →" (26.11.2026): a member's row, never
-        # the owner's (who is listed here when he does not train)
-        row["can_act"] = not _can_edit_copy(row["user"])
         # what an uplata recorded now buys, said beside its button
         # (db.next_cycle, the rule record_payment follows)
         row["next"] = {m.plan: db.next_cycle(m, today) for m in row["plans"]}

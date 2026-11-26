@@ -233,7 +233,7 @@ def test_the_owner_is_staff_by_rule_whatever_his_trainer_flag():
         assert '<header class="topbar">' in page and 'class="avatar' in page    # staff's bar, not the solo pill
     assert 'data-copy="karton.staff.own_lead"' in c.get("/karton").text  # his own karton, as staff's
     clanarine, kao = c.get("/clanarine").text, c.get("/kao").text
-    assert f'href="/karton/{owner}"' not in clanarine and f'href="/karton/{ivan}"' in clanarine
+    assert f'action="/clanarine/{owner}/' not in clanarine and f'action="/clanarine/{ivan}/uplata"' in clanarine
     assert f'action="/kao/{owner}"' not in kao and f'action="/kao/{ivan}"' in kao
     r = client_for("coach@test.local").post(f"/kao/{owner}", follow_redirects=False)
     assert unquote(r.headers["location"]) == "/kao?error=U račun trenera ili vlasnika se ne ulazi."

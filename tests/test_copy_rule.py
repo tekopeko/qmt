@@ -137,8 +137,11 @@ ALLOWED: dict[str, set[str]] = {
         "Ovdje su i tekstovi koje vidi samo član ili su u prozorima za potvrdu. Promjena u prozorima i poljima vidi "
         "se nakon osvježavanja stranice.",
         # the trainer's view's way into the member's account (26.11.2026):
-        # staff's own chrome, as the strip over a page while acting
-        "Otvori kao član",
+        # staff's own chrome, as the strip over a page while acting; since
+        # build 4 the Karton tab's too (staff's own karton: its field's label
+        # and the no-JS select's first option), and the caption over what
+        # only the trainer reads of the upitnik while staff act as a member
+        "Otvori kao član", "Član", "Odaberi člana…", "Vidi samo trener",
     },
     "trening_view.html": {
         "Treninzi",                          # the crumb
@@ -202,8 +205,11 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     assert not problems, "\n".join(problems)
     # short (118 on 25.11.2026, most of them the nav, the karton's and the
     # upitnik editor's; 125 since 26.11.2026: the gym training's crumbs and
-    # the tag chips' count): a long list means texts were left out
-    assert sum(len(v) for v in ALLOWED.values()) <= 125
+    # the tag chips' count; 128 since build 4 the same day: the Karton tab's
+    # way into a member's app, its label and its select's first option, and
+    # the caption "Vidi samo trener" while staff act as a member): a long
+    # list means texts were left out
+    assert sum(len(v) for v in ALLOWED.values()) <= 128
 
 
 def test_the_scan_sees_a_new_literal_and_strips_what_is_code():

@@ -12,14 +12,6 @@
      room (the Status column is at its narrowest there, and broke the
      note word by word) */
   .trust { margin-top: 4px; color: var(--warn); font-size: .78rem; font-weight: 600; }
-  /* a member's two ways in (26.11.2026): his karton as the trainer reads
-     it, and his account as he has it ("Kao član →", a form): one pair, one
-     footprint, beside his name */
-  .row-acts { display: flex; flex-wrap: wrap; gap: 8px; }
-  .row-acts form { margin: 0; }
-  /* the link takes the button's font, so the two are one height and weight
-     (a <button> has base.html's `button` font, an <a> the body's) */
-  .row-acts a.btn-sm { font: 600 .8rem var(--font-body); }
 </style>
 {% endblock %}
 {% block content %}
@@ -31,31 +23,12 @@
   toga — do njega se trenira na povjerenje. Bez aktivne članarine polaznik ne može
   rezervirati termine tog tipa.
 </p>
-{# the members' page, where its texts and prices are edited in place: said
-   here, beside the members' payments, since 18.10.2026, when the trainer's
-   and the owner's way there was an easy-to-miss account-menu item (their
-   nav has the Moja članarina tab since 26.10.2026). Under the lead, not
-   between it and the h1: main > h1 + .hint (base.html) sizes the lead. #}
-<p class="hint" style="display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin-bottom:18px;">
-  Stranica koju vide članovi — cjenik, tekstovi i cijene uređuju se tamo:
-  <a class="act" href="/moja-clanarina">Moja članarina →</a>
-</p>
 
 {% for row in rows %}
 <div class="card" style="padding:14px 18px; margin-bottom:14px; max-width:860px;">
   <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap;">
     <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
       <strong>{{ row.user.full_name or "—" }}</strong><span class="hint">{{ row.user.email }}</span>
-    </div>
-    <div class="row-acts">
-      <a class="btn-sm btn-ghost" href="/karton/{{ row.user.id }}">Karton →</a>
-      {# into the member's account, his app as he has it (26.11.2026: "Gledaj kao član"), back here at "Izađi" #}
-      {% if row.can_act %}
-      <form method="post" action="/kao/{{ row.user.id }}">
-        <input type="hidden" name="natrag" value="/clanarine">
-        <button type="submit" class="btn-sm btn-ghost">Kao član →</button>
-      </form>
-      {% endif %}
     </div>
   </div>
 
