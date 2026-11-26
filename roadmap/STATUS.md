@@ -2,7 +2,7 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
-## 26.11.2026 — where staff open a member's app: the Karton tab's search, amber buttons, a cleaner Trenutne članarine (Opus draft, reviewed)
+## 26.11.2026 — where staff open a member's app: the Karton tab's search, amber buttons, a cleaner Trenutne članarine (Opus draft, reviewed, live)
 
 Build 4 of `roadmap/2026-11-26-gym-training-plan.md` (its section "Added in the evening"). The owner, on the live site, first of his own Karton tab: "I still can't see an option to see the karton as another user here."; then, with a member's card of Trenutne članarine: "I would remove the 'Karton ->' and the 'Kao član ->' buttons here and only leave the 'Admin -> gledaj kao član option' as well as the 'Otvori kao član' amber button on the Karton tab of the Admin and Trainer with a search bar where a user can be searched. The button to open as another user should also be in amber."; and of the line above the cards: "I would also remove this, this is now obsolete."
 
@@ -16,6 +16,7 @@ Build 4 of `roadmap/2026-11-26-gym-training-plan.md` (its section "Added in the 
 - **Fable's review (26.11.2026)**: the diff read whole. Walked on a phone-sized screen as the trainer: /clanarine without the buttons and the line; the Karton tab, nothing picked ("Odaberi člana s popisa."), "horv" finding Ivan Horvat, the amber button (44px) into his karton under the strip, the picker not on a member's page, the caption there, "Izađi" back at `/karton`. The full `audit.py`: `new findings: 0`. The whole suite once: `493 passed, 1 warning in 1285.00s (0:21:24)`.
 - **Left as the worker chose**: an unknown id on `POST /kao` gets the picker's sentence, not a 404; the rows' fourth element is the email (typing never matches the plans); a fourth combobox option, `noMatch` ("Nijedan član ne odgovara traženju."); the no-JS select starts on a disabled "Odaberi člana…"; `.btn-kao` in the base button's font; "Odgovori" 32px on a touch screen while acting.
 - **Not covered / noted**: Chromium only; the trainer's view's crumb still says "Trenutne članarine", which no longer links to it, and its pages still light Admin ▾ → Trenutne članarine (the owner reaches it from Korisnici); a roster's "Otkaži termin" is 3.63:1 in the dark theme and the trainer's view's "Odgovori" 21px on touch (both older, the audit walks neither).
+- **On prod (26.11.2026)**: commit `adff20f`, pushed; the database dumped first (`/opt/backups/qmt-pre-kao2-20261126T225417.sql.gz` on the box, 28 tables, complete); `deploy.sh` healthy; no migration (`c4e1b7f9a2d6` still the head); the deployed templates hold `form.kao-pick`, the amber classes on all three row buttons and "Vidi samo trener", and clanarine.html neither button nor the line; `GET /kao`, `POST /kao` and `POST /kao/{user_id}` registered; no error in the container's log; a guest's `/kao`, `/clanarine`, `/karton` and `POST /kao` go to the login. The record holds 10 rows: the owner has been in members' accounts on the live site since build 1. Not logged in on prod: the pages were walked on the dev server.
 
 ## 26.11.2026 — the gym training, part A: one page that grows, made with the booking; "Tip programa" (Opus draft, reviewed, live)
 

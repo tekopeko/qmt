@@ -175,4 +175,5 @@ ask for a bigger change").
 4. **Where staff open a member's app** (the evening's addition above): the Karton tab's
    search and amber button, the two buttons and the obsolete line off Trenutne članarine,
    every such button amber, the trainer-only parts of the upitnik block while acting.
+   (Live 26.11.2026, `adff20f`: STATUS.md.)
 5. **"Spol"** and the slash forms resolved by it.
