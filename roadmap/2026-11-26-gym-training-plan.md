@@ -138,7 +138,7 @@ ask for a bigger change").
    record and its shortcuts; seconds in steps of 5; 20 sets; the height on the karton; the
    phone reminder. (Live 26.11.2026, `65121a6`: STATUS.md.)
 2. **A training's parts**: Glavni dio C, a part's own name, and in a dvoranski programme
-   the empty slots (Amir's templates).
+   the empty slots (Amir's templates). (Live 26.11.2026, `fe64c69`: STATUS.md.)
 3. **The gym training**: made at the booking, one page that grows as the training goes
    (add, zadano, tick what was done, the osvrt), started empty or from a template; the
    diary, the history and the maxes; the plain form retired.
