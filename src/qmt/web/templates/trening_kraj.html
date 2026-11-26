@@ -13,6 +13,7 @@
    continued, and has no way back to the exercises. Leaving the page asks
    first (_pass_leave.html: #leaveDlg). #}
 {% set solo_page = not user.is_trainer %}
+{% import "_copy.html" as c with context %}
 {% block title %}{{ "Nedovršen trening" if stale else "Trening odrađen" }} — {{ day.label }} — QMT{% endblock %}
 {% block head %}
 <style>
@@ -45,15 +46,16 @@
 {% block error_alert %}{% endblock %}
 {% block content %}
 <div class="kr">
-  <p class="kr-eyebrow">{{ "Nedovršen trening" if stale else "Trening odrađen" }}</p>
+  {{ c.opt("kraj.kicker_stale" if stale else "kraj.kicker_done", "p", ' class="kr-eyebrow"') }}
   <h1>{{ day.label }}</h1>
   <p class="kr-sum">{% if n_items %}{{ done_n }} od {{ n_items }} {{ plural(n_items, "vježbe", "vježbe", "vježbi") }}{% else %}{{ log.done_text }}{% endif %} · {{ elapsed }}</p>
-  {% if stale %}<p class="kr-stale">Započet {{ pass_when(log.date) }} i nije završen — nastavak više nije moguć. Spremi osvrt ili trening odbaci.</p>{% endif %}
+  {# the first sentence names a value (code), the second is a slot #}
+  {% if stale %}<p class="kr-stale">Započet {{ pass_when(log.date) }} i nije završen — nastavak više nije moguć. {{ c.t("kraj.stale_tail") }}</p>{% endif %}
   {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
 
   <form class="kr-form" method="post" action="{{ base }}/kraj">
     <section class="kr-field" aria-labelledby="kr-napor">
-      <h2 class="dx-cap" id="kr-napor">Napor</h2>
+      <h2 class="dx-cap" id="kr-napor">{{ c.t("kraj.effort") }}</h2>
       <div class="scale-box">
         <div class="scale" role="radiogroup" aria-labelledby="kr-napor">
           {% for n in range(1, 11) %}
@@ -61,10 +63,13 @@
           {% endfor %}
         </div>
       </div>
-      <p class="scale-ends"><span>1 = lagano</span><span>10 = maksimalno</span></p>
+      {# both spans while either holds a text: the second sits right by its place #}
+      {% if copy_on("kraj.effort_low") or copy_on("kraj.effort_high") %}
+      <p class="scale-ends"><span>{{ c.t("kraj.effort_low") }}</span><span>{{ c.t("kraj.effort_high") }}</span></p>
+      {% endif %}
     </section>
     <section class="kr-field" aria-labelledby="kr-osjecaj">
-      <h2 class="dx-cap" id="kr-osjecaj">Osjećaj <span class="kr-opt">(neobavezno)</span></h2>
+      <h2 class="dx-cap" id="kr-osjecaj">{{ c.t("kraj.feeling") }} {{ c.opt("player.optional", "span", ' class="kr-opt"') }}</h2>
       <div class="opts" role="radiogroup" aria-labelledby="kr-osjecaj">
         {% for key, label in feelings.items() %}
         <label class="opt"><input type="radio" name="feeling" value="{{ key }}"{% if v.feeling == key %} checked{% endif %}><span class="t">{{ label }}</span></label>
@@ -72,20 +77,21 @@
       </div>
     </section>
     <section class="kr-field">
-      <h2 class="dx-cap"><label for="kr-note">Komentar</label> <span class="kr-opt">(neobavezno)</span></h2>
-      <textarea id="kr-note" name="note" rows="3" placeholder="npr. kilaže, što je išlo dobro/loše">{{ v.note }}</textarea>
+      <h2 class="dx-cap"><label for="kr-note">{{ c.t("kraj.note") }}</label> {{ c.opt("player.optional", "span", ' class="kr-opt"') }}</h2>
+      {% set placeholder = copy_text("kraj.note_placeholder", copy_texts) %}
+      <textarea id="kr-note" name="note" rows="3"{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}>{{ v.note }}</textarea>
     </section>
-    <div class="kr-go"><button type="submit" class="btn">Spremi trening</button></div>
+    <div class="kr-go"><button type="submit" class="btn">{{ c.t("kraj.save") }}</button></div>
   </form>
 
   <div class="kr-more">
     {# the last step (a circuit's: its last round's last exercise, 24.11.2026) #}
-    {% if not stale %}<a class="act act-quiet" href="{{ base }}{% if n_steps %}/vjezba/{{ n_steps }}{% endif %}">Natrag na vježbe</a>{% endif %}
+    {% if not stale %}<a class="act act-quiet" href="{{ base }}{% if n_steps %}/vjezba/{{ n_steps }}{% endif %}">{{ c.t("kraj.back") }}</a>{% endif %}
     <form method="post" action="{{ base }}/odustani"
-          data-confirm-title="Odbaciti započeti trening?"
-          data-confirm="Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno."
-          data-confirm-cta="Odbaci">
-      <button type="submit" class="act act-quiet kr-drop">Odbaci trening</button>
+          data-confirm-title="{{ copy_text('dan.drop.title', copy_texts) }}"
+          data-confirm="{{ copy_text('dan.drop.text', copy_texts) }}"
+          data-confirm-cta="{{ copy_text('dan.drop.cta', copy_texts) }}">
+      <button type="submit" class="act act-quiet kr-drop">{{ c.t("kraj.drop") }}</button>
     </form>
   </div>
 </div>

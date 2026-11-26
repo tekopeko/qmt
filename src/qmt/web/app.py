@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
+from jinja2 import pass_context
 
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -86,6 +87,21 @@ templates.env.globals["copy_text"] = lambda key, texts: texts.get(key, copy.SLOT
 templates.env.tests["priced"] = lambda text: any(ch.isdigit() for ch in str(text)) and "€" not in str(text)
 
 
+@pass_context
+def _copy_on(ctx, key: str) -> bool:
+    """Whether the element around slot `key` prints at all (25.11.2026, the
+    member-facing pages' optional texts): always for an editor (an emptied
+    text is his empty box, which edit mode shows: _copy.html's opt), else
+    while the slot holds a text, so an emptied lead, hint, kicker, chip or
+    empty line is no element for a reader, nor its gap."""
+    return bool(ctx.get("can_edit_copy")) or bool((ctx.get("copy_texts") or {}).get(key, copy.SLOTS[key].default))
+
+
+templates.env.globals["copy_on"] = _copy_on
+# /tekstovi (25.11.2026): every plain text by page and area (copy.TEXT_PAGES)
+templates.env.globals["TEXT_PAGES"] = copy.TEXT_PAGES
+
+
 def _numeric(text) -> bool:
     """A text that holds a number at all, any digit ("50", "od 30", "60–80";
     not "na upit"): a price whose bazna cijena prints, a base that is one
@@ -107,14 +123,15 @@ MONTHS = ["siječanj", "veljača", "ožujak", "travanj", "svibanj", "lipanj",
           "srpanj", "kolovoz", "rujan", "listopad", "studeni", "prosinac"]
 
 # Where an ACTIVE plan takes you — every "aktivna članarina" state is a door,
-# not a label. (path, button text)
+# not a label. (path, the copy slot of the button's words: app.door.*, the
+# gym owner's text since 25.11.2026, "Rezerviraj termin" …)
 PLAN_LINKS = {
-    "grupni": ("/raspored", "Rezerviraj termin"),
-    "individualni": ("/raspored", "Rezerviraj termin"),
-    "poluindividualni": ("/raspored", "Rezerviraj termin"),
-    "rehabilitacija": ("/raspored", "Rezerviraj termin"),
-    "online": ("/treninzi", "Otvori online treninge"),
-    "prehrana": ("/prehrana", "Otvori prehranu"),
+    "grupni": ("/raspored", "app.door.raspored"),
+    "individualni": ("/raspored", "app.door.raspored"),
+    "poluindividualni": ("/raspored", "app.door.raspored"),
+    "rehabilitacija": ("/raspored", "app.door.raspored"),
+    "online": ("/treninzi", "app.door.online"),
+    "prehrana": ("/prehrana", "app.door.prehrana"),
 }
 
 # The prices (what the site says a plan costs) and the MojiMakrosi add-on's
@@ -1004,15 +1021,17 @@ def moja_clanarina(request: Request):
         active = m.is_active(today)
         cancelling = bool(m.stripe_subscription_id) and m.cancel_at_period_end
         days_left = (m.dospijece - today).days
-        # the state in words; the colour only reinforces it
+        # the state in words; the colour only reinforces it. (its words' slot,
+        # clanarina.chip.<kind>, since 25.11.2026 the gym owner's text; its
+        # class; the relative day after "dospijeva", code: "sutra", "za 3 dana")
         if not active:
-            chip = ("istekla", "lapsed")
+            chip = ("lapsed", "lapsed", "")
         elif cancelling:
-            chip = ("otkazana · vrijedi do kraja", "off")
+            chip = ("cancelling", "off", "")
         elif days_left <= 7:
-            chip = (f"dospijeva {_relative_day(m.dospijece, today)}", "due")
+            chip = ("due", "due", _relative_day(m.dospijece, today))
         else:
-            chip = ("aktivna", "ok")
+            chip = ("active", "ok", "")
         # the card's heading is the plan.<plan>.name slot (the template)
         plans.append({"key": m.plan, "active": active, "chip": chip,
                       # the grace week: next_payment has passed, dospijeće has not
@@ -1604,6 +1623,24 @@ def _require_owner(request: Request):
     if not _is_owner(user):
         raise HTTPException(status_code=403, detail="Samo vlasnik aplikacije")
     return user, None
+
+
+@app.get("/tekstovi", response_class=HTMLResponse)
+def tekstovi_page(request: Request):
+    """Every plain text of the app on one page (25.11.2026, the owner: "If
+    there is a place where he is not allowed to change text, lets allow
+    it"): Admin ▾ → Tekstovi, the trainer's and the owner's. Page by page in
+    the nav's order, each by area (copy.TEXT_PAGES), every plain slot its
+    label over its text, which edit mode edits in place (POST /copy/{key},
+    as anywhere): the texts only a member or a guest sees among them (the
+    calendar's, the player's, the login pages', the dialogs', a confirm's,
+    a placeholder's). Its search filters as it is typed (the script; the
+    whole list without it)."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    total = sum(len(keys) for *_, areas in copy.TEXT_PAGES for _, keys in areas)
+    return templates.TemplateResponse(request, "tekstovi.html", _ctx(request, user, total=total))
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -3093,17 +3130,19 @@ def _state_line(state: dict, done_n: int, n_items: int, stale: bool) -> str:
     `done_n`, and that it can only be finished or dropped, 31.10.2026; a day
     that holds no exercise now, every exercise the pass saved: "2 vježbe",
     WorkoutLog.done_text, 4.11.2026), then how often and when last, else
-    none."""
+    none. The two lines that name no value ("U tijeku — nastavi gdje si
+    stao/la.", "Još nije odrađen.") are copy slots since 25.11.2026,
+    dan.state.open / .new, which the template prints: "" for those."""
     if state["open"] is not None:
         if stale:
             count = (f"{done_n} od {n_items} {plural(n_items, 'vježbe', 'vježbe', 'vježbi')}" if n_items
                      else state["open"].done_text)
             return (f"Nedovršen trening od {_when_text(state['open'].date)} ({count}) — nastavak nije moguć: "
                     "završi ga ili ga odbaci.")
-        return "U tijeku — nastavi gdje si stao/la."
+        return ""
     if state["count"]:
         return f"Odrađen {state['count']}× · zadnji put {_when_text(state['last'])}"
-    return "Još nije odrađen."
+    return ""
 
 
 @app.get("/treninzi/{program_id}/dan/{day_id}", response_class=HTMLResponse)
@@ -3331,21 +3370,21 @@ def _player(request: Request, user, p, day, steps: list[Step], k: int, log, erro
         marks=_marks(day, items, done), max_sets=db.MAX_SETS, odmor=odmor,
         swap_names={x.id: by_id[swaps[x.id]].name for x in items if x.id in swaps and swaps[x.id] in by_id},
         error=error or request.query_params.get("error"), base=_day_base(p.id, day.id))
+    # the rests as their values ("60 s"; "" for none): the template prints
+    # each after its words, copy slots since 25.11.2026 ("Odmor nakon kruga:",
+    # "Odmor između serija:", "Odmor nakon vježbe:")
     if it is None:                                   # a round of a circuit part (25.11.2026)
         view.update(it=None, blocks=posted if posted is not None else _round_blocks(user, log, step, by_id),
-                    effort=effort, title=SECTIONS.get(circ.section, ""),
-                    rest_line=f"Odmor nakon kruga: {circ.rest_text}." if circ.rest_text else "")
+                    effort=effort, title=SECTIONS.get(circ.section, ""), round_rest=circ.rest_text)
     else:
         planned = by_id.get(it.exercise_id) or it.exercise
         swapped = by_id.get(swaps[it.id]) if it.id in swaps else None
         ex = swapped or planned
         entry = done.get(it.id)
         load = db.next_load(user.id, ex.id, {(log.id, it.id)})
-        rests = [it.rest_text and f"Odmor između serija: {it.rest_text}",
-                 it.rest_after_text and f"Odmor nakon vježbe: {it.rest_after_text}"]
         view.update(it=it, ex=ex, planned=planned, swapped=swapped, title=ex.name,
                     alternatives=[a for a in planned.alternatives if swapped is None or a.id != swapped.id],
-                    dose=it.dose, rest_line=" · ".join(r for r in rests if r), next_line=_next_line(load),
+                    dose=it.dose, rest_between=it.rest_text, rest_after=it.rest_after_text, next_line=_next_line(load),
                     rows=posted if posted is not None else _log_rows(it, entry, load),
                     effort=effort if posted is not None else effort_of(entry), fields=db.set_fields(it))
     return templates.TemplateResponse(request, "trening_player.html", _ctx(request, user, **view),

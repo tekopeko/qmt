@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% import "_copy.html" as c with context %}
+{% block title %}Tekstovi — QMT{% endblock %}
+{% block head %}
+<style>
+  /* /tekstovi (25.11.2026, Admin ▾ → Tekstovi; the owner: "If there is a
+     place where he is not allowed to change text, lets allow it"): every
+     plain text of the app on one page, the ones only a member or a guest
+     ever sees among them. The /admin pages' look, a 720px column: the
+     search (the library's, vjezbe.html: it filters as it is typed; shown
+     by the script, the whole list without it), then a section per page in
+     the nav's order (copy.TEXT_PAGES), its h2 with "Otvori stranicu →"
+     beside it where staff can open the page, a muted line where the page
+     has lists, tables or cards of its own, and a card of its areas, each
+     under the karton panel's small caption, every text its label (muted
+     .82rem) over the text itself, an .ed a click opens in edit mode as
+     anywhere. Outside edit mode an emptied text reads "(prazno)". */
+  .tx { max-width: 720px; }
+  .tx-search { margin: 0 0 12px; }
+  .tx-search input { width: 100%; }
+  .tx-found { margin: -4px 0 10px; }
+  .tx-none { margin: 8px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+  .tx-page { margin-top: 28px; }
+  .tx-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+  .tx-head h2 { font-size: 1.15rem; overflow-wrap: anywhere; }
+  .tx-lists { margin-top: 4px; font-size: .82rem; color: var(--muted); overflow-wrap: anywhere; }
+  .tx-card { margin-top: 10px; padding: 2px 20px 12px; }
+  @media (max-width: 600px) { .tx-card { padding: 2px 16px 10px; } }
+  .tx-area h3 { font: 700 .7rem var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+                margin: 18px 0 4px; overflow-wrap: anywhere; }
+  .tx-area dl { margin: 0; }
+  .tx-row { padding: 8px 0; border-top: 1px solid var(--line); }
+  .tx-row dt { font-size: .82rem; color: var(--muted); overflow-wrap: anywhere; }
+  .tx-row dd { margin: 2px 0 0; font-size: .92rem; overflow-wrap: anywhere; }
+  .tx-empty { display: none; color: var(--muted); }
+  body:not(.editing) .tx-row dd:has(> .ed:empty) > .tx-empty { display: inline; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Tekstovi</h1>
+<p class="hint">Svi tekstovi aplikacije na jednom mjestu, i oni koje vidi samo član ili gost. Uključi uređivanje (✎) pa klikni tekst. Promjena u prozorima za potvrdu i poljima vidi se nakon osvježavanja stranice.</p>
+<div class="tx">
+  <form class="tx-search" role="search" hidden>
+    <input type="search" name="q" placeholder="Traži po oznaci ili tekstu" aria-label="Traži tekst po oznaci ili riječima" autocomplete="off">
+  </form>
+  <p class="hint tx-found" aria-live="polite" hidden><span class="tx-n">{{ total }}</span> od {{ total }} · <a class="tlink" href="/tekstovi">prikaži sve</a></p>
+  <p class="tx-none" hidden>Nijedan tekst ne odgovara traženju „<span class="tx-q"></span>”.</p>
+  {% for page, href, lists, areas in TEXT_PAGES %}{% set n = loop.index %}
+  <section class="tx-page" aria-labelledby="tx-{{ n }}">
+    <div class="tx-head">
+      <h2 id="tx-{{ n }}">{{ page }}</h2>
+      {% if href %}<a class="act" href="{{ href }}">Otvori stranicu →</a>{% endif %}
+    </div>
+    {% if lists %}<p class="tx-lists">Liste, tablice i kartice uređuju se na samoj stranici.</p>{% endif %}
+    <div class="card tx-card">
+      {% for area, keys in areas %}
+      <div class="tx-area">
+        <h3>{{ area }}</h3>
+        <dl>
+          {% for key in keys %}
+          <div class="tx-row"><dt>{{ COPY[key].label }}</dt><dd>{{ c.t(key) }}<span class="tx-empty">(prazno)</span></dd></div>
+          {% endfor %}
+        </dl>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // The search filters as it is typed, the library's way (vjezbe.html): a
+  // row is kept when every word typed is in its label or in its text as it
+  // is now (an edit made on this page counts at the next key), both folded
+  // (qmtFold, base.html: "cuc" finds "Čučanj"); an area with no row kept
+  // goes, and a page with no area left. The count ("12 od 480 · prikaži
+  // sve") shows while the box holds text, the none line when nothing is
+  // kept, and the address follows (?q=, replaceState a little after the
+  // last key), so a reload or Back shows the same list. Enter sends
+  // nothing; "prikaži sve" clears the box in place. Without the script the
+  // box stays hidden and the whole list shows.
+  (function () {
+    var form = document.querySelector("form.tx-search"), box = form && form.querySelector("input");
+    var count = document.querySelector(".tx-found"), none = document.querySelector(".tx-none");
+    if (!box || !count || !none) return;
+    var shownN = count.querySelector(".tx-n"), quoted = none.querySelector(".tx-q"), later = null;
+    var pages = [].map.call(document.querySelectorAll(".tx-page"), function (sec) {
+      return {el: sec, areas: [].map.call(sec.querySelectorAll(".tx-area"), function (area) {
+        return {el: area, rows: [].slice.call(area.querySelectorAll(".tx-row"))};
+      })};
+    });
+    function text(row) {
+      var label = row.querySelector("dt"), t = row.querySelector("dd .ed");
+      return qmtFold((label ? label.textContent : "") + " " + (t ? t.textContent : ""));
+    }
+    function filter(follow) {
+      var typed = box.value.trim(), words = qmtFold(typed).split(/\s+/).filter(Boolean), kept = 0;
+      pages.forEach(function (p) {
+        var any = false;
+        p.areas.forEach(function (a) {
+          var n = 0;
+          a.rows.forEach(function (row) {
+            var hay = words.length ? text(row) : "";
+            var hit = words.every(function (w) { return hay.indexOf(w) >= 0; });
+            row.hidden = !hit;
+            if (hit) n++;
+          });
+          a.el.hidden = !n;
+          kept += n; any = any || n > 0;
+        });
+        p.el.hidden = !any;
+      });
+      shownN.textContent = kept;
+      count.hidden = !typed;
+      quoted.textContent = typed;
+      none.hidden = kept > 0;
+      if (follow) {
+        // a little after the last key (WebKit refuses more than 100 replaceState calls in 30 s)
+        clearTimeout(later);
+        later = setTimeout(function () {
+          try { history.replaceState(null, "", location.pathname + (typed ? "?q=" + encodeURIComponent(typed) : "")); } catch (e) {}
+        }, 250);
+      }
+    }
+    form.hidden = false;
+    box.addEventListener("input", function () { filter(true); });
+    form.addEventListener("submit", function (e) { e.preventDefault(); box.blur(); });
+    count.querySelector("a").addEventListener("click", function (e) {
+      e.preventDefault();
+      box.value = ""; filter(true); box.focus();
+    });
+    var q = new URLSearchParams(location.search).get("q");
+    if (q) box.value = q;
+    filter(false);
+    window.addEventListener("pageshow", function (e) { if (e.persisted) filter(false); });
+  })();
+</script>
+{% endblock %}

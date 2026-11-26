@@ -139,6 +139,42 @@ cells, LEVELS, FEELING_LABELS and the months
 (rows and slots of their own), the routes' flashes, every aria-label and
 alt, the page's <title>, the crumbs and the nav.
 
+Every other member-facing text since 25.11.2026 (the owner to Amir:
+"svugdje ikad uvest pravilo da može uređivat"; to Fable: "If there is a
+place where he is not allowed to change text, lets allow it"): every
+static text of every page a member or a guest reaches is a slot,
+<page>.<area>.<name>, its default the text the page printed, so nothing
+changes until someone edits. The raspored (raspored.*: the week, the
+phone's day and sheet, the month, "Tvoj sljedeći termin", the dialogs, the
+gate, the trainer's variants), the online list, a programme and a day
+(treninzi.*, program.*, dan.*), the player, its finish screen and its
+leave dialog (player.*, kraj.*, leave.*), the profile (profil.*), the
+login pages and the login window (auth.*: where the page and the window
+say the same words, one slot prints in both), base.html's own pieces, the
+error page and the Mjesečno / Godišnje switch (app.*, period.*), and what
+was still a literal on the landing (landing.*), /moja-clanarina
+(clanarina.*) and /prehrana (prehrana.*). Required as the karton's: a
+control's words and a caption before a value ("Odmor između serija:");
+not a lead, a hint, a kicker, a chip, a state's word, an empty line or a
+placeholder, whose element a reader then does not get (_copy.html's opt,
+the pages' copy_on). A text in an attribute or a script prints with
+copy_text. Where the same words do the same job in two places (a page and
+its window, the online pages' exercise words), one slot prints in both.
+TEXT_PAGES below groups every plain slot by page and area for /tekstovi
+(Admin ▾ → Tekstovi), where the editor reaches the texts only a member or
+a guest ever sees. What stays code: a sentence built around a value (a
+count, a date, a name, a number, a plural that follows a count: "odrađen
+2×", "6 od 8 vježbi", "Krug 2", "za 3 dana"; its fixed words are a slot
+only when they read as a phrase of their own: "Preporučeno:", "Članarina
+vrijedi do"), the tables' cells and whatever a row or a model prints
+(PLAN_LABELS, SECTIONS, LEVELS, GOALS, FEELING_LABELS, the weekdays, the
+months, "danas" / "sutra" / "jučer"), the routes' flashes and refusals,
+the emails, every aria-label, alt, title attribute and <title>, the
+crumbs, the nav (its room is measured), the editor's own controls, the
+studio's address, phone and email (each the text of the link it opens)
+and the dev server's own lines. tests/test_copy_rule.py holds the rule for
+the pages to come: a literal text on such a page fails it.
+
 The price slots (18.10.2026) are plain Slots with one job: every price the
 site shows, whether or not Stripe is configured (app.py, reference_prices
 and _offer_prices). No Stripe Price overrides them (the owner's call, the
@@ -444,6 +480,25 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # section's kicker and heading stay slots.
     "gym.kicker": Slot("Dvorana", CAP, "Mala oznaka iznad dvorane"),
     "gym.h2": Slot("Treninzi u dvorani", CAP, "Naslov: dvorana"),
+    # ---- landing: what was still a literal until 25.11.2026 (the owner:
+    # "If there is a place where he is not allowed to change text, lets
+    # allow it"): the featured card's chip, the price's place while a guest
+    # sees no prices, the buttons that follow the visitor (a member's
+    # "Odaberi plan →", a guest's "Registriraj se →" while registration is
+    # open, else "Javi nam se →", a gym card without plans' too; the owner
+    # of the plan gets its door, app.door.* below), and the gallery's
+    # caption. Not slots: the studio's address, phone and email (each the
+    # text of the link it opens: the map, tel:, mailto:) ----
+    "landing.offer.featured": Slot("Najpopularnije", CAP, "Početna · ponuda: oznaka istaknute kartice"),
+    # in a price's place (PUBLIC_PRICES=off), which keeps the cards' feet level: required
+    "landing.offer.no_prices": Slot("Cijene nakon prijave", CAP, "Početna · ponuda: umjesto cijene, dok ih gost ne vidi",
+                                    required=True),
+    "landing.cta.choose": Slot("Odaberi plan →", CAP, "Početna · ponuda: gumb za člana", required=True),
+    "landing.cta.signup": Slot("Registriraj se →", CAP, "Početna · ponuda: gumb za gosta (otvorena registracija)",
+                               required=True),
+    "landing.cta.contact": Slot("Javi nam se →", CAP, "Početna · ponuda: gumb Javi nam se", required=True),
+    "landing.gallery.kicker": Slot("Galerija", CAP, "Početna · galerija: mala oznaka"),
+    "landing.gallery.title": Slot("Iz dvorane", CAP, "Početna · galerija: naslov", required=True),
     # ---- prices: every price the site shows (no Stripe Price overrides them) ----
     # Per plan its amount and unit, the defaults REFERENCE_PRICES above: the
     # landing prints them on a card (Individualno's muted line two more
@@ -524,9 +579,9 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
        for n, tier in enumerate(ONLINE_TIERS, start=1)},
     # ---- moja članarina (18.10.2026): the rest of the page's own words ----
     # The lead, the plans' texts and the prices are the cjenik.* and price.*
-    # slots above. Not slots: the sentences built around a date or a number
-    # (the status box, the chips, the facts and their captions) and the
-    # ledger's headers.
+    # slots above. Since 25.11.2026 the facts' captions, the chips' words,
+    # the ledger's headers and the status box's fixed words are slots too
+    # (below); its dates and numbers stay code.
     "clanarina.h.plans": Slot("Tvoji planovi", CAP, "Članarina: naslov · Tvoji planovi"),
     "clanarina.h.add": Slot("Dodaj plan", CAP, "Članarina: naslov · Dodaj plan"),
     # "Dodaj plan"'s two groups (21.10.2026), each with its Mjesečno /
@@ -541,6 +596,63 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "clanarina.none.text": Slot("Za upis se javi treneru u dvorani — plaćanje gotovinom ili karticom.", CAP,
                                 "Članarina: bez plana, druga rečenica"),
     "clanarina.bills.empty": Slot("Još nema zabilježenih uplata.", CAP, "Članarina: nema uplata"),
+    # what was still a literal on the page until 25.11.2026, in its order:
+    # the title; a plan held's card (its kicker, its chip's words, its
+    # facts' captions, its status box's fixed words around its dates, a
+    # subscriber's portal and tier switch, a cash member's way onto the
+    # card, a lapsed plan's button and line); "Dodaj plan"'s chip and
+    # button; the prehrana plan's hint's words after each add-on amount
+    # (_plan_price.html; the amounts are the addon.* slots); the ledger's
+    # portal and headers. The card's door is app.door.* (below), the words
+    # of the plan's page, the landing's too. Not slots: a chip's "za 3
+    # dana" (a count), "16 treninga mjesečno", "3 od 8 u ovom ciklusu", the
+    # tier switch's buttons and its confirm's title and text (a count, an
+    # amount), and "Ovo vidi član bez članarine:" (the editor's caption)
+    "clanarina.h.title": Slot("Moja članarina", CAP, "Članarina: naslov stranice", required=True),
+    "clanarina.plan.kicker": Slot("Paket", CAP, "Članarina · plan: mala oznaka iznad naziva"),
+    "clanarina.chip.active": Slot("aktivna", CAP, "Članarina · plan: oznaka aktivna"),
+    "clanarina.chip.due": Slot("dospijeva", CAP, "Članarina · plan: oznaka dospijeva (prije broja dana)"),
+    "clanarina.chip.lapsed": Slot("istekla", CAP, "Članarina · plan: oznaka istekla"),
+    "clanarina.chip.cancelling": Slot("otkazana · vrijedi do kraja", CAP, "Članarina · plan: oznaka otkazane pretplate"),
+    "clanarina.fact.price": Slot("Cijena", CAP, "Članarina · plan: Cijena", required=True),
+    "clanarina.fact.paid": Slot("Uplaćeno", CAP, "Članarina · plan: Uplaćeno", required=True),
+    "clanarina.fact.next": Slot("Sljedeća uplata", CAP, "Članarina · plan: Sljedeća uplata", required=True),
+    "clanarina.fact.until": Slot("Vrijedi do", CAP, "Članarina · plan: Vrijedi do", required=True),
+    "clanarina.fact.paket": Slot("Paket", CAP, "Članarina · plan: Paket (broj treninga ili razina)", required=True),
+    "clanarina.fact.used": Slot("Iskorišteno", CAP, "Članarina · plan: Iskorišteno", required=True),
+    # the status box: each state's fixed words around its dates
+    "clanarina.status.lapsed": Slot("Članarina je istekla", CAP, "Članarina · stanje: istekla, prije datuma"),
+    "clanarina.status.restart": Slot("Nova uplata počinje od", CAP, "Članarina · stanje: istekla, nova uplata od"),
+    "clanarina.status.restart_now": Slot("dana uplate.", CAP, "Članarina · stanje: istekla, nova uplata od dana uplate"),
+    "clanarina.status.cancelling": Slot("Pretplata je otkazana i vrijedi do", CAP,
+                                        "Članarina · stanje: otkazana pretplata, prije datuma"),
+    "clanarina.status.renews": Slot("Pretplata se obnavlja automatski", CAP,
+                                    "Članarina · stanje: pretplata karticom, prije datuma"),
+    "clanarina.status.by_card": Slot("karticom.", CAP, "Članarina · stanje: pretplata karticom, iza datuma"),
+    "clanarina.status.overdue": Slot("Uplata je dospjela", CAP, "Članarina · stanje: dospjela uplata, prije datuma"),
+    "clanarina.status.grace": Slot("— članarina vrijedi još do", CAP, "Članarina · stanje: dospjela uplata, vrijedi još do"),
+    "clanarina.status.pay_gym": Slot("Uplatu obavi u dvorani, gotovinom ili karticom.", CAP,
+                                     "Članarina · stanje: dospjela uplata, gdje se plaća"),
+    "clanarina.status.valid": Slot("Članarina vrijedi do", CAP, "Članarina · stanje: aktivna, prije datuma"),
+    "clanarina.status.next": Slot("Sljedeću uplatu obavi do", CAP, "Članarina · stanje: aktivna, sljedeća uplata do"),
+    "clanarina.status.where": Slot("— u dvorani, gotovinom ili karticom.", CAP, "Članarina · stanje: aktivna, gdje se plaća"),
+    "clanarina.portal": Slot("Kartica, računi, otkazivanje", CAP, "Članarina · plan: gumb Stripe portala", required=True),
+    "clanarina.switch.kicker": Slot("Promijeni paket", CAP, "Članarina · plan: mala oznaka promjene paketa"),
+    "clanarina.switch.cta": Slot("Promijeni", CAP, "Članarina · promjena paketa: gumb potvrde", required=True),
+    "clanarina.to_card.hint": Slot("Prebaci na karticu — obnavlja se automatski od sljedeće uplate:", CAP,
+                                   "Članarina · plan: uz prelazak na karticu"),
+    "clanarina.to_card.go": Slot("Prebaci na karticu", CAP, "Članarina · plan: gumb Prebaci na karticu", required=True),
+    "clanarina.subscribe": Slot("Pretplati se karticom", CAP, "Članarina: gumb Pretplati se karticom", required=True),
+    "clanarina.lapsed.hint": Slot("Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.", CAP,
+                                  "Članarina · plan: ispod gumba istekle članarine"),
+    "clanarina.add.featured": Slot("Najpopularnije", CAP, "Članarina · dodaj plan: oznaka istaknutog plana"),
+    "clanarina.addon.gym": Slot("uz dvoranu", CAP, "Članarina · prehrana: iza iznosa uz dvoranu"),
+    "clanarina.addon.online": Slot("uz online", CAP, "Članarina · prehrana: iza iznosa uz online"),
+    "clanarina.bills.portal": Slot("Računi i kartica u Stripe portalu", CAP, "Članarina · računi: gumb Stripe portala",
+                                   required=True),
+    "clanarina.bills.col_date": Slot("Datum", CAP, "Članarina · računi: stupac Datum", required=True),
+    "clanarina.bills.col_plan": Slot("Plan · način", CAP, "Članarina · računi: stupac Plan · način", required=True),
+    "clanarina.bills.col_amount": Slot("Iznos", CAP, "Članarina · računi: stupac Iznos", required=True),
     # The plans' names on /moja-clanarina and nowhere else: the headings of
     # its cards, a plan held and a plan to add. Their defaults are
     # PLAN_LABELS, which stay fixed everywhere else, this page's ledger
@@ -549,7 +661,21 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     **{f"plan.{plan}.name": Slot(label, CAP, f"Članarina: naziv plana · {plan}")
        for plan, label in PLAN_LABELS.items()},
     # ---- prehrana ----
+    # since 25.11.2026 every text of the page: the kicker, the two
+    # paragraphs (each split at its bold words, which keep their weight:
+    # the words before, the bold ones, the words after) and the button
+    "prehrana.kicker": Slot("Prehrana", CAP, "Prehrana: mala oznaka iznad naslova"),
     "prehrana.h1": Slot("Prehrana ide uz trening", CAP, "Prehrana: naslov"),
+    "prehrana.text_a": Slot("Za praćenje prehrane koristimo", CAP, "Prehrana · tekst: prije naziva aplikacije"),
+    "prehrana.text_app": Slot("MojiMakrosi", CAP, "Prehrana · tekst: naziv aplikacije (podebljano)"),
+    "prehrana.text_b": Slot("— aplikaciju u koju opišeš što si jeo svojim riječima, a ona izračuna kalorije i "
+                            "makronutrijente te ih usporedi s tvojim ciljevima.", CAP,
+                            "Prehrana · tekst: iza naziva aplikacije"),
+    "prehrana.hint_a": Slot("Račun na MojiMakrosima je za sada", CAP, "Prehrana · račun: prije podebljane riječi"),
+    "prehrana.hint_bold": Slot("odvojen", CAP, "Prehrana · račun: podebljana riječ"),
+    "prehrana.hint_b": Slot("od QMT računa — registriraj se istom email adresom, da ih kasnije možemo povezati u "
+                            "jedan.", CAP, "Prehrana · račun: iza podebljane riječi"),
+    "prehrana.open": Slot("Otvori MojiMakrose ↗", CAP, "Prehrana: gumb Otvori MojiMakrose", required=True),
     "prehrana.note": Slot("Pristup je na poziv — javi se treneru ako se ne možeš registrirati.", CAP, "Prehrana: napomena"),
     # ---- upitnik (26.10.2026): its words around the questions (the
     # questions are rows since 26.10.2026: UPITNIK_* below) ----
@@ -764,6 +890,317 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "karton.staff.no_osvrt": Slot("bez osvrta", CAP, "Karton · pogled trenera: oznaka bez osvrta"),
     "karton.staff.diary_empty": Slot("Još nema odrađenih termina.", CAP, "Karton · pogled trenera: prazan dnevnik"),
     "karton.staff.own_diary_empty": Slot("Još nema treninga u dnevniku.", CAP, "Karton · osoblje: prazan dnevnik"),
+    # ==== every other page a member or a guest reaches (25.11.2026, the
+    # owner to Amir: "svugdje ikad uvest pravilo da može uređivat"; to
+    # Fable: "If there is a place where he is not allowed to change text,
+    # lets allow it"): every static text the page prints, <page>.<area>.<name>,
+    # page by page in the page's order, its default the text the page
+    # printed, character for character. A control's words are required, as
+    # the karton's (a heading, a button, a link, a label, a <summary>, a
+    # table header, a confirm's three texts, and a caption before a value,
+    # "Odmor između serija:"); a lead, a hint, a kicker, a chip, a state's
+    # word, an empty line and a placeholder are not. Where the same words
+    # do the same job in two places of a page (or of the online pages, or
+    # of a page and its window), one slot prints in both. What stays code
+    # is in the module's docstring. ====
+    # ---- the raspored (calendar.html): a client's week, the phone's day
+    # view, the month, the sheet, "Tvoj sljedeći termin", the dialogs and the
+    # booking gate, and the trainer's variants ----
+    "raspored.series.booked": Slot("Rezervirano ✓", CAP, "Raspored · ponavljanje: potvrda Rezervirano ✓"),
+    "raspored.series.until": Slot("Isti termin svaki tjedan do", CAP,
+                                  "Raspored · ponavljanje: Isti termin svaki tjedan do (gumb i kvačica)", required=True),
+    "raspored.report.title": Slot("Nisu rezervirani svi termini", CAP, "Raspored · izvještaj ponavljanja: naslov",
+                                  required=True),
+    "raspored.report.booked": Slot("Rezervirano:", CAP, "Raspored · izvještaj ponavljanja: Rezervirano:", required=True),
+    "raspored.report.nothing": Slot("ništa", CAP, "Raspored · izvještaj ponavljanja: kad nije rezervirano ništa"),
+    "raspored.report.skipped": Slot("Nije rezervirano:", CAP, "Raspored · izvještaj ponavljanja: Nije rezervirano:",
+                                    required=True),
+    # the reasons a date was not booked, after its date ("2.12. — termin je
+    # popunjen"), by the redirect's key (app.SKIP_KEYS)
+    **{f"raspored.report.why_{key}": Slot(text, CAP, f"Raspored · izvještaj ponavljanja: razlog, {text}", required=True)
+       for key, text in (("popunjen", "termin je popunjen"), ("otkazan", "termin je otkazan"),
+                         ("rezervirano", "već imaš rezervaciju"), ("zatvoren", "termin je zatvoren"),
+                         ("prosao", "termin je već prošao"), ("prozor", "termin je predaleko unaprijed"),
+                         ("razdoblje", "članarina tada ne vrijedi"))},
+    "raspored.report.ok": Slot("U redu", CAP, "Raspored · izvještaj ponavljanja: gumb U redu (i u prozoru termina)",
+                               required=True),
+    "raspored.head.title": Slot("Raspored", CAP, "Raspored: naslov", required=True),
+    "raspored.week.prev": Slot("← prošli tjedan", CAP, "Raspored · tjedan: gumb prošli tjedan", required=True),
+    "raspored.week.today": Slot("danas", CAP, "Raspored · tjedan: gumb danas (i u mjesecu)", required=True),
+    "raspored.week.next": Slot("idući tjedan →", CAP, "Raspored · tjedan: gumb idući tjedan", required=True),
+    "raspored.view.week": Slot("Tjedan", CAP, "Raspored · prikaz: Tjedan", required=True),
+    "raspored.view.month": Slot("Mjesec", CAP, "Raspored · prikaz: Mjesec", required=True),
+    "raspored.next.kicker": Slot("Tvoj sljedeći termin", CAP, "Raspored · sljedeći termin: mala oznaka"),
+    "raspored.next.canceled": Slot("OTKAZANO", CAP, "Raspored · sljedeći termin: oznaka otkazanog (i u Moje rezervacije)"),
+    "raspored.next.cutoff": Slot("Otkazivanje do", CAP,
+                                 "Raspored · sljedeći termin: Otkazivanje do, prije broja sati (i u Moje rezervacije)"),
+    "raspored.month.prev": Slot("‹ prošli mjesec", CAP, "Raspored · mjesec: gumb prošli mjesec", required=True),
+    "raspored.month.next": Slot("idući mjesec ›", CAP, "Raspored · mjesec: gumb idući mjesec", required=True),
+    "raspored.month.legend_covered": Slot("članarina aktivna", CAP, "Raspored · mjesec: legenda, članarina aktivna"),
+    "raspored.month.legend_mine": Slot("tvoja rezervacija", CAP, "Raspored · mjesec: legenda, tvoja rezervacija"),
+    "raspored.month.legend_today": Slot("danas", CAP, "Raspored · mjesec: legenda, danas"),
+    "raspored.plan.until": Slot("Članarina vrijedi do", CAP,
+                                "Raspored · članarina: Članarina vrijedi do, prije datuma (mjesec i tjedan)"),
+    "raspored.month.none": Slot("Nemaš aktivnu članarinu za treninge u dvorani.", CAP, "Raspored · mjesec: bez članarine"),
+    "raspored.gate.link": Slot("Pogledaj cjenik →", CAP, "Raspored · članarina: poveznica Pogledaj cjenik (mjesec i tjedan)",
+                               required=True),
+    "raspored.week.beyond": Slot("Termini se objavljuju", CAP,
+                                 "Raspored · tjedan: Termini se objavljuju, prije broja tjedana"),
+    "raspored.week.empty": Slot("Ovaj tjedan nema termina.", CAP, "Raspored · tjedan: tjedan bez termina"),
+    "raspored.week.add": Slot("Dodaj ih u rasporedu →", CAP, "Raspored · tjedan: trenerova poveznica na termine",
+                              required=True),
+    # a termin's state, the card's line and the phone's row alike
+    "raspored.state.canceled": Slot("otkazano", CAP, "Raspored · termin: stanje otkazano"),
+    "raspored.state.closed": Slot("zatvoreno", CAP, "Raspored · termin: stanje zatvoreno"),
+    "raspored.state.mine": Slot("rezervirano ✓", CAP, "Raspored · termin: stanje rezervirano ✓"),
+    "raspored.state.free": Slot("slobodno", CAP, "Raspored · termin: stanje slobodno (1:1)"),
+    "raspored.state.taken": Slot("zauzeto", CAP, "Raspored · termin: stanje zauzeto (1:1)"),
+    "raspored.state.full": Slot("puno", CAP, "Raspored · termin: stanje puno (red na mobitelu)"),
+    "raspored.trainer.roster": Slot("Polaznici", CAP, "Raspored · termin: trenerov gumb Polaznici", required=True),
+    "raspored.termin.cancel": Slot("Otkaži", CAP, "Raspored · termin: gumb Otkaži", required=True),
+    "raspored.termin.need": Slot("potrebna članarina", CAP, "Raspored · termin: potrebna članarina"),
+    "raspored.termin.book": Slot("Rezerviraj", CAP, "Raspored · termin: gumb Rezerviraj (i u prozoru termina)",
+                                 required=True),
+    "raspored.day.none": Slot("Nema termina", CAP, "Raspored · dan: dan bez termina"),
+    "raspored.gate.none": Slot("Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.", CAP,
+                               "Raspored · članarina: bez članarine"),
+    "raspored.gate.renew": Slot("— za kasnije termine produlji članarinu.", CAP,
+                                "Raspored · članarina: iza datuma, produlji članarinu"),
+    "raspored.gate.renew_link": Slot("Moja članarina →", CAP, "Raspored · članarina: poveznica Moja članarina",
+                                     required=True),
+    "raspored.mine.title": Slot("Moje rezervacije", CAP, "Raspored · moje rezervacije: naslov", required=True),
+    # the phone's bottom sheet: its buttons, its note, the lead its script writes
+    "raspored.sheet.cancel": Slot("Odustani", CAP, "Raspored · prozor termina: gumb Odustani", required=True),
+    "raspored.sheet.late": Slot("Otkazivanje je moguće do", CAP,
+                                "Raspored · prozor termina: Otkazivanje je moguće do, prije broja sati"),
+    "raspored.sheet.booked": Slot("Rezervirano", CAP, "Raspored · prozor termina: rezervirani termin"),
+    "raspored.sheet.free": Slot("Termin je slobodan.", CAP, "Raspored · prozor termina: slobodan termin 1:1"),
+    # the confirms (base.html's #confirmDlg); their text names the termin: code
+    "raspored.confirm.cancel_title": Slot("Otkazati rezervaciju?", CAP, "Raspored · otkazivanje: naslov potvrde",
+                                          required=True),
+    "raspored.confirm.cancel_cta": Slot("Otkaži rezervaciju", CAP,
+                                        "Raspored · otkazivanje: gumb potvrde (i u prozoru termina)", required=True),
+    "raspored.confirm.drop_title": Slot("Maknuti otkazani termin?", CAP, "Raspored · otkazani termin: naslov potvrde",
+                                        required=True),
+    "raspored.confirm.drop_cta": Slot("Makni", CAP, "Raspored · otkazani termin: gumb potvrde", required=True),
+    # ---- the online treninzi: the client's list (treninzi.html; staff's is
+    # treninzi_admin.html), a programme (trening_view.html), a day
+    # (trening_day.html), staff's variants on these too ----
+    "treninzi.head.title": Slot("Moji online treninzi", CAP, "Online treninzi · popis: naslov", required=True),
+    "treninzi.head.lead": Slot("Programi tvoje razine — određuje je upitnik.", CAP, "Online treninzi · popis: uvodna rečenica"),
+    "treninzi.no_plan.title": Slot("Online treninzi su dio zasebne članarine.", CAP,
+                                   "Online treninzi · popis: bez online članarine, prva rečenica"),
+    "treninzi.no_plan.text": Slot("Javi se treneru za pristup — plaćanje gotovinom ili karticom u dvorani.", CAP,
+                                  "Online treninzi · popis: bez online članarine, druga rečenica"),
+    "treninzi.upitnik.title": Slot("Ispuni upitnik za online trening", CAP, "Online treninzi · popis: naslov upitnika",
+                                   required=True),
+    "treninzi.upitnik.text": Slot("Prema odgovorima te svrstavamo u razinu (početna / srednja / napredna) — programi se "
+                                  "otvaraju odmah.", CAP, "Online treninzi · popis: tekst upitnika"),
+    "treninzi.upitnik.fill": Slot("Ispuni upitnik", CAP, "Online treninzi · popis: gumb Ispuni upitnik", required=True),
+    "treninzi.level.redo": Slot("promijeni (ispuni upitnik ponovno)", CAP, "Online treninzi · popis: poveznica uz razinu",
+                                required=True),
+    "treninzi.empty.title": Slot("Programi za tvoju razinu još se pripremaju.", CAP,
+                                 "Online treninzi · popis: nema programa, prva rečenica"),
+    "treninzi.empty.text": Slot("Trener slaže sadržaj — provjeri uskoro.", CAP,
+                                "Online treninzi · popis: nema programa, druga rečenica"),
+    "program.head.venue": Slot("dvoranski", CAP, "Online treninzi · program: oznaka dvoranski (trener)"),
+    "program.edit": Slot("Uredi program", CAP, "Online treninzi · program: gumb Uredi program (trener)", required=True),
+    "program.state.open": Slot("u tijeku", CAP, "Online treninzi · program: trening u tijeku"),
+    "program.state.stale": Slot("nedovršen", CAP, "Online treninzi · program: nedovršen trening"),
+    "program.empty": Slot("Program još nema treninga.", CAP, "Online treninzi · program: bez treninga"),
+    "program.empty_staff": Slot("Program još nema treninga — dodaj prvi u uređivanju.", CAP,
+                                "Online treninzi · program: bez treninga (trener)"),
+    "dan.meta.suggested": Slot("Preporučeno:", CAP, "Online treninzi · trening: Preporučeno: (i na programu)",
+                               required=True),
+    "dan.meta.circuit": Slot("kružni trening", CAP, "Online treninzi · trening: oznaka kružni trening (i na programu)"),
+    "dan.state.new": Slot("Još nije odrađen.", CAP, "Online treninzi · trening: još nije odrađen"),
+    "dan.state.open": Slot("U tijeku — nastavi gdje si stao/la.", CAP, "Online treninzi · trening: u tijeku"),
+    "dan.go.start": Slot("Kreni", CAP, "Online treninzi · trening: gumb Kreni", required=True),
+    "dan.go.resume": Slot("Nastavi", CAP, "Online treninzi · trening: gumb Nastavi", required=True),
+    "dan.drop.button": Slot("Odbaci započeti trening", CAP, "Online treninzi · trening: gumb Odbaci započeti trening",
+                            required=True),
+    # its confirm, the finish screen's "Odbaci trening" asks the same
+    "dan.drop.title": Slot("Odbaciti započeti trening?", CAP,
+                           "Online treninzi · odbacivanje: naslov potvrde (i na kraju treninga)", required=True),
+    "dan.drop.text": Slot("Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno.", CAP,
+                          "Online treninzi · odbacivanje: tekst potvrde (i na kraju treninga)", required=True),
+    "dan.drop.cta": Slot("Odbaci", CAP, "Online treninzi · odbacivanje: gumb potvrde (i na kraju treninga)", required=True),
+    "dan.edit": Slot("Uredi trening", CAP, "Online treninzi · trening: gumb Uredi trening (trener)", required=True),
+    "dan.video.hint": Slot("Uvodni video — pogledaj ga prije treninga.", CAP, "Online treninzi · trening: uz uvodni video"),
+    # an exercise's words, the day's list, the player's card and its list alike
+    "dan.exercise.rest_between": Slot("Odmor između serija:", CAP,
+                                      "Online treninzi · vježba: Odmor između serija: (i u izvođenju)", required=True),
+    "dan.exercise.rest_after": Slot("Odmor nakon vježbe:", CAP,
+                                    "Online treninzi · vježba: Odmor nakon vježbe: (i u izvođenju)", required=True),
+    "dan.exercise.no_video": Slot("Vježba još nema videa.", CAP, "Online treninzi · vježba: bez videa (i u izvođenju)"),
+    "dan.exercise.rep": Slot("Jedno ponavljanje:", CAP, "Online treninzi · vježba: Jedno ponavljanje: (i u izvođenju)",
+                             required=True),
+    "dan.empty": Slot("Trening još nema vježbi.", CAP, "Online treninzi · trening: bez vježbi"),
+    "dan.empty_staff": Slot("Trening još nema vježbi — dodaj ih u uređivanju.", CAP,
+                            "Online treninzi · trening: bez vježbi (trener)"),
+    "dan.history.title": Slot("Povijest", CAP, "Online treninzi · trening: naslov Povijest", required=True),
+    "dan.history.sets": Slot("Serije", CAP, "Online treninzi · trening: Serije u povijesti", required=True),
+    # ---- the player (trening_player.html): the bar's line, a circuit's
+    # round, a normal step, the swap list, the day's list and its dock, the
+    # rest bar; the finish screen (trening_kraj.html) and the leave dialog
+    # (_pass_leave.html), on both ----
+    "player.top.back": Slot("← Natrag", CAP, "Trening · traka: poveznica Natrag", required=True),
+    "player.finish": Slot("Završi trening", CAP, "Trening: Završi trening (traka, prozor za izlazak, nedovršen trening)",
+                          required=True),
+    "player.round.kicker": Slot("Kružni dio", CAP, "Trening · krug: mala oznaka"),
+    "player.saved": Slot("✓ Spremljeno", CAP, "Trening: oznaka Spremljeno (vježba i krug)"),
+    "player.round.intro": Slot("Vježbe idu jedna za drugom, bez pauze.", CAP, "Trening · krug: uvodna rečenica"),
+    "player.round.rest": Slot("Odmor nakon kruga:", CAP, "Trening · krug: Odmor nakon kruga:", required=True),
+    "player.col.set": Slot("Set", CAP, "Trening · vježba: stupac Set", required=True),
+    "player.col.reps": Slot("Pon.", CAP, "Trening: stupac Pon. (vježba i krug)", required=True),
+    "player.col.kg": Slot("Kg", CAP, "Trening: stupac Kg (vježba i krug)", required=True),
+    "player.col.sec": Slot("Sek.", CAP, "Trening: stupac Sek. (vježba i krug)", required=True),
+    "player.rate.round": Slot("Koliko je bio težak ovaj krug?", CAP, "Trening · krug: pitanje o težini", required=True),
+    "player.optional": Slot("(neobavezno)", CAP, "Trening: (neobavezno) (ocjena, osjećaj, komentar)"),
+    "player.round.done": Slot("odrađen", CAP, "Trening · krug: gumb, iza broja kruga", required=True),
+    "player.round.done_last": Slot("odrađen — završi", CAP, "Trening · krug: gumb zadnjeg kruga, iza broja kruga",
+                                   required=True),
+    "player.skip": Slot("Preskoči →", CAP, "Trening: poveznica Preskoči (vježba i krug)", required=True),
+    "player.skip_last": Slot("Preskoči i završi", CAP, "Trening: poveznica Preskoči i završi (vježba i krug)",
+                             required=True),
+    "player.step.kicker": Slot("Trenutna vježba", CAP, "Trening · vježba: mala oznaka"),
+    "player.step.swapped_for": Slot("Zamjena za:", CAP, "Trening · vježba: Zamjena za:", required=True),
+    "player.step.how": Slot("Kako se izvodi", CAP, "Trening · vježba: Kako se izvodi", required=True),
+    "player.step.extra_set": Slot("dodatna serija", CAP, "Trening · vježba: oznaka dodatne serije"),
+    "player.rate.step": Slot("Koliko je bilo teško?", CAP, "Trening · vježba: pitanje o težini", required=True),
+    "player.step.save": Slot("Spremi", CAP, "Trening · vježba: gumb Spremi", required=True),
+    "player.step.save_last": Slot("Spremi i završi", CAP, "Trening · vježba: gumb Spremi i završi", required=True),
+    "player.swap.toggle": Slot("⇄ Zamijeni vježbu", CAP, "Trening · zamjena: Zamijeni vježbu", required=True),
+    "player.swap.title": Slot("Slične vježbe", CAP, "Trening · zamjena: naslov Slične vježbe", required=True),
+    "player.swap.back": Slot("Vrati", CAP, "Trening · zamjena: gumb Vrati, prije naziva vježbe", required=True),
+    "player.list.title": Slot("Vježbe", CAP, "Trening · popis vježbi: naslov (i na traci dolje)", required=True),
+    "player.list.circuit": Slot("kružno", CAP, "Trening · popis vježbi: oznaka kružno"),
+    "player.list.swapped": Slot("(zamjena)", CAP, "Trening · popis vježbi: oznaka (zamjena)"),
+    "player.rest.head": Slot("Odmor", CAP, "Trening · odmor: oznaka Odmor", required=True),
+    "player.rest.go": Slot("Kreni", CAP, "Trening · odmor: oznaka Kreni na kraju odmora", required=True),
+    "player.rest.skip": Slot("Preskoči odmor", CAP, "Trening · odmor: gumb Preskoči odmor", required=True),
+    "kraj.kicker_done": Slot("Trening odrađen", CAP, "Trening · kraj: mala oznaka"),
+    "kraj.kicker_stale": Slot("Nedovršen trening", CAP, "Trening · kraj: mala oznaka nedovršenog treninga"),
+    "kraj.stale_tail": Slot("Spremi osvrt ili trening odbaci.", CAP, "Trening · kraj: nedovršen trening, druga rečenica"),
+    "kraj.effort": Slot("Napor", CAP, "Trening · kraj: Napor", required=True),
+    "kraj.effort_low": Slot("1 = lagano", CAP, "Trening · kraj: uz 1 na ljestvici"),
+    "kraj.effort_high": Slot("10 = maksimalno", CAP, "Trening · kraj: uz 10 na ljestvici"),
+    "kraj.feeling": Slot("Osjećaj", CAP, "Trening · kraj: Osjećaj", required=True),
+    "kraj.note": Slot("Komentar", CAP, "Trening · kraj: polje Komentar", required=True),
+    "kraj.note_placeholder": Slot("npr. kilaže, što je išlo dobro/loše", CAP, "Trening · kraj: primjer u komentaru"),
+    "kraj.save": Slot("Spremi trening", CAP, "Trening · kraj: gumb Spremi trening", required=True),
+    "kraj.back": Slot("Natrag na vježbe", CAP, "Trening · kraj: poveznica Natrag na vježbe", required=True),
+    "kraj.drop": Slot("Odbaci trening", CAP, "Trening · kraj: gumb Odbaci trening (i u prozoru za izlazak)", required=True),
+    "leave.title": Slot("Završiti trening?", CAP, "Trening · izlazak: naslov prozora", required=True),
+    "leave.lead_player": Slot("Trening je u tijeku. Završi ga osvrtom ili ga odbaci — odbačenom se brišu spremljene "
+                              "serije ovog pokušaja.", CAP, "Trening · izlazak: tekst za vrijeme vježbi"),
+    "leave.lead_kraj": Slot("Osvrt još nije spremljen. Spremi ga i trening je završen, ili trening odbaci — odbačenom "
+                            "se brišu spremljene serije.", CAP, "Trening · izlazak: tekst na kraju treninga"),
+    "leave.error": Slot("Nije uspjelo — pokušaj ponovno.", CAP, "Trening · izlazak: kad odbacivanje ne uspije",
+                        required=True),
+    "leave.back": Slot("Natrag na osvrt", CAP, "Trening · izlazak: gumb Natrag na osvrt", required=True),
+    # ---- the profile (profil.html) ----
+    "profil.head.title": Slot("Profil", CAP, "Profil: naslov", required=True),
+    "profil.head.lead": Slot("Tvoji osnovni podaci — vidi ih samo trener.", CAP, "Profil: uvodna rečenica"),
+    "profil.welcome": Slot("Dobrodošao/la! Dopuni osnovne podatke da te trener zna voditi — treba nam minuta.", CAP,
+                           "Profil: dobrodošlica pri prvoj prijavi"),
+    "profil.form.name": Slot("Ime", CAP, "Profil: polje Ime", required=True),
+    "profil.form.last": Slot("Prezime", CAP, "Profil: polje Prezime", required=True),
+    "profil.form.born": Slot("Datum rođenja", CAP, "Profil: polje Datum rođenja", required=True),
+    "profil.form.phone": Slot("Telefon (neobavezno)", CAP, "Profil: polje Telefon", required=True),
+    "profil.form.phone_placeholder": Slot("09x xxx xxxx", CAP, "Profil: primjer u polju Telefon"),
+    "profil.form.height": Slot("Visina (cm)", CAP, "Profil: polje Visina", required=True),
+    "profil.form.save": Slot("Spremi podatke", CAP, "Profil: gumb Spremi podatke", required=True),
+    "profil.account.title": Slot("Račun", CAP, "Profil · račun: naslov", required=True),
+    "profil.account.since": Slot("Registriran/a od", CAP, "Profil · račun: Registriran/a od, prije datuma"),
+    "profil.link": Slot("Moja članarina — planovi, uplate i računi →", CAP, "Profil: poveznica na Moja članarina",
+                        required=True),
+    # ---- logging in and signing up: the pages (login.html, signup.html,
+    # forgot.html, reset.html, verify_sent.html) and base.html's login
+    # window; the words the page and the window share are one slot ----
+    "auth.email": Slot("Email", CAP, "Prijava i registracija: polje Email (stranice i prozor)", required=True),
+    "auth.password": Slot("Lozinka", CAP, "Prijava: polje Lozinka (stranica i prozor)", required=True),
+    "auth.forgot_link": Slot("Zaboravljena lozinka?", CAP, "Prijava: poveznica Zaboravljena lozinka (stranica i prozor)",
+                             required=True),
+    "auth.login.title": Slot("Prijava", CAP, "Prijava: naslov (i kartica u prozoru)", required=True),
+    "auth.login.lead": Slot("Quality Movement Training — rezervacija termina.", CAP, "Prijava: uvodna rečenica"),
+    "auth.login.submit": Slot("Prijavi se", CAP, "Prijava: gumb Prijavi se (stranica i prozor)", required=True),
+    "auth.login.no_account": Slot("Nemaš račun?", CAP, "Prijava: Nemaš račun?, prije poveznice"),
+    "auth.login.signup_link": Slot("Registriraj se", CAP, "Prijava: poveznica Registriraj se", required=True),
+    "auth.login.invite_only": Slot("— samo uz poziv trenera", CAP, "Prijava: iza poveznice, samo uz poziv"),
+    "auth.closed": Slot("Registracija novih članova je trenutno zatvorena.", CAP,
+                        "Prijava i registracija: registracija zatvorena (obje stranice)"),
+    "auth.signup.title": Slot("Registracija", CAP, "Registracija: naslov (i kartica u prozoru)", required=True),
+    "auth.signup.lead_open": Slot("Otvori račun, odaberi članarinu i rezerviraj prvi termin.", CAP,
+                                  "Registracija: uvodna rečenica (otvorena registracija)"),
+    "auth.signup.invite": Slot("Račun zasad mogu otvoriti samo pozvani članovi — javi se treneru za pozivnicu.", CAP,
+                               "Registracija: samo uz poziv (stranica i prozor)"),
+    "auth.signup.name": Slot("Ime (neobavezno)", CAP, "Registracija: polje Ime (stranica i prozor)", required=True),
+    "auth.signup.name_placeholder": Slot("npr. Ivan Horvat", CAP, "Registracija: primjer u polju Ime (stranica i prozor)"),
+    "auth.signup.password": Slot("Lozinka (barem 8 znakova)", CAP, "Registracija: polje Lozinka (stranica i prozor)",
+                                 required=True),
+    "auth.signup.submit": Slot("Otvori račun", CAP, "Registracija: gumb Otvori račun (stranica i prozor)", required=True),
+    "auth.signup.have_account": Slot("Već imaš račun?", CAP, "Registracija: Već imaš račun?, prije poveznice"),
+    "auth.signup.login_link": Slot("Prijavi se", CAP, "Registracija: poveznica Prijavi se", required=True),
+    "auth.forgot.title": Slot("Nova lozinka", CAP, "Zaboravljena lozinka: naslov", required=True),
+    "auth.forgot.lead": Slot("Upiši email — poslat ćemo ti link za postavljanje nove lozinke.", CAP,
+                             "Zaboravljena lozinka: uvodna rečenica"),
+    "auth.forgot.submit": Slot("Pošalji link", CAP, "Zaboravljena lozinka: gumb Pošalji link", required=True),
+    "auth.back_to_login": Slot("← natrag na prijavu", CAP,
+                               "Zaboravljena lozinka: poveznica natrag na prijavu (i na Provjeri email)", required=True),
+    "auth.reset.title": Slot("Postavi novu lozinku", CAP, "Nova lozinka: naslov", required=True),
+    "auth.reset.lead": Slot("Link vrijedi sat vremena i može se iskoristiti jednom.", CAP, "Nova lozinka: uvodna rečenica"),
+    "auth.reset.password": Slot("Nova lozinka (barem 8 znakova)", CAP, "Nova lozinka: polje Nova lozinka", required=True),
+    "auth.reset.submit": Slot("Spremi lozinku", CAP, "Nova lozinka: gumb Spremi lozinku", required=True),
+    "auth.verify.title": Slot("Provjeri email", CAP, "Provjeri email: naslov", required=True),
+    "auth.verify.sent_to": Slot("Poslali smo link za potvrdu na", CAP, "Provjeri email: prije adrese"),
+    "auth.verify.click": Slot("Klikni ga i račun je spreman — link vrijedi", CAP, "Provjeri email: koliko vrijedi link"),
+    "auth.verify.hours": Slot("24 sata", CAP, "Provjeri email: 24 sata (podebljano)"),
+    "auth.verify.reset_valid": Slot("Link vrijedi", CAP, "Provjeri email · nova lozinka: koliko vrijedi link"),
+    "auth.verify.reset_hours": Slot("1 sat", CAP, "Provjeri email · nova lozinka: 1 sat (podebljano)"),
+    "auth.modal.title": Slot("Dobrodošli natrag", CAP, "Prozor prijave: naslov", required=True),
+    "auth.modal.title_signup": Slot("Otvori račun", CAP, "Prozor prijave: naslov na kartici Registracija", required=True),
+    # ---- the app's own pieces: a plan's door (PLAN_LINKS' pages: the
+    # button an owner of the plan gets on /moja-clanarina and on the
+    # landing), base.html's error alert's link, the install banner, the
+    # confirm dialog's default words, the osvrt prompt after a login, the
+    # error page (error.html) and the Mjesečno / Godišnje switch
+    # (_period.html; _tiers.html prints a count and an amount alone) ----
+    "app.door.raspored": Slot("Rezerviraj termin", CAP, "Aplikacija · vrata plana: termini (Moja članarina, Početna)",
+                              required=True),
+    "app.door.online": Slot("Otvori online treninge", CAP, "Aplikacija · vrata plana: online (Moja članarina, Početna)",
+                            required=True),
+    "app.door.prehrana": Slot("Otvori prehranu", CAP, "Aplikacija · vrata plana: prehrana (Moja članarina, Početna)",
+                              required=True),
+    "app.alert.prices": Slot("Pogledaj cjenik →", CAP, "Aplikacija · poruka bez članarine: poveznica na cjenik",
+                             required=True),
+    "app.install.title": Slot("Dodaj na početni zaslon", CAP, "Aplikacija · instalacija: naslov", required=True),
+    "app.install.lead": Slot("Raspored i karton jednim dodirom, kao aplikacija.", CAP, "Aplikacija · instalacija: tekst"),
+    "app.install.ios_press": Slot("Pritisni", CAP, "Aplikacija · instalacija (iPhone): korak 1, prije Podijeli"),
+    "app.install.ios_share": Slot("Podijeli", CAP, "Aplikacija · instalacija (iPhone): Podijeli (podebljano)"),
+    "app.install.ios_where": Slot("u pregledniku", CAP, "Aplikacija · instalacija (iPhone): korak 1, iza ikone"),
+    "app.install.android_menu": Slot("Otvori izbornik preglednika", CAP, "Aplikacija · instalacija (Android): korak 1"),
+    "app.install.pick": Slot("Odaberi", CAP, "Aplikacija · instalacija: korak 2, prije stavke"),
+    "app.install.pick_item": Slot("„Dodaj na početni zaslon”", CAP, "Aplikacija · instalacija: korak 2, stavka (podebljano)"),
+    "app.install.ok": Slot("U redu", CAP, "Aplikacija · instalacija: gumb U redu", required=True),
+    "app.install.go": Slot("Instaliraj", CAP, "Aplikacija · instalacija: gumb Instaliraj", required=True),
+    "app.confirm.title": Slot("Jesi li siguran/na?", CAP, "Aplikacija · potvrda: naslov kad stranica ne kaže svoj",
+                              required=True),
+    "app.confirm.cancel": Slot("Odustani", CAP, "Aplikacija · potvrda: gumb Odustani", required=True),
+    "app.confirm.go": Slot("Potvrdi", CAP, "Aplikacija · potvrda: gumb kad stranica ne kaže svoj", required=True),
+    "app.feedback.title": Slot("Kako je bilo?", CAP, "Aplikacija · osvrt nakon prijave: naslov", required=True),
+    "app.feedback.one": Slot("Jedan odrađen termin još čeka tvoj osvrt.", CAP,
+                             "Aplikacija · osvrt nakon prijave: jedan termin čeka osvrt"),
+    "app.feedback.note": Slot("Kratko: napor, osjećaj i komentar — pomaže treneru posložiti sljedeći trening.", CAP,
+                              "Aplikacija · osvrt nakon prijave: tekst"),
+    "app.feedback.later": Slot("Kasnije", CAP, "Aplikacija · osvrt nakon prijave: gumb Kasnije", required=True),
+    "app.feedback.fill": Slot("Ispuni osvrt", CAP, "Aplikacija · osvrt nakon prijave: gumb Ispuni osvrt", required=True),
+    "app.error.back": Slot("← Na raspored", CAP, "Aplikacija · stranica greške: poveznica Na raspored", required=True),
+    # the switch's words: edited on /tekstovi only (printed plain, no box):
+    # in edit mode the switch must keep switching, the yearly prices behind
+    # it being edited in place
+    "period.month": Slot("Mjesečno", CAP, "Mjesečno / Godišnje: gumb Mjesečno", required=True),
+    "period.year": Slot("Godišnje", CAP, "Mjesečno / Godišnje: gumb Godišnje", required=True),
 }
 
 # The karton's texts by area (25.11.2026), in the page's order: the caption
@@ -780,6 +1217,102 @@ KARTON_AREAS = {"head": "Zaglavlje", "upitnik": "Upitnik", "limits": "Ograničen
 # (caption, the area's keys in registry order) per area, for the panel
 KARTON_PANEL = tuple((caption, tuple(key for key in SLOTS if key.startswith(f"karton.{area}.")))
                      for area, caption in KARTON_AREAS.items())
+
+# /tekstovi (25.11.2026, Admin ▾ → Tekstovi): every plain text of the app
+# on one page, the ones only a member or a guest ever sees among them, so
+# the editor reaches each. By page, in the nav's order, each page by area,
+# from the keys' prefixes: (the page's caption, the address a staff member
+# opens it at or None, whether the page has lists, tables or cards of its
+# own besides, ((the area's caption, its prefixes), …)). A key goes to the
+# first area, in this order, one of whose prefixes it starts with (a prefix
+# may be a whole key: "cjenik.hint" before "cjenik."). Lists, tables, switches and photos (ListSlot,
+# RowsSlot, FlagSlot, ImageSlot) and the rows' texts (the announcements,
+# the gym's cards, the upitnik's questions) are edited on their page only.
+_TEXT_RULES = (
+    ("Početna", "/", True, (
+        ("Naslovnica", ("hero.", "stage.")),
+        ("Ponuda", ("offer.", "landing.offer.", "landing.cta.")),
+        ("Dvorana", ("gym.",)),
+        ("Galerija", ("landing.gallery.",)),
+        ("Radno vrijeme i kontakt", ("info.",)),
+        ("Podnožje", ("footer",)))),
+    ("Raspored", "/raspored", False, (
+        ("Zaglavlje i tjedan", ("raspored.head.", "raspored.week.", "raspored.view.")),
+        ("Tvoj sljedeći termin", ("raspored.next.",)),
+        ("Mjesec", ("raspored.month.",)),
+        ("Članarina", ("raspored.plan.", "raspored.gate.")),
+        ("Termini", ("raspored.state.", "raspored.trainer.", "raspored.termin.", "raspored.day.")),
+        ("Moje rezervacije", ("raspored.mine.",)),
+        ("Ponavljanje i izvještaj", ("raspored.series.", "raspored.report.")),
+        ("Prozor termina", ("raspored.sheet.",)),
+        ("Prozori za potvrdu", ("raspored.confirm.",)))),
+    ("Karton", "/karton", False, tuple((caption, (f"karton.{area}.",)) for area, caption in KARTON_AREAS.items())),
+    ("Online treninzi", "/treninzi", False, (
+        ("Popis programa", ("treninzi.",)),
+        ("Program", ("program.",)),
+        ("Trening", ("dan.meta.", "dan.state.", "dan.go.", "dan.drop.", "dan.edit", "dan.video.", "dan.empty",
+                     "dan.history.")),
+        ("Vježba", ("dan.exercise.",)))),
+    ("Trening (izvođenje)", None, False, (
+        ("Traka i zajedničko", ("player.top.", "player.finish", "player.saved", "player.optional", "player.skip",
+                                "player.col.")),
+        ("Vježba", ("player.step.", "player.rate.step")),
+        ("Krug", ("player.round.", "player.rate.round")),
+        ("Zamjena", ("player.swap.",)),
+        ("Popis vježbi", ("player.list.",)),
+        ("Odmor", ("player.rest.",)),
+        ("Kraj treninga", ("kraj.",)),
+        ("Prozor za izlazak", ("leave.",)))),
+    ("Moja članarina", "/moja-clanarina", False, (
+        ("Zaglavlje", ("clanarina.h.title", "cjenik.hint")),
+        ("Tvoji planovi", ("clanarina.h.plans", "clanarina.plan.", "clanarina.chip.", "clanarina.fact.",
+                           "clanarina.status.", "clanarina.portal", "clanarina.switch.", "clanarina.to_card.",
+                           "clanarina.lapsed.", "clanarina.none.")),
+        ("Dodaj plan", ("clanarina.h.add", "clanarina.h.online", "clanarina.h.gym", "clanarina.add.",
+                        "clanarina.subscribe", "cjenik.")),
+        ("Nazivi planova", ("plan.",)),
+        ("Cijene", ("price.", "addon.", "clanarina.addon.")),
+        ("Računi", ("clanarina.h.bills", "clanarina.bills.")))),
+    ("Prehrana", "/prehrana", False, (("Prehrana", ("prehrana.",)),)),
+    ("Upitnik", "/upitnik", True, (("Upitnik", ("upitnik.",)),)),
+    ("Vodič", "/vodic", True, (("Naslov i gumb", ("vodic.title", "vodic.cta")),
+                               *((f"Odjeljak {n}", (f"vodic.{n}.",)) for n in range(1, len(VODIC_SECTIONS) + 1)))),
+    ("Profil", "/profil", False, (("Profil", ("profil.",)),)),
+    ("Prijava i registracija", None, False, (
+        ("Zajedničko", ("auth.email", "auth.password", "auth.forgot_link")),
+        ("Prijava", ("auth.login.",)),
+        ("Registracija", ("auth.closed", "auth.signup.")),
+        ("Zaboravljena lozinka", ("auth.forgot.", "auth.back_to_login")),
+        ("Nova lozinka", ("auth.reset.",)),
+        ("Provjeri email", ("auth.verify.",)),
+        ("Prozor prijave", ("auth.modal.",)))),
+    ("Aplikacija", None, False, (
+        ("Vrata planova", ("app.door.",)),
+        ("Poruka bez članarine", ("app.alert.",)),
+        ("Instalacija", ("app.install.",)),
+        ("Prozor za potvrdu", ("app.confirm.",)),
+        ("Osvrt nakon prijave", ("app.feedback.",)),
+        ("Stranica greške", ("app.error.",)),
+        ("Mjesečno / Godišnje", ("period.",)))),
+)
+
+
+def _text_pages() -> tuple:
+    """_TEXT_RULES with each plain Slot's key in its area, the areas' keys
+    in registry order and an area with none left out (tests/test_copy_rule.py:
+    every plain slot is in one area, none in two)."""
+    place = {key: next(((page, area) for page, _, _, areas in _TEXT_RULES for area, prefixes in areas
+                        if key.startswith(prefixes)), None)
+             for key, slot in SLOTS.items() if type(slot) is Slot}
+    pages = []
+    for page, href, lists, areas in _TEXT_RULES:
+        rows = tuple((area, tuple(k for k, at in place.items() if at == (page, area))) for area, _ in areas)
+        pages.append((page, href, lists, tuple(r for r in rows if r[1])))
+    return tuple(pages)
+
+
+# (page caption, href or None, has lists of its own, ((area caption, keys), …)), the nav's order
+TEXT_PAGES = _text_pages()
 
 # Every price the site shows -> the slot of its bazna cijena (23.11.2026;
 # Croatia's Pravilnik o isticanju bazne cijene proizvoda, NN 132/2026, in

@@ -70,7 +70,7 @@
    cijena in brackets ("3 € uz dvoranu (Bazna cijena na 10.9.2026.: 3 €), 5 € uz online
    (Bazna cijena na 10.9.2026.: 5 €)"); nothing for another plan #}
 {% macro hint(key) -%}
-  {%- if key == "prehrana" %}<div class="hint price-hint">{{ c.t("addon.dvorana") }} € uz dvoranu{{ base_paren("addon.dvorana", BASE_OF["addon.dvorana"]) }}, {{ c.t("addon.online") }} € uz online{{ base_paren("addon.online", BASE_OF["addon.online"]) }}</div>{% endif -%}
+  {%- if key == "prehrana" %}<div class="hint price-hint">{{ c.t("addon.dvorana") }} € {{ c.t("clanarina.addon.gym") }}{{ base_paren("addon.dvorana", BASE_OF["addon.dvorana"]) }}, {{ c.t("addon.online") }} € {{ c.t("clanarina.addon.online") }}{{ base_paren("addon.online", BASE_OF["addon.online"]) }}</div>{% endif -%}
 {%- endmacro %}
 
 {# a plan's monthly price, its base under it, and its hint: the Cijena fact

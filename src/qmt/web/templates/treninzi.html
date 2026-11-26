@@ -1,29 +1,32 @@
 {% extends "base.html" %}
+{% import "_copy.html" as c with context %}
 {% block title %}Online treninzi — QMT{% endblock %}
 {% block content %}
-<h1>Moji online treninzi</h1>
-<p class="hint">Programi tvoje razine — određuje je upitnik.</p>
+<h1>{{ c.t("treninzi.head.title") }}</h1>
+{{ c.opt("treninzi.head.lead", "p", ' class="hint"') }}
 
 {% if not has_plan %}
+{% if copy_on("treninzi.no_plan.title") or copy_on("treninzi.no_plan.text") %}
 <div class="card" style="padding:34px; text-align:center; max-width:640px;">
-  <p style="margin-bottom:6px;"><strong>Online treninzi su dio zasebne članarine.</strong></p>
-  <p class="hint">Javi se treneru za pristup — plaćanje gotovinom ili karticom u dvorani.</p>
+  {% if copy_on("treninzi.no_plan.title") %}<p style="margin-bottom:6px;"{% if can_edit_copy %} data-opt{% endif %}><strong>{{ c.t("treninzi.no_plan.title") }}</strong></p>{% endif %}
+  {{ c.opt("treninzi.no_plan.text", "p", ' class="hint"') }}
 </div>
+{% endif %}
 {% elif not onboarding %}
 <div class="card" style="padding:14px 18px; margin-bottom:22px; max-width:640px;
                          display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
   <div>
-    <strong>Ispuni upitnik za online trening</strong>
-    <p class="hint" style="margin-top:2px;">Prema odgovorima te svrstavamo u razinu (početna / srednja / napredna) — programi se otvaraju odmah.</p>
+    <strong>{{ c.t("treninzi.upitnik.title") }}</strong>
+    {{ c.opt("treninzi.upitnik.text", "p", ' class="hint" style="margin-top:2px;"') }}
   </div>
-  <a class="btn-sm btn-signal" href="/upitnik">Ispuni upitnik</a>
+  <a class="btn-sm btn-signal" href="/upitnik">{{ c.t("treninzi.upitnik.fill") }}</a>
 </div>
 {% else %}
 <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:18px;">
   <span style="font:700 .78rem var(--font-display); text-transform:uppercase; letter-spacing:.07em;
                background:var(--accent-dim); color:var(--accent-tint-ink); border-radius:8px; padding:4px 10px;">
     {{ levels[onboarding.level] }}</span>
-  <a class="act act-quiet" href="/upitnik">promijeni (ispuni upitnik ponovno)</a>
+  <a class="act act-quiet" href="/upitnik">{{ c.t("treninzi.level.redo") }}</a>
 </div>
 
 {# Every programme of his razina, whatever its type (23.11.2026): a group
@@ -50,10 +53,12 @@
     </div>
   </section>
   {% else %}
+  {% if copy_on("treninzi.empty.title") or copy_on("treninzi.empty.text") %}
   <div class="card" style="padding:34px; text-align:center;">
-    <p style="margin-bottom:6px;"><strong>Programi za tvoju razinu još se pripremaju.</strong></p>
-    <p class="hint">Trener slaže sadržaj — provjeri uskoro.</p>
+    {% if copy_on("treninzi.empty.title") %}<p style="margin-bottom:6px;"{% if can_edit_copy %} data-opt{% endif %}><strong>{{ c.t("treninzi.empty.title") }}</strong></p>{% endif %}
+    {{ c.opt("treninzi.empty.text", "p", ' class="hint"') }}
   </div>
+  {% endif %}
   {% endfor %}
 </div>
 {% endif %}

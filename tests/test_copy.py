@@ -28,7 +28,16 @@ nothing for a member, every view printing its own, the editor's panel "Svi
 tekstovi kartona", and in a browser on a phone a heading, a button's words,
 a <summary>'s, a link's and a panel row edited in place without pressing
 what holds them; the long-text walk covers its three views, every form
-open; its order and columns are tests/test_karton.py's).
+open; its order and columns are tests/test_karton.py's), and every other
+member-facing text (25.11.2026: the raspored, the online pages, the player,
+the profile, the login pages and window, base.html's own pieces, the rest
+of the landing, /moja-clanarina and /prehrana a slot each, their defaults
+the pages' words, required as the karton's, an emptied optional one no
+element, an edit shown to every viewer; /tekstovi, every plain text on one
+page, its search in a browser; in a browser on a phone a heading, a link's
+words and the player's Spremi edited in place without pressing them; the
+long-text walk covers every member page, its dialogs and bars. The static
+rule is tests/test_copy_rule.py's).
 
 The browser half is the net under the texts. Their design limits were lifted
 on 16.10.2026 (src/qmt/copy.py): it starts the app in a thread, fills every
@@ -82,7 +91,11 @@ from qmt import auth, config, copy, db, storage
 from qmt.models import PLAN_TYPES, Base, Booking, SiteCopy, User
 from qmt.web.app import addon_amounts, app, reference_prices
 
-PAGES = ("/", "/moja-clanarina", "/prehrana", "/upitnik", "/vodic", "/karton")  # every page that has editable text
+# every page that has editable text and staff open (25.11.2026: the raspored, the
+# online list, the profile; /tekstovi lists every plain text. The online pages
+# that need a programme, the player and the login pages are walked on their own)
+PAGES = ("/", "/moja-clanarina", "/prehrana", "/upitnik", "/vodic", "/karton", "/raspored", "/treninzi", "/profil",
+         "/tekstovi")
 
 
 @pytest.fixture(autouse=True)
@@ -1291,7 +1304,12 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
     and on /vodic, both: one partial (_vodic.html), one slot per text.
     A list, a switch and a photo keep their shape on each page they are
     on; a visitor and a client get no editor markup, the announcements'
-    and the gym's cards' (rows, not slots) included."""
+    and the gym's cards' (rows, not slots) included. Since 25.11.2026
+    /tekstovi carries every plain slot's span (plan.online.name too, which
+    heads a member's own online card alone and was on no page the editor
+    opened until then); that each new text prints on its own page is
+    test_an_edited_member_text_shows_where_it_is_printed's, and that no
+    slot is left unprinted tests/test_copy_rule.py's."""
     make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
     examples(); gym_examples(); upitnik_examples()
     # a price's bazna cijena prints once the price holds a number (23.11.2026):
@@ -1322,10 +1340,9 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
     # plan.online.name heads a member's own online card alone since
     # 21.10.2026 ("Dodaj plan"'s online cards are the three QMove tiers,
     # named by their landing titles), and the editor holds no plans: it is
-    # on no page he opens. Left for the owner to decide, not dropped here.
-    unreachable = {"plan.online.name"}
-    assert set(seen) == set(copy.SLOTS) - unreachable, f"slots on no page: {set(copy.SLOTS) - unreachable - set(seen)}"
-    assert seen["addon.online"] == seen["addon.dvorana"] == ["/moja-clanarina"], seen["addon.online"]
+    # on /tekstovi since 25.11.2026, as every plain slot
+    assert set(seen) == set(copy.SLOTS), f"slots on no page: {set(copy.SLOTS) - set(seen)}"
+    assert seen["addon.online"] == seen["addon.dvorana"] == ["/moja-clanarina", "/tekstovi"], seen["addon.online"]
     for c in (TestClient(app), client_for("ivan@test.local")):
         for path in PAGES:
             page = c.get(path).text
@@ -1335,7 +1352,7 @@ def test_every_slot_is_on_a_page_and_only_editors_see_the_editor():
                              'class="ed-img"', "data-image", 'class="ed-ann-x"', 'class="ed-add-ann"', 'action="/aktualno/',
                              'class="ed-pills"', 'class="ed-gym-x"', 'class="ed-add-gym"', 'action="/dvorana/', "; --cols-edit:",
                              'class="q-ed', 'class="ed-q-x"', 'action="/upitnik/pitanje', 'form="q-', "data-url",
-                             'class="q-sum"', 'class="q-add"'):
+                             'class="q-sum"', 'class="q-add"', " data-opt>"):
                     assert mark not in page, (path, mark)
 
 
@@ -1592,7 +1609,8 @@ def test_an_emptied_text_stays_empty_and_only_a_number_gets_its_default_back():
     span says which it is (data-required). Since 25.11.2026 the karton's
     controls' words are required too (its headings, buttons, links,
     labels, <summary> texts, table headers and confirms' texts: none can be
-    left blank; the karton's tests below)."""
+    left blank; the karton's tests below), and so are every other member
+    page's (the same day: theirs and a caption before a value; NEW, below)."""
     make_user("ivan@test.local", plans=("rehabilitacija",)); make_user("trener@test.local", is_trainer=True)
     gym_examples()
     t = client_for("trener@test.local")
@@ -1600,7 +1618,8 @@ def test_an_emptied_text_stays_empty_and_only_a_number_gets_its_default_back():
         *(f"price.{plan}.amount" for plan in PLAN_TYPES),
         *(f"price.{plan}.year_amount" for plan in PLAN_TYPES if plan != "online"), "addon.online", "addon.dvorana",
         *copy.BASE_OF.values(), "price.base_label",                             # the bazna cijena's (23.11.2026)
-        *(k for k in copy.SLOTS if k.startswith("karton.") and k not in KARTON_OPTIONAL)}   # the karton's (25.11.2026)
+        *(k for k in copy.SLOTS if k.startswith("karton.") and k not in KARTON_OPTIONAL),   # the karton's (25.11.2026)
+        *(k for k in NEW if k not in NEW_OPTIONAL)}                                # every member page's (25.11.2026)
     assert copy.clean("") == "" and copy.clean(" \n\t \n ") == ""             # what an emptied text stores
 
     def line(page: str) -> str:                     # Individualno's line, its markup
@@ -2349,6 +2368,311 @@ def test_the_editors_own_karton_holds_every_karton_text():
         assert 'class="card k-texts"' not in page
 
 
+# ---------- every member-facing text (25.11.2026) ----------
+#
+# The owner to Amir: "svugdje ikad uvest pravilo da može uređivat"; to
+# Fable: "If there is a place where he is not allowed to change text, lets
+# allow it". Every static text of every page a member or a guest reaches is
+# a slot (the pages that had none, and what was still a literal on the
+# landing, /moja-clanarina and /prehrana), and /tekstovi lists every plain
+# slot. The static rule (no literal text on such a page) and /tekstovi's
+# grouping are tests/test_copy_rule.py's.
+
+NEW_PREFIXES = ("raspored.", "treninzi.", "program.", "dan.", "player.", "kraj.", "leave.", "profil.", "auth.", "app.",
+                "period.", "landing.", "clanarina.h.title", "clanarina.plan.", "clanarina.chip.", "clanarina.fact.",
+                "clanarina.status.", "clanarina.portal", "clanarina.switch.", "clanarina.to_card.", "clanarina.subscribe",
+                "clanarina.lapsed.", "clanarina.add.", "clanarina.addon.", "clanarina.bills.portal",
+                "clanarina.bills.col_", "prehrana.kicker", "prehrana.text_", "prehrana.hint_", "prehrana.open")
+NEW = [key for key in copy.SLOTS if key.startswith(NEW_PREFIXES)]
+# the ones that are no control's words (a lead, a hint, a kicker, a chip, a
+# state's word, an empty line, a placeholder): emptied, they stay empty
+NEW_OPTIONAL = {
+    "landing.offer.featured", "landing.gallery.kicker",
+    "clanarina.plan.kicker", "clanarina.chip.active", "clanarina.chip.due", "clanarina.chip.lapsed",
+    "clanarina.chip.cancelling", *(k for k in copy.SLOTS if k.startswith("clanarina.status.")),
+    "clanarina.switch.kicker", "clanarina.to_card.hint", "clanarina.lapsed.hint", "clanarina.add.featured",
+    "clanarina.addon.gym", "clanarina.addon.online",
+    "prehrana.kicker", "prehrana.text_a", "prehrana.text_app", "prehrana.text_b", "prehrana.hint_a",
+    "prehrana.hint_bold", "prehrana.hint_b",
+    "raspored.series.booked", "raspored.report.nothing", "raspored.next.kicker", "raspored.next.canceled",
+    "raspored.next.cutoff", "raspored.month.legend_covered", "raspored.month.legend_mine",
+    "raspored.month.legend_today", "raspored.plan.until", "raspored.month.none", "raspored.week.beyond",
+    "raspored.week.empty", *(k for k in copy.SLOTS if k.startswith("raspored.state.")), "raspored.termin.need",
+    "raspored.day.none", "raspored.gate.none", "raspored.gate.renew", "raspored.sheet.late", "raspored.sheet.booked",
+    "raspored.sheet.free",
+    "treninzi.head.lead", "treninzi.no_plan.title", "treninzi.no_plan.text", "treninzi.upitnik.text",
+    "treninzi.empty.title", "treninzi.empty.text",
+    "program.head.venue", "program.state.open", "program.state.stale", "program.empty", "program.empty_staff",
+    "dan.meta.circuit", "dan.state.new", "dan.state.open", "dan.video.hint", "dan.exercise.no_video", "dan.empty",
+    "dan.empty_staff",
+    "player.round.kicker", "player.saved", "player.round.intro", "player.optional", "player.step.kicker",
+    "player.step.extra_set", "player.list.circuit", "player.list.swapped",
+    "kraj.kicker_done", "kraj.kicker_stale", "kraj.stale_tail", "kraj.effort_low", "kraj.effort_high",
+    "kraj.note_placeholder", "leave.lead_player", "leave.lead_kraj",
+    "profil.head.lead", "profil.welcome", "profil.form.phone_placeholder", "profil.account.since",
+    "auth.login.lead", "auth.login.no_account", "auth.login.invite_only", "auth.closed", "auth.signup.lead_open",
+    "auth.signup.invite", "auth.signup.name_placeholder", "auth.signup.have_account", "auth.forgot.lead",
+    "auth.reset.lead", "auth.verify.sent_to", "auth.verify.click", "auth.verify.hours", "auth.verify.reset_valid",
+    "auth.verify.reset_hours",
+    "app.install.lead", "app.install.ios_press", "app.install.ios_share", "app.install.ios_where",
+    "app.install.android_menu", "app.install.pick", "app.install.pick_item", "app.feedback.one", "app.feedback.note"}
+# texts the pages printed before they were slots (at 72238fa), copied from
+# them character for character: their defaults
+NEW_BEFORE = {
+    "raspored.series.until": "Isti termin svaki tjedan do",
+    "raspored.report.why_prozor": "termin je predaleko unaprijed",
+    "raspored.week.prev": "← prošli tjedan",
+    "raspored.month.prev": "‹ prošli mjesec",
+    "raspored.gate.none": "Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.",
+    "raspored.gate.renew": "— za kasnije termine produlji članarinu.",
+    "raspored.state.mine": "rezervirano ✓",
+    "treninzi.upitnik.text": "Prema odgovorima te svrstavamo u razinu (početna / srednja / napredna) — programi se "
+                             "otvaraju odmah.",
+    "dan.state.open": "U tijeku — nastavi gdje si stao/la.",
+    "dan.drop.text": "Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno.",
+    "dan.exercise.rest_after": "Odmor nakon vježbe:",
+    "player.swap.toggle": "⇄ Zamijeni vježbu",
+    "player.round.done_last": "odrađen — završi",
+    "leave.lead_kraj": "Osvrt još nije spremljen. Spremi ga i trening je završen, ili trening odbaci — odbačenom se "
+                       "brišu spremljene serije.",
+    "kraj.note_placeholder": "npr. kilaže, što je išlo dobro/loše",
+    "profil.welcome": "Dobrodošao/la! Dopuni osnovne podatke da te trener zna voditi — treba nam minuta.",
+    "auth.signup.invite": "Račun zasad mogu otvoriti samo pozvani članovi — javi se treneru za pozivnicu.",
+    "auth.back_to_login": "← natrag na prijavu",
+    "app.install.pick_item": "„Dodaj na početni zaslon”",
+    "app.confirm.title": "Jesi li siguran/na?",
+    "app.door.online": "Otvori online treninge",
+    "clanarina.status.grace": "— članarina vrijedi još do",
+    "clanarina.bills.col_plan": "Plan · način",
+    "prehrana.text_b": "— aplikaciju u koju opišeš što si jeo svojim riječima, a ona izračuna kalorije i "
+                       "makronutrijente te ih usporedi s tvojim ciljevima.",
+    "landing.cta.choose": "Odaberi plan →",
+}
+# each page's word at the start of its texts' labels (the editor's bar)
+NEW_LABELS = {"raspored": "Raspored", "treninzi": "Online treninzi", "program": "Online treninzi",
+              "dan": "Online treninzi", "player": "Trening", "kraj": "Trening · kraj", "leave": "Trening · izlazak",
+              "profil": "Profil", "app": "Aplikacija", "period": "Mjesečno / Godišnje", "landing": "Početna",
+              "clanarina": "Članarina", "prehrana": "Prehrana",
+              "auth": ("Prijava", "Registracija", "Zaboravljena lozinka", "Nova lozinka", "Provjeri email",
+                       "Prozor prijave")}
+
+
+def test_every_new_text_is_a_slot_with_the_words_the_page_printed():
+    """Every static text of the pages that had none, and what was still a
+    literal on the landing, /moja-clanarina and /prehrana, is a slot
+    (25.11.2026): 268 of them, <page>.<area>.<name> (the old pages keep
+    their prefixes, clanarina.*, prehrana.*, the landing's new ones
+    landing.*), each a text of CAP characters, its label beginning with its
+    page's word in the editor's bar ("Raspored · termin: gumb Rezerviraj
+    (i u prozoru termina)", "Trening · krug: gumb, iza broja kruga",
+    "Prijava: naslov (i kartica u prozoru)"). A control's words are
+    required, the karton's rule; a lead, a hint, a kicker, a chip, a
+    state's word, an empty line or a placeholder not. Their defaults are
+    what the pages printed, character for character (spot-checked against
+    their old texts), each as clean() keeps a text."""
+    assert len(NEW) == 268
+    for key in NEW:
+        slot = copy.SLOTS[key]
+        assert isinstance(slot, copy.Slot) and slot.max == copy.CAP, key
+        assert slot.default and copy.clean(slot.default) == slot.default, key
+        assert slot.required == (key not in NEW_OPTIONAL), key
+        assert slot.label.startswith(NEW_LABELS[key.split(".")[0]]), key
+    assert NEW_OPTIONAL <= set(NEW) and len(NEW_OPTIONAL) == 119
+    assert {key: copy.SLOTS[key].default for key in NEW_BEFORE} == NEW_BEFORE
+    for key, label in (("raspored.termin.book", "Raspored · termin: gumb Rezerviraj (i u prozoru termina)"),
+                       ("player.round.done", "Trening · krug: gumb, iza broja kruga"),
+                       ("auth.login.title", "Prijava: naslov (i kartica u prozoru)")):
+        assert copy.SLOTS[key].label == label, key
+
+
+def test_a_required_new_text_comes_back_and_an_optional_one_stays_empty():
+    """POST /copy/{key} on every new text, emptied: a required one (a
+    control's words) is its default again, no row stored; an optional one
+    is stored empty. Zadano brings each back."""
+    make_user("trener@test.local", is_trainer=True)
+    t = client_for("trener@test.local")
+    for key in NEW:
+        slot = copy.SLOTS[key]
+        r = t.post(f"/copy/{key}", data={"text": " \n "}).json()
+        if slot.required:
+            assert r == {"ok": True, "text": slot.default, "default": True} and key not in db.copy_texts(), key
+        else:
+            assert r == {"ok": True, "text": "", "default": False} and db.copy_texts()[key] == "", key
+            assert t.post(f"/copy/{key}", data={"reset": "1"}).json()["text"] == slot.default, key
+    assert db.copy_texts() == {}
+
+
+def online_member(email: str, plans: tuple[str, ...] = ("grupni", "online"), level: str = "srednja") -> int:
+    """A member with `plans` and, with online among them, an upitnik of
+    razina `level` (an old one, version 1: tests/test_player.py's)."""
+    from qmt import upitnik
+    uid = make_user(email, plans=plans)
+    if "online" in plans:
+        db.save_onboarding(uid, json.dumps({q["key"]: 0 for q in upitnik.QUESTIONS_V1}), 0, level, "cijelo", version=1,
+                           pain_level=None, pain_high=False, needs_review=False, consented_at=None)
+    return uid
+
+
+def online_day(level: str = "srednja", venue: str = "online") -> dict:
+    """A programme of `level` and its Trening 1, every kind of row the day
+    page and the player print: a weekday and an intro video, in Glavni dio
+    A a weighted exercise (rests, a rep's note, its cues, a swap) and a
+    timed one with no video, in Glavni dio B a circuit of two rounds (its
+    rest after a round) of two exercises. Its steps: 1 and 2 the
+    exercises, 3 and 4 the rounds. {pid, did, base, items}."""
+    n = len(db.exercises())
+    ex = {name: db.create_exercise(f"{name} {n}") for name in ("Goblet čučanj", "Iskorak", "Plank", "Sklekovi", "Most")}
+    db.update_exercise(ex["Goblet čučanj"], f"Goblet čučanj {n}", "Pete na podu.", "Do paralele i natrag.", "noge",
+                       {ex["Iskorak"]})
+    pid = db.create_program(f"Program {n}", "Uvod.", level, "cijelo", venue)
+    did = db.add_day(pid)
+    db.update_day(did, "Cijelo tijelo", 0, "Uvod dana.")
+    db.set_day_video(did, f"dan-{did}-0123456789abcdef.mp4")
+    items = {}
+    for name, section, sets, reps, seconds, rest, after in (
+            ("Goblet čučanj", "trening", 3, 10, None, 60, 90), ("Plank", "trening", 3, None, 40, None, None),
+            ("Sklekovi", "trening_b", None, 10, None, None, None), ("Most", "trening_b", None, 12, None, None, None)):
+        items[name] = db.add_day_item(did, ex[name], section)
+        db.update_day_item(items[name], section, sets, reps, seconds, rest, after, "")
+    db.set_circuit(did, "trening_b", 2, 120)
+    return {"pid": pid, "did": did, "base": f"/treninzi/{pid}/dan/{did}", "items": items, "ex": ex}
+
+
+def reader(page: str) -> str:
+    """A page's main as a reader reads it: tags dropped where they stand,
+    entities read, whitespace collapsed (read(), on <main> alone)."""
+    return read(page.split("<main", 1)[1].split("</main>", 1)[0])
+
+
+def test_an_edited_member_text_shows_where_it_is_printed():
+    """An edited text prints in its place for every viewer who gets it: a
+    guest's login page and the login window on the landing (one slot for
+    both, auth.*), a client's raspored and player, the trainer's raspored
+    (his variant, Polaznici, and the heading both share) and his day page
+    (Uredi trening); a reader a bare span.t, the editor his span.ed.t. A
+    confirm's title, a placeholder and a script's words are printed with
+    copy_text: an edit shows in them at the next load."""
+    trener = make_user("trener@test.local", is_trainer=True)
+    ivan = online_member("ivan@test.local")
+    d = online_day()
+    sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=2), 60, 8, None)
+    db.book(ivan, sid)
+    new = {"raspored.head.title": "Termini tjedna", "raspored.termin.cancel": "Ne dolazim",
+           "raspored.trainer.roster": "Popis", "raspored.confirm.cancel_title": "Otkazati termin?",
+           "raspored.sheet.booked": "Tvoj termin", "auth.email": "E-pošta", "auth.login.submit": "Uđi",
+           "auth.signup.name_placeholder": "npr. Ana", "app.confirm.go": "Da, sigurno", "player.step.save": "Spremi seriju",
+           "player.rest.go": "Idemo", "dan.edit": "Promijeni trening", "kraj.note_placeholder": "Kako je bilo?",
+           "period.month": "Po mjesecu", "profil.form.save": "Spremi sve"}
+    t = client_for("trener@test.local")
+    for key, text in new.items():
+        assert t.post(f"/copy/{key}", data={"text": text}).json()["text"] == text, key
+    guest, ci = TestClient(app), client_for("ivan@test.local")
+    login, landing, signup = guest.get("/login").text, guest.get("/").text, guest.get("/signup").text
+    assert '<label for="email"><span class="t">E-pošta</span></label>' in login and "Uđi" in reader(login)
+    window = landing.split('<dialog id="authDlg"', 1)[1].split("</dialog>", 1)[0]       # the window, the same slots
+    assert '<label for="al-email"><span class="t">E-pošta</span></label>' in window and '<span class="t">Uđi</span>' in window
+    assert window.count('placeholder="npr. Ana"') == 1                             # and the page's, beside its window's
+    assert signup.count('placeholder="npr. Ana"') == 2
+    assert "Po mjesecu" in reader(landing)                                             # the Mjesečno / Godišnje switch
+    mine = ci.get("/raspored").text
+    assert "Termini tjedna" in reader(mine) and "Ne dolazim" in reader(mine) and "Popis" not in reader(mine)
+    assert 'data-confirm-title="Otkazati termin?"' in mine and 'BOOKED = "Tvoj termin"' in mine
+    assert '|| "Da, sigurno"' in mine and 'data-copy="' not in mine                   # base.html's confirm: its default
+    theirs = t.get("/raspored").text                                                  # the trainer's variant
+    assert spans(theirs, "raspored.head.title") == ["Termini tjedna"] and "Popis" in spans(theirs, "raspored.trainer.roster")
+    assert "Ne dolazim" not in theirs
+    step = ci.get(ci.post(f"{d['base']}/kreni", follow_redirects=False).headers["location"]).text
+    assert '<button type="submit" class="btn pl-save"><span class="t">Spremi seriju</span></button>' in step
+    assert 'GO = "Idemo"' in step
+    kraj = ci.get(f"{d['base']}/kraj").text
+    assert 'placeholder="Kako je bilo?"' in kraj
+    day = t.get(d["base"]).text
+    assert spans(day, "dan.edit") == ["Promijeni trening"] and "Promijeni trening" not in ci.get(d["base"]).text
+    profil = ci.get("/profil").text
+    assert '<button type="submit" class="btn-signal"><span class="t">Spremi sve</span></button>' in profil
+    tekstovi = t.get("/tekstovi").text                                                # and on /tekstovi, the editor's span
+    assert all(text in spans(tekstovi, key) for key, text in new.items())
+
+
+def test_an_emptied_optional_member_text_prints_no_element():
+    """An emptied optional text is nothing for a reader, nor its element:
+    one on each page (the raspored's next termin's kicker, the online list's
+    lead, an empty programme's line, a day's state line, the player's kicker, the finish screen's, the
+    leave dialog's lead, the profile's lead, the login page's, the install
+    banner's, a plan's kicker, prehrana's, the landing's featured chip). The
+    editor keeps each element around his empty box, marked data-opt, which
+    base.html takes away outside edit mode."""
+    make_user("trener@test.local", is_trainer=True)
+    ivan = online_member("ivan@test.local")
+    d = online_day()
+    db.book(ivan, db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=2), 60, 8, None))
+    t = client_for("trener@test.local")
+    emptied = {"raspored.next.kicker": 'class="sec-kicker" id="ntKicker"', "treninzi.head.lead": '<p class="hint">',
+               "dan.state.new": '<p class="dx-state">', "player.step.kicker": '<p class="pl-eyebrow"><span>',
+               "kraj.kicker_done": 'class="kr-eyebrow"', "leave.lead_player": '<p class="fb-lead"',
+               "profil.head.lead": "</h1>\n<p", "auth.login.lead": '<p class="hint" style="margin-bottom:22px;">',
+               "app.install.lead": 'class="hint a2hs-lead"', "clanarina.plan.kicker": '<div class="pc-kicker">',
+               "prehrana.kicker": 'class="sec-kicker"', "landing.offer.featured": 'class="featured-tag"',
+               "program.empty": '<p class="hint">'}
+    for key in emptied:
+        assert t.post(f"/copy/{key}", data={"text": ""}).json()["text"] == "", key
+    ci, guest = client_for("ivan@test.local"), TestClient(app)
+    empty = db.create_program("Prazan program", None, "srednja", "cijelo")     # a programme with no day
+    day = ci.get(d["base"]).text
+    step = ci.get(ci.post(f"{d['base']}/kreni", follow_redirects=False).headers["location"]).text
+    pages = {"raspored.next.kicker": ci.get("/raspored").text, "treninzi.head.lead": ci.get("/treninzi").text,
+             "dan.state.new": day, "player.step.kicker": step, "kraj.kicker_done": ci.get(f"{d['base']}/kraj").text,
+             "leave.lead_player": step.split('<dialog id="leaveDlg"', 1)[1].split("</dialog>", 1)[0],
+             "profil.head.lead": ci.get("/profil").text,
+             "auth.login.lead": guest.get("/login").text, "app.install.lead": ci.get("/prehrana").text,
+             "clanarina.plan.kicker": ci.get("/moja-clanarina").text, "prehrana.kicker": guest.get("/prehrana").text,
+             "landing.offer.featured": guest.get("/").text, "program.empty": ci.get(f"/treninzi/{empty}").text}
+    for key, page in pages.items():
+        assert emptied[key] not in page, key
+        assert " data-opt>" not in page and 'data-copy="' not in page, key
+    assert '<p class="dx-state">' not in day and "Kreni" in reader(day)                # no state line, its way in stays
+    assert '<p class="pl-eyebrow"> <span class="pl-chip">1/4</span>' in step           # the counter keeps its place
+    editor = t.get(d["base"]).text                                                     # the editor: his box, marked
+    assert '<p class="dx-state" data-opt><span class="ed t" data-copy="dan.state.new"' in editor
+    assert "body:not(.editing) [data-opt]:has(.ed:empty) { display: none; }" in editor
+
+
+def test_the_texts_page_is_staffs_and_lists_every_plain_text():
+    """/tekstovi (Admin ▾ → Tekstovi, 25.11.2026): a guest goes to log in, a
+    client is refused (403, as on any staff page); the trainer gets every
+    plain slot's span once, page by page in the nav's order under its h2
+    (copy.TEXT_PAGES), "Otvori stranicu →" beside the h2 of a page he can
+    open, the lists' line under the landing's, the upitnik's and the
+    guide's, each area under its caption (h3), every row its label over its
+    text, "(prazno)" beside each for an emptied one; no list, table, switch
+    or photo among them. Admin ▾ is lit there, its item current. Each
+    "Otvori stranicu →" leads to a page the trainer opens."""
+    make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
+    r = TestClient(app).get("/tekstovi", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+    assert client_for("ivan@test.local").get("/tekstovi").status_code == 403
+    t = client_for("trener@test.local")
+    page = t.get("/tekstovi").text
+    tx = page.split('<div class="tx">', 1)[1].split("</main>", 1)[0]                # the list (base.html's dialogs aside)
+    plain = [k for k, s in copy.SLOTS.items() if type(s) is copy.Slot]
+    assert all(tx.count(f'data-copy="{key}"') == 1 for key in plain)
+    assert not any(f'data-copy="{key}"' in tx for key, s in copy.SLOTS.items() if type(s) is not copy.Slot)
+    assert re.findall(r'<h2 id="tx-\d+">([^<]*)</h2>', page) == [p for p, *_ in copy.TEXT_PAGES]
+    opens = re.findall(r'<a class="act" href="([^"]+)">Otvori stranicu →</a>', page)
+    assert opens == [href for _, href, *_ in copy.TEXT_PAGES if href]
+    assert all(t.get(href).status_code == 200 for href in opens)
+    assert page.count('<p class="tx-lists">Liste, tablice i kartice uređuju se na samoj stranici.</p>') == 3
+    assert [unescape(h) for h in re.findall(r"<h3>([^<]*)</h3>", tx)] == [a for *_, areas in copy.TEXT_PAGES for a, _ in areas]
+    rows = re.findall(r'<div class="tx-row"><dt>([^<]*)</dt><dd><span class="ed t" data-copy="([^"]+)"', tx)
+    assert [key for _, key in rows] == [k for *_, areas in copy.TEXT_PAGES for _, keys in areas for k in keys]
+    assert all(unescape(label) == copy.SLOTS[key].label for label, key in rows)
+    assert tx.count('<span class="tx-empty">(prazno)</span>') == len(plain)
+    nav = page.split("</header>", 1)[0]
+    assert re.search(r'id="adminBtn" class="navbtn menu-btn on"', nav)
+    assert '<a href="/tekstovi" role="menuitem" aria-current="page">' in nav
+    assert '<span class="t">' not in tx                                              # every text the editor's span
+
+
 # ---------- the layout, measured in a browser ----------
 #
 # No slot has a design limit since 16.10.2026 (src/qmt/copy.py): the copy
@@ -2444,6 +2768,25 @@ MEASURE = r"""(strict) => {
   for (const sel of ['.offer', '.plan']) { const rows = {};
     for (const card of document.querySelectorAll(sel)) { const top = Math.round((card.getBoundingClientRect().top - ty(card)) / 20); (rows[top] ||= []).push(Math.round(price(card).getBoundingClientRect().bottom - ty(card))); }
     for (const bottoms of Object.values(rows)) if (Math.max(...bottoms) - Math.min(...bottoms) > 1) out.problems.push(`${sel} prices not level: ${bottoms.join(', ')}`); }
+  return out;
+}"""
+
+# A dialog or a fixed bar (25.11.2026: the login window, the osvrt prompt, the
+# confirm dialog, the install banner, the sheet, the leave dialog; MEASURE's
+# element walk is main's): shown, it stays inside the screen, and nothing in
+# it overflows its box or leaves it sideways.
+DIALOG = r"""(sel) => {
+  const d = document.querySelector(sel); if (!d) return [`${sel}: none`];
+  const r = d.getBoundingClientRect(), out = [];
+  if (!r.width || getComputedStyle(d).display === 'none') return [`${sel}: not shown`];
+  if (r.left < -1 || r.right > innerWidth + 1) out.push(`${sel} leaves the screen: ${Math.round(r.left)}–${Math.round(r.right)}px`);
+  for (const el of d.querySelectorAll('*')) {
+    const cs = getComputedStyle(el), b = el.getBoundingClientRect();
+    if (cs.display === 'none' || !b.width || cs.overflowX === 'auto' || cs.overflowX === 'scroll') continue;
+    const what = `${el.tagName.toLowerCase()}.${(el.className || '').toString().slice(0, 30)}`;
+    if (el.scrollWidth - el.clientWidth > 2 && el.clientWidth > 0) out.push(`${sel} ${what} overflows its box by ${el.scrollWidth - el.clientWidth}px`);
+    if (b.right > r.right + 1 || b.left < r.left - 1) out.push(`${sel} ${what} leaves it`);
+  }
   return out;
 }"""
 
@@ -2804,6 +3147,27 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     _, individualno = gym_examples()                  # and the gym's two cards
     upitnik_examples()                                # and /upitnik's questions
     karton_rows(ivan, member=True); karton_rows(trener, member=False)   # and a karton with every kind of row
+    # the member pages (25.11.2026): ana's raspored with termini of every
+    # state (hers, free, a 1:1 free and hers, one of a plan she lacks, one
+    # the trainer canceled), a termin she still owes an osvrt (the prompt
+    # after her login), an online day (its steps: two exercises, two rounds);
+    # sara, with no plan, the gates
+    ana = online_member("ana@test.local", plans=("grupni", "individualni", "online"))
+    make_user("sara@test.local")
+    db.create_user("petra@test.local", "petra", auth.hash_password("lozinka123"))   # no profile yet: its welcome
+    db.mark_email_verified("petra@test.local")
+    member_day = online_day()
+    attended(ana, 30)
+    soon = datetime.now(config.TZ).replace(hour=18, minute=0, second=0, microsecond=0) + timedelta(days=2)
+    for hours, cap, kind, hers, off in ((0, 8, "grupni", True, False), (1, 8, "grupni", False, False),
+                                        (2, 1, "individualni", False, False), (3, 1, "individualni", True, False),
+                                        (-2, 8, "rehabilitacija", False, False), (-1, 8, "grupni", True, True)):
+        sid = db.add_oneoff_session("Grupni trening", soon + timedelta(hours=hours), 60, cap, None, kind)
+        if hers:
+            with db.session_scope() as s:
+                s.add(Booking(user_id=ana, session_id=sid))
+        if off:
+            db.set_session_canceled(sid, True)
 
     def fill(make):
         for key, slot in copy.SLOTS.items():
@@ -2814,8 +3178,9 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 db.set_copy(key, copy.dump_items([make(min(slot.max_chars, n))] * min(slot.max_items, ITEMS)), None)
             elif isinstance(slot, copy.RowsSlot):       # every table 12 rows long, each cell 300 characters
                 db.set_copy(key, copy.dump_rows([[make(min(slot.max_chars, LONG))] * 2] * min(slot.max_rows, ITEMS)), None)
-            elif key.startswith(("vodic.", "karton.")):  # the guide's and the karton's texts 300 characters
-                db.set_copy(key, "\n".join([make(LONG // 3)] * 3), None)   # in three lines (span.t: the breaks show)
+            elif key.startswith(("vodic.", "karton.") + NEW_PREFIXES):   # the guide's, the karton's and every
+                # member page's texts (25.11.2026) 300 characters in three lines (span.t: the breaks show)
+                db.set_copy(key, "\n".join([make(LONG // 3)] * 3), None)
             elif key in copy.BASE_OF or key in copy.BASE_OF.values():   # a price and its base (23.11.2026) hold
                 db.set_copy(key, "1 € " + make(min(slot.max, LONG) - 4), None)   # a number, so the base line prints,
                                                         # and their sign, so the page adds none
@@ -3441,6 +3806,123 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             browser.close()
         return out + [f"[karton] js: {e}" for e in errs]
 
+    def members(pw, widths, strict=True):
+        """The member pages with the long texts (25.11.2026: every text of
+        them a slot, fill() gives each 300 characters in three lines, or one
+        word): a guest's login pages, the reset and the sent-link pages, and
+        the login window (both its tabs); ana's (grupni, individualni and
+        online) osvrt prompt after her login, her raspored (the week, on a
+        phone the day of her termini with the sheet open on one, the month,
+        the series' report, a ✕'s confirm dialog), the install banner (on a
+        phone: never on a desktop), the online list, the programme, the day
+        (each exercise open, as a tap opens it), the player (a step with its
+        rest bar, the dock, the leave dialog, both rounds, the finish screen
+        and its leave dialog), her profile and the error page; sara's gates
+        (no plan: the raspored's line, the online list's card); a new
+        member's profile with its welcome; the trainer's programme, day (each
+        exercise open) and /tekstovi in edit mode. Nothing overflows, widens the page or is cut
+        (MEASURE); a dialog or a fixed bar stays inside the screen with all
+        it holds (DIALOG); no page errors."""
+        out, errs = [], []
+        base, pid = member_day["base"], member_day["pid"]
+        day_s = soon.date().isoformat()
+        week = (soon.date() - timedelta(days=soon.weekday())).isoformat()
+        skipped = ",".join(f"{day_s}:{k}" for k in ("popunjen", "otkazan", "rezervirano", "zatvoren", "prosao", "prozor",
+                                                    "razdoblje"))
+        token = auth.make_reset_token("sara@test.local", db.get_user_by_email("sara@test.local").password_hash)
+        for w in widths:
+            phone, browser = w < 600, pw.chromium.launch()
+
+            def opened(email, w=w, phone=phone):
+                pg = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+                pg.on("pageerror", lambda e: errs.append(f"{w}px {email}: {e}"))
+                pg.on("dialog", lambda dlg: dlg.accept())                   # the player's beforeunload
+                pg.goto(server + "/login"); pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+                if email:
+                    pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
+                    pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+                return pg
+
+            def measure(pg, where, dialog=None, w=w):
+                pg.evaluate("document.fonts.ready")
+                out.extend(f"[members {w}px {where}] {p}" for p in pg.evaluate(MEASURE, strict)["problems"])
+                if dialog:
+                    out.extend(f"[members {w}px {where}] {p}" for p in pg.evaluate(DIALOG, dialog))
+
+            def go(pg, path, where=None, dialog=None, unfold=False):
+                pg.goto(server + path); pg.wait_for_load_state("networkidle")
+                if unfold:                                                  # every <details> open: what a tap shows
+                    pg.evaluate("() => document.querySelectorAll('main details').forEach(d => { d.open = true; })")
+                    pg.wait_for_timeout(100)
+                measure(pg, where or path, dialog)
+
+            def tap(pg, sel, phone=phone):
+                pg.locator(sel).first.tap() if phone else pg.locator(sel).first.click()
+                pg.wait_for_timeout(250)
+
+            g = opened(None)                                                # a guest
+            for path in ("/login", "/signup", "/forgot", f"/reset?token={token}"):
+                go(g, path, path.split("?")[0])
+            g.goto(server + "/forgot"); g.fill("main input[name=email]", "nitko@test.local")
+            with g.expect_navigation():
+                g.click("main button[type=submit]")
+            measure(g, "the sent-link page")
+            go(g, "/", "/ (the login window)")
+            g.evaluate("() => document.querySelector('a[data-auth=login]').click()"); g.wait_for_timeout(250)
+            measure(g, "the login window", "#authDlg")
+            tap(g, "#authTabSignup"); measure(g, "the login window, Registracija", "#authDlg")
+
+            a = opened("ana@test.local")                                    # ana: the prompt after her login
+            if a.locator("#fbPrompt[open]").count():
+                measure(a, "the osvrt prompt", "#fbPrompt"); a.keyboard.press("Escape")
+            else:
+                out.append(f"[members {w}px] no osvrt prompt after ana's login")
+            go(a, f"/raspored?week={week}&day={day_s}", "/raspored")
+            if phone:                                                       # the sheet, on a row with an action
+                tap(a, ".day-col.is-on button.sess-row[data-state]")
+                measure(a, "the sheet", "#sheet"); a.keyboard.press("Escape")
+            tap(a, "form.unbook button[type=submit]")                       # a ✕: the confirm dialog
+            measure(a, "a ✕'s confirm", "#confirmDlg"); a.keyboard.press("Escape")
+            if phone:                                                       # the install banner: never on a desktop
+                a.evaluate("() => { const b = document.getElementById('a2hs'); b.hidden = false;"
+                           " document.getElementById('a2hsIos').hidden = false; }")
+                measure(a, "the install banner", "#a2hs")
+            go(a, f"/raspored?view=month&month={soon:%Y-%m}", "/raspored (month)")
+            go(a, f"/raspored?week={week}&day={day_s}&booked={day_s}&skipped={skipped}&paket=8", "/raspored (report)",
+               "#seriesDlg")
+            for path in ("/treninzi", f"/treninzi/{pid}", base, "/profil", "/tekstovi"):
+                go(a, path, unfold=path == base)                            # the day: each exercise open
+            a.goto(server + base); a.wait_for_load_state("networkidle")     # the player
+            with a.expect_navigation():
+                tap(a, "main form.go button[type=submit]")
+            a.wait_for_load_state("networkidle")
+            tap(a, "button.pl-done")                                        # ✓: the rest bar
+            measure(a, "a step, its rest bar", "#plRest")
+            if w < 1000:
+                a.click("#plRest .pl-rest-skip"); measure(a, "a step, the dock", ".pl-dock")
+            tap(a, "main .pl-line a.act-quiet")                             # ← Natrag: the leave dialog
+            measure(a, "a step's leave dialog", "#leaveDlg"); a.keyboard.press("Escape")
+            for k in (3, 4):
+                go(a, f"{base}/vjezba/{k}", f"round {k - 2}")
+            go(a, f"{base}/kraj", "the finish screen")
+            tap(a, "header a.brand")
+            measure(a, "the finish screen's leave dialog", "#leaveDlg"); a.keyboard.press("Escape")
+            a.request.post(server + base + "/odustani")
+
+            s = opened("sara@test.local")                                   # sara: no plan
+            for path in ("/raspored", "/treninzi"):
+                go(s, path, f"sara {path}")
+            n = opened("petra@test.local")                                  # a new member: the profile's welcome
+            measure(n, "the welcome")
+            t = opened("trener@test.local")                                 # the trainer
+            for path in (f"/treninzi/{pid}", base):
+                go(t, path, f"trener {path}", unfold=path == base)
+            go(t, "/tekstovi", "trener /tekstovi")
+            t.evaluate("() => document.getElementById('copyToggle').click()")
+            measure(t, "trener /tekstovi edit mode")
+            browser.close()
+        return out + [f"[members] js: {e}" for e in errs]
+
     def hours_edit(pg):
         """The hours table in edit mode with the walk's texts (fill(): twelve
         rows of 300-character cells): EDIT_HOURS, then Gotovo."""
@@ -3585,6 +4067,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                          adds=(390, 1280), hours=(390,))
         problems += walk(pw, "ivan@test.local", (360, 1280), "words")
         problems += karton(pw, (360, 390, 900, 1280))  # the karton's three views, every form open, the editor's panel
+        problems += members(pw, (360, 390, 900, 1280))  # every member page, its dialogs and bars (25.11.2026)
         problems += clanarina(pw)                     # Dodaj plan's two groups and their switches (one text in four lines)
         problems += banner(pw)                        # the install banner's week between asks
         db.set_announcement_field(one, "body", LINES, None)   # line breaks: the first announcement's text in three lines
@@ -3593,6 +4076,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         fill(lambda n: "W" * n)                       # one unbreakable word: must wrap, never widen
         problems += walk(pw, "trener@test.local", (360, 1280), "one-word", strict=False, hours=(360,))
         problems += karton(pw, (360, 1280), strict=False)
+        problems += members(pw, (360, 1280), strict=False)
     print("\n".join(problems))
     assert not problems, f"{len(problems)} layout problems, listed above"
 
@@ -3821,6 +4305,205 @@ def test_the_karton_is_edited_in_place_on_a_phone(server):
     assert not problems and not errs, f"{len(problems + errs)} problems, listed above"
 
 
+def test_the_raspored_and_the_player_are_edited_in_place_on_a_phone(server):
+    """The member pages' texts edited in place (25.11.2026), at 390px on a
+    touch screen. The trainer on /raspored turns edit mode on: a tap on the
+    heading opens it, its label in the bar; retyped and saved, it is stored.
+    A tap on "idući tjedan →"'s words (a link in a button's clothes) opens
+    them and does not follow the link, nor does a space typed into them;
+    saved, stored. In the player, on a normal step, a tap on Spremi's words
+    opens them, and neither the tap nor a space typed sends the set log (no
+    set is saved, the page stays); saved, stored. A tap on "← Natrag"'s
+    words (a link that leaves the pass) opens them, and not the leave
+    dialog. Reloaded (edit mode off),
+    each shows; and ivan, a member, reads the same words on his raspored and
+    his player, with no editor markup. Nothing scrolls sideways, in edit
+    mode or out of it; no page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    make_user("trener@test.local", is_trainer=True); ivan = online_member("ivan@test.local")
+    d = online_day()
+    db.book(ivan, db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=2), 60, 8, None))
+    problems, errs = [], []
+    overflow = "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    def opened(browser, email: str):
+        pg = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True).new_page()
+        pg.on("pageerror", lambda e: errs.append(f"{email}: {e}"))
+        pg.on("dialog", lambda dlg: dlg.accept())                 # the player's beforeunload, after a tap
+        pg.goto(server + "/login"); pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        return pg
+
+    def bar(pg) -> str:
+        return "" if pg.locator("#copyBar").is_hidden() else pg.locator("#copyBar .cb-label").inner_text()
+
+    def saved(pg, key: str, text: str) -> None:
+        pg.tap("#cbSave")
+        try:
+            pg.wait_for_function("() => document.getElementById('copyBar').hidden", timeout=5000)
+        except Exception:
+            problems.append(f"{key}: Spremi did not close the bar")
+        check(db.copy_texts().get(key) == text, f"{key} stored {db.copy_texts().get(key)!r}")
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        pg = opened(browser, "trener@test.local")
+        pg.goto(server + "/raspored"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+        start = pg.url
+        check(pg.evaluate(overflow) == 0, f"/raspored overflows by {pg.evaluate(overflow)}px")
+        pg.tap("#copyToggle")
+        heading = pg.locator(".week-head h1 .ed")                            # a heading
+        heading.tap()
+        check(bar(pg) == "Raspored: naslov", f"a tap on the heading: the bar says {bar(pg)!r}")
+        heading.fill("Termini")
+        saved(pg, "raspored.head.title", "Termini")
+        words = pg.locator('.week-nav a[href^="/raspored?week="]').nth(1).locator(".ed")   # idući tjedan →
+        words.tap(); pg.wait_for_timeout(300)
+        check(pg.url == start and bar(pg) == "Raspored · tjedan: gumb idući tjedan",
+              f"a tap on the link's words: {pg.url}, the bar {bar(pg)!r}")
+        pg.keyboard.type(" sada"); pg.wait_for_timeout(300)
+        check(pg.url == start, f"a space typed into the link's words followed it: {pg.url}")
+        saved(pg, "raspored.week.next", "idući tjedan → sada")
+        check(pg.evaluate(overflow) == 0, f"/raspored in edit mode overflows by {pg.evaluate(overflow)}px")
+
+        pg.goto(server + d["base"]); pg.wait_for_load_state("networkidle")  # the player, a normal step
+        with pg.expect_navigation():
+            pg.tap("main form.go button[type=submit]")
+        pg.wait_for_load_state("networkidle"); step = pg.url
+        log = db.open_pass(db.get_user_by_email("trener@test.local").id, d["did"])
+        pg.tap("#copyToggle")
+        spremi = pg.locator("#plLog .pl-save .ed")
+        spremi.tap(); pg.wait_for_timeout(300)
+        check(bar(pg) == "Trening · vježba: gumb Spremi" and pg.url == step,
+              f"a tap on Spremi's words: the bar {bar(pg)!r}, the page {pg.url}")
+        pg.keyboard.type(" sada"); pg.wait_for_timeout(400)
+        check(pg.url == step and not db.get_pass(log.id, log.user_id).done_items,
+              f"a space typed into Spremi's words sent the set log: {pg.url}")
+        saved(pg, "player.step.save", "Spremi sada")
+        back = pg.locator(".pl-line a.act-quiet .ed")                       # ← Natrag: a link that leaves the pass
+        back.tap(); pg.wait_for_timeout(300)
+        check(bar(pg) == "Trening · traka: poveznica Natrag" and pg.url == step
+              and not pg.locator("#leaveDlg[open]").count(),
+              f"a tap on ← Natrag's words: the bar {bar(pg)!r}, the page {pg.url}, the leave dialog open "
+              f"{pg.locator('#leaveDlg[open]').count()}")
+        pg.tap("#cbCancel")
+        check(pg.evaluate(overflow) == 0, f"the player in edit mode overflows by {pg.evaluate(overflow)}px")
+        pg.tap("#copyToggle")
+
+        for email in ("trener@test.local", "ivan@test.local"):             # out of edit mode, and a member
+            page = pg if email.startswith("trener") else opened(browser, email)
+            page.goto(server + "/raspored"); page.wait_for_load_state("networkidle")
+            seen = page.evaluate("""() => [document.querySelector('.week-head h1').textContent,
+              document.querySelectorAll('.week-nav a[href^="/raspored?week="]')[1].textContent.trim(),
+              document.body.classList.contains('editing'), document.querySelectorAll('[data-copy]').length > 0]""")
+            check(seen == ["Termini", "idući tjedan → sada", False, email.startswith("trener")], f"{email} /raspored: {seen}")
+            check(page.evaluate(overflow) == 0, f"{email}: /raspored overflows by {page.evaluate(overflow)}px")
+            if email.startswith("ivan"):
+                page.goto(server + d["base"]); page.wait_for_load_state("networkidle")
+                with page.expect_navigation():
+                    page.tap("main form.go button[type=submit]")
+                page.wait_for_load_state("networkidle")
+            else:
+                page.goto(step); page.wait_for_load_state("networkidle")
+            label = page.evaluate("() => document.querySelector('#plLog .pl-save').textContent.trim()")
+            check(label == "Spremi sada", f"{email}: the player's Spremi says {label!r}")
+            check(page.evaluate(overflow) == 0, f"{email}: the player overflows by {page.evaluate(overflow)}px")
+        browser.close()
+    print("\n".join(problems + errs))
+    assert not problems and not errs, f"{len(problems + errs)} problems, listed above"
+
+
+def test_the_texts_page_searches_as_it_is_typed_and_edits_in_place(server):
+    """/tekstovi in a browser (25.11.2026), at 390px on a touch screen and at
+    1280px. Its search shows with the script: every plain text's row is
+    there; a word typed keeps the rows whose label or text holds it, folded
+    ("cucnju" and "čučnju" keep the same rows), every word typed counting,
+    and the count says "N od <all> · prikaži sve"; a page with no row kept
+    goes, its heading too; nothing kept says "Nijedan tekst ne odgovara
+    traženju „…”."; "prikaži sve" clears the box and every row is back. In
+    edit mode a tap on a row's text (a confirm's title, on no page a
+    staff member opens) opens it, its label in the bar; retyped and saved,
+    it is stored, and ivan's raspored carries it in its confirm. The
+    search reads the text as it is now. Nothing scrolls sideways; no page
+    errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    from qmt.models import fold
+    make_user("trener@test.local", is_trainer=True); ivan = make_user("ivan@test.local", plans=("grupni",))
+    db.book(ivan, db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=2), 60, 8, None))
+    plain = [k for *_, areas in copy.TEXT_PAGES for _, keys in areas for k in keys]   # the page's order
+    problems, errs = [], []
+    overflow = "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
+    SEEN = """() => ({rows: [...document.querySelectorAll('.tx-row')].filter(r => r.offsetParent).map(r => r.querySelector('.ed').dataset.copy),
+      pages: [...document.querySelectorAll('.tx-page')].filter(p => !p.hidden).length,
+      count: document.querySelector('.tx-found').hidden ? null : document.querySelector('.tx-found').textContent.trim(),
+      none: document.querySelector('.tx-none').hidden ? null : document.querySelector('.tx-none').textContent.trim()})"""
+
+    def want(typed: str) -> list[str]:
+        words = fold(typed).split()
+        return [k for k in plain if all(w in fold(copy.SLOTS[k].label + " " + (db.copy_texts().get(k, copy.SLOTS[k].default)))
+                                        for w in words)]
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        for w in (390, 1280):
+            phone = w < 600
+            pg = browser.new_context(viewport={"width": w, "height": 844}, has_touch=phone, is_mobile=phone).new_page()
+            pg.on("pageerror", lambda e, w=w: errs.append(f"{w}px: {e}"))
+            pg.goto(server + "/login"); pg.fill("main input[name=email]", "trener@test.local")
+            pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
+            pg.wait_for_load_state("networkidle")
+            pg.goto(server + "/tekstovi"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+            where = f"[/tekstovi {w}px]"
+            box = pg.locator("form.tx-search input")
+            check(box.is_visible() and pg.evaluate(SEEN) == {"rows": plain, "pages": len(copy.TEXT_PAGES), "count": None,
+                                                              "none": None}, f"{where} on load: the box or the rows")
+            for typed in ("cucnju", "čučnju", "raspored gumb", "Rezerviraj"):
+                box.fill(typed)
+                seen, rows = pg.evaluate(SEEN), want(typed)
+                pages = sum(1 for *_, areas in copy.TEXT_PAGES if any(k in rows for _, keys in areas for k in keys))
+                check(rows and seen == {"rows": rows, "pages": pages, "count": f"{len(rows)} od {len(plain)} · prikaži sve",
+                                        "none": None}, f"{where} {typed!r}: {seen['count']}, {len(seen['rows'])} rows of {len(rows)}")
+                check(pg.evaluate(overflow) == 0, f"{where} {typed!r}: overflows by {pg.evaluate(overflow)}px")
+            check(want("cucnju") == want("čučnju"), "folded letters find different rows")
+            box.fill("xyzzy")
+            check(pg.evaluate(SEEN) == {"rows": [], "pages": 0, "count": f"0 od {len(plain)} · prikaži sve",
+                                        "none": "Nijedan tekst ne odgovara traženju „xyzzy”."}, f"{where} nothing kept: {pg.evaluate(SEEN)}")
+            pg.locator(".tx-found a").tap() if phone else pg.click(".tx-found a")
+            check(box.input_value() == "" and pg.evaluate(SEEN)["rows"] == plain, f"{where} prikaži sve left {box.input_value()!r}")
+            if w == 390:                                                    # an edit made here, on a phone
+                pg.tap("#copyToggle")
+                row = pg.locator('.tx-row [data-copy="raspored.confirm.cancel_title"]')
+                row.scroll_into_view_if_needed(); row.tap()
+                label = pg.locator("#copyBar .cb-label").inner_text()
+                check(label == copy.SLOTS["raspored.confirm.cancel_title"].label, f"{where} the bar says {label!r}")
+                row.fill("Otkazati termin?")
+                pg.tap("#cbSave")
+                pg.wait_for_function("() => document.getElementById('copyBar').hidden", timeout=5000)
+                check(db.copy_texts().get("raspored.confirm.cancel_title") == "Otkazati termin?",
+                      f"{where} stored {db.copy_texts().get('raspored.confirm.cancel_title')!r}")
+                check(pg.evaluate(overflow) == 0, f"{where} edit mode overflows by {pg.evaluate(overflow)}px")
+                pg.tap("#copyToggle")
+                box.fill("otkazati termin")                                 # the text as it is now
+                check("raspored.confirm.cancel_title" in pg.evaluate(SEEN)["rows"], f"{where} the edited text is not found")
+            pg.context.close()
+        browser.close()
+    mine = client_for("ivan@test.local").get("/raspored").text
+    check('data-confirm-title="Otkazati termin?"' in mine, "ivan's raspored does not carry the edited confirm's title")
+    print("\n".join(problems + errs))
+    assert not problems and not errs, f"{len(problems + errs)} problems, listed above"
+
+
 def test_the_clanarine_add_form_shows_the_select_that_fits_the_plan(server):
     """/clanarine's add form in a browser at 1280px, as the trainer: the
     plan chosen decides which of its two tier selects shows, Treninga
@@ -3936,9 +4619,10 @@ def test_moja_clanarina_prints_the_bazna_cijena_under_its_prices():
     typed with its own sign gets no second one, nor does its base."""
     make_user("ivan@test.local", plans=("grupni", "prehrana")); make_user("ana@test.local", plans=("grupni",))
     page = client_for("ivan@test.local").get("/moja-clanarina").text
-    held = card_on(page, "grupni").split("<dt>Cijena</dt>")[1].split("</dd>")[0]
+    fact = '<dt><span class="t">Cijena</span></dt>'                              # its caption, a slot (25.11.2026)
+    held = card_on(page, "grupni").split(fact)[1].split("</dd>")[0]
     assert prices(held) == [("", "60–80 € / paket", "Bazna cijena na 10.9.2026.: 60–80 €")]
-    held = card_on(page, "prehrana").split("<dt>Cijena</dt>")[1].split("</dd>")[0]
+    held = card_on(page, "prehrana").split(fact)[1].split("</dd>")[0]
     assert prices(held) == [("", "od 3 € / mjesečno", "Bazna cijena na 10.9.2026.: od 3 €")]
     hint = "3 € uz dvoranu (Bazna cijena na 10.9.2026.: 3 €), 5 € uz online (Bazna cijena na 10.9.2026.: 5 €)"
     assert read(held.split('class="hint price-hint">')[1].split("</div>")[0]) == hint

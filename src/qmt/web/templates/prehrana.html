@@ -3,19 +3,22 @@
 {% import "_copy.html" as c with context %}
 {% block content %}
 <div style="max-width:640px; margin:6vh auto 0; overflow-wrap:anywhere;">
-  <div class="sec-kicker" style="font:700 .74rem var(--font-body); letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin-bottom:8px;">Prehrana</div>
+  {{ c.opt("prehrana.kicker", "div", ' class="sec-kicker" style="font:700 .74rem var(--font-body); letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin-bottom:8px;"') }}
   <h1>{{ c.t("prehrana.h1") }}</h1>
+  {# each paragraph split at its bold words, which keep their weight (an
+     emptied part prints nothing; a paragraph of three empty parts no <p>) #}
+  {% if copy_on("prehrana.text_a") or copy_on("prehrana.text_app") or copy_on("prehrana.text_b") %}
   <p style="margin-bottom:10px;">
-    Za praćenje prehrane koristimo <strong>MojiMakrosi</strong> — aplikaciju u koju opišeš
-    što si jeo svojim riječima, a ona izračuna kalorije i makronutrijente te ih usporedi
-    s tvojim ciljevima.
+    {{ c.t("prehrana.text_a") }} {% if copy_on("prehrana.text_app") %}<strong>{{ c.t("prehrana.text_app") }}</strong>{% endif %} {{ c.t("prehrana.text_b") }}
   </p>
+  {% endif %}
+  {% if copy_on("prehrana.hint_a") or copy_on("prehrana.hint_bold") or copy_on("prehrana.hint_b") %}
   <p class="hint" style="margin-bottom:26px;">
-    Račun na MojiMakrosima je za sada <strong>odvojen</strong> od QMT računa — registriraj se
-    istom email adresom, da ih kasnije možemo povezati u jedan.
+    {{ c.t("prehrana.hint_a") }} {% if copy_on("prehrana.hint_bold") %}<strong>{{ c.t("prehrana.hint_bold") }}</strong>{% endif %} {{ c.t("prehrana.hint_b") }}
   </p>
+  {% endif %}
   <a class="btn" style="padding:14px 26px;" href="{{ mojimakrosi_url }}" target="_blank" rel="noopener">
-    Otvori MojiMakrose ↗
+    {{ c.t("prehrana.open") }}
   </a>
   <p class="hint" style="margin-top:22px;">{{ c.t("prehrana.note") }}</p>
 </div>

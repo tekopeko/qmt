@@ -63,4 +63,4 @@ room on the PC layout, you can use more columns, you can be the judge."
 3. The player: circuits ticked a round at a time, a planned weight, exercises added
    inside a part; then the per-exercise rating and the adjusted load (built 25.11.2026:
    STATUS.md).
-4. Editable text on every member-facing page.
+4. Editable text on every member-facing page, and "Tekstovi" (built 26.11.2026: STATUS.md).

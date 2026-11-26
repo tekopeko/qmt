@@ -313,8 +313,9 @@ def test_a_termin_after_dospijece_is_refused_and_the_calendar_says_until_when():
 
     c = client_for("ivan@test.local")
     page = c.get(f"/raspored?week={after_day - timedelta(days=after_day.weekday())}&day={after_day}").text
-    line = (f'<p class="hint gate-line">Članarina vrijedi do {until:%-d.%-m.} — za kasnije termine '
-            'produlji članarinu. <a class="btn btn-sm" href="/moja-clanarina">Moja članarina →</a></p>')
+    line = (f'<p class="hint gate-line"><span><span class="t">Članarina vrijedi do</span> {until:%-d.%-m.} '
+            '<span class="t">— za kasnije termine produlji članarinu.</span></span> '
+            '<a class="btn btn-sm" href="/moja-clanarina"><span class="t">Moja članarina →</span></a></p>')
     assert page.count(line) == 1 and "Nemaš aktivnu članarinu" not in page
     assert f'action="/book/{after}"' not in page and f'data-id="{after}"' not in page   # no Rezerviraj, no sheet
     i = page.index('<span class="rt">07:00–08:00</span>')    # its phone row: plain, its places still said
@@ -383,21 +384,24 @@ def test_the_calendar_says_zatvoreno_for_a_closed_termin():
     i = page.index('<div class="name">Prazan trening</div>')              # the grid's card
     card = page[page.rindex('<div class="sess', 0, i):page.index('<div class="sess-row', i)]
     assert re.match(r'<div class="sess\s[^"]*\bclosed\b', card) and "canceled" not in card
-    assert re.search(r'<div class="cap">\s*zatvoreno\s*</div>', card) and f"/book/{closed}" not in card
+    assert re.search(r'<div class="cap">\s*<span class="t">zatvoreno</span>\s*</div>', card) and f"/book/{closed}" not in card
     i = page.index('<span class="rn">Prazan trening</span>')              # the phone's row
     row = page[page.rindex('<div class="sess-row', 0, i):page.index("</div>", i)]
-    assert row.startswith('<div class="sess-row closed">') and "<span>zatvoreno</span>" in row
+    assert row.startswith('<div class="sess-row closed">') and '<span><span class="t">zatvoreno</span></span>' in row
     assert f'data-id="{closed}"' not in page                     # nothing to tap
     assert 'data-state="book"' in _row(page, held) and f'action="/book/{held}"' in page   # one booking: open
 
     page = client_for("trener@test.local").get(week).text
     assert f'<a class="sess-row closed" href="/admin/session/{closed}">' in page
     i = page.index(f'<a class="sess-row closed" href="/admin/session/{closed}">')
-    assert "<span>zatvoreno</span>" in page[i:page.index("</a>", i)]
+    assert re.search(r'<span data-opt><span class="ed t" data-copy="raspored\.state\.closed"[^>]*>zatvoreno</span></span>',
+                     page[i:page.index("</a>", i)])                       # the trainer's: the editor's span
     card = page[page.index('<div class="name">Prazan trening</div>'):]
-    assert re.match(r'<div class="name">Prazan trening</div>\s*<div class="cap">\s*zatvoreno', card)
+    assert re.match(r'<div class="name">Prazan trening</div>\s*<div class="cap" data-opt>\s*'
+                    r'<span class="ed t" data-copy="raspored\.state\.closed"[^>]*>zatvoreno', card)   # his: the editor's span
     assert f'<form method="get" action="/admin/session/{closed}">' in page   # his Polaznici still there
-    assert page.count("zatvoreno") == 2                          # its card and its row, the held one neither
+    assert page.count('data-copy="raspored.state.closed"') == 2   # its card and its row, the held one neither
+                                                                 # (his: the editor's spans, the label says it too)
 
 
 def test_capacity_race_no_overbooking():
@@ -546,7 +550,7 @@ def test_moje_rezervacije_x_asks_first_and_only_while_cancelling_is_allowed():
     monday = (start.date() - timedelta(days=start.weekday())).isoformat()
     page = client_for("ivan@test.local").get(f"/raspored?week={monday}").text
     assert 'id="confirmDlg"' in page             # the dialog the forms open
-    grid, mine = page.split("<h2>Moje rezervacije</h2>")
+    grid, mine = page.split('<h2><span class="t">Moje rezervacije</span></h2>')
     cards = {card.split('<div class="name">')[1].split("<")[0]: card
              for card in mine.split('<div class="sess')[1:]}
 
@@ -563,7 +567,7 @@ def test_moje_rezervacije_x_asks_first_and_only_while_cancelling_is_allowed():
 
     card = cards["Jutarnji trening"]             # 3 h ahead: no ✕, the state instead
     assert 'class="unbook"' not in card and f"/cancel/{late}" not in card
-    assert '<div class="cap">Otkazivanje do 4 h prije termina</div>' in card
+    assert '<div class="cap"><span class="t">Otkazivanje do</span> 4 h prije termina</div>' in card
 
     card = cards["Večernji trening"]             # canceled by the trainer: always removable
     start, end = local(gone)
@@ -580,7 +584,7 @@ def test_moje_rezervacije_x_asks_first_and_only_while_cancelling_is_allowed():
     assert 'data-confirm-title="Otkazati rezervaciju?"' in form
     assert (f'data-confirm="Grupni trening, {WEEKDAYS[start.weekday()].lower()} {start:%-d.%-m.} '
             f'u {start:%H:%M}. Mjesto se oslobađa za druge."') in form
-    assert 'data-confirm-cta="Otkaži rezervaciju"' in form and ">Otkaži</button>" in form
+    assert 'data-confirm-cta="Otkaži rezervaciju"' in form and '><span class="t">Otkaži</span></button>' in form
 
     # a trainer's calendar has no list, so no ✕, even with a booking of their own
     tid = make_user("trener@test.local", is_trainer=True)
@@ -704,7 +708,7 @@ def test_landing_hero_follows_the_membership():
 
     gym = client_for("ivan@test.local").get("/").text.split('id="dvorana"')[1]
     assert '<a class="btn btn-sm owned" href="/raspored"' in gym              # can book: his Dvorana card
-    assert 'title="Aktivna članarina">✓ Rezerviraj termin →</a>' in gym      # leads to the timetable
+    assert 'title="Aktivna članarina"><span>✓ <span class="t">Rezerviraj termin</span> →</span></a>' in gym   # leads to the timetable
 
     for email in ("ana@test.local", "sara@test.local"):
         page = client_for(email).get("/").text
@@ -723,8 +727,8 @@ def test_the_plans_page_is_reachable_without_hunting_for_it():
     ca = client_for("ana@test.local")
     page = ca.get("/raspored").text
     assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page   # the nav tab
-    assert ('<p class="hint gate-line">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća. '
-            '<a class="btn btn-sm" href="/moja-clanarina">Pogledaj cjenik →</a></p>') in page
+    assert ('<p class="hint gate-line"><span class="t">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.</span> '
+            '<a class="btn btn-sm" href="/moja-clanarina"><span class="t">Pogledaj cjenik →</span></a></p>') in page
     assert "Za upis se javi treneru" not in page and "<h2>Moja članarina" not in page
     assert 'href="/moja-clanarina' not in TestClient(app).get("/").text   # never for a guest: members only
 
@@ -732,7 +736,7 @@ def test_the_plans_page_is_reachable_without_hunting_for_it():
     page = client_for("ivan@test.local").get("/raspored").text
     assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page
     for gone in ("<h2>Moja članarina", "Grupni trening · aktivna", 'class="mlines"', "Moja članarina →",
-                 'class="hint gate-line"', "Pogledaj cjenik →</a>"):
+                 'class="hint gate-line"', "Pogledaj cjenik →</span></a>"):
         assert gone not in page, gone
 
     # the trainer does not buy plans, but edits the plans' texts there: the
@@ -754,7 +758,7 @@ def test_plan_gate_offers_the_price_instead_of_a_dead_end():
     assert "cta=grupni" in loc                          # straight at that plan
     assert "javi+se+treneru" not in loc                  # the old dead end is gone
     # and the alert renders it as a button, to that plan's card and price
-    assert '<a class="act" href="/moja-clanarina#plan-grupni">Pogledaj cjenik →</a>' in ca.get(loc).text
+    assert '<a class="act" href="/moja-clanarina#plan-grupni"><span class="t">Pogledaj cjenik →</span></a>' in ca.get(loc).text
 
 
 def test_login_returns_to_the_page_that_bounced_you():
@@ -930,15 +934,15 @@ def test_cjenik_is_members_only_and_landing_plan_cta_states():
         assert ("€" in page) == (path == "/"), path     # prices: the landing, nowhere else
     page = guest.get("/").text
     assert "Javi nam se" in page and 'id="kontakt"' in page   # cards point at the studio
-    assert "Odaberi plan →</a>" not in page             # the button, not the CSS comment naming it
+    assert 'Odaberi plan →</span></a>' not in page       # the button, not the CSS comment naming it
 
     make_user("ana@test.local", plans=())
-    assert "Odaberi plan →</a>" in client_for("ana@test.local").get("/").text   # members pick plans
+    assert '<span class="t">Odaberi plan →</span></a>' in client_for("ana@test.local").get("/").text   # members pick plans
 
     make_user("ivan@test.local")                        # default plan: grupni
     ci = client_for("ivan@test.local")
     assert "Aktivna članarina" in ci.get("/").text      # owned state on landing
-    assert '<span class="chip ok">aktivna</span>' in ci.get("/cjenik").text   # the old address, the new page
+    assert '<span class="chip ok"><span class="t">aktivna</span></span>' in ci.get("/cjenik").text   # the old address, the new page
 
 
 def shown(html: str) -> str:
@@ -972,7 +976,7 @@ def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
         month = tab.format(str(shown_ == "month").lower(), "month", "Mjesečno")
         year = tab.format(str(shown_ == "year").lower(), "year", "Godišnje")
         assert section.index(month) < section.index(year)
-    assert page.count('<span class="featured-tag">Najpopularnije</span>') == 1   # the chip, not the CSS comment naming it
+    assert page.count('<span class="featured-tag"><span class="t">Najpopularnije</span></span>') == 1   # the chip, not the CSS comment naming it
     assert '<span class="featured-tag">' in offer       # on a tier, not in the gym
     # the shop's reference prices as typed (the price slots' defaults), each
     # with its unit: no range cut to its floor any more ("od 60 €")
@@ -997,16 +1001,16 @@ def test_landing_offer_is_three_cards_with_public_prices(monkeypatch):
     assert '<a class="stage" href="#usluge"' in page and 'id="usluge"' in page
     for chip in ("Grupni", "1:1", "Rehabilitacija"):    # the photo carries no service chips any more
         assert f'<span class="tag">{chip}</span>' not in page, chip
-    assert page.count('href="#kontakt">Javi nam se →</a>') == 5      # invite-only: the studio is the way in
+    assert page.count('href="#kontakt"><span class="t">Javi nam se →</span></a>') == 5      # invite-only: the studio is the way in
 
     monkeypatch.setenv("SIGNUP_MODE", "open")           # open to anyone: the cards register instead
-    assert TestClient(app).get("/").text.count('data-auth="signup">Registriraj se →</a>') == 5
+    assert TestClient(app).get("/").text.count('data-auth="signup"><span class="t">Registriraj se →</span></a>') == 5
     monkeypatch.setenv("SIGNUP_MODE", "invite")
 
     make_user("ivan@test.local")                        # owns grupni: his card says so and leads into the app
     page = client_for("ivan@test.local").get("/").text
     assert 'class="card offer mine"' in page.split('id="dvorana"')[1] and "Aktivna članarina" in page
-    assert page.count("Odaberi plan →</a>") == 4        # the four he does not have (three tiers, individualno)
+    assert page.count('<span class="t">Odaberi plan →</span></a>') == 4   # the four he does not have (three tiers, individualno)
 
 
 def test_public_prices_switch_hides_them_from_guests_only(monkeypatch):
@@ -1071,10 +1075,10 @@ def test_landing_gym_cards_are_rows_the_editor_adds_hides_and_prices():
         assert "€" not in card.split('class="price-note')[0]                # typed as it is: no plan's "€"
         assert ('<p class="price-note room" aria-hidden="true">'
                 '<span class="t">u dvoje ili troje</span>') in card          # Individualno's line, unseen
-        assert card.count('<a class="btn btn-sm cta" href="#kontakt">Javi nam se →</a>') == 1
+        assert card.count('<a class="btn btn-sm cta" href="#kontakt"><span class="t">Javi nam se →</span></a>') == 1
         assert "Odaberi plan" not in card and "owned" not in card
     member = gym_section(client_for("ivan@test.local").get("/").text)
-    assert 'class="card offer mine"' in member and "✓ Rezerviraj termin →" in member.split('class="card offer')[1]
+    assert 'class="card offer mine"' in member and '✓ <span class="t">Rezerviraj termin</span> →' in member.split('class="card offer')[1]
 
     db.set_gym_card_shown(third, False)                 # hidden: the editor's alone, marked off
     for c in (TestClient(app), client_for("ivan@test.local")):
@@ -1147,18 +1151,18 @@ def test_moja_clanarina_shows_membership_overview_and_billing_history():
     c = client_for("ivan@test.local")
     page = c.get("/moja-clanarina").text
     assert "Tvoji planovi" in page and "Grupni trening" in page
-    assert '<span class="chip ok">aktivna</span>' in page
+    assert '<span class="chip ok"><span class="t">aktivna</span></span>' in page
     assert due.strftime("%-d.%-m.%Y.") in page              # sljedeća uplata
     assert expiry.strftime("%-d.%-m.%Y.") in page           # dospijeće
     # the ledger lists BOTH uplate with their methods
     assert "Računi" in page
     assert "Gotovina" in page and "Kartica" in page
     # an active plan is a door to what it unlocks
-    assert 'href="/raspored">Rezerviraj termin' in page
+    assert 'href="/raspored"><span><span class="t">Rezerviraj termin' in page
 
     db.record_payment(uid, "online")
     page = c.get("/moja-clanarina").text
-    assert 'href="/treninzi">Otvori online treninge' in page
+    assert 'href="/treninzi"><span><span class="t">Otvori online treninge' in page
 
     profil = c.get("/profil").text
     assert "Povijest plaćanja" not in profil and 'href="/moja-clanarina"' in profil
@@ -1450,7 +1454,7 @@ def test_series_offer_follows_a_booking_and_runs_from_the_calendar():
     assert "ok=" in loc and loc.endswith(f"&series={sid}")      # the usual ok, plus the offer
     page = c.get(loc).text.replace("&nbsp;", " ")
     until = db.booking_window(config.today())[1]               # the window's last day: dospijeće is later
-    assert f"Isti termin svaki tjedan do {until:%-d.%-m.} — još 2 termina →" in page
+    assert f'<span class="t">Isti termin svaki tjedan do</span> {until:%-d.%-m.} — još 2 termina →' in page
     assert f'action="/book/{sid}/series"' in page
     assert page.count('class="alert ok"') == 1      # the offer IS the confirmation
 
@@ -1634,7 +1638,7 @@ def test_the_strip_has_seven_days_a_dot_on_booked_ones_and_the_grid_forms_carry_
     assert f'data-week="{monday}"' in page
 
     # each grid form posts its own day; the shown-day forms (the ✕) the selected one
-    grid = page[page.index('<div class="week" data-selected'):page.index("<h2>Moje rezervacije</h2>")]
+    grid = page[page.index('<div class="week" data-selected'):page.index('<h2><span class="t">Moje rezervacije</span></h2>')]
     form = grid[grid.index(f'action="/book/{free}"'):]
     assert f'<input type="hidden" name="day" value="{fri}">' in form[:form.index("</form>")]
     form = grid[grid.index(f'action="/cancel/{mine}"'):]
@@ -1666,7 +1670,7 @@ def test_phone_rows_open_the_sheet_for_clients_and_link_the_trainer_to_the_roste
     # no plan for a 1:1: a plain row that says so, nothing to tap
     i = page.index('<span class="rn">Individualni trening</span>')
     assert page.rfind('<div class="sess-row">', 0, i) > page.rfind("<button", 0, i)
-    assert '<span class="need">potrebna članarina</span>' in page[i:i + 300]
+    assert '<span class="need"><span class="t">potrebna članarina</span></span>' in page[i:i + 300]
 
     page = client_for("trener@test.local").get(f"/raspored?week={monday}").text
     for sid in (weekly, one_off, solo):
@@ -1746,7 +1750,7 @@ def test_a_series_that_left_dates_out_opens_the_dialog_saying_which_and_why():
     dlg = _dialog(page)
     assert shown(dlg) == (f"Nisu rezervirani svi termini Rezervirano: {booked:%-d.%-m.} "
                           f"Nije rezervirano: {full:%-d.%-m.} — termin je popunjen U redu")
-    assert '<form method="dialog"><button type="submit" class="btn btn-sm" autofocus>U redu</button></form>' in dlg
+    assert '<form method="dialog"><button type="submit" class="btn btn-sm" autofocus><span class="t">U redu</span></button></form>' in dlg
     assert db.user_booking_ids(uid, [sid, _occurrence(tid, booked, open_week=False)]) == \
         {sid, _occurrence(tid, booked, open_week=False)}
 
@@ -1792,7 +1796,7 @@ def test_the_sheets_checkbox_names_the_repeats_bound_per_row():
 
     page = client_for("ivan@test.local").get(f"/raspored?week={monday}&day={day}").text
     assert ('<label class="sheet-series" id="sheetSeries"><input type="checkbox" name="series" value="1"> '
-            '<span>Isti termin svaki tjedan do <span id="sheetUntil"></span></span></label>') in page
+            '<span><span class="t">Isti termin svaki tjedan do</span> <span id="sheetUntil"></span></span></label>') in page
     row = _row(page, sid)
     assert 'data-state="book"' in row and f'data-until="{last:%-d.%-m.}"' in row
     row = _row(page, solo)
@@ -1814,18 +1818,19 @@ def test_a_clients_weeks_end_at_the_window_and_the_trainer_walks_on():
     c = client_for("ivan@test.local")
 
     page = c.get(f"/raspored?week={last_monday - timedelta(days=7)}").text
-    assert f'<a class="btn btn-ghost btn-sm" href="/raspored?week={last_monday}">idući tjedan →</a>' in page
+    assert f'<a class="btn btn-ghost btn-sm" href="/raspored?week={last_monday}"><span class="t">idući tjedan →</span></a>' in page
     page = c.get(f"/raspored?week={last_monday}").text
     assert "idući tjedan →" not in page and 'data-next=""' in page
     page = c.get(f"/raspored?week={beyond}").text
-    assert '<p class="hint" style="padding: 30px 0 10px;">Termini se objavljuju 4 tjedna unaprijed.</p>' in page
+    assert '<p class="hint" style="padding: 30px 0 10px;"><span class="t">Termini se objavljuju</span> 4 tjedna unaprijed.</p>' in page
     for gone in ("Daleki trening", "Ovaj tjedan nema termina.", "idući tjedan →", 'class="day-strip"'):
         assert gone not in page, gone
-    assert f'href="/raspored?week={last_monday}">← prošli tjedan</a>' in page
+    assert f'href="/raspored?week={last_monday}"><span class="t">← prošli tjedan</span></a>' in page
 
     page = client_for("trener@test.local").get(f"/raspored?week={beyond}").text
     assert "Daleki trening" in page and "objavljuju" not in page
-    assert f'href="/raspored?week={beyond + timedelta(days=7)}">idući tjedan →</a>' in page
+    assert (f'href="/raspored?week={beyond + timedelta(days=7)}"><span class="ed t" data-copy="raspored.week.next"'
+            in page)                                                       # his: the editor's span
 
 
 def test_the_shown_day_survives_book_cancel_and_refusals():
@@ -1881,7 +1886,7 @@ def test_next_termin_card_shows_the_soonest_booking_to_clients_only():
     assert 'data-confirm-title="Otkazati rezervaciju?"' in nt and 'data-confirm-cta="Otkaži rezervaciju"' in nt
     assert (f'data-confirm="Grupni trening, {WEEKDAYS_SHORT[tomorrow.weekday()]} {tomorrow:%-d.%-m.} '
             'u 18:00–19:00. Mjesto se oslobađa za druge."') in nt
-    mine = page.split("<h2>Moje rezervacije</h2>")[1]       # a shortcut, not a split: the list keeps it
+    mine = page.split('<h2><span class="t">Moje rezervacije</span></h2>')[1]   # a shortcut, not a split: the list keeps it
     assert f'action="/cancel/{first}" class="unbook"' in mine and f'action="/cancel/{second}"' in mine
 
     db.cancel_booking(uid, first)                           # the next one: in three days, 1:1
@@ -1890,14 +1895,14 @@ def test_next_termin_card_shows_the_soonest_booking_to_clients_only():
 
     db.set_session_canceled(second, True)                   # called off by the trainer: said, and removable
     nt = card(c.get("/raspored").text)
-    assert '<span class="nt-off">OTKAZANO</span>' in nt and "nt-rel" not in nt
+    assert '<span class="nt-off"><span class="t">OTKAZANO</span></span>' in nt and "nt-rel" not in nt
     assert 'data-confirm-title="Maknuti otkazani termin?"' in nt and 'data-confirm-cta="Makni"' in nt
 
     soon = future_session(hours_from_now=3, title="Kasni trening")   # inside the 4 h: no ✕, says until when
     booked(uid, soon)
     nt = card(c.get("/raspored").text)
     assert "Kasni trening" in nt and "unbook" not in nt
-    assert '<div class="nt-late">Otkazivanje do 4 h prije termina</div>' in nt
+    assert '<div class="nt-late"><span class="t">Otkazivanje do</span> 4 h prije termina</div>' in nt
 
     tid = make_user("trener@test.local", is_trainer=True)   # a trainer with a booking: no card
     db.book(tid, soon)
@@ -2006,26 +2011,26 @@ def test_month_view_tints_the_paid_period_dots_my_bookings_and_links_every_day_t
                                        + (", članarina aktivna" if "covered" in cls else "")
                                        + (", rezervacija" if "mine" in cls else "")), x
         assert f'<span class="range">{MONTHS_HR[first.month - 1]} {first.year}.</span>' in page
-        assert f'<a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={sub_month(first):%Y-%m}">‹ prošli mjesec</a>' in page
-        assert f'<a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={add_month(first):%Y-%m}">idući mjesec ›</a>' in page
-        assert ('href="/raspored?view=month">danas</a>' in page) == (first != today.replace(day=1))
+        assert f'<a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={sub_month(first):%Y-%m}"><span class="t">‹ prošli mjesec</span></a>' in page
+        assert f'<a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={add_month(first):%Y-%m}"><span class="t">idući mjesec ›</span></a>' in page
+        assert ('href="/raspored?view=month"><span class="t">danas</span></a>' in page) == (first != today.replace(day=1))
         return cells
 
     first = today.replace(day=1)
     page = c.get("/raspored?view=month").text
     cells = check(page, first)
     assert sum("today" in x["classes"] for x in cells) == 1
-    assert "Članarina vrijedi do " + f"{due + timedelta(days=7):%-d.%-m.%Y.}" in page   # grupni's; online books nothing
+    assert '<span class="t">Članarina vrijedi do</span> ' + f"{due + timedelta(days=7):%-d.%-m.%Y.}" in page   # grupni's; online books nothing
     legend = page[page.index('<div class="month-legend'):]
     legend = legend[:legend.index("</div>")]
     assert all(t in legend for t in ("članarina aktivna", "tvoja rezervacija", "danas"))
     # the page is the month: no week buttons, grid, strip or sheet; the next
     # termin above the switch, "Moje rezervacije" below (and no "Moja
     # članarina" block between any more: /moja-clanarina holds the plans)
-    for gone in ("← prošli tjedan</a>", 'data-selected="', 'class="day-strip"', 'id="sheet"',
+    for gone in ("← prošli tjedan</span></a>", 'data-selected="', 'class="day-strip"', 'id="sheet"',
                  "<h2>Moja članarina", 'class="hint gate-line"'):
         assert gone not in page, gone
-    assert page.index(NEXT) < page.index(SWITCH) < page.index(MONTH) < page.index("<h2>Moje rezervacije</h2>")
+    assert page.index(NEXT) < page.index(SWITCH) < page.index(MONTH) < page.index('<h2><span class="t">Moje rezervacije</span></h2>')
     monday = today - timedelta(days=today.weekday())
     assert _switch(page) == {"week": (f"/raspored?week={monday}&day={today}", "false"),
                              "month": (f"/raspored?view=month&month={today:%Y-%m}", "true")}
@@ -2042,7 +2047,7 @@ def test_month_view_tints_the_paid_period_dots_my_bookings_and_links_every_day_t
     this = f'<span class="range">{MONTHS_HR[today.month - 1]} {today.year}.</span>'
     for junk in ("", "nije-mjesec", "2026-13", "2026-1", "2026-10-05", "0001-01", "9999-12"):   # today's month
         page = c.get(f"/raspored?view=month&month={junk}").text
-        assert this in page and 'href="/raspored?view=month">danas</a>' not in page, junk
+        assert this in page and 'href="/raspored?view=month"><span class="t">danas</span></a>' not in page, junk
 
 
 def test_month_view_without_a_plan_tints_nothing_and_points_to_the_cjenik():
@@ -2050,8 +2055,8 @@ def test_month_view_without_a_plan_tints_nothing_and_points_to_the_cjenik():
     page = client_for("ana@test.local").get("/raspored?view=month").text
     cells = _month_cells(page)
     assert len(cells) >= 28 and not any("covered" in x["classes"] for x in cells)
-    assert ('<p class="hint month-note">Nemaš aktivnu članarinu za treninge u dvorani. '
-            '<a class="act" href="/moja-clanarina">Pogledaj cjenik →</a></p>') in page
+    assert ('<p class="hint month-note"><span class="t">Nemaš aktivnu članarinu za treninge u dvorani.</span> '
+            '<a class="act" href="/moja-clanarina"><span class="t">Pogledaj cjenik →</span></a></p>') in page
     assert "Članarina vrijedi do" not in page
 
 
@@ -2075,4 +2080,4 @@ def test_the_switch_is_for_clients_and_the_trainer_keeps_the_week():
     for path in ("/raspored", "/raspored?view=month", f"/raspored?view=month&month={today:%Y-%m}"):
         page = tr.get(path).text
         assert SWITCH not in page and MONTH not in page, path
-        assert 'data-selected="' in page and "← prošli tjedan</a>" in page, path   # the week page
+        assert 'data-selected="' in page and "← prošli tjedan</span></a>" in page, path   # the week page (his: the editor's span)

@@ -22,6 +22,20 @@
   {%- endif -%}
 {%- endmacro %}
 
+{# An optional text with its element (25.11.2026, the member-facing
+   pages: a lead, a hint, a kicker, a chip, an empty line). `c.opt(key,
+   tag, attrs)` prints <tag attrs>the text</tag> while the slot holds a
+   text, and nothing at all for a reader once it is emptied, nor the gap
+   its element would leave; the editor gets the element around his empty
+   box, marked data-opt, which base.html takes away outside edit mode, so
+   his page is the reader's. `attrs` is the element's own attributes as the
+   template wrote them, ' class="hint"' (a leading space). #}
+{% macro opt(key, tag="p", attrs="") -%}
+  {%- if can_edit_copy or copy_texts.get(key, COPY[key].default) -%}
+    <{{ tag }}{{ attrs | safe }}{% if can_edit_copy %} data-opt{% endif %}>{{ t(key) }}</{{ tag }}>
+  {%- endif -%}
+{%- endmacro %}
+
 {# A text that is no slot: one of an announcement's (a row of the
    announcements table, landing.html's #aktualno). `c.field(key, text,
    label)` prints it as c.t prints a slot, the same span for the same

@@ -118,7 +118,7 @@ def test_members_only_the_trainer_has_his_own_page_and_the_old_address_leads_her
     assert r.text.index("Ovo vidi član bez članarine:") < r.text.index("Nemaš aktivnu članarinu")   # preview
     assert 'data-copy="cjenik.hint"' in r.text
     r = ivan.get("/moja-clanarina")
-    assert r.status_code == 200 and "<h1>Moja članarina</h1>" in r.text
+    assert r.status_code == 200 and '<h1><span class="t">Moja članarina</span></h1>' in r.text
     assert "<title>Moja članarina — QMT</title>" in r.text
     assert copy.SLOTS["cjenik.hint"].default in r.text               # the lead keeps its slot
 
@@ -153,7 +153,7 @@ def test_cash_member_sees_a_card_per_plan_the_plans_to_add_and_the_ledger():
     # one card per plan, in PLAN_TYPES order, each saying it is active
     ids = re.findall(r'<section class="card plan-card is-active" id="plan-(\w+)"', mine)
     assert ids == ["grupni", "individualni", "online"]
-    assert mine.count('<span class="chip ok">aktivna</span>') == 3
+    assert mine.count('<span class="chip ok"><span class="t">aktivna</span></span>') == 3
     for key in ids:
         c = text(card(page, key))
         assert c.startswith("Paket"), c[:40]
@@ -167,8 +167,8 @@ def test_cash_member_sees_a_card_per_plan_the_plans_to_add_and_the_ledger():
     grupni = text(card(page, "grupni"))
     assert "Cijena 60–80 € / paket" in grupni                         # the shop's reference price
     assert "Paket 12 treninga mjesečno" in grupni and "Iskorišteno 1 od 12 u ovom ciklusu" in grupni
-    assert 'href="/raspored">Rezerviraj termin →</a>' in card(page, "grupni")   # a running plan is a door
-    assert 'href="/treninzi">Otvori online treninge →</a>' in card(page, "online")
+    assert 'href="/raspored"><span><span class="t">Rezerviraj termin</span> →</span></a>' in card(page, "grupni")   # a running plan is a door
+    assert 'href="/treninzi"><span><span class="t">Otvori online treninge</span> →</span></a>' in card(page, "online")
     assert "Iskorišteno" not in text(card(page, "individualni"))      # unlimited: no usage line
 
     # Dodaj plan: exactly the three he does not hold, with their texts; he
@@ -204,7 +204,7 @@ def test_a_lapsed_plan_says_so_and_one_due_soon_counts_the_days():
     assert re.findall(r'class="card plan-card (is-\w+)" id="plan-(\w+)"', mine) == \
         [("is-active", "online"), ("is-lapsed", "grupni")]
     g = card(page, "grupni")
-    assert '<span class="chip lapsed">istekla</span>' in g
+    assert '<span class="chip lapsed"><span class="t">istekla</span></span>' in g
     # lapsed inside the month that began at its due date: an uplata buys
     # that month (the fixed month, 29.10.2026), so it starts at the due date
     assert f"Članarina je istekla {lapsed.dospijece:{D}} Nova uplata počinje od {lapsed.next_payment:{D}}" in text(g)
@@ -212,18 +212,18 @@ def test_a_lapsed_plan_says_so_and_one_due_soon_counts_the_days():
     gone = set_membership(uid, "grupni", next_payment=today - timedelta(days=40))   # a whole month unpaid
     g = card(client_for("ivan@test.local").get("/moja-clanarina").text, "grupni")
     assert f"Članarina je istekla {gone.dospijece:{D}} Nova uplata počinje od dana uplate." in text(g)
-    assert '<span class="chip due">dospijeva za 3 dana</span>' in card(page, "online")
+    assert '<span class="chip due"><span><span class="t">dospijeva</span> za 3 dana</span></span>' in card(page, "online")
     assert "Otvori online treninge" in card(page, "online")           # still running: still a door
     assert f"Vrijedi do {soon.dospijece:{D}}" in text(card(page, "online"))
 
     set_membership(uid, "online", next_payment=today - timedelta(days=6))   # tomorrow, then today
-    assert '<span class="chip due">dospijeva sutra</span>' in client_for("ivan@test.local").get("/moja-clanarina").text
+    assert '<span class="chip due"><span><span class="t">dospijeva</span> sutra</span></span>' in client_for("ivan@test.local").get("/moja-clanarina").text
     set_membership(uid, "online", next_payment=today - timedelta(days=7))
-    assert '<span class="chip due">dospijeva danas</span>' in client_for("ivan@test.local").get("/moja-clanarina").text
+    assert '<span class="chip due"><span><span class="t">dospijeva</span> danas</span></span>' in client_for("ivan@test.local").get("/moja-clanarina").text
     set_membership(uid, "online", next_payment=today)                  # due today: the grace week is the countdown
-    assert '<span class="chip due">dospijeva za 7 dana</span>' in client_for("ivan@test.local").get("/moja-clanarina").text
+    assert '<span class="chip due"><span><span class="t">dospijeva</span> za 7 dana</span></span>' in client_for("ivan@test.local").get("/moja-clanarina").text
     set_membership(uid, "online", next_payment=today + timedelta(days=1))
-    assert '<span class="chip ok">aktivna</span>' in client_for("ivan@test.local").get("/moja-clanarina").text
+    assert '<span class="chip ok"><span class="t">aktivna</span></span>' in client_for("ivan@test.local").get("/moja-clanarina").text
 
 
 def test_member_without_a_plan_sees_why_every_plan_and_an_empty_ledger():
@@ -236,7 +236,7 @@ def test_member_without_a_plan_sees_why_every_plan_and_an_empty_ledger():
     add = section(page, "mcAdd")                                      # every plan: the three tiers, then the gym's five
     assert re.findall(r'<div class="card plan[^"]*" id="plan-([\w-]+)"', add) == \
         ["online", "online-pro", "online-elite", *(p for p in PLAN_TYPES if p != "online")]
-    assert '<span class="featured-tag">Najpopularnije</span>' in card(page, "grupni")
+    assert '<span class="featured-tag"><span class="t">Najpopularnije</span></span>' in card(page, "grupni")
     assert "Još nema zabilježenih uplata." in section(page, "mcBills")
     assert "<table" not in page
 
@@ -361,24 +361,24 @@ def test_every_way_to_plans_and_money_leads_to_the_new_page():
     # with none running, a lapsed plan's too, the booking gate's one line
     set_membership(uid, "grupni", next_payment=config.today() - timedelta(days=30))
     page = ivan.get("/raspored").text
-    assert '<p class="hint gate-line">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća. ' in page
+    assert '<p class="hint gate-line"><span class="t">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.</span> ' in page
     assert "istekla" not in page                                      # the lapsed plan is the tab's to show
 
     # without a plan: the timetable, its month page and the plan gate's alert
-    assert '<a class="btn btn-sm" href="/moja-clanarina">Pogledaj cjenik →</a>' in ana.get("/raspored").text
-    assert '<a class="act" href="/moja-clanarina">Pogledaj cjenik →</a>' in ana.get("/raspored?view=month").text
+    assert '<a class="btn btn-sm" href="/moja-clanarina"><span class="t">Pogledaj cjenik →</span></a>' in ana.get("/raspored").text
+    assert '<a class="act" href="/moja-clanarina"><span class="t">Pogledaj cjenik →</span></a>' in ana.get("/raspored?view=month").text
     sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=1), 60, 8, None)
     loc = ana.post(f"/book/{sid}", data={"week": ""}, follow_redirects=False).headers["location"]
-    assert '<a class="act" href="/moja-clanarina#plan-grupni">Pogledaj cjenik →</a>' in ana.get(loc).text
+    assert '<a class="act" href="/moja-clanarina#plan-grupni"><span class="t">Pogledaj cjenik →</span></a>' in ana.get(loc).text
 
     # the profile keeps the person's own data and a way to the rest
     profil = ivan.get("/profil").text
-    assert '<a class="act" href="/moja-clanarina">Moja članarina — planovi, uplate i računi →</a>' in profil
+    assert '<a class="act" href="/moja-clanarina"><span class="t">Moja članarina — planovi, uplate i računi →</span></a>' in profil
     for gone in ("Povijest plaćanja", "Dospijeće plaćanja", "/placanje/portal"):
         assert gone not in profil, gone
 
     # the landing: a member's card for a plan he does not hold
-    assert 'href="/moja-clanarina#plan-online">Odaberi plan →</a>' in ivan.get("/").text
+    assert 'href="/moja-clanarina#plan-online"><span class="t">Odaberi plan →</span></a>' in ivan.get("/").text
 
     # the trainer manages members elsewhere (Admin ▾'s Trenutne članarine):
     # no membership links for him, but the member's row has the tab since
@@ -406,8 +406,8 @@ def test_the_profile_and_the_account_menu_show_the_whole_email():
     start = page.index('<div class="card acct">')
     card = page[start:page.index("</div>", start)]
     since = db.get_user(uid).created_at.astimezone(config.TZ)
-    assert "<h2>Račun</h2>" in card and '<p class="mail">ivan@test.local</p>' in card
-    assert f"Registriran/a od {since:%-d.%-m.%Y.}" in card and "<input" not in card
+    assert '<h2><span class="t">Račun</span></h2>' in card and '<p class="mail">ivan@test.local</p>' in card
+    assert f'<span class="t">Registriran/a od</span> {since:%-d.%-m.%Y.}' in card and "<input" not in card
     assert page.index('action="/profil"') < start < page.index('class="card mc-link"')
     assert '<span class="mail" title="ivan@test.local">ivan@test.local</span>' in page   # the menu's header
 
@@ -561,6 +561,8 @@ def test_dodaj_plan_is_two_groups_each_with_its_own_switch():
     online, gym = group(page, "mcOnline"), group(page, "mcGym")
     assert '<h3 class="pc-kicker" id="mcOnline"><span class="ed t" data-copy="clanarina.h.online"' in online
     assert '<h3 class="pc-kicker" id="mcGym"><span class="ed t" data-copy="clanarina.h.gym"' in gym
+    # its words are slots (period.*, 25.11.2026) printed plain, the editor's
+    # too: in edit mode the switch keeps switching (they are edited on /tekstovi)
     tab = '<button type="button" role="tab" aria-selected="{}" data-period="{}">{}</button>'
     for markup, start in ((online, "year"), (gym, "month")):    # each switch says its group's opening
         assert markup.count('class="period"') == 1 and '<div class="period" role="tablist"' in markup
@@ -647,7 +649,7 @@ def test_no_price_carries_a_note_and_prehranas_hint_keeps_the_two_amounts():
     make_user("ivan@test.local", plans=("grupni", "rehabilitacija", "prehrana"))
     ivan = client_for("ivan@test.local").get("/moja-clanarina").text
     for key in ("grupni", "rehabilitacija"):                       # his own cards: the price alone under Cijena
-        cijena = card(ivan, key).split("<dt>Cijena</dt>")[1].split("</dd>")[0]
+        cijena = card(ivan, key).split('<dt><span class="t">Cijena</span></dt>')[1].split("</dd>")[0]
         assert cijena.count('<div class="price">') == 1 and "price-hint" not in cijena, key
     assert "8, 12 ili 16 treninga" not in card(ivan, "grupni") and "paketi od 5" not in card(ivan, "rehabilitacija")
     # each price over its bazna cijena, each add-on amount with its own in brackets (23.11.2026)
@@ -798,23 +800,23 @@ def test_the_landing_owns_only_the_card_of_the_members_tier():
     make_user("trener@test.local", is_trainer=True)
     db.add_gym_card(None, copy.GYM_CARD_EXAMPLES[0])                    # Dvorana: his grupni's card
     c = client_for("ivan@test.local")
-    choose = 'href="/moja-clanarina#plan-online">Odaberi plan →</a>'
+    choose = 'href="/moja-clanarina#plan-online"><span class="t">Odaberi plan →</span></a>'
 
     page = c.get("/").text
     cards = tier_cards(page)
     assert list(cards) == ["QMove START", "QMove PRO", "QMove ELITE"]
     assert owned(cards) == ["QMove PRO"] and cards["QMove PRO"].startswith(' featured mine">')
     assert '<a class="btn btn-sm owned" href="/treninzi"' in cards["QMove PRO"]
-    assert 'title="Aktivna članarina">✓ Otvori online treninge →</a>' in cards["QMove PRO"]
+    assert 'title="Aktivna članarina"><span>✓ <span class="t">Otvori online treninge</span> →</span></a>' in cards["QMove PRO"]
     assert page.count("Otvori online treninge") == 1
     for name in ("QMove START", "QMove ELITE"):
         assert f'<a class="btn btn-sm cta" {choose}' in cards[name] and "owned" not in cards[name], name
     gym = page.split('id="dvorana"')[1]                                 # the gym's cards: as before
-    assert '<div class="card offer mine">' in gym and 'title="Aktivna članarina">✓ Rezerviraj termin →</a>' in gym
+    assert '<div class="card offer mine">' in gym and 'title="Aktivna članarina"><span>✓ <span class="t">Rezerviraj termin</span> →</span></a>' in gym
 
     client_for("trener@test.local").post(f"/clanarine/{ivan}/uplata", data={"plan": "online", "tier": "elite"})
     cards = tier_cards(c.get("/").text)                                 # moved to ELITE: the card moves
-    assert owned(cards) == ["QMove ELITE"] and "✓ Otvori online treninge →" in cards["QMove ELITE"]
+    assert owned(cards) == ["QMove ELITE"] and '✓ <span class="t">Otvori online treninge</span> →' in cards["QMove ELITE"]
     assert f'<a class="btn btn-sm" {choose}' in cards["QMove PRO"]      # featured: the red button again
     assert f'<a class="btn btn-sm cta" {choose}' in cards["QMove START"]
 
@@ -840,10 +842,10 @@ def test_moja_clanarina_names_the_online_tier_by_its_cards_title():
 
     page = c.get("/moja-clanarina").text
     online = card(page, "online")
-    assert '<div><dt>Paket</dt><dd><span class="t">QMove PRO</span></dd></div>' in online
+    assert '<div><dt><span class="t">Paket</span></dt><dd><span class="t">QMove PRO</span></dd></div>' in online
     assert "Paket QMove PRO" in text(online)
     assert "Paket 12 treninga mjesečno" in text(card(page, "grupni")) and "QMove" not in card(page, "grupni")
-    assert "<dt>Paket</dt>" not in card(page, "individualni")
+    assert '<dt><span class="t">Paket</span></dt>' not in card(page, "individualni")
 
     r = client_for("trener@test.local").post("/copy/offer.online2.title", data={"text": "QMove PRO+"})
     assert r.json() == {"ok": True, "text": "QMove PRO+", "default": False}

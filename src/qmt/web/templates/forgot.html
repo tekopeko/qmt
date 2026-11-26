@@ -1,14 +1,15 @@
 {% extends "base.html" %}
+{% import "_copy.html" as c with context %}
 {% block title %}Zaboravljena lozinka — QMT{% endblock %}
 {% block content %}
 <div style="max-width:400px; margin:8vh auto 0;">
-  <h1>Nova lozinka</h1>
-  <p class="hint" style="margin-bottom:22px;">Upiši email — poslat ćemo ti link za postavljanje nove lozinke.</p>
+  <h1>{{ c.t("auth.forgot.title") }}</h1>
+  {{ c.opt("auth.forgot.lead", "p", ' class="hint" style="margin-bottom:22px;"') }}
   <form method="post" action="/forgot">
-    <div class="field"><label for="email">Email</label>
+    <div class="field"><label for="email">{{ c.t("auth.email") }}</label>
       <input id="email" type="email" name="email" autocomplete="email" required autofocus></div>
-    <button type="submit" style="width:100%; padding:12px;">Pošalji link</button>
+    <button type="submit" style="width:100%; padding:12px;">{{ c.t("auth.forgot.submit") }}</button>
   </form>
-  <p class="hint" style="margin-top:16px;"><a class="act act-quiet" href="/login">← natrag na prijavu</a></p>
+  <p class="hint" style="margin-top:16px;"><a class="act act-quiet" href="/login">{{ c.t("auth.back_to_login") }}</a></p>
 </div>
 {% endblock %}

@@ -1,14 +1,15 @@
 {% extends "base.html" %}
+{% import "_copy.html" as c with context %}
 {% block title %}Nova lozinka — QMT{% endblock %}
 {% block content %}
 <div style="max-width:400px; margin:8vh auto 0;">
-  <h1>Postavi novu lozinku</h1>
-  <p class="hint" style="margin-bottom:22px;">Link vrijedi sat vremena i može se iskoristiti jednom.</p>
+  <h1>{{ c.t("auth.reset.title") }}</h1>
+  {{ c.opt("auth.reset.lead", "p", ' class="hint" style="margin-bottom:22px;"') }}
   <form method="post" action="/reset">
     <input type="hidden" name="token" value="{{ token }}">
-    <div class="field"><label for="password">Nova lozinka (barem 8 znakova)</label>
+    <div class="field"><label for="password">{{ c.t("auth.reset.password") }}</label>
       <input id="password" type="password" name="password" autocomplete="new-password" minlength="8" required autofocus></div>
-    <button type="submit" style="width:100%; padding:12px;">Spremi lozinku</button>
+    <button type="submit" style="width:100%; padding:12px;">{{ c.t("auth.reset.submit") }}</button>
   </form>
 </div>
 {% endblock %}

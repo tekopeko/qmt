@@ -110,6 +110,26 @@ WEBM = (b"\x1a\x45\xdf\xa3\x9f" + b"\x42\x86\x81\x01" + b"\x42\xf7\x81\x01" + b"
 UNSUPPORTED = "Nepodržan format — dozvoljeno: mp4, mov, webm."
 
 
+def read(markup: str) -> str:
+    """Some markup as a reader reads it: tags dropped where they stand,
+    entities read, whitespace collapsed (the pages' words are copy slots'
+    spans since 25.11.2026, beside the values they name)."""
+    return " ".join(unescape(re.sub(r"<[^>]+>", "", markup)).split())
+
+
+def sub(row: str) -> str | None:
+    """A day page's exercise row's muted line (.dx-sub: its rests and its
+    note), as read; None for a row with none."""
+    m = re.search(r'<span class="dx-sub">(.*?)</span>\s*</span>\s*<span class="dx-go"', row, re.S)
+    return read(m.group(1)) if m else None
+
+
+def ed(key: str, text: str) -> str:
+    """The pattern of a slot's span on a staff member's view: the editor's
+    span (its key on it), holding `text` (25.11.2026)."""
+    return rf'<span class="ed t" data-copy="{re.escape(key)}"[^>]*>{re.escape(text)}</span>'
+
+
 @pytest.fixture(autouse=True)
 def clean_db(tmp_path, monkeypatch):
     Base.metadata.drop_all(db.engine)
@@ -347,7 +367,8 @@ def test_a_programme_whose_last_day_is_deleted_stays_with_none():
     table = ct.get("/treninzi").text                                        # again, after its pages
     assert stored_counts() == (1, 0, 0, 1) and db.get_program(pid).days == []
     assert admin_row(table, "Cijelo tijelo — početna") == ("0", "0", True)
-    assert '<p class="hint">Program još nema treninga — dodaj prvi u uređivanju.</p>' in view
+    assert re.search(r'<p class="hint" data-opt>' + ed("program.empty_staff", "Program još nema treninga — dodaj prvi u uređivanju.")
+                     + "</p>", view)
     assert '<p class="hint">Program još nema treninga — dodaj prvi.</p>' in editor
     assert ('data-confirm="„Cijelo tijelo — početna” — briše se program s treninzima i vježbama; '
             'same vježbe i njihovi videi ostaju u bazi vježbi."') in editor
@@ -375,7 +396,7 @@ def test_a_day_whose_last_exercise_is_removed_stays_empty():
     table = ct.get("/treninzi").text
     assert stored_counts() == (1, 1, 0, 1) and [len(d.items) for d in db.get_program(pid).days] == [0]
     assert admin_row(table, "Cijelo tijelo — početna") == ("1", "0", True)
-    assert '<p class="hint" style="margin-top:22px;">Trening još nema vježbi.</p>' in client_day
+    assert '<p class="hint" style="margin-top:22px;"><span class="t">Trening još nema vježbi.</span></p>' in client_day
 
 
 def test_a_client_is_told_what_is_not_there_yet():
@@ -390,16 +411,16 @@ def test_a_client_is_told_what_is_not_there_yet():
     db.create_program("Srednji blok", None, "srednja", "cijelo")            # ana's razina
     ci = client_for("ivan@test.local")                                      # pocetna
     page = ci.get("/treninzi").text
-    assert ('<p style="margin-bottom:6px;"><strong>Programi za tvoju razinu još se pripremaju.</strong></p>\n'
-            '    <p class="hint">Trener slaže sadržaj — provjeri uskoro.</p>') in page
-    assert '<p class="hint">Programi tvoje razine — određuje je upitnik.</p>' in page
+    assert ('<p style="margin-bottom:6px;"><strong><span class="t">Programi za tvoju razinu još se pripremaju.</span></strong></p>\n'
+            '    <p class="hint"><span class="t">Trener slaže sadržaj — provjeri uskoro.</span></p>') in page
+    assert '<p class="hint"><span class="t">Programi tvoje razine — određuje je upitnik.</span></p>' in page
     assert "kombinacij" not in page and "cilj" not in page
     assert "Srednji blok" not in page and stored_counts() == (1, 0, 0, 0)
     pid = db.create_program("Tjedan 1", None, "pocetna", "gornji")
     page = ci.get("/treninzi").text
     assert "još se priprema" not in page and f'href="/treninzi/{pid}"' in page and '<div class="hint">0 treninga</div>' in page
     assert client_groups(page) == [("Gornji dio tijela", ["Tjedan 1"])]
-    assert '<p class="hint">Program još nema treninga.</p>' in ci.get(f"/treninzi/{pid}").text
+    assert '<p class="hint"><span class="t">Program još nema treninga.</span></p>' in ci.get(f"/treninzi/{pid}").text
     assert stored_counts() == (2, 0, 0, 0)
 
 
@@ -412,8 +433,8 @@ def test_a_client_without_the_upitnik_is_told_it_decides_his_razina():
     with db.engine.begin() as conn:
         conn.execute(sa_text("DELETE FROM onboarding_responses WHERE user_id = :u"), {"u": uid})
     page = client_for("ivan@test.local").get("/treninzi").text
-    assert ('<p class="hint" style="margin-top:2px;">Prema odgovorima te svrstavamo u razinu '
-            '(početna / srednja / napredna) — programi se otvaraju odmah.</p>') in page
+    assert ('<p class="hint" style="margin-top:2px;"><span class="t">Prema odgovorima te svrstavamo u razinu '
+            '(početna / srednja / napredna) — programi se otvaraju odmah.</span></p>') in page
     assert "Ispuni upitnik" in page and "<section" not in page.split("<main", 1)[1]
 
 
@@ -576,7 +597,8 @@ def test_a_dvoranski_programme_is_staffs_only():
     table = ct.get("/treninzi").text
     assert '<td><strong>Snaga u dvorani</strong> <span class="venue-chip">dvoranski</span></td>' in table
     assert '<td><strong>Snaga online</strong></td>' in table and table.count('class="venue-chip"') == 1
-    assert '<h1>Snaga u dvorani <span class="venue-chip">dvoranski</span></h1>' in ct.get(f"/treninzi/{gym}").text
+    assert re.search(r'<h1>Snaga u dvorani <span class="venue-chip" data-opt>' + ed("program.head.venue", "dvoranski")
+                     + "</span></h1>", ct.get(f"/treninzi/{gym}").text)
     assert '<h1>Uredi program <span class="venue-chip">dvoranski</span></h1>' in ct.get(f"/treninzi/{gym}/uredi").text
     assert "<h1>Snaga online</h1>" in ct.get(f"/treninzi/{online}").text
     assert "<h1>Uredi program</h1>" in ct.get(f"/treninzi/{online}/uredi").text
@@ -1023,7 +1045,7 @@ def test_an_exercise_is_deleted_out_of_every_training_that_holds_it():
     assert all(updated(progs[t]) > before for t in progs if t != "Bez nje") and updated(progs["Bez nje"]) == before
     emptied = db.get_program(progs["Zadnji"]).days[0].id
     page = client_for("ivan@test.local").get(f"/treninzi/{progs['Zadnji']}/dan/{emptied}").text
-    assert '<p class="hint" style="margin-top:22px;">Trening još nema vježbi.</p>' in page
+    assert '<p class="hint" style="margin-top:22px;"><span class="t">Trening još nema vježbi.</span></p>' in page
     assert db.add_day_item(emptied, eid, "trening") is None and stored_counts() == (5, 6, 2, 2)
 
     assert db.delete_exercise(eid) is None                                  # gone already: nothing to do
@@ -2071,10 +2093,12 @@ def test_the_clients_programme_page_lists_the_days():
     ci = client_for("ivan@test.local")
     page = ci.get(f"/treninzi/{pid}").text
     assert '<p class="hint" style="margin-bottom:6px;">0 treninga</p>' in page
-    assert '<p class="hint">Program još nema treninga.</p>' in page and "dodaj prvi" not in page
+    assert '<p class="hint"><span class="t">Program još nema treninga.</span></p>' in page and "dodaj prvi" not in page
     trainers = ct.get(f"/treninzi/{pid}").text
-    assert '<p class="hint">Program još nema treninga — dodaj prvi u uređivanju.</p>' in trainers
-    assert f'<a class="btn btn-quiet btn-sm" href="/treninzi/{pid}/uredi">Uredi program</a>' in trainers
+    assert re.search(r'<p class="hint" data-opt>' + ed("program.empty_staff", "Program još nema treninga — dodaj prvi u uređivanju.")
+                     + "</p>", trainers)
+    assert re.search(f'<a class="btn btn-quiet btn-sm" href="/treninzi/{pid}/uredi">' + ed("program.edit", "Uredi program")
+                     + "</a>", trainers)
     d1, d2, d3 = db.add_day(pid), db.add_day(pid), db.add_day(pid)
     db.update_day(d1, "Cijelo tijelo", 0, "")
     db.update_day(d3, "", 4, "")
@@ -2083,8 +2107,9 @@ def test_the_clients_programme_page_lists_the_days():
         hold(pid, eid, day=1 if n < 2 else 2 if n < 3 else 3)
     page = ci.get(f"/treninzi/{pid}").text
     assert '<p class="hint" style="margin-bottom:6px;">3 treninga</p>' in page
-    cards = re.findall(r'<a class="card day-card" href="([^"]+)">\s*<span class="dc-main">\s*<strong>([^<]*)</strong>\s*'
-                       r'<span class="hint">([^<]*)</span>', page)
+    cards = [(href, day, read(hint)) for href, day, hint in re.findall(
+        r'<a class="card day-card" href="([^"]+)">\s*<span class="dc-main">\s*<strong>([^<]*)</strong>\s*'
+        r'<span class="hint">(.*?)</span>\s*</span>\s*<span class="dc-go"', page, re.S)]
     assert cards == [(f"/treninzi/{pid}/dan/{d1}", "Trening 1 · Cijelo tijelo", "Preporučeno: ponedjeljak · 2 vježbe"),
                      (f"/treninzi/{pid}/dan/{d2}", "Trening 2", "1 vježba"),
                      (f"/treninzi/{pid}/dan/{d3}", "Trening 3", "Preporučeno: petak · 5 vježbi")]
@@ -2122,27 +2147,27 @@ def test_the_day_page_prints_the_whole_list():
     page = ci.get(f"/treninzi/{pid}/dan/{did}").text
     assert (f'<a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{pid}">Tjedan 1</a>'
             '<span class="sep">/</span><span class="here">Trening 1</span></nav>\n<h1>Trening 1 · Cijelo tijelo</h1>') in page
-    assert '<p class="hint">Preporučeno: ponedjeljak · 3 vježbe</p>' in page
+    assert '<p class="hint"><span class="t">Preporučeno:</span> ponedjeljak · 3 vježbe</p>' in page
     assert '<p class="day-intro">Lagano.\nBez žurbe.</p>' in page and "Uredi trening" not in page
     assert "<title>Trening 1 · Cijelo tijelo — Tjedan 1 — QMT</title>" in page
     assert re.findall(r'<h2 class="dx-cap" id="dio-(\w+)">([^<]*)</h2>', page) == [   # none in B: no B
         ("zagrijavanje", "Zagrijavanje"), ("trening", "Glavni dio A"), ("istezanje", "Istezanje")]
     rows = page.split('<details class="card ex">')[1:]
     heads = [re.search(r'<span class="dx-n">([^<]*)</span>\s*<span class="dx-line"><span class="dx-name">([^<]*)</span>'
-                       r'(?:<span class="dx-dose">([^<]*)</span>)?</span>\s*(?:<span class="dx-sub">([^<]*)</span>)?', r).groups()
+                       r'(?:<span class="dx-dose">([^<]*)</span>)?</span>', r).groups() + (sub(r),)
              for r in rows]
     assert heads == [("Vježba 1", "Goblet čučanj", "2 × 15", "Odmor između serija: 30 s · 8 kg"),
                      ("Vježba 2", "Plank", "3 × 40 s", "Odmor između serija: 45 s"),
                      ("Vježba 3", "Istezanje stražnje lože", "30 s", "po nozi")]
     assert '<span class="dx-go" aria-hidden="true">▷</span>' in rows[0]
     assert f'<video src="/media/{clip}" controls playsinline preload="none"></video>' in rows[0]
-    assert "<strong>Jedno ponavljanje:</strong> Do paralele i natrag.</p>" in rows[0]
+    assert '<strong><span class="t">Jedno ponavljanje:</span></strong> Do paralele i natrag.</p>' in rows[0]
     assert '<p class="pre">Pete na podu.\nTrup uspravan.</p>' in rows[0]
     assert "Vježba još nema videa." in rows[1] and "<video" not in rows[1] and "Jedno ponavljanje" not in rows[1]
     assert '<p class="pre">Lopatice aktivne.</p>' in rows[1] and "Vježba još nema videa." in rows[2]
     assert ci.get(f"/media/{clip}").status_code == 200
-    assert (f'<a class="btn btn-quiet btn-sm" href="/treninzi/{pid}/dan/{did}/uredi">Uredi trening</a>'
-            in ct.get(f"/treninzi/{pid}/dan/{did}").text)
+    assert re.search(f'<a class="btn btn-quiet btn-sm" href="/treninzi/{pid}/dan/{did}/uredi">' + ed("dan.edit", "Uredi trening")
+                     + "</a>", ct.get(f"/treninzi/{pid}/dan/{did}").text)
 
     db.delete_day_item(i3)                                                  # a section with none is not on the page
     db.update_day_item(i2, "zagrijavanje", None, None, None, None, None, "")   # nothing set: no dose, no line
@@ -2185,7 +2210,8 @@ def test_the_rest_after_an_exercise_is_saved_refused_and_shown():
         return it.rest_seconds, it.rest_after_seconds
 
     def lines() -> list[str]:
-        return re.findall(r'<span class="dx-sub">([^<]*)</span>', client_for("ivan@test.local").get(base).text)
+        page = client_for("ivan@test.local").get(base).text
+        return [s for s in (sub(r) for r in page.split('<details class="card ex">')[1:]) if s is not None]
 
     assert location(save(ig, rest_after="90")) == f"{base}/uredi?ok=Spremljeno.&stavka={ig}#stavka-{ig}"
     assert rests(ig) == (60, 90)
@@ -2234,7 +2260,7 @@ def test_a_days_intro_video_is_stored_replaced_removed_and_watched(monkeypatch):
     assert ">Zamijeni video</button>" in page and 'form="dan-video-x" class="btn-ghost btn-sm">Ukloni video</button>' in page
     ci, ca = client_for("ivan@test.local"), client_for("ana@test.local")
     view_page = ci.get(view).text
-    assert ('<p class="hint">Uvodni video — pogledaj ga prije treninga.</p>\n'
+    assert ('<p class="hint"><span class="t">Uvodni video — pogledaj ga prije treninga.</span></p>\n'
             f'    <video src="/media/{first}" controls playsinline preload="metadata"></video>') in view_page
     assert [p.id for p in db.video_programs(first)] == [pid]
     assert ct.get(f"/media/{first}").content == MP4 and ci.get(f"/media/{first}").status_code == 200
@@ -2565,20 +2591,21 @@ def test_the_day_page_and_the_programme_say_a_circuit():
 
     def heads(page: str) -> list[tuple]:
         return [re.search(r'<span class="dx-n">([^<]*)</span>\s*<span class="dx-line"><span class="dx-name">([^<]*)</span>'
-                          r'(?:<span class="dx-dose">(.*?)</span>)?</span>\s*(?:<span class="dx-sub">([^<]*)</span>)?', r).groups()
+                          r'(?:<span class="dx-dose">(.*?)</span>)?</span>', r).groups() + (sub(r),)
                 for r in page.split('<details class="card ex">')[1:]]
 
     def card(page: str) -> str:
-        return re.findall(r'<strong>[^<]*</strong>\s*<span class="hint">([^<]*)</span>', page)[0]
+        return read(re.findall(r'<strong>[^<]*</strong>\s*<span class="hint">(.*?)</span>\s*</span>\s*<span class="dc-go"',
+                               page, re.S)[0])
 
     db.set_circuit(did, "istezanje", 3, 60)                                 # a part that holds nothing: no circuit to do
     page = ci.get(base).text
-    assert '<p class="hint">Preporučeno: ponedjeljak · 4 vježbe</p>' in page and "kružn" not in page.split("<main")[1]
+    assert '<p class="hint"><span class="t">Preporučeno:</span> ponedjeljak · 4 vježbe</p>' in page and "kružn" not in page.split("<main")[1]
     assert card(ci.get(f"/treninzi/{pid}").text) == "Preporučeno: ponedjeljak · 4 vježbe"
 
     db.set_circuit(did, "trening", 3, 120)
     page = ci.get(base).text
-    assert '<p class="hint">Preporučeno: ponedjeljak · 4 vježbe · kružni trening</p>' in page
+    assert '<p class="hint"><span class="t">Preporučeno:</span> ponedjeljak · 4 vježbe · <span class="t">kružni trening</span></p>' in page
     assert card(ci.get(f"/treninzi/{pid}").text) == "Preporučeno: ponedjeljak · 4 vježbe · kružni trening"
     assert re.search(r'<h2 class="dx-cap" id="dio-trening">Glavni dio A</h2>\s*'
                      r'<p class="dx-circ">Kružno · 3 kruga · odmor između krugova 120 s</p>\s*<div class="dx-list">', page)

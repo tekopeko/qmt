@@ -2,7 +2,7 @@
 {% block title %}Quality Movement Training — Zagreb{% endblock %}
 {% import "_copy.html" as c with context %}
 {% import "_plan_price.html" as pp with context %}
-{% from "_period.html" import period_switch %}
+{% from "_period.html" import period_switch with context %}
 {% block main_class %}full{% endblock %}
 {% block head %}
 <style>
@@ -638,11 +638,13 @@
        owned: the card's plans the visitor holds, as offer() works them out
        (a tier card's only when the tier is his). #}
     {% macro offer_cta(keys, featured, owned) -%}
+      {# the owner's door: its words the plan's door's slot (app.door.*), in one
+         span with the ✓ and the →, the button being a flex box #}
       {% if owned %}<a class="btn btn-sm owned" href="{{ plan_links[owned[0]][0] }}"
-         title="Aktivna članarina">✓ {{ plan_links[owned[0]][1] }} →</a>
-      {%- elif user %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="/moja-clanarina#plan-{{ keys[0] }}">Odaberi plan →</a>
-      {%- elif signup_mode == 'open' %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="/signup" data-auth="signup">Registriraj se →</a>
-      {%- else %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="#kontakt">Javi nam se →</a>{% endif %}
+         title="Aktivna članarina"><span>✓ {{ c.t(plan_links[owned[0]][1]) }} →</span></a>
+      {%- elif user %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="/moja-clanarina#plan-{{ keys[0] }}">{{ c.t("landing.cta.choose") }}</a>
+      {%- elif signup_mode == 'open' %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="/signup" data-auth="signup">{{ c.t("landing.cta.signup") }}</a>
+      {%- else %}<a class="btn btn-sm{{ '' if featured else ' cta' }}" href="#kontakt">{{ c.t("landing.cta.contact") }}</a>{% endif %}
     {%- endmacro %}
     {# A price that is text, not a plan's: two copy slots, the amount and the
        unit beside it. A visitor gets no unit span when the unit is empty.
@@ -728,7 +730,7 @@
     {% macro offer(keys, slot, featured=false, tier=false, real=true, note=none, room=none, card=none, n=none, tier_key=none, start="year") -%}
       {%- set owned = (keys | select("in", my_plans) | list) if (tier_key is none or tier_key == my_tier) else [] -%}
       <div class="card offer{% if featured %} featured{% endif %}{% if owned %} mine{% endif %}{% if card is not none and not card.shown %} is-off{% endif %}"{% if card is not none and can_edit_copy %} data-flag="{{ slot }}.show"{% endif %}>
-        {% if featured %}<span class="featured-tag">Najpopularnije</span>{% endif %}{% if card is not none and can_edit_copy %}<div class="ed-pills"><button type="button" class="ed-flag" data-copy="{{ slot }}.show" data-label="Kartica {{ n }}: {{ GYM['show'].label }}"
+        {% if featured %}{{ c.opt("landing.offer.featured", "span", ' class="featured-tag"') }}{% endif %}{% if card is not none and can_edit_copy %}<div class="ed-pills"><button type="button" class="ed-flag" data-copy="{{ slot }}.show" data-label="Kartica {{ n }}: {{ GYM['show'].label }}"
                 aria-pressed="{{ 'true' if card.shown else 'false' }}">{{ "Prikazano" if card.shown else "Skriveno" }}</button>
           <form method="post" action="/dvorana/{{ card.id }}/obrisi" class="ed-gym-x"><button type="submit" aria-label="Obriši karticu">Obriši karticu</button></form></div>{% endif %}
         <h3>{% if card is not none %}{{ gym_field(slot, card, n, "title") }}{% else %}{{ c.t(slot ~ ".title") }}{% endif %}</h3>
@@ -736,7 +738,7 @@
         {% if card is not none %}{{ c.field_points(slot ~ ".points", card.point_items, "Kartica " ~ n ~ ": " ~ GYM["points"].label, GYM["points"]) }}{{ c.field_lines(slot ~ ".extra", card.extra_items, "Kartica " ~ n ~ ": " ~ GYM["extra"].label, GYM["extra"]) }}
         {%- else %}{{ c.points(slot ~ ".points") }}{{ c.lines(slot ~ ".extra") }}{% endif %}
         <div class="foot">
-          {% if not show_prices %}<div class="price quiet">Cijene nakon prijave</div>
+          {% if not show_prices %}<div class="price quiet">{{ c.t("landing.offer.no_prices") }}</div>
           {% else %}
             {% if real %}{% set plan = keys[0] %}
             <div class="price"{% if tier %} data-period="month"{% if start == "year" %} hidden{% endif %}{% endif %}><b>{{ c.t("price." ~ plan ~ ".amount") }}{% if copy_text("price." ~ plan ~ ".amount", copy_texts) is priced %} €{% endif %}</b>
@@ -746,7 +748,7 @@
             {% if note is not none %}<p class="price-note">{{ note }}</p>
             {%- elif room is not none %}<p class="price-note room" aria-hidden="true">{{ room }}</p>{% endif %}
           {% endif %}
-          {% if keys %}{{ offer_cta(keys, featured, owned) }}{% else %}<a class="btn btn-sm cta" href="#kontakt">Javi nam se →</a>{% endif %}
+          {% if keys %}{{ offer_cta(keys, featured, owned) }}{% else %}<a class="btn btn-sm cta" href="#kontakt">{{ c.t("landing.cta.contact") }}</a>{% endif %}
         </div>
       </div>
     {%- endmacro %}
@@ -867,8 +869,8 @@
 <section class="band" id="galerija" style="padding-top:0;">
   <div class="band-inner">
     <div class="sec-head">
-      <div class="sec-kicker">Galerija</div>
-      <h2>Iz dvorane</h2>
+      {{ c.opt("landing.gallery.kicker", "div", ' class="sec-kicker"') }}
+      <h2>{{ c.t("landing.gallery.title") }}</h2>
     </div>
     <div class="gal-grid">
       {% for img in gallery[1:] %}

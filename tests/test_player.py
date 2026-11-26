@@ -256,9 +256,21 @@ def alert(page: str) -> list[str]:
     return [unescape(x) for x in re.findall(r'<div class="alert" role="alert"><span>([^<]*)</span></div>', page)]
 
 
+def read(markup: str) -> str:
+    """Some markup as a reader reads it: tags dropped where they stand,
+    entities read, whitespace collapsed (the pages' words are copy slots'
+    spans since 25.11.2026, beside the values they name)."""
+    return " ".join(unescape(re.sub(r"<[^>]+>", "", markup)).split())
+
+
 def state_line(page: str) -> str | None:
-    m = re.search(r'<p class="dx-state">([^<]*)</p>', page)
-    return unescape(m.group(1)) if m else None
+    m = re.search(r'<p class="dx-state"[^>]*>(.*?)</p>', page, re.S)
+    return read(m.group(1)) if m else None
+
+
+def sub_lines(page: str) -> list[str]:
+    """The card's muted lines under the dose (.pl-sub), as read."""
+    return [read(x) for x in re.findall(r'<p class="pl-sub">(.*?)</p>', page, re.S)]
 
 
 def hist_lines(page: str) -> list[str]:
@@ -439,13 +451,14 @@ def test_the_set_log_is_prefilled_from_the_plan_and_the_last_log():
     assert inputs(page) == [("reps", "1", "15"), ("kg", "1", ""), ("reps", "2", "15"), ("kg", "2", ""),
                             ("reps", "3", ""), ("kg", "3", "")]
     assert '<input type="hidden" name="rows" value="3">' in page
-    assert re.findall(r'<th scope="row">(\d+)(<span class="pl-x">dodatna serija</span>)?</th>', page) == [
-        ("1", ""), ("2", ""), ("3", '<span class="pl-x">dodatna serija</span>')]
-    assert re.search(r'<thead><tr><th scope="col">Set</th><th scope="col">Pon.</th><th scope="col">Kg</th>'
+    extra = '<span class="pl-x"><span class="t">dodatna serija</span></span>'
+    assert re.findall(r'<th scope="row">(\d+)(' + re.escape(extra) + ')?</th>', page) == [("1", ""), ("2", ""), ("3", extra)]
+    assert re.search(r'<thead><tr><th scope="col"><span class="t">Set</span></th><th scope="col"><span class="t">Pon\.</span></th>'
+                     r'<th scope="col"><span class="t">Kg</span></th>'
                      r'<th scope="col" class="pl-tick" hidden>.*?</th></tr></thead>', page)
     page = ci.get(f"{d.base}/vjezba/3").text                               # Plank: 3 × 40 s
     assert inputs(page) == [("sec", "1", "40"), ("sec", "2", "40"), ("sec", "3", "40"), ("sec", "4", "")]
-    assert '<th scope="col">Sek.</th>' in page and 'name="reps_1"' not in page
+    assert '<th scope="col"><span class="t">Sek.</span></th>' in page and 'name="reps_1"' not in page
     page = ci.get(f"{d.base}/vjezba/4").text                               # nothing asked: one row
     assert inputs(page) == [("reps", "1", ""), ("kg", "1", ""), ("reps", "2", ""), ("kg", "2", "")]
     page = ci.get(f"{d.base}/vjezba/2").text                               # Goblet: never logged
@@ -495,7 +508,7 @@ def test_the_set_log_is_read_saved_and_refused():
     page = ci.get(f"{d.base}/vjezba/2").text                               # saved: its sets in the inputs
     assert inputs(page) == [("reps", "1", "10"), ("kg", "1", "2.5"), ("reps", "2", "8"), ("kg", "2", "2.5"),
                             ("reps", "3", "6"), ("kg", "3", ""), ("reps", "4", ""), ("kg", "4", "")]
-    assert '<span class="pl-saved">✓ Spremljeno</span>' in page
+    assert '<span class="pl-saved"><span class="t">✓ Spremljeno</span></span>' in page
 
     sentences = {"Neispravan broj.": [{"kg_1": "2,25"}, {"reps_1": "1000"}, {"reps_1": "-1"}, {"kg_1": "501"},
                                       {"reps_1": "1.5"}, {"kg_1": "x"}, {"kg_1": "-0,5"}],
@@ -523,7 +536,7 @@ def test_the_set_log_is_read_saved_and_refused():
     assert r.status_code == 303 and log.done_items[d.items[1]]["sets"] == [{"reps": 12, "kg": 500.0}]
     assert log.done_count == 2
     page = ci.get(f"{d.base}/vjezba/4").text
-    assert ">Spremi i završi</button>" in page
+    assert '><span class="t">Spremi i završi</span></button>' in page
     r = ci.post(f"{d.base}/vjezba/4", data={"rows": "1", "item": str(d.items[3]), "reps_1": "1"},
                 follow_redirects=False)
     assert r.headers["location"] == f"{d.base}/kraj"                       # after the last: the finish screen
@@ -562,7 +575,8 @@ def test_an_exercise_of_reps_and_seconds_logs_both():
     page = ci.get(f"{d.base}/vjezba/3").text
     head = ('<th scope="col" class="pl-tick" hidden><span aria-hidden="true">✓</span>'
             '<span class="pl-sr">Odrađena serija</span></th></tr></thead>')
-    assert f'<thead><tr><th scope="col">Set</th><th scope="col">Pon.</th><th scope="col">Sek.</th>{head}' in page
+    assert (f'<thead><tr><th scope="col"><span class="t">Set</span></th><th scope="col"><span class="t">Pon.</span></th>'
+            f'<th scope="col"><span class="t">Sek.</span></th>{head}') in page
     assert 'name="kg_' not in page and '<p class="pl-dose">3 × 5 × 30 s</p>' in page
     assert inputs(page) == [("reps", "1", "5"), ("sec", "1", "30"), ("reps", "2", "5"), ("sec", "2", "30"),
                             ("reps", "3", "5"), ("sec", "3", "30"), ("reps", "4", ""), ("sec", "4", "")]
@@ -614,14 +628,14 @@ def test_skipping_saves_nothing_and_the_last_leads_to_the_end():
     ci = client_for("ivan@test.local")
     ci.post(f"{d.base}/kreni")
     first = ci.get(f"{d.base}/vjezba/1").text
-    assert f'<a class="act act-quiet" href="{d.base}/vjezba/2">Preskoči →</a>' in first
+    assert f'<a class="act act-quiet" href="{d.base}/vjezba/2"><span class="t">Preskoči →</span></a>' in first
     assert f'href="{d.base}/vjezba/2" rel="next" aria-label="Sljedeća vježba">›</a>' in first and 'rel="prev"' not in first
     middle = ci.get(f"{d.base}/vjezba/2").text
     assert f'href="{d.base}/vjezba/1" rel="prev"' in middle and f'href="{d.base}/vjezba/3" rel="next"' in middle
     last = ci.get(f"{d.base}/vjezba/4").text
-    assert f'<a class="act act-quiet" href="{d.base}/kraj">Preskoči i završi</a>' in last and 'rel="next"' not in last
-    assert f'<a class="act act-quiet" href="{d.base}">← Natrag</a>' in last
-    assert f'<a class="act pl-end" href="{d.base}/kraj">Završi trening</a>' in last
+    assert f'<a class="act act-quiet" href="{d.base}/kraj"><span class="t">Preskoči i završi</span></a>' in last and 'rel="next"' not in last
+    assert f'<a class="act act-quiet" href="{d.base}"><span class="t">← Natrag</span></a>' in last
+    assert f'<a class="act pl-end" href="{d.base}/kraj"><span class="t">Završi trening</span></a>' in last
     assert db.open_pass(ivan, d.did).done_items == {}
 
 
@@ -647,13 +661,14 @@ def test_the_bar_the_list_and_the_dock_say_where_the_client_is():
     assert '<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span> 2 × 15</span>' in rows[0][3]
     assert '<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span></span>' in rows[3][3]
     assert "dx-ok" not in rows[1][3] and '<span class="dx-dose">3 × 10</span>' in rows[1][3]
-    assert "Odmor između serija: 60 s · 16 kg" in rows[1][3]
+    assert "Odmor između serija: 60 s · 16 kg" in read(rows[1][3])
     assert re.findall(r'<h3 class="dx-cap">([^<]*)</h3>', page) == ["Zagrijavanje", "Glavni dio A", "Istezanje"]
-    assert '<a class="pl-dock" href="#popis">Vježbe · 2/4 ✓</a>' in page
+    assert '<a class="pl-dock" href="#popis"><span><span class="t">Vježbe</span> · 2/4 ✓</span></a>' in page
     assert re.search(r'<span class="pl-timer" hidden data-started="[0-9T:+-]+"', page)
     assert '<span class="pl-chip">2/4</span>' in page and '<p class="pl-dose">3 × 10</p>' in page
-    assert '<p class="pl-sub">Odmor između serija: 60 s</p>' in page and '<p class="pl-sub">16 kg</p>' in page
-    assert "<summary>Kako se izvodi</summary>" in page and "<strong>Jedno ponavljanje:</strong> Do paralele i natrag." in page
+    assert '<p class="pl-sub"><span class="t">Odmor između serija:</span> 60 s</p>' in page and '<p class="pl-sub">16 kg</p>' in page
+    assert ('<summary><span class="t">Kako se izvodi</span></summary>' in page
+            and '<strong><span class="t">Jedno ponavljanje:</span></strong> Do paralele i natrag.' in page)
     assert "Kako se izvodi" not in ci.get(f"{d.base}/vjezba/3").text   # Plank: no rep note, no instructions
 
 
@@ -677,7 +692,7 @@ def test_an_exercise_is_swapped_for_a_similar_one_only():
     ci.post(f"{d.base}/kreni")
     log_id = stored()[0][0]
     page = ci.get(f"{d.base}/vjezba/2").text
-    assert "<summary>⇄ Zamijeni vježbu</summary>" in page
+    assert '<summary><span class="t">⇄ Zamijeni vježbu</span></summary>' in page
     assert re.findall(r'<span class="swap-name">([^<]*)(?:<span class="swap-tags">([^<]*)</span>)?</span>', page) == [
         ("Čučanj s vlastitom težinom", ""), ("Iskorak unatrag", "")]                # the alphabet's order: Č before I
     assert "Zamijeni vježbu" not in ci.get(f"{d.base}/vjezba/3").text     # Plank has no similar exercise
@@ -697,11 +712,12 @@ def test_an_exercise_is_swapped_for_a_similar_one_only():
     assert db.get_pass(log_id, ivan).swap_items == {d.items[1]: d.ex["Iskorak unatrag"]}
     page = ci.get(f"{d.base}/vjezba/2").text
     assert '<h1 class="pl-name" id="pl-name">Iskorak unatrag</h1>' in page
-    assert '<p class="pl-for">Zamjena za: Goblet čučanj</p>' in page
+    assert '<p class="pl-for"><span class="t">Zamjena za:</span> Goblet čučanj</p>' in page
     assert f'<video src="/media/{clip}" playsinline loop muted autoplay controls preload="metadata"></video>' in page
-    assert re.search(r'<input type="hidden" name="vrati" value="1">\s*<button type="submit" class="act">Vrati Goblet čučanj</button>', page)
+    assert re.search(r'<input type="hidden" name="vrati" value="1">\s*<button type="submit" class="act">'
+                     r'<span><span class="t">Vrati</span> Goblet čučanj</span></button>', page)
     assert re.findall(r'<span class="swap-name">([^<]*)', page) == ["Čučanj s vlastitom težinom"]   # the swapped one not offered again
-    assert 'Iskorak unatrag <span class="pl-swapped">(zamjena)</span>' in page
+    assert 'Iskorak unatrag <span class="pl-swapped"><span class="t">(zamjena)</span></span>' in page
     assert '<p class="pl-dose">3 × 10</p>' in page                        # the plan's dose stays
     assert ci.get(f"/media/{clip}").status_code == 200 and ca.get(f"/media/{clip}").status_code == 403
 
@@ -794,23 +810,23 @@ def test_the_finish_takes_the_osvrt_and_the_servers_clock():
     d = build_day()
     ci = client_for("ivan@test.local")
     page = ci.get(d.base).text
-    assert state_line(page) == "Još nije odrađen." and ">Kreni</button>" in page
+    assert state_line(page) == "Još nije odrađen." and '<span class="t">Kreni</span></button>' in page
     ci.post(f"{d.base}/kreni")
     log_id = stored()[0][0]
     save(ivan, log_id, d, 1, [{"reps": 15, "kg": 0.0}])
     with db.engine.begin() as conn:                                        # it started 38 minutes 10 s ago
         conn.execute(sa_text("UPDATE workout_logs SET started_at = now() - interval '38 minutes 10 seconds'"))
     page = ci.get(f"{d.base}/kraj").text
-    assert '<p class="kr-eyebrow">Trening odrađen</p>' in page and "<h1>Trening 1 · Cijelo tijelo</h1>" in page
+    assert '<p class="kr-eyebrow"><span class="t">Trening odrađen</span></p>' in page and "<h1>Trening 1 · Cijelo tijelo</h1>" in page
     assert '<p class="kr-sum">1 od 4 vježbe · 38 min</p>' in page
     assert len(re.findall(r'<input type="radio" name="effort" value="(\d+)" required>', page)) == 10
     assert re.findall(r'<input type="radio" name="feeling" value="(\w+)">', page) == ["slabo", "dobro", "odlicno"]
-    assert f'<a class="act act-quiet" href="{d.base}/vjezba/4">Natrag na vježbe</a>' in page
-    assert 'data-confirm-title="Odbaciti započeti trening?"' in page and ">Odbaci trening</button>" in page
+    assert f'<a class="act act-quiet" href="{d.base}/vjezba/4"><span class="t">Natrag na vježbe</span></a>' in page
+    assert 'data-confirm-title="Odbaciti započeti trening?"' in page and '<span class="t">Odbaci trening</span></button>' in page
     assert 'data-confirm="Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno."' in page
     page = ci.get(d.base).text
-    assert state_line(page) == "U tijeku — nastavi gdje si stao/la." and ">Nastavi</button>" in page
-    assert ">Odbaci započeti trening</button>" in page
+    assert state_line(page) == "U tijeku — nastavi gdje si stao/la." and '<span class="t">Nastavi</span></button>' in page
+    assert '<span class="t">Odbaci započeti trening</span></button>' in page
     assert 'data-confirm="Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno."' in page
 
     for form in ({"feeling": "dobro", "note": "x"}, {"effort": "0"}, {"effort": "11"}, {"effort": "abc"},
@@ -837,7 +853,7 @@ def test_the_finish_takes_the_osvrt_and_the_servers_clock():
     r = ci.post(f"{d.base}/kraj", data={"effort": "3"}, follow_redirects=False)
     assert r.headers["location"] == d.base and db.get_pass(log_id, ivan).effort == 7
     page = ci.get(r.headers["location"] + "?ok=x").text
-    assert state_line(page) == "Odrađen 1× · zadnji put danas" and ">Kreni</button>" in page
+    assert state_line(page) == "Odrađen 1× · zadnji put danas" and '<span class="t">Kreni</span></button>' in page
     assert db.finish_pass(987654, ivan, 5, None, "") is False
     with pytest.raises(ValueError, match="Neispravan osvrt."):
         db.finish_pass(log_id, ivan, None, None, "")
@@ -899,7 +915,7 @@ def test_the_day_page_lists_the_last_five_passes_with_their_sets():
     first = page.split('<li class="card hist-row">')[1]
     assert sets_lines(first) == ["Čučanj s vlastitom težinom: 15 · 15 × 2,5 kg",
                                  "Goblet čučanj: 10 × 20 kg · 8 × 20 kg", "Plank: 40 s · 40 s"]
-    assert "<summary>Serije</summary>" in first
+    assert '<summary><span class="t">Serije</span></summary>' in first
     assert state_line(page) == f"Odrađen 7× · zadnji put {day.day}.{day.month}." + (
         f"{day.year}." if day.year != config.today().year else "")
     assert [w.id for w in db.passes(ivan, d.did, limit=1)] == [newest]
@@ -925,13 +941,15 @@ def test_the_programme_page_says_each_days_state(monkeypatch):
     db.start_pass(ivan, p, day3)
     age(db.start_pass(ivan, p, db.get_day(d4)).id, 3)
     page = ci.get(f"/treninzi/{d.pid}").text
-    cards = re.findall(r'<strong>([^<]*)</strong>\s*<span class="hint">([^<]*)</span>', page)
+    cards = [(day, read(hint)) for day, hint in re.findall(
+        r'<strong>([^<]*)</strong>\s*<span class="hint">(.*?)</span>\s*</span>\s*<span class="dc-go"', page, re.S)]
     assert cards == [("Trening 1 · Cijelo tijelo", "Preporučeno: ponedjeljak · 4 vježbe · odrađen 2×"),
                      ("Trening 2", "0 vježbi"), ("Trening 3", "1 vježba · u tijeku"),
                      ("Trening 4", "1 vježba · nedovršen")]
     assert db.day_states(ivan, [d.did, d2, d3])[d.did]["count"] == 2 and d2 not in db.day_states(ivan, [d2])
-    assert re.findall(r'<span class="hint">([^<]*)</span>', client_for("ana@test.local").get(
-        f"/treninzi/{build_day('Njen', 'srednja', 'gornji').pid}").text) == ["Preporučeno: ponedjeljak · 4 vježbe"]
+    assert [read(h) for h in re.findall(r'<span class="hint">(.*?)</span>\s*</span>\s*<span class="dc-go"', client_for(
+        "ana@test.local").get(f"/treninzi/{build_day('Njen', 'srednja', 'gornji').pid}").text, re.S)] == [
+        "Preporučeno: ponedjeljak · 4 vježbe"]
 
 
 def attended_session(uid: int, starts: datetime) -> int:
@@ -1040,7 +1058,7 @@ def test_a_pass_keeps_an_exercise_deleted_from_the_library():
     assert '<div class="hint le-sub">3 od 3 vježbe · 38 min</div>' in row and "Plank: 40 s · 40 s" in sets_lines(row)
     assert re.search(r'<p class="kr-sum">1 od 3 vježbe · \d+ min</p>', ci.get(f"{d.base}/kraj").text)
     page = ci.get(f"{d.base}/vjezba/2").text
-    assert '<a class="pl-dock" href="#popis">Vježbe · 1/3 ✓</a>' in page and '<span class="pl-chip">2/3</span>' in page
+    assert '<a class="pl-dock" href="#popis"><span><span class="t">Vježbe</span> · 1/3 ✓</span></a>' in page and '<span class="pl-chip">2/3</span>' in page
 
     db.delete_day(d.did)                                                   # the day gone: every entry counts
     assert '<div class="hint le-sub">4 vježbe · 38 min</div>' in entry(ci.get("/karton").text, done_id)
@@ -1113,7 +1131,7 @@ def test_a_k_past_the_days_count_leads_to_its_last_exercise():
         assert r.status_code == 303 and r.headers["location"] == f"{d.base}/kraj", r.request.url
     page = ci.get(f"{d.base}/kraj").text
     assert re.search(r'<p class="kr-sum">0 vježbi · \d+ min</p>', page)
-    assert f'<a class="act act-quiet" href="{d.base}">Natrag na vježbe</a>' in page
+    assert f'<a class="act act-quiet" href="{d.base}"><span class="t">Natrag na vježbe</span></a>' in page
     assert db.get_pass(log_id, ivan).in_progress
 
 
@@ -1138,8 +1156,8 @@ def test_a_pass_open_on_a_day_left_empty_keeps_its_way_out(monkeypatch):
         db.delete_exercise(d.ex[name])
     page = ci.get(d.base).text
     assert "Trening još nema vježbi." in page and state_line(page) == "U tijeku — nastavi gdje si stao/la."
-    assert ">Nastavi</button>" in page and ">Kreni</button>" not in page
-    assert ">Odbaci započeti trening</button>" in page
+    assert '<span class="t">Nastavi</span></button>' in page and '<span class="t">Kreni</span></button>' not in page
+    assert '<span class="t">Odbaci započeti trening</span></button>' in page
     r = ci.post(f"{d.base}/kreni", follow_redirects=False)                # Nastavi: nothing left but the end
     assert r.status_code == 303 and r.headers["location"] == f"{d.base}/kraj" and len(stored()) == 1
     assert re.search(r'<p class="kr-sum">2 vježbe · \d+ min</p>', ci.get(f"{d.base}/kraj").text)
@@ -1150,8 +1168,8 @@ def test_a_pass_open_on_a_day_left_empty_keeps_its_way_out(monkeypatch):
     when = "danas" if began == config.today() else "jučer"
     page = ci.get(d.base).text
     assert state_line(page) == f"Nedovršen trening od {when} (2 vježbe) — nastavak nije moguć: završi ga ili ga odbaci."
-    assert f'<div class="go"><a class="btn" href="{d.base}/kraj">Završi trening</a></div>' in page
-    assert ">Odbaci započeti trening</button>" in page and ">Nastavi</button>" not in page
+    assert f'<div class="go"><a class="btn" href="{d.base}/kraj"><span class="t">Završi trening</span></a></div>' in page
+    assert '<span class="t">Odbaci započeti trening</span></button>' in page and '<span class="t">Nastavi</span></button>' not in page
     assert '<p class="kr-sum">2 vježbe · 25 min</p>' in ci.get(f"{d.base}/kraj").text
     ci.post(f"{d.base}/kraj", data={"effort": "6"})
     page = ci.get(d.base).text
@@ -1240,11 +1258,11 @@ def test_the_rest_after_an_exercise_comes_with_the_next_one():
     assert [rest_between(k) for k in (1, 2, 3, 4)] == ["30", "60", None, None]
 
     page = ci.get(f"{d.base}/vjezba/2").text
-    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', page) == ["Odmor između serija: 60 s · Odmor nakon vježbe: 90 s", "16 kg"]
-    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', ci.get(f"{d.base}/vjezba/4").text) == ["Odmor nakon vježbe: 120 s"]
-    assert re.findall(r'<p class="pl-sub">([^<]*)</p>', ci.get(f"{d.base}/vjezba/3").text) == [
+    assert sub_lines(page) == ["Odmor između serija: 60 s · Odmor nakon vježbe: 90 s", "16 kg"]
+    assert sub_lines(ci.get(f"{d.base}/vjezba/4").text) == ["Odmor nakon vježbe: 120 s"]
+    assert sub_lines(ci.get(f"{d.base}/vjezba/3").text) == [
         "Odmor između serija: 0 s"]                                         # worded as set; its timer: none
-    subs = re.findall(r'<span class="dx-sub">([^<]*)</span>', page)
+    subs = [read(x) for x in re.findall(r'<span class="dx-sub">(.*?)</span>\s*</a>', page, re.S)]   # the list's rows
     assert subs == ["Odmor između serija: 30 s · Odmor nakon vježbe: 0 s",   # a 0 is worded, as rest_text words one
                     "Odmor između serija: 60 s · Odmor nakon vježbe: 90 s · 16 kg",
                     "Odmor između serija: 0 s", "Odmor nakon vježbe: 120 s"]
@@ -1264,14 +1282,15 @@ def test_the_set_log_has_a_tick_per_set_and_the_page_a_rest_bar():
     page = ci.get(f"{d.base}/vjezba/2").text                               # Goblet: 3 sets and the extra one
     head = ('<th scope="col" class="pl-tick" hidden><span aria-hidden="true">✓</span>'
             '<span class="pl-sr">Odrađena serija</span></th></tr></thead>')
-    assert f'<th scope="col">Pon.</th><th scope="col">Kg</th>{head}' in page
+    assert f'<th scope="col"><span class="t">Pon.</span></th><th scope="col"><span class="t">Kg</span></th>{head}' in page
     assert re.findall(r'<td class="pl-tick" hidden><button type="button" class="pl-done" aria-pressed="false" '
                       r'aria-label="Serija (\d+) odrađena">✓</button></td>\s*</tr>', page) == ["1", "2", "3", "4"]
-    assert f'<th scope="col">Set</th><th scope="col">Sek.</th>{head}' in ci.get(f"{d.base}/vjezba/3").text
+    assert (f'<th scope="col"><span class="t">Set</span></th><th scope="col"><span class="t">Sek.</span></th>{head}'
+            in ci.get(f"{d.base}/vjezba/3").text)
     assert re.search(r'<div class="pl-rest" id="plRest" role="timer" hidden>\s*<span class="pl-rest-n">'
-                     r'<span class="pl-rest-h">Odmor</span><span class="pl-rest-t">0:00</span></span>\s*'
+                     r'<span class="pl-rest-h"><span class="t">Odmor</span></span><span class="pl-rest-t">0:00</span></span>\s*'
                      r'<span class="pl-rest-track" aria-hidden="true"><span class="pl-rest-fill"></span></span>\s*'
-                     r'<button type="button" class="pl-rest-skip">Preskoči odmor</button>', page)
+                     r'<button type="button" class="pl-rest-skip"><span class="t">Preskoči odmor</span></button>', page)
 
 
 # ---------- leaving the pass, a pass left open (31.10.2026) ----------
@@ -1300,10 +1319,10 @@ def test_the_player_and_the_finish_screen_ask_before_leaving():
         dlg = page.split('<dialog id="leaveDlg"')[1].split("</dialog>")[0]
         assert dlg.startswith(f' class="fb-modal" aria-labelledby="leaveTitle" data-pass="{d.base}" data-mode="{mode}">')
         assert '<form method="dialog" class="fb-x"><button type="submit" aria-label="Zatvori">✕</button></form>' in dlg
-        assert '<h2 id="leaveTitle">Završiti trening?</h2>' in dlg
-        assert re.findall(r'<p class="fb-lead">([^<]*)</p>', dlg) == [leads[mode]]
-        assert re.search(r'<p class="fb-note" id="leaveErr"[^>]* hidden>Nije uspjelo — pokušaj ponovno.</p>', dlg)
-        assert re.findall(r'<button type="button" class="([^"]+)" id="(leave\w+)"( autofocus)?>([^<]*)</button>', dlg) == [
+        assert '<h2 id="leaveTitle"><span class="t">Završiti trening?</span></h2>' in dlg
+        assert [read(x) for x in re.findall(r'<p class="fb-lead">(.*?)</p>', dlg, re.S)] == [leads[mode]]
+        assert re.search(r'<p class="fb-note" id="leaveErr"[^>]* hidden><span class="t">Nije uspjelo — pokušaj ponovno.</span></p>', dlg)
+        assert re.findall(r'<button type="button" class="([^"]+)" id="(leave\w+)"( autofocus)?><span class="t">([^<]*)</span></button>', dlg) == [
             ("btn-ghost btn-sm", "leaveDrop", "", "Odbaci trening"), ("btn btn-sm", "leaveGo", " autofocus", primary)]
     assert "leaveDlg" not in ci.get(d.base).text
 
@@ -1358,19 +1377,19 @@ def test_a_stale_pass_is_finished_or_dropped_never_continued(monkeypatch):
     when = "danas" if began == config.today() else "jučer"
     page = ci.get(d.base).text
     assert state_line(page) == f"Nedovršen trening od {when} (2 od 4 vježbe) — nastavak nije moguć: završi ga ili ga odbaci."
-    assert ">Nastavi</button>" not in page and f'action="{d.base}/kreni"' not in page
-    assert f'<div class="go"><a class="btn" href="{kraj}">Završi trening</a></div>' in page
-    assert ">Odbaci započeti trening</button>" in page
+    assert '<span class="t">Nastavi</span></button>' not in page and f'action="{d.base}/kreni"' not in page
+    assert f'<div class="go"><a class="btn" href="{kraj}"><span class="t">Završi trening</span></a></div>' in page
+    assert '<span class="t">Odbaci započeti trening</span></button>' in page
     assert page.count('<span class="dx-ok" role="img" aria-label="spremljeno">✓</span>') == 2   # what it saved, ticked
     page = ci.get(f"/treninzi/{d.pid}").text
-    assert "4 vježbe · nedovršen</span>" in page and "· u tijeku</span>" not in page
+    assert '4 vježbe · <span class="t">nedovršen</span></span>' in page and '· <span class="t">u tijeku</span>' not in page
 
     page = ci.get(kraj).text
-    assert '<p class="kr-eyebrow">Nedovršen trening</p>' in page and "Trening odrađen</p>" not in page
+    assert '<p class="kr-eyebrow"><span class="t">Nedovršen trening</span></p>' in page and '<span class="t">Trening odrađen</span>' not in page
     assert '<p class="kr-sum">2 od 4 vježbe · 25 min</p>' in page
     assert (f'<p class="kr-stale">Započet {when} i nije završen — nastavak više nije moguć. '
-            f'Spremi osvrt ili trening odbaci.</p>') in page
-    assert "Natrag na vježbe" not in page and ">Odbaci trening</button>" in page and 'data-mode="kraj"' in page
+            f'<span class="t">Spremi osvrt ili trening odbaci.</span></p>') in page
+    assert "Natrag na vježbe" not in page and '<span class="t">Odbaci trening</span></button>' in page and 'data-mode="kraj"' in page
 
     r = ci.post(kraj, data={"effort": "6"}, follow_redirects=False)
     assert location(r) == f"{d.base}?ok=Trening je spremljen."
@@ -1380,7 +1399,7 @@ def test_a_stale_pass_is_finished_or_dropped_never_continued(monkeypatch):
     page = ci.get(d.base).text
     assert hist_lines(page)[0] == (f"{began.day}.{began.month}." + (f"{began.year}." if began.year != config.today().year else "")
                                    + " · 2/4 vježbe · 25 min · napor 6")
-    assert state_line(page).startswith("Odrađen 1×") and ">Kreni</button>" in page
+    assert state_line(page).startswith("Odrađen 1×") and '<span class="t">Kreni</span></button>' in page
 
 
 def test_staleness_is_counted_from_the_last_activity(monkeypatch):
@@ -1539,11 +1558,12 @@ def test_a_circuit_round_is_one_screen():
     clip = db.exercise(c.ex["Goblet čučanj"]).video
     ci.post(f"{c.base}/kreni")
     page = ci.get(f"{c.base}/vjezba/2").text
-    assert re.search(r'<p class="pl-eyebrow"><span>Kružni dio</span> <span class="pl-chip">2/5</span>\s*'
+    assert re.search(r'<p class="pl-eyebrow"><span><span class="t">Kružni dio</span></span> <span class="pl-chip">2/5</span>\s*'
                      r'<span class="pl-round">Krug 1 od 3</span></p>', page)
     assert '<h1 class="pl-name" id="pl-name">Glavni dio A</h1>' in page
     assert "<title>Glavni dio A — Trening 1 · Kružni — QMT</title>" in page
-    assert '<p class="cr-intro">Vježbe idu jedna za drugom, bez pauze. Odmor nakon kruga: 120 s.</p>' in page
+    assert ('<p class="cr-intro"><span class="t">Vježbe idu jedna za drugom, bez pauze.</span> '
+            '<span class="t">Odmor nakon kruga:</span> 120 s.</p>') in page
     assert 'id="plStage"' not in page and 'class="pl-nav' not in page and 'id="plAdd"' not in page
     assert 'class="pl-tick"' not in page and "Zamijeni vježbu" not in page and "data-rest" not in form_tag(page)
     assert 'name="rows"' not in page and 'name="item"' not in page
@@ -1552,19 +1572,20 @@ def test_a_circuit_round_is_one_screen():
     assert [r.split('"')[0] for r in rows] == [str(c.goblet), str(c.plank)]
     assert f'<summary><span class="cr-name" id="cr-{c.goblet}-n">Goblet čučanj</span></summary>' in rows[0]
     assert f'<video src="/media/{clip}" controls playsinline preload="none"></video>' in rows[0]
-    assert "<strong>Jedno ponavljanje:</strong> Do paralele i natrag." in rows[0] and '<p class="pre">Pete na podu.</p>' in rows[0]
+    assert ('<strong><span class="t">Jedno ponavljanje:</span></strong> Do paralele i natrag.' in rows[0]
+            and '<p class="pre">Pete na podu.</p>' in rows[0])
     assert "Vježba još nema videa." in rows[1]
     assert re.findall(r'<p class="cr-dose">([^<]*)</p>', rows[0]) == ["10 ponavljanja · 16 kg", "pete na podu"]
     assert re.findall(r'<p class="cr-dose">([^<]*)</p>', rows[1]) == ["40 s"]
-    labels = r'<label id="cr-\d+-(\w+)-l" for="cr-\d+-\w+">([^<]*)</label>'
+    labels = r'<label id="cr-\d+-(\w+)-l" for="cr-\d+-\w+"><span class="t">([^<]*)</span></label>'
     assert re.findall(labels, rows[0]) == [("reps", "Pon."), ("kg", "Kg")] and re.findall(labels, rows[1]) == [("sec", "Sek.")]
     assert f'aria-labelledby="cr-{c.goblet}-n cr-{c.goblet}-kg-l"' in rows[0]
     assert inputs(page) == [("reps", str(c.goblet), "10"), ("kg", str(c.goblet), "16"), ("sec", str(c.plank), "40")]
-    assert ('<p class="pl-rate-h" id="pl-rate-h">Koliko je bio težak ovaj krug? <span class="pl-opt">(neobavezno)</span>'
-            '</p>') in page
+    assert ('<p class="pl-rate-h" id="pl-rate-h"><span class="t">Koliko je bio težak ovaj krug?</span> '
+            '<span class="pl-opt"><span class="t">(neobavezno)</span></span></p>') in page
     assert re.findall(r'<input type="radio" name="effort" value="(\d+)">', page) == [str(n) for n in range(1, 11)]
-    assert '<button type="submit" class="btn pl-save">Krug 1 odrađen</button>' in page
-    assert f'<a class="act act-quiet" href="{c.base}/vjezba/3">Preskoči →</a>' in page
+    assert '<button type="submit" class="btn pl-save"><span>Krug 1 <span class="t">odrađen</span></span></button>' in page
+    assert f'<a class="act act-quiet" href="{c.base}/vjezba/3"><span class="t">Preskoči →</span></a>' in page
     r = ci.post(f"{c.base}/vjezba/2/zamjena", data={"exercise_id": str(c.ex["Iskorak unatrag"])}, follow_redirects=False)
     assert r.headers["location"] == f"{c.base}/vjezba/2" and db.open_pass(ivan, c.did).swap_items == {}
 
@@ -1580,16 +1601,16 @@ def test_a_circuit_round_is_one_screen():
                                                           f"sec_{c.plank}": "40"}), follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == f"{c.base}/vjezba/3?odmor=120"
     page = ci.get(f"{c.base}/vjezba/3").text                               # round 2: this pass's round 1 weight
-    assert "Krug 2 od 3" in page and '<button type="submit" class="btn pl-save">Krug 2 odrađen</button>' in page
+    assert "Krug 2 od 3" in page and '<button type="submit" class="btn pl-save"><span>Krug 2 <span class="t">odrađen</span></span></button>' in page
     assert inputs(page) == [("reps", str(c.goblet), "10"), ("kg", str(c.goblet), "20"), ("sec", str(c.plank), "40")]
     page = ci.get(f"{c.base}/vjezba/2").text                               # round 1 saved: as saved
     assert inputs(page) == [("reps", str(c.goblet), "10"), ("kg", str(c.goblet), "20"), ("sec", str(c.plank), "40")]
-    assert '<span class="pl-saved">✓ Spremljeno</span>' in page
+    assert '<span class="pl-saved"><span class="t">✓ Spremljeno</span></span>' in page
 
     db.delete_day_item(c.skl)                                               # the circuit last: its last round ends the day
     page = ci.get(f"{c.base}/vjezba/4").text
-    assert '<button type="submit" class="btn pl-save">Krug 3 odrađen — završi</button>' in page
-    assert f'<a class="act act-quiet" href="{c.base}/kraj">Preskoči i završi</a>' in page
+    assert '<button type="submit" class="btn pl-save"><span>Krug 3 <span class="t">odrađen — završi</span></span></button>' in page
+    assert f'<a class="act act-quiet" href="{c.base}/kraj"><span class="t">Preskoči i završi</span></a>' in page
     r = ci.post(f"{c.base}/vjezba/4", data=round_form(3, {f"sec_{c.plank}": "30"}), follow_redirects=False)
     assert r.headers["location"] == f"{c.base}/kraj"                       # never a rest to the finish screen
 
@@ -1641,7 +1662,7 @@ def test_a_circuit_is_walked_a_round_at_a_time():
         r = post(4, round_form(3, values, effort="8"))
         assert r.status_code == 400 and alert(r.text) == [sentence] and "Krug 3 od 3" in r.text, sentence
         assert [v for _, _, v in inputs(r.text)] == kept, sentence
-        assert re.search(r'<h1 class="pl-name" id="pl-name">Glavni dio A</h1>\s*<p class="cr-intro">[^<]*</p>\s*'
+        assert re.search(r'<h1 class="pl-name" id="pl-name">Glavni dio A</h1>\s*<p class="cr-intro">.*?</p>\s*'
                          r'<div class="alert" role="alert">', r.text)
         assert 'value="8" checked>' in r.text                                # the rating chosen, kept
     for k, data in ((4, round_form(3, full, part="trening_b")), (4, round_form(2, full)), (4, {**full, "round": "3"}),
@@ -1670,10 +1691,11 @@ def test_a_circuit_is_walked_a_round_at_a_time():
             '10 ponavljanja · 16 kg</span>') in rows[1][3]
     assert '<span class="dx-dose">40 s</span>' in rows[2][3] and "dx-rounds" not in rows[2][3]
     assert '<span class="dx-sub">pete na podu</span>' in rows[1][3] and "dx-sub" not in rows[2][3]   # never a rest
-    assert '<span class="dx-sub">Odmor između serija: 30 s · Odmor nakon vježbe: 20 s</span>' in rows[0][3]
-    assert re.findall(r'<h3 class="dx-cap">([^<]*)</h3>', page) == [
+    assert ('<span class="dx-sub"><span class="t">Odmor između serija:</span> 30 s · '
+            '<span class="t">Odmor nakon vježbe:</span> 20 s</span>') in rows[0][3]
+    assert [read(h) for h in re.findall(r'<h3 class="dx-cap">(.*?)</h3>', page)] == [
         "Zagrijavanje", "Glavni dio A · kružno · 3 kruga", "Glavni dio B"]
-    assert '<a class="pl-dock" href="#popis">Vježbe · 2/4 ✓</a>' in page
+    assert '<a class="pl-dock" href="#popis"><span><span class="t">Vježbe</span> · 2/4 ✓</span></a>' in page
     assert ('<div class="pl-segs" aria-hidden="true"><span class="done"></span><span class="done"></span>'
             '<span class="done"></span><span class="cur"></span><span></span></div>') in page
 
@@ -1684,7 +1706,7 @@ def test_a_circuit_is_walked_a_round_at_a_time():
     assert rows[1][1] == f"{c.base}/vjezba/2"                                # every round saved: the part's first
     assert '<span class="dx-ok" role="img" aria-label="spremljeno">✓</span> 10 ponavljanja · 16 kg' in rows[1][3]
     assert '<span class="dx-rounds" role="img" aria-label="spremljeno 1 od 3 kruga">1/3</span> 40 s' in rows[2][3]
-    assert '<a class="pl-dock" href="#popis">Vježbe · 3/4 ✓</a>' in page
+    assert '<a class="pl-dock" href="#popis"><span><span class="t">Vježbe</span> · 3/4 ✓</span></a>' in page
     assert re.search(r'<p class="kr-sum">3 od 4 vježbe · \d+ min</p>', ci.get(f"{c.base}/kraj").text)
     assert post(5, {"rows": "1", "item": str(c.skl), "reps_1": "10"}).headers["location"] == f"{c.base}/kraj"
     ci.post(f"{c.base}/kraj", data={"effort": "7"})
@@ -1707,7 +1729,7 @@ def test_the_rest_after_a_round_is_the_circuits():
     data = round_form(1, {f"sec_{c.plank}": "40"})
 
     def intro() -> str:
-        return re.search(r'<p class="cr-intro">([^<]*)</p>', ci.get(f"{c.base}/vjezba/2").text).group(1)
+        return read(re.search(r'<p class="cr-intro">(.*?)</p>', ci.get(f"{c.base}/vjezba/2").text, re.S).group(1))
 
     assert intro() == "Vježbe idu jedna za drugom, bez pauze."
     assert ci.post(f"{c.base}/vjezba/2", data=data, follow_redirects=False).headers["location"] == f"{c.base}/vjezba/3"
@@ -1867,8 +1889,8 @@ def test_an_exercise_is_rated_with_its_save():
     ci.post(f"{d.base}/kreni")
     log_id = stored()[0][0]
     page = ci.get(f"{d.base}/vjezba/2").text
-    assert ('<p class="pl-rate-h" id="pl-rate-h">Koliko je bilo teško? <span class="pl-opt">(neobavezno)</span></p>'
-            in page)
+    assert ('<p class="pl-rate-h" id="pl-rate-h"><span class="t">Koliko je bilo teško?</span> '
+            '<span class="pl-opt"><span class="t">(neobavezno)</span></span></p>' in page)
     assert rate_rows(page) == [str(n) for n in range(1, 11)] and 'role="radiogroup" aria-labelledby="pl-rate-h"' in page
     log_form = page.split('id="plLog"')[1].split("</form>")[0]
     assert log_form.index("</table>") < log_form.index('class="pl-rate"') < log_form.index('class="btn pl-save"')

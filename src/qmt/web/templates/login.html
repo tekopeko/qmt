@@ -1,18 +1,19 @@
 {% extends "base.html" %}
+{% import "_copy.html" as c with context %}
 {% block title %}Prijava — QMT{% endblock %}
 {% block content %}
 <div style="max-width:400px; margin: 8vh auto 0;">
-  <h1>Prijava</h1>
-  <p class="hint" style="margin-bottom:22px;">Quality Movement Training — rezervacija termina.</p>
+  <h1>{{ c.t("auth.login.title") }}</h1>
+  {{ c.opt("auth.login.lead", "p", ' class="hint" style="margin-bottom:22px;"') }}
   <form method="post" action="/login">
     <input type="hidden" name="next" value="{{ next or '/' }}">
-    <div class="field"><label for="email">Email</label><input id="email" type="email" name="email" autocomplete="email" required autofocus></div>
-    <div class="field"><label for="password">Lozinka</label><input id="password" type="password" name="password" autocomplete="current-password" required></div>
-    <button type="submit" class="btn-signal" style="width:100%; padding:12px;">Prijavi se</button>
+    <div class="field"><label for="email">{{ c.t("auth.email") }}</label><input id="email" type="email" name="email" autocomplete="email" required autofocus></div>
+    <div class="field"><label for="password">{{ c.t("auth.password") }}</label><input id="password" type="password" name="password" autocomplete="current-password" required></div>
+    <button type="submit" class="btn-signal" style="width:100%; padding:12px;">{{ c.t("auth.login.submit") }}</button>
   </form>
   <p class="hint" style="margin-top:16px;">
-    {% if signup_mode in ('invite', 'open') %}Nemaš račun? <a class="tlink" href="/signup">Registriraj se</a>{% if not signup_open %} — samo uz poziv trenera{% endif %}.
-    {% else %}Registracija novih članova je trenutno zatvorena.{% endif %}
-    <br><a class="tlink" href="/forgot">Zaboravljena lozinka?</a></p>
+    {% if signup_mode in ('invite', 'open') %}{{ c.t("auth.login.no_account") }} <a class="tlink" href="/signup">{{ c.t("auth.login.signup_link") }}</a>{% if not signup_open %} {{ c.t("auth.login.invite_only") }}{% endif %}.
+    {% else %}{{ c.t("auth.closed") }}{% endif %}
+    <br><a class="tlink" href="/forgot">{{ c.t("auth.forgot_link") }}</a></p>
 </div>
 {% endblock %}

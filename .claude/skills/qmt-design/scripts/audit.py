@@ -71,8 +71,9 @@ CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?vie
 # exercises and a rep note there. "dan:1:uredi" is the editor of the day the
 # client's walk found as "dan:1" (staff's /treninzi is the table of every
 # programme, so the owner's walk takes the path the client's found).
+# /tekstovi (25.11.2026): every text of the app on one page, Admin ▾'s.
 OWNER = ["/", "/raspored", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi",
-         "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi", "/profil"]
+         "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi", "/profil", "/tekstovi"]
 
 FIND_EXERCISE = """n => { const row = [...document.querySelectorAll('a.ex-row')]
   .find(a => (a.querySelector('.ex-name') || {}).textContent === n); return row ? row.getAttribute('href') : null; }"""

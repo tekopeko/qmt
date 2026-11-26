@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_copy.html" as c with context %}
 {% block title %}Raspored — QMT{% endblock %}
 {% block head %}
 <style>
@@ -6,7 +7,9 @@
                gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
   .week-head h1 { font-size: clamp(1.5rem, 3.5vw, 2.1rem); }
   .week-head .range { color: var(--muted); font-weight: 600; font-size: .95rem; }
-  .week-nav { display: flex; gap: 8px; }
+  /* wraps onto a second line when long labels do not fit one (25.11.2026:
+     their words are copy slots); the page's own fit one at 360px */
+  .week-nav { display: flex; flex-wrap: wrap; gap: 8px; }
 
   /* 7 day columns on desktop; a single scrolling list on phones. */
   .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
@@ -34,7 +37,10 @@
     background: transparent; position: relative;
   }
   .sess:first-of-type { border-top: none; }
-  .sess .t { font: 800 .92rem var(--font-body); }
+  /* the time, the card's first child: `>`, so a text's span.t inside the
+     card (its state, a button's words: copy slots since 25.11.2026) is no
+     time */
+  .sess > .t { font: 800 .92rem var(--font-body); }
   .sess .name { font-size: .84rem; font-weight: 600; margin: 1px 0 5px; }
   .sess .cap { font-size: .76rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .sess.mine { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-dim); }
@@ -51,6 +57,17 @@
      AA): the chip takes the card's base colour there, the ink stays */
   .sess.mine .tag-11 { background: var(--surface); }
   .sess form { margin-top: 7px; }
+  /* a card's button's words are copy slots (25.11.2026). With its own
+     words a button keeps its width: from 861px to 1000px a column is so
+     narrow that "Rezerviraj" reaches into the card's right padding, as it
+     always did, rather than break. So its form is as wide as the button
+     needs, up to that padding (the ✕'s form, placed on its own, not), a
+     word breaks only when it does not fit (not anywhere), and a long text
+     wraps inside the form */
+  .sess > form:not(.unbook) { width: fit-content; min-width: 100%; max-width: calc(100% + 11px); }
+  .sess form button { max-width: 100%; }
+  .sess form button > span { min-width: 0; }
+  .sess form button span.t { overflow-wrap: break-word; }
   .sess .none { color: var(--muted); font-size: .8rem; padding: 12px 11px; }
 
   .mine-list { margin-top: 34px; }
@@ -83,7 +100,7 @@
      content box (6px inset + 32px − the card's 11px padding). Not more: 36px
      wrapped "08:00–09:00" (98px) in the narrowest list card, 148px wide just
      above 860px. A time range never breaks. */
-  .sess:has(> .unbook) .t { padding-right: 28px; white-space: nowrap; }
+  .sess:has(> .unbook) > .t { padding-right: 28px; white-space: nowrap; }
   /* a termin the trainer canceled stays faded, but its ✕ is the one thing the
      card still offers: fade the content, not the control (at the card's .45 the
      muted ✕ fell to 1.9–2.3:1). The list's cards are untinted, so this looks
@@ -179,7 +196,9 @@
     .sess-row .rn { flex: 0 1 auto; min-width: 0; font-weight: 600; overflow: hidden; word-break: break-all;
                     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
     .sess-row .tag-11 { flex: none; margin-left: -6px; }
-    .sess-row .rs { flex: none; margin-left: auto; display: flex; align-items: center; gap: 6px;
+    /* 40% of the row at most: a long state's word (a copy slot) wraps
+       there, and the title keeps a few letters beside it */
+    .sess-row .rs { flex: none; max-width: 40%; margin-left: auto; display: flex; align-items: center; gap: 6px;
                     font-size: .8rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
     .sess-row .rs .ok { color: var(--good); font-weight: 700; }
     .sess-row .rs .no { color: var(--danger); font-weight: 700; }
@@ -205,7 +224,8 @@
     .mine-week .sess > .t { flex: none; padding-right: 0; font-size: .9rem; font-weight: 700;
                             font-variant-numeric: tabular-nums; }
     .mine-week .sess > .name { flex: 1 1 0; min-width: 0; margin: 0; font-size: .9rem; overflow-wrap: anywhere; }
-    .mine-week .sess > .cap { flex: none; }
+    /* the row's width at most: its words are copy slots (25.11.2026) */
+    .mine-week .sess > .cap { flex: none; max-width: 100%; }
     .mine-week .sess > .cap:last-child { flex-basis: 100%; padding-bottom: 2px; }
     .mine-week .sess .unbook { position: static; flex: none; }
   }
@@ -247,8 +267,9 @@
      own line: in .week-head it takes the whole width under the week
      buttons. The desktop keeps the week grid and never offers the month. */
   .view-row { flex: 0 0 100%; }
-  .view-switch { display: flex; gap: 3px; width: fit-content; padding: 3px; border-radius: 999px;
+  .view-switch { display: flex; gap: 3px; width: fit-content; max-width: 100%; padding: 3px; border-radius: 999px;
                  background: var(--surface); border: 1px solid var(--line); }
+  .view-switch a { min-width: 0; }
   .view-switch a { display: inline-flex; align-items: center; min-height: 36px; padding: 8px 18px;
                    border-radius: 999px; color: var(--muted); text-decoration: none;
                    font: 600 .85rem var(--font-body); transition: background .15s, color .15s; }
@@ -305,11 +326,12 @@
    book the same slot for the rest of the paid period. ONE alert. On a phone
    the label breaks between "… do 14.11. —" and "još 3 termina →". #}
 <div class="alert ok" role="status">
-  <span>Rezervirano ✓</span>
+  {{ c.opt("raspored.series.booked", "span") }}
   <form class="series-offer" method="post" action="/book/{{ series_offer.session_id }}/series">
     <input type="hidden" name="week" value="{{ monday.isoformat() }}">
     <input type="hidden" name="day" value="{{ selected_day.isoformat() }}" data-shown-day>
-    <button class="act" type="submit">Isti termin svaki tjedan do&nbsp;{{ series_offer.until.strftime("%-d.%-m.") }}&nbsp;— još&nbsp;{{ series_offer.n }}&nbsp;{{ series_offer.noun }}&nbsp;→</button>
+    {# its label one span: the pill is a flex box, its words and its values one item #}
+    <button class="act" type="submit"><span>{{ c.t("raspored.series.until") }}&nbsp;{{ series_offer.until.strftime("%-d.%-m.") }}&nbsp;— još&nbsp;{{ series_offer.n }}&nbsp;{{ series_offer.noun }}&nbsp;→</span></button>
   </form>
 </div>
 {% else %}{{ super() }}{% endif %}
@@ -319,9 +341,9 @@
    then cancels; `day` is the day a phone is showing, kept by the script #}
 {% macro unbook(s) %}
         <form method="post" action="/cancel/{{ s.id }}" class="unbook"
-              data-confirm-title="{{ 'Maknuti otkazani termin?' if s.canceled else 'Otkazati rezervaciju?' }}"
+              data-confirm-title="{{ copy_text('raspored.confirm.drop_title' if s.canceled else 'raspored.confirm.cancel_title', copy_texts) }}"
               data-confirm="{{ s.title }}, {{ weekdays_short[s.date.weekday()] | lower }} {{ s.date.strftime('%-d.%-m.') }} u {{ s.time }}–{{ s.end }}.{% if not s.canceled %} Mjesto se oslobađa za druge.{% endif %}"
-              data-confirm-cta="{{ 'Makni' if s.canceled else 'Otkaži rezervaciju' }}">
+              data-confirm-cta="{{ copy_text('raspored.confirm.drop_cta' if s.canceled else 'raspored.confirm.cancel_cta', copy_texts) }}">
           <input type="hidden" name="week" value="{{ monday.isoformat() }}">
           <input type="hidden" name="day" value="{{ selected_day.isoformat() }}" data-shown-day>
           <button type="submit" class="unbook-x" aria-label="{{ 'Makni' if s.canceled else 'Otkaži' }} {{ s.title }} {{ s.date.strftime('%-d.%-m.') }} u {{ s.time }}">✕</button>
@@ -333,28 +355,25 @@
 <div class="view-row">
   <div class="view-switch" role="group" aria-label="Prikaz rasporeda">
     <a href="/raspored?week={{ monday.isoformat() }}&day={{ selected_day.isoformat() }}" data-view="week"
-      {% if current == 'week' %} aria-current="page"{% endif %}>Tjedan</a>
+      {% if current == 'week' %} aria-current="page"{% endif %}>{{ c.t("raspored.view.week") }}</a>
     <a href="/raspored?view=month&month={{ selected_day.isoformat()[:7] }}" data-view="month"
-      {% if current == 'month' %} aria-current="page"{% endif %}>Mjesec</a>
+      {% if current == 'month' %} aria-current="page"{% endif %}>{{ c.t("raspored.view.month") }}</a>
   </div>
 </div>
 {% endmacro %}
 
 {% if series_report %}
 {# a weekly series that left dates out (the redirect's booked= / skipped= /
-   paket=, app._series_report): which and why, the reasons in words here #}
-{% set why = {"popunjen": "termin je popunjen", "otkazan": "termin je otkazan",
-              "rezervirano": "već imaš rezervaciju", "zatvoren": "termin je zatvoren",
-              "prosao": "termin je već prošao", "prozor": "termin je predaleko unaprijed",
-              "razdoblje": "članarina tada ne vrijedi"} %}
+   paket=, app._series_report): which and why, the reasons in words here
+   (raspored.report.why_<key>, the redirect's reason keys, app.SKIP_KEYS) #}
 <dialog id="seriesDlg" class="fb-modal series-dlg" aria-labelledby="seriesDlgTitle" open>
   <div class="fb-box">
-    <h2 id="seriesDlgTitle">Nisu rezervirani svi termini</h2>
-    <p class="fb-lead">Rezervirano: {% for d in series_report.booked %}{{ d.strftime("%-d.%-m.") }}{% if not loop.last %}, {% endif %}{% else %}ništa{% endfor %}</p>
+    <h2 id="seriesDlgTitle">{{ c.t("raspored.report.title") }}</h2>
+    <p class="fb-lead">{{ c.t("raspored.report.booked") }} {% for d in series_report.booked %}{{ d.strftime("%-d.%-m.") }}{% if not loop.last %}, {% endif %}{% else %}{{ c.t("raspored.report.nothing") }}{% endfor %}</p>
     {% if series_report.skipped %}
-    <p class="fb-lead">Nije rezervirano:</p>
+    <p class="fb-lead">{{ c.t("raspored.report.skipped") }}</p>
     <ul class="sd-list">
-      {% for d, key in series_report.skipped %}<li>{{ d.strftime("%-d.%-m.") }} — {{ why[key] }}</li>
+      {% for d, key in series_report.skipped %}<li>{{ d.strftime("%-d.%-m.") }} — {{ c.t("raspored.report.why_" ~ key) }}</li>
       {% endfor %}
     </ul>
     {% endif %}
@@ -362,7 +381,7 @@
     <p class="fb-lead">Paket od {{ series_report.quota }} treninga je popunjen, ostatak nije rezerviran.</p>
     {% endif %}
     <div class="fb-actions">
-      <form method="dialog"><button type="submit" class="btn btn-sm" autofocus>U redu</button></form>
+      <form method="dialog"><button type="submit" class="btn btn-sm" autofocus>{{ c.t("raspored.report.ok") }}</button></form>
     </div>
   </div>
 </dialog>
@@ -370,15 +389,15 @@
 
 <div class="week-head">
   <div>
-    <h1>Raspored</h1>
+    <h1>{{ c.t("raspored.head.title") }}</h1>
     {% if view != "month" %}<span class="range">{{ monday.strftime("%-d.%-m.") }} – {{ days[-1].date.strftime("%-d.%-m.%Y.") }}</span>{% endif %}
   </div>
   {% if view != "month" %}
   <div class="week-nav">
-    <a class="btn btn-ghost btn-sm" href="/raspored?week={{ prev_week }}">← prošli tjedan</a>
-    <a class="btn btn-ghost btn-sm" href="/raspored">danas</a>
+    <a class="btn btn-ghost btn-sm" href="/raspored?week={{ prev_week }}">{{ c.t("raspored.week.prev") }}</a>
+    <a class="btn btn-ghost btn-sm" href="/raspored">{{ c.t("raspored.week.today") }}</a>
     {# none past the booking window's last week for a client #}
-    {% if next_week %}<a class="btn btn-ghost btn-sm" href="/raspored?week={{ next_week }}">idući tjedan →</a>{% endif %}
+    {% if next_week %}<a class="btn btn-ghost btn-sm" href="/raspored?week={{ next_week }}">{{ c.t("raspored.week.next") }}</a>{% endif %}
   </div>
   {% if not user.is_trainer %}{{ view_switch("week") }}{% endif %}
   {% endif %}
@@ -389,11 +408,11 @@
 {# the most common question, answered before any scrolling #}
 <section class="card next-termin" aria-labelledby="ntKicker">
   <div class="nt-body">
-    <div class="sec-kicker" id="ntKicker">Tvoj sljedeći termin</div>
+    {{ c.opt("raspored.next.kicker", "div", ' class="sec-kicker" id="ntKicker"') }}
     <div class="nt-when"><span class="nt-at">{{ weekdays_short[nb.date.weekday()] }} {{ nb.date.strftime("%-d.%-m.") }} · {{ nb.time }}–{{ nb.end }}</span>
-      {% if nb.canceled %}<span class="nt-off">OTKAZANO</span>{% else %}<span class="nt-rel">{{ nb.relative }}</span>{% endif %}</div>
+      {% if nb.canceled %}{{ c.opt("raspored.next.canceled", "span", ' class="nt-off"') }}{% else %}<span class="nt-rel">{{ nb.relative }}</span>{% endif %}</div>
     <div class="nt-title">{{ nb.title }}{% if nb.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
-    {% if not nb.can_cancel %}<div class="nt-late">Otkazivanje do {{ cutoff_hours }} h prije termina</div>{% endif %}
+    {% if not nb.can_cancel %}<div class="nt-late">{{ c.t("raspored.next.cutoff") }} {{ cutoff_hours }} h prije termina</div>{% endif %}
   </div>
   {% if nb.can_cancel %}{{ unbook(nb) }}{% endif %}
 </section>
@@ -406,9 +425,9 @@
 <div class="month-nav">
   <span class="range">{{ month_label }}</span>
   <div class="week-nav">
-    <a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={{ prev_month }}">‹ prošli mjesec</a>
-    {% if not this_month %}<a class="btn btn-ghost btn-sm" href="/raspored?view=month">danas</a>{% endif %}
-    <a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={{ next_month }}">idući mjesec ›</a>
+    <a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={{ prev_month }}">{{ c.t("raspored.month.prev") }}</a>
+    {% if not this_month %}<a class="btn btn-ghost btn-sm" href="/raspored?view=month">{{ c.t("raspored.week.today") }}</a>{% endif %}
+    <a class="btn btn-ghost btn-sm" href="/raspored?view=month&month={{ next_month }}">{{ c.t("raspored.month.next") }}</a>
   </div>
 </div>
 <div class="month card">
@@ -424,16 +443,21 @@
     {%- endfor %}
   </div>
   {% endfor %}
+  {# a legend's word emptied: its swatch goes with it (none left, no legend) #}
+  {% set legend = (("raspored.month.legend_covered", "sw-covered"), ("raspored.month.legend_mine", "sw-mine"),
+                   ("raspored.month.legend_today", "sw-today")) %}
+  {% if copy_on(legend[0][0]) or copy_on(legend[1][0]) or copy_on(legend[2][0]) %}
   <div class="month-legend hint">
-    <span><span class="sw sw-covered" aria-hidden="true"></span>članarina aktivna</span>
-    <span><span class="sw sw-mine" aria-hidden="true"></span>tvoja rezervacija</span>
-    <span><span class="sw sw-today" aria-hidden="true"></span>danas</span>
+    {% for key, sw in legend %}{% if copy_on(key) %}
+    <span{% if can_edit_copy %} data-opt{% endif %}><span class="sw {{ sw }}" aria-hidden="true"></span>{{ c.t(key) }}</span>
+    {% endif %}{% endfor %}
   </div>
+  {% endif %}
 </div>
 {% if valid_until %}
-<p class="hint month-note">Članarina vrijedi do {{ valid_until.strftime("%-d.%-m.%Y.") }}</p>
+<p class="hint month-note"><span>{{ c.t("raspored.plan.until") }} {{ valid_until.strftime("%-d.%-m.%Y.") }}</span></p>
 {% else %}
-<p class="hint month-note">Nemaš aktivnu članarinu za treninge u dvorani. <a class="act" href="/moja-clanarina">Pogledaj cjenik →</a></p>
+<p class="hint month-note">{{ c.t("raspored.month.none") }} <a class="act" href="/moja-clanarina">{{ c.t("raspored.gate.link") }}</a></p>
 {% endif %}
 {% else %}
 {% set week_empty = days | map(attribute="sessions") | map("length") | sum == 0 %}
@@ -451,10 +475,10 @@
 {% endif %}
 {% if beyond_window %}
   {# a client past the booking window (a month's day, a typed ?week=): nothing to book yet #}
-  <p class="hint" style="padding: 30px 0 10px;">Termini se objavljuju {{ weeks_ahead }} unaprijed.</p>
-{% elif week_empty %}
-  <p class="hint" style="padding: 30px 0 10px;">Ovaj tjedan nema termina.
-  {% if user.is_trainer %}<a class="act act-quiet" href="/admin">Dodaj ih u rasporedu →</a>{% endif %}</p>
+  <p class="hint" style="padding: 30px 0 10px;">{{ c.t("raspored.week.beyond") }} {{ weeks_ahead }} unaprijed.</p>
+{% elif week_empty and (user.is_trainer or copy_on("raspored.week.empty")) %}
+  <p class="hint" style="padding: 30px 0 10px;">{{ c.t("raspored.week.empty") }}
+  {% if user.is_trainer %}<a class="act act-quiet" href="/admin">{{ c.t("raspored.week.add") }}</a>{% endif %}</p>
 {% endif %}
 <div class="week{% if week_empty %} all-empty{% endif %}" data-selected="{{ selected_day.isoformat() }}"
      data-week="{{ monday.isoformat() }}" data-prev="{{ prev_week }}" data-next="{{ next_week or '' }}">
@@ -469,11 +493,14 @@
         {# capacity line: for the trainer the Polaznici button already carries it,
            so only the canceled/closed states show here; clients still need "X/8 mjesta" #}
         {% set show_cap = s.canceled or s.closed or not user.is_trainer %}
-        {% if show_cap %}
-        <div class="cap">
-          {% if s.canceled %}otkazano
-          {% elif s.closed %}zatvoreno
-          {% elif s.one_on_one %}{{ "rezervirano ✓" if s.mine else ("slobodno" if not s.full else "zauzeto") }}
+        {# the state's word (a copy slot since 25.11.2026: emptied, no line),
+           or the free places, a count #}
+        {% set cap = "raspored.state.canceled" if s.canceled else "raspored.state.closed" if s.closed
+                     else (("raspored.state.mine" if s.mine else "raspored.state.free" if not s.full
+                            else "raspored.state.taken") if s.one_on_one else "") %}
+        {% if show_cap and (not cap or copy_on(cap)) %}
+        <div class="cap"{% if cap and can_edit_copy %} data-opt{% endif %}>
+          {% if cap %}{{ c.t(cap) }}
           {# free spots: green count, same convention as the trainer's Polaznici
              button; when full the .sess.full rule paints the whole line red #}
           {% else %}<span{% if not s.full %} style="color:var(--good); font-weight:700;"{% endif %}>{{ s.booked }}</span>/{{ s.capacity }} mjesta{% endif %}
@@ -482,31 +509,31 @@
         {% if user.is_trainer %}
           <form method="get" action="/admin/session/{{ s.id }}">
             {# one flex child so the button's gap:8px doesn't split "5" from "/8" #}
-            <button class="btn-sm btn-ghost" type="submit"><span>Polaznici <span style="font-weight:700; color:{{ 'var(--accent)' if s.full else 'var(--good)' }};">{{ s.booked }}</span><span style="color:var(--muted);">/{{ s.capacity }}</span></span></button>
+            <button class="btn-sm btn-ghost" type="submit"><span>{{ c.t("raspored.trainer.roster") }} <span style="font-weight:700; color:{{ 'var(--accent)' if s.full else 'var(--good)' }};">{{ s.booked }}</span><span style="color:var(--muted);">/{{ s.capacity }}</span></span></button>
           </form>
         {% elif s.canceled or s.past %}
         {% elif s.mine %}
           {% if s.can_cancel %}
           <form method="post" action="/cancel/{{ s.id }}"
-                data-confirm-title="Otkazati rezervaciju?"
+                data-confirm-title="{{ copy_text('raspored.confirm.cancel_title', copy_texts) }}"
                 data-confirm="{{ s.title }}, {{ day.name | lower }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}. Mjesto se oslobađa za druge."
-                data-confirm-cta="Otkaži rezervaciju">
+                data-confirm-cta="{{ copy_text('raspored.confirm.cancel_cta', copy_texts) }}">
             <input type="hidden" name="week" value="{{ monday.isoformat() }}">
             <input type="hidden" name="day" value="{{ day.date.isoformat() }}">
             <button class="btn-sm btn-ghost" type="submit"
-                    aria-label="Otkaži {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">Otkaži</button>
+                    aria-label="Otkaži {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">{{ c.t("raspored.termin.cancel") }}</button>
           </form>
-          {% else %}<div class="cap">rezervirano ✓</div>{% endif %}
+          {% else %}{{ c.opt("raspored.state.mine", "div", ' class="cap"') }}{% endif %}
         {% elif s.closed %}{# the cap says it: nothing to book #}
         {% elif not s.allowed %}
-          <div class="cap" title="Za ovaj tip termina treba aktivna članarina — javi se treneru.">potrebna članarina</div>
+          {{ c.opt("raspored.termin.need", "div", ' class="cap" title="Za ovaj tip termina treba aktivna članarina — javi se treneru."') }}
         {% elif s.after_period %}{# after his plan's dospijeće: the line under the week says until when #}
         {% elif not s.full %}
           <form method="post" action="/book/{{ s.id }}">
             <input type="hidden" name="week" value="{{ monday.isoformat() }}">
             <input type="hidden" name="day" value="{{ day.date.isoformat() }}">
             <button class="btn-sm btn-signal" type="submit"
-                    aria-label="Rezerviraj {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">Rezerviraj</button>
+                    aria-label="Rezerviraj {{ s.title }} {{ day.date.strftime('%-d.%-m.') }} u {{ s.time }}">{{ c.t("raspored.termin.book") }}</button>
           </form>
         {% endif %}
       </div>
@@ -515,7 +542,7 @@
       <a class="sess-row{% if s.past %} past{% endif %}{% if s.canceled %} canceled{% endif %}{% if s.closed %} closed{% endif %}" href="/admin/session/{{ s.id }}">
         <span class="rt">{{ s.time }}–{{ s.end }}</span>
         <span class="rn">{{ s.title }}</span>{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}
-        <span class="rs">{% if s.canceled %}<span class="no">otkazano</span>{% elif s.closed %}<span>zatvoreno</span>{% else %}<span>Polaznici <b class="{{ 'no' if s.full else 'ok' }}">{{ s.booked }}</b>/{{ s.capacity }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></span>
+        <span class="rs">{% if s.canceled %}{{ c.opt("raspored.state.canceled", "span", ' class="no"') }}{% elif s.closed %}{{ c.opt("raspored.state.closed", "span") }}{% else %}<span>{{ c.t("raspored.trainer.roster") }} <b class="{{ 'no' if s.full else 'ok' }}">{{ s.booked }}</b>/{{ s.capacity }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></span>
       </a>
       {% else %}
       {# what a tap does: book (free, allowed, open, inside the paid period), mine (cancel while allowed), mine-late (say until when); nothing otherwise #}
@@ -537,19 +564,19 @@
         <span class="rt">{{ s.time }}–{{ s.end }}</span>
         <span class="rn">{{ s.title }}</span>{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}
         <span class="rs">
-          {%- if s.canceled %}<span class="no">otkazano</span>
-          {%- elif s.mine %}<span class="ok">rezervirano ✓</span>
-          {%- elif s.closed %}<span>zatvoreno</span>
-          {%- elif not s.past and not s.allowed %}<span class="need">potrebna članarina</span>
-          {%- elif s.one_on_one %}{% if s.full %}<span class="no">zauzeto</span>{% else %}<span>slobodno</span>{% endif %}
-          {%- elif s.full %}<span class="no">puno</span>
+          {%- if s.canceled %}{{ c.opt("raspored.state.canceled", "span", ' class="no"') }}
+          {%- elif s.mine %}{{ c.opt("raspored.state.mine", "span", ' class="ok"') }}
+          {%- elif s.closed %}{{ c.opt("raspored.state.closed", "span") }}
+          {%- elif not s.past and not s.allowed %}{{ c.opt("raspored.termin.need", "span", ' class="need"') }}
+          {%- elif s.one_on_one %}{% if s.full %}{{ c.opt("raspored.state.taken", "span", ' class="no"') }}{% else %}{{ c.opt("raspored.state.free", "span") }}{% endif %}
+          {%- elif s.full %}{{ c.opt("raspored.state.full", "span", ' class="no"') }}
           {%- else %}<span><b class="ok">{{ s.booked }}</b>/{{ s.capacity }}</span>{% endif %}
           {%- if act %}<span class="chev" aria-hidden="true">›</span>{% endif -%}
         </span>
       {% if act %}</button>{% else %}</div>{% endif %}
       {% endif %}
     {% endfor %}
-    {% if not day.sessions %}<div class="none" style="color:var(--muted); font-size:.8rem; padding:12px 11px;">Nema termina</div>{% endif %}
+    {% if not day.sessions %}{{ c.opt("raspored.day.none", "div", ' class="none" style="color:var(--muted); font-size:.8rem; padding:12px 11px;"') }}{% endif %}
   </div>
   {% endfor %}
 </div>
@@ -558,17 +585,18 @@
 {% if not user.is_trainer and not has_active_plan and view != "month" %}{# the month page has its own note #}
 {# the moment they most want to know what a plan costs — so say it here;
    how to join is on that page #}
-<p class="hint gate-line">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća. <a class="btn btn-sm" href="/moja-clanarina">Pogledaj cjenik →</a></p>
+<p class="hint gate-line">{{ c.t("raspored.gate.none") }} <a class="btn btn-sm" href="/moja-clanarina">{{ c.t("raspored.gate.link") }}</a></p>
 {% endif %}
 {% if period_until %}
 {# the week's termini after a running plan's dospijeće offer nothing: said
-   once, the no-plan gate's line, with the way to renew #}
-<p class="hint gate-line">Članarina vrijedi do {{ period_until.strftime("%-d.%-m.") }} — za kasnije termine produlji članarinu. <a class="btn btn-sm" href="/moja-clanarina">Moja članarina →</a></p>
+   once, the no-plan gate's line, with the way to renew. The sentence is
+   one span: the line is a flex row, and its words and its date one item #}
+<p class="hint gate-line"><span>{{ c.t("raspored.plan.until") }} {{ period_until.strftime("%-d.%-m.") }} {{ c.t("raspored.gate.renew") }}</span> <a class="btn btn-sm" href="/moja-clanarina">{{ c.t("raspored.gate.renew_link") }}</a></p>
 {% endif %}
 
 {% if mine_days and not user.is_trainer %}
 <div class="mine-list">
-  <h2>Moje rezervacije</h2>
+  <h2>{{ c.t("raspored.mine.title") }}</h2>
   <div class="mine-week">
     {% for day in mine_days %}
     <div class="day-col {% if day.is_today %}today{% endif %}">
@@ -577,9 +605,9 @@
       <div class="sess {% if s.canceled %}canceled{% endif %}">
         <div class="t">{{ s.time }}–{{ s.end }}</div>
         <div class="name">{{ s.title }}{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
-        {% if s.canceled %}<div class="cap" style="color:var(--danger); font-weight:700;">OTKAZANO</div>{% endif %}
+        {% if s.canceled %}{{ c.opt("raspored.next.canceled", "div", ' class="cap" style="color:var(--danger); font-weight:700;"') }}{% endif %}
         {% if s.can_cancel %}{{ unbook(s) }}
-        {% else %}<div class="cap">Otkazivanje do {{ cutoff_hours }} h prije termina</div>{% endif %}
+        {% else %}<div class="cap">{{ c.t("raspored.next.cutoff") }} {{ cutoff_hours }} h prije termina</div>{% endif %}
       </div>
       {% endfor %}
     </div>
@@ -601,23 +629,23 @@
     <form id="sheetBook" method="post" hidden>
       <input type="hidden" name="week" value="{{ monday.isoformat() }}">
       <input type="hidden" name="day" value="{{ selected_day.isoformat() }}">
-      <label class="sheet-series" id="sheetSeries"><input type="checkbox" name="series" value="1"> <span>Isti termin svaki tjedan do <span id="sheetUntil"></span></span></label>
+      <label class="sheet-series" id="sheetSeries"><input type="checkbox" name="series" value="1"> <span>{{ c.t("raspored.series.until") }} <span id="sheetUntil"></span></span></label>
       <div class="fb-actions">
-        <button type="button" class="btn-ghost btn-sm" data-sheet-close>Odustani</button>
-        <button type="submit" class="btn btn-sm" autofocus>Rezerviraj</button>
+        <button type="button" class="btn-ghost btn-sm" data-sheet-close>{{ c.t("raspored.sheet.cancel") }}</button>
+        <button type="submit" class="btn btn-sm" autofocus>{{ c.t("raspored.termin.book") }}</button>
       </div>
     </form>
     <form id="sheetCancel" method="post" hidden>
       <input type="hidden" name="week" value="{{ monday.isoformat() }}">
       <input type="hidden" name="day" value="{{ selected_day.isoformat() }}">
       <div class="fb-actions">
-        <button type="button" class="btn-ghost btn-sm" data-sheet-close>Odustani</button>
-        <button type="submit" class="btn btn-sm" autofocus>Otkaži rezervaciju</button>
+        <button type="button" class="btn-ghost btn-sm" data-sheet-close>{{ c.t("raspored.sheet.cancel") }}</button>
+        <button type="submit" class="btn btn-sm" autofocus>{{ c.t("raspored.confirm.cancel_cta") }}</button>
       </div>
     </form>
     <div id="sheetLate" hidden>
-      <p class="fb-note">Otkazivanje je moguće do {{ cutoff_hours }} h prije termina.</p>
-      <div class="fb-actions"><button type="button" class="btn btn-sm" data-sheet-close autofocus>U redu</button></div>
+      <p class="fb-note">{{ c.t("raspored.sheet.late") }} {{ cutoff_hours }} h prije termina.</p>
+      <div class="fb-actions"><button type="button" class="btn btn-sm" data-sheet-close autofocus>{{ c.t("raspored.report.ok") }}</button></div>
     </div>
   </div>
 </dialog>
@@ -695,13 +723,17 @@
     if (!sheet || !sheet.showModal) return;
     function el(id) { return document.getElementById(id); }
     var book = el("sheetBook"), cancel = el("sheetCancel"), late = el("sheetLate");
+    // the lead's two sentences that name no value: copy slots (25.11.2026)
+    var BOOKED = {{ copy_text("raspored.sheet.booked", copy_texts) | tojson }},
+        FREE = {{ copy_text("raspored.sheet.free", copy_texts) | tojson }};
     function open(row) {
       var d = row.dataset, one = d.oneonone === "1", i;
       el("sheetDay").textContent = d.day;
       el("sheetWhat").textContent = d.time + "–" + d.end + " · " + d.title;
       el("sheetChip").hidden = !one;
-      el("sheetLead").textContent = d.state !== "book" ? "Rezervirano"
-        : one ? "Termin je slobodan." : d.booked + " od " + d.capacity + " mjesta zauzeto";
+      el("sheetLead").textContent = d.state !== "book" ? BOOKED
+        : one ? FREE : d.booked + " od " + d.capacity + " mjesta zauzeto";
+      el("sheetLead").hidden = !el("sheetLead").textContent;    // an emptied one: no line
       book.hidden = d.state !== "book";
       cancel.hidden = d.state !== "mine";
       late.hidden = d.state !== "mine-late";

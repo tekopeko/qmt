@@ -2,7 +2,7 @@
 {% block title %}Moja članarina — QMT{% endblock %}
 {% import "_copy.html" as c with context %}
 {% import "_plan_price.html" as pp with context %}
-{% from "_period.html" import period_switch %}
+{% from "_period.html" import period_switch with context %}
 {% block head %}
 <style>
   /* ===== Moja članarina (18.10.2026): Shape Club's billing page in QMT's
@@ -40,6 +40,10 @@
   .plan-card h3 { margin-top: 2px; font-size: 1.3rem; }
   .chip { flex: none; display: inline-flex; align-items: center; padding: 4px 11px; border-radius: 999px;
           font: 700 .78rem var(--font-body); white-space: nowrap; }
+  /* its words are a copy slot (25.11.2026): a long one wraps inside the
+     chip, never past the card; the page's own fit on its line */
+  .chip { max-width: 100%; }
+  .chip > span { min-width: 0; overflow-wrap: anywhere; }
   .chip.ok { background: var(--good-fill); color: var(--good-ink); }
   .chip.due { background: var(--accent-dim); color: var(--accent-tint-ink); }
   /* not --danger: the accent on --surface-2 measures 4.3:1 in both themes,
@@ -162,7 +166,7 @@
 </style>
 {% endblock %}
 {% block content %}
-<h1>Moja članarina</h1>
+<h1>{{ c.t("clanarina.h.title") }}</h1>
 <p class="hint">{{ c.t("cjenik.hint") }}</p>
 
 {# A member without a plan sees this card instead of Tvoji planovi. The
@@ -187,29 +191,36 @@
     <section class="card plan-card {{ 'is-active' if p.active else 'is-lapsed' }}" id="plan-{{ p.key }}" aria-labelledby="pc-{{ p.key }}">
       <div class="pc-head">
         <div class="pc-name">
-          <div class="pc-kicker">Paket</div>
+          {{ c.opt("clanarina.plan.kicker", "div", ' class="pc-kicker"') }}
           <h3 id="pc-{{ p.key }}">{{ c.t("plan." ~ p.key ~ ".name") }}</h3>
         </div>
-        <span class="chip {{ p.chip[1] }}">{{ p.chip[0] }}</span>
+        {# its words a slot (clanarina.chip.<kind>), "dospijeva"'s day after
+           it code; the two one span, the chip being a flex box; an emptied
+           word with no day: no chip #}
+        {% set chip = "clanarina.chip." ~ p.chip[0] %}
+        {% if p.chip[2] %}<span class="chip {{ p.chip[1] }}"><span>{{ c.t(chip) }} {{ p.chip[2] }}</span></span>
+        {%- else %}{{ c.opt(chip, "span", ' class="chip ' ~ p.chip[1] ~ '"') }}{% endif %}
       </div>
       <dl class="facts">
-        <div><dt>Cijena</dt><dd>{{ pp.plan_price(p.key) }}</dd></div>
-        <div><dt>Uplaćeno</dt><dd>{{ paid_on }}</dd></div>
-        <div><dt>Sljedeća uplata</dt><dd>{{ next_payment }}</dd></div>
-        <div><dt>Vrijedi do</dt><dd>{{ dospijece }}</dd></div>
-        {% if p.sessions %}<div><dt>Paket</dt><dd>{{ p.sessions }} treninga mjesečno</dd></div>{% endif %}
+        <div><dt>{{ c.t("clanarina.fact.price") }}</dt><dd>{{ pp.plan_price(p.key) }}</dd></div>
+        <div><dt>{{ c.t("clanarina.fact.paid") }}</dt><dd>{{ paid_on }}</dd></div>
+        <div><dt>{{ c.t("clanarina.fact.next") }}</dt><dd>{{ next_payment }}</dd></div>
+        <div><dt>{{ c.t("clanarina.fact.until") }}</dt><dd>{{ dospijece }}</dd></div>
+        {% if p.sessions %}<div><dt>{{ c.t("clanarina.fact.paket") }}</dt><dd>{{ p.sessions }} treninga mjesečno</dd></div>{% endif %}
         {# the online plan's tier by its name: its QMove card's title on the
            landing, the same slot, so an edit here renames the card there #}
-        {% if p.tier_key %}<div><dt>Paket</dt><dd>{{ c.t(ONLINE_TIER_SLOTS[p.tier_key] ~ ".title") }}</dd></div>{% endif %}
-        {% if p.usage %}<div><dt>Iskorišteno</dt><dd>{{ p.usage.used }} od {{ p.usage.quota }} u ovom ciklusu</dd></div>{% endif %}
+        {% if p.tier_key %}<div><dt>{{ c.t("clanarina.fact.paket") }}</dt><dd>{{ c.t(ONLINE_TIER_SLOTS[p.tier_key] ~ ".title") }}</dd></div>{% endif %}
+        {% if p.usage %}<div><dt>{{ c.t("clanarina.fact.used") }}</dt><dd>{{ p.usage.used }} od {{ p.usage.quota }} u ovom ciklusu</dd></div>{% endif %}
       </dl>
-      {# the state in one plain sentence; a date ends in its own full stop #}
+      {# the state in one plain sentence; a date ends in its own full stop.
+         Its fixed words are copy slots since 25.11.2026 (clanarina.status.*),
+         its dates code #}
       <p class="pc-status">
-        {%- if not p.active %}Članarina je istekla {{ dospijece }} Nova uplata počinje od {{ next_payment if p.continues else "dana uplate." }}
-        {%- elif p.cancelling %}Pretplata je otkazana i vrijedi do {{ dospijece }}
-        {%- elif p.auto_renew %}Pretplata se obnavlja automatski {{ next_payment }} karticom.
-        {%- elif p.overdue %}Uplata je dospjela {{ next_payment }} — članarina vrijedi još do {{ dospijece }} Uplatu obavi u dvorani, gotovinom ili karticom.
-        {%- else %}Članarina vrijedi do {{ dospijece }} Sljedeću uplatu obavi do {{ next_payment }} — u dvorani, gotovinom ili karticom.
+        {%- if not p.active %}{{ c.t("clanarina.status.lapsed") }} {{ dospijece }} {{ c.t("clanarina.status.restart") }} {% if p.continues %}{{ next_payment }}{% else %}{{ c.t("clanarina.status.restart_now") }}{% endif %}
+        {%- elif p.cancelling %}{{ c.t("clanarina.status.cancelling") }} {{ dospijece }}
+        {%- elif p.auto_renew %}{{ c.t("clanarina.status.renews") }} {{ next_payment }} {{ c.t("clanarina.status.by_card") }}
+        {%- elif p.overdue %}{{ c.t("clanarina.status.overdue") }} {{ next_payment }} {{ c.t("clanarina.status.grace") }} {{ dospijece }} {{ c.t("clanarina.status.pay_gym") }}
+        {%- else %}{{ c.t("clanarina.status.valid") }} {{ dospijece }} {{ c.t("clanarina.status.next") }} {{ next_payment }} {{ c.t("clanarina.status.where") }}
         {%- endif -%}
       </p>
       {# only what this member can do: the door the plan opens while it runs;
@@ -218,11 +229,12 @@
          the sentence above says where to pay. #}
       {% set foot %}
         {% if p.active and p.key in plan_links %}
-        <a class="btn btn-sm" href="{{ plan_links[p.key][0] }}">{{ plan_links[p.key][1] }} →</a>
+        {# its words the plan's door's slot (app.door.*), one span with the → #}
+        <a class="btn btn-sm" href="{{ plan_links[p.key][0] }}"><span>{{ c.t(plan_links[p.key][1]) }} →</span></a>
         {% endif %}
         {% if p.subscribed %}
           {% if has_portal %}
-          <form method="post" action="/placanje/portal"><button type="submit" class="act">Kartica, računi, otkazivanje</button></form>
+          <form method="post" action="/placanje/portal"><button type="submit" class="act">{{ c.t("clanarina.portal") }}</button></form>
           {% endif %}
           {% set others = (pr.tiers | rejectattr("sessions", "equalto", p.tier.sessions) | list) if p.tier else [] %}
           {% if others %}
@@ -230,13 +242,13 @@
              Their amounts are Stripe's, what the card is charged after the
              switch (as in _tiers.html); the Cijena above is the owner's text #}
           <div class="switch">
-            <div class="pc-kicker">Promijeni paket</div>
+            {{ c.opt("clanarina.switch.kicker", "div", ' class="pc-kicker"') }}
             <div class="tiers">
               {% for t in others %}
               <form method="post" action="/placanje/{{ p.key }}/promjena"
                     data-confirm-title="Promijeniti na {{ t.sessions }} treninga?"
                     data-confirm="Novi paket vrijedi odmah — {{ "%.0f"|format(t.amount) }} {{ cur }} mjesečno. Razliku za ostatak ovog ciklusa Stripe obračuna na sljedećem računu."
-                    data-confirm-cta="Promijeni">
+                    data-confirm-cta="{{ copy_text('clanarina.switch.cta', copy_texts) }}">
                 <input type="hidden" name="sessions" value="{{ t.sessions }}">
                 <button type="submit" class="act">{{ t.sessions }} treninga · {{ "%.0f"|format(t.amount) }} {{ cur }}</button>
               </form>
@@ -248,9 +260,9 @@
           {% if p.active %}
           {# paid in cash so far — a subscription can take over from the due date #}
           <form method="post" action="/placanje/{{ p.key }}" class="switch">
-            <div class="hint">Prebaci na karticu — obnavlja se automatski od sljedeće uplate:</div>
+            {{ c.opt("clanarina.to_card.hint", "div", ' class="hint"') }}
             {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
-            <button type="submit" class="act">Prebaci na karticu</button>
+            <button type="submit" class="act">{{ c.t("clanarina.to_card.go") }}</button>
           </form>
           {% else %}
           {# lapsed: a subscription starts afresh, like a plan never held.
@@ -260,8 +272,8 @@
              default, fixed text #}
           <form method="post" action="/placanje/{{ p.key }}" class="switch">
             {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
-            <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
-            <span class="hint">Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani.</span>
+            <button type="submit" class="btn btn-sm">{{ c.t("clanarina.subscribe") }}</button>
+            {{ c.opt("clanarina.lapsed.hint", "span", ' class="hint"') }}
           </form>
           {% endif %}
         {% endif %}
@@ -341,7 +353,7 @@
         <div class="foot">
           <form method="post" action="/placanje/online">
             <input type="hidden" name="tier" value="{{ tier }}">
-            <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
+            <button type="submit" class="btn btn-sm">{{ c.t("clanarina.subscribe") }}</button>
           </form>
         </div>
         {% endif %}
@@ -360,7 +372,7 @@
     {% for key in add_gym %}
       {% set pr = prices.get(key) %}{% set cur = pp.currency(pr) %}
       <div class="card plan{% if key == 'grupni' %} featured{% endif %}" id="plan-{{ key }}">
-        {% if key == 'grupni' %}<span class="featured-tag">Najpopularnije</span>{% endif %}
+        {% if key == 'grupni' %}{{ c.opt("clanarina.add.featured", "span", ' class="featured-tag"') }}{% endif %}
         <h4 class="plan-h">{{ c.t("plan." ~ key ~ ".name") }}</h4>
         {{ pp.price("price." ~ key ~ ".amount", "price." ~ key ~ ".unit", "month", base_key=BASE_OF["price." ~ key ~ ".amount"]) }}
         {{ pp.price("price." ~ key ~ ".year_amount", "price." ~ key ~ ".year_unit", "year", hidden=true,
@@ -372,7 +384,7 @@
         <div class="foot">
           <form method="post" action="/placanje/{{ key }}">
             {% if pr and pr.tiers %}{% include "_tiers.html" %}{% endif %}
-            <button type="submit" class="btn btn-sm">Pretplati se karticom</button>
+            <button type="submit" class="btn btn-sm">{{ c.t("clanarina.subscribe") }}</button>
           </form>
         </div>
         {% endif %}
@@ -389,12 +401,12 @@
   {% if has_portal %}
   {# Stripe's invoices, card and cancelling live in its portal: one door #}
   <form method="post" action="/placanje/portal" class="mc-portal">
-    <button type="submit" class="act">Računi i kartica u Stripe portalu</button>
+    <button type="submit" class="act">{{ c.t("clanarina.bills.portal") }}</button>
   </form>
   {% endif %}
   {% if ledger %}
   <div class="card ledger"><div class="mtable-wrap"><table class="mtable">
-    <thead><tr><th>Datum</th><th>Plan · način</th>{% if show_amounts %}<th class="r">Iznos</th>{% endif %}</tr></thead>
+    <thead><tr><th>{{ c.t("clanarina.bills.col_date") }}</th><th>{{ c.t("clanarina.bills.col_plan") }}</th>{% if show_amounts %}<th class="r">{{ c.t("clanarina.bills.col_amount") }}</th>{% endif %}</tr></thead>
     <tbody>
     {% for r in ledger %}
       <tr>

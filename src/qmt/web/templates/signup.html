@@ -1,24 +1,23 @@
 {% extends "base.html" %}
+{% import "_copy.html" as c with context %}
 {% block title %}Registracija — QMT{% endblock %}
 {% block content %}
 <div style="max-width:400px; margin: 8vh auto 0;">
-  <h1>Registracija</h1>
+  <h1>{{ c.t("auth.signup.title") }}</h1>
   {% if signup_mode not in ('invite', 'open') %}
   {# closed (config.signup_mode): say so, and offer no form to fill in vain #}
-  <p class="hint" style="margin-bottom:22px;">Registracija novih članova je trenutno zatvorena.</p>
+  {{ c.opt("auth.closed", "p", ' class="hint" style="margin-bottom:22px;"') }}
   {% else %}
   {# the copy follows the switch, so it stops being a lie the day it flips #}
-  <p class="hint" style="margin-bottom:22px;">
-    {% if signup_open %}Otvori račun, odaberi članarinu i rezerviraj prvi termin.
-    {% else %}Račun zasad mogu otvoriti samo pozvani članovi — javi se treneru za pozivnicu.{% endif %}
-  </p>
+  {{ c.opt("auth.signup.lead_open" if signup_open else "auth.signup.invite", "p", ' class="hint" style="margin-bottom:22px;"') }}
+  {% set placeholder = copy_text("auth.signup.name_placeholder", copy_texts) %}
   <form method="post" action="/signup">
-    <div class="field"><label for="name">Ime (neobavezno)</label><input id="name" type="text" name="name" autocomplete="name" placeholder="npr. Ivan Horvat"></div>
-    <div class="field"><label for="email">Email</label><input id="email" type="email" name="email" autocomplete="email" required></div>
-    <div class="field"><label for="password">Lozinka (barem 8 znakova)</label><input id="password" type="password" name="password" autocomplete="new-password" minlength="8" required></div>
-    <button type="submit" class="btn-signal" style="width:100%; padding:12px;">Otvori račun</button>
+    <div class="field"><label for="name">{{ c.t("auth.signup.name") }}</label><input id="name" type="text" name="name" autocomplete="name"{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}></div>
+    <div class="field"><label for="email">{{ c.t("auth.email") }}</label><input id="email" type="email" name="email" autocomplete="email" required></div>
+    <div class="field"><label for="password">{{ c.t("auth.signup.password") }}</label><input id="password" type="password" name="password" autocomplete="new-password" minlength="8" required></div>
+    <button type="submit" class="btn-signal" style="width:100%; padding:12px;">{{ c.t("auth.signup.submit") }}</button>
   </form>
   {% endif %}
-  <p class="hint" style="margin-top:16px;">Već imaš račun? <a class="tlink" href="/login">Prijavi se</a>.</p>
+  <p class="hint" style="margin-top:16px;">{{ c.t("auth.signup.have_account") }} <a class="tlink" href="/login">{{ c.t("auth.signup.login_link") }}</a>.</p>
 </div>
 {% endblock %}

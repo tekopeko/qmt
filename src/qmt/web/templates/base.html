@@ -1,3 +1,7 @@
+{# the app's own texts below (the login window, the install banner, the
+   confirm dialog's default words, the osvrt prompt, the error alert's
+   link) are copy slots since 25.11.2026: auth.*, app.* (copy.py) #}
+{%- import "_copy.html" as c with context -%}
 <!doctype html>
 <html lang="hr" data-theme="dark">
 <head>
@@ -430,6 +434,15 @@
        .sess .t (a session's time, calendar and admin) is another class of
        the same name. */
     span.t { white-space: pre-line; }
+    /* Long texts (25.11.2026: every word a member or a guest reads is a
+       slot, any length the editor types): a word too long for its box
+       breaks anywhere, on every page, in its dialogs and on the install
+       banner. A box that takes its width from its words keeps it another
+       way (.pl-sets' headers below, the player's .pl-x, the raspored's
+       card buttons). With the pages' own words nothing moves: every word
+       of every member page in its place beside the untouched tree,
+       360–1280px. */
+    main span.t, dialog span.t, #a2hs span.t { overflow-wrap: anywhere; }
 
     /* ---- in-place copy editor (trainer / owner only; _copy.html wraps each
        editable text in .ed). Off by default: a page is read before it is
@@ -448,6 +461,10 @@
     body.editing a:has(> .ed), body.editing a:has(.ed) { cursor: text; }
     /* a text whose default is empty (a price's unit) still needs a box to click */
     body.editing .ed:empty { display: inline-block; min-width: 2.5em; min-height: 1em; vertical-align: middle; }
+    /* an emptied optional text's element (_copy.html's opt and the pages'
+       data-opt, 25.11.2026): a reader gets none, the editor his empty box
+       in edit mode only */
+    body:not(.editing) [data-opt]:has(.ed:empty) { display: none; }
     /* an editable list (_copy.html, points): a ✕ on every item and "+ Dodaj
        stavku" after the list, in edit mode only. The ✕ is a 32px round target
        whose negative margin keeps the item's line height, so the list does
@@ -584,10 +601,12 @@
        tint over --surface-2 leaves the ink at 4.34:1, under AA (4.81:1 over
        --surface). Rendered hidden; the script below shows it once it can
        work it. Its place is each page's. ===== */
-    .period { display: flex; gap: 3px; width: fit-content; padding: 3px;
+    .period { display: flex; gap: 3px; width: fit-content; max-width: 100%; padding: 3px;
               border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
-    .period button { min-height: 36px; padding: 8px 18px; border: none; border-radius: 999px; background: none;
-                     box-shadow: none; color: var(--muted); font: 600 .85rem var(--font-body);
+    /* its words are copy slots (25.11.2026, printed plain): a long one
+       wraps in its half */
+    .period button { min-width: 0; min-height: 36px; padding: 8px 18px; border: none; border-radius: 999px; background: none;
+                     box-shadow: none; color: var(--muted); font: 600 .85rem var(--font-body); overflow-wrap: anywhere;
                      transition: background .15s, color .15s; }
     .period button:hover { transform: none; color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
     .period button[aria-selected="true"] { background: var(--accent-dim); color: var(--accent-tint-ink); }
@@ -606,7 +625,11 @@
     /* ===== "Dodaj na početni zaslon" (patterns.md §3): phones, browser tab,
        logged-in clients, not on the very first page, dismissed once. ===== */
     .a2hs { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 70;
-            max-width: 420px; margin: 0 auto; padding: 16px 16px 14px; }
+            max-width: 420px; margin: 0 auto; padding: 16px 16px 14px;
+            /* its words are copy slots (25.11.2026): taller than the screen,
+               it scrolls inside itself, its ✕ in reach at the top */
+            max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px);
+            overflow-y: auto; overscroll-behavior: contain; }
     @media (pointer: fine) { .a2hs { display: none !important; } }   /* belt and braces: never on desktop */
     .a2hs-x { position: absolute; top: 6px; right: 6px; background: none; box-shadow: none;
               color: var(--muted); padding: 10px 11px; border-radius: 8px; font-size: .95rem; line-height: 1; }
@@ -630,6 +653,10 @@
       border-radius: 9px; font-size: .95rem; line-height: 1;
     }
     .fb-x button:hover { background: var(--surface-2); color: var(--text); transform: none; }
+    /* a modal's words are copy slots (25.11.2026), some written by a
+       script (a confirm's title, text and button, the sheet's lead, the
+       login window's title): a word too long for the box breaks anywhere */
+    .fb-modal { overflow-wrap: anywhere; }
     .fb-modal h2 { font-size: 1.2rem; padding-right: 28px; }
     .fb-lead { margin-top: 7px; color: var(--muted); font-size: .92rem; }
     .fb-last {
@@ -907,6 +934,11 @@
     .pl-sets thead th + th { text-align: center; }        /* over the inputs, whose numbers are centred */
     .pl-sets tbody th { width: 1%; padding: 0 12px 0 4px; text-align: left; white-space: nowrap; vertical-align: middle;
                         font: 700 1rem var(--font-body); font-variant-numeric: tabular-nums; color: var(--text); }
+    /* a header's words are a copy slot (25.11.2026): its box as wide as
+       its words, so the columns keep their widths with the page's own (a
+       header that could break anywhere let the set's column shrink to a
+       letter), and up to 5em, inside which a long one wraps */
+    .pl-sets thead th > .t { display: inline-block; width: max-content; max-width: 5em; }
     .pl-sets td { padding: 0 4px; }
     .pl-sets input { height: 44px; padding: 0 10px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
 
@@ -968,6 +1000,7 @@
       {# Admin ▾, the account menu's component (.menu): Termini, Trenutne
          članarine, Upitnik (in normal mode, as every page opens: the ✎ pill
          puts it in edit mode), Vježbe (the library of exercises, 30.10.2026),
+         Tekstovi (every text of the app on one page, 25.11.2026: /tekstovi)
          and the owner's Korisnici and Statistika. The
          tab is .on while one of its pages is open, that item aria-current.
          In the ☰ drawer its items are rows under the "Admin" caption, and
@@ -976,11 +1009,12 @@
       {# a client's karton is opened from Trenutne članarine (24.11.2026) #}
       {% set at_clanarine = path.startswith('/clanarine') or path.startswith('/karton/') %}
       {% set at_upitnik = path.startswith('/upitnik') %}
+      {% set at_tekstovi = path.startswith('/tekstovi') %}
       {% set at_korisnici = is_owner and path.startswith('/korisnici') %}
       {% set at_statistika = is_owner and path.startswith('/statistika') %}
       <div class="menu-wrap nav-admin">
         <p class="nav-cap">Admin</p>
-        <button type="button" id="adminBtn" class="navbtn menu-btn{% if at_termini or at_clanarine or at_upitnik or at_vjezbe or at_korisnici or at_statistika %} on{% endif %}"
+        <button type="button" id="adminBtn" class="navbtn menu-btn{% if at_termini or at_clanarine or at_upitnik or at_vjezbe or at_tekstovi or at_korisnici or at_statistika %} on{% endif %}"
                 aria-haspopup="true" aria-expanded="false" aria-controls="adminMenu">Admin <span class="caret" aria-hidden="true">▾</span></button>
         <div class="menu admin-menu" id="adminMenu" role="menu" aria-labelledby="adminBtn">
           <a href="/admin" role="menuitem"{% if at_termini %} aria-current="page"{% endif %}>
@@ -1002,6 +1036,11 @@
             <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
               <rect x="4" y="7" width="3.5" height="10" rx="1.2"/><rect x="16.5" y="7" width="3.5" height="10" rx="1.2"/><path d="M7.5 12h9M2 12h2M20 12h2"/>
             </svg><span>Vježbe</span>
+          </a>
+          <a href="/tekstovi" role="menuitem"{% if at_tekstovi %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 6.5V5h14v1.5M12 5v14M9 19h6"/>
+            </svg><span>Tekstovi</span>
           </a>
           {% if is_owner %}
           <a href="/korisnici" role="menuitem"{% if at_korisnici %} aria-current="page"{% endif %}>
@@ -1083,7 +1122,7 @@
       {# the param is a plan kind, so the href is always our own page: the
          plan's card on /moja-clanarina, with its price #}
       {% if request.query_params.get("cta") %}
-      <a class="act" href="/moja-clanarina#plan-{{ request.query_params.get('cta') }}">Pogledaj cjenik →</a>
+      <a class="act" href="/moja-clanarina#plan-{{ request.query_params.get('cta') }}">{{ c.t("app.alert.prices") }}</a>
       {% endif %}
     </div>
   {% endif %}
@@ -1107,38 +1146,39 @@
 <dialog id="authDlg" class="fb-modal auth" aria-labelledby="authTitle">
   <div class="fb-box">
     <form method="dialog" class="fb-x"><button type="submit" aria-label="Zatvori">✕</button></form>
-    <h2 id="authTitle">Dobrodošli natrag</h2>
+    <h2 id="authTitle">{{ c.t("auth.modal.title") }}</h2>
     {% if _reg %}
     <div class="auth-tabs" role="tablist" aria-label="Prijava ili registracija">
-      <button type="button" role="tab" id="authTabLogin" aria-selected="true" aria-controls="authLogin" onclick="qmtAuthTab('login')">Prijava</button>
-      <button type="button" role="tab" id="authTabSignup" aria-selected="false" aria-controls="authSignup" onclick="qmtAuthTab('signup')">Registracija</button>
+      <button type="button" role="tab" id="authTabLogin" aria-selected="true" aria-controls="authLogin" onclick="qmtAuthTab('login')">{{ c.t("auth.login.title") }}</button>
+      <button type="button" role="tab" id="authTabSignup" aria-selected="false" aria-controls="authSignup" onclick="qmtAuthTab('signup')">{{ c.t("auth.signup.title") }}</button>
     </div>
     {% endif %}
     <form id="authLogin" {% if _reg %}role="tabpanel" aria-labelledby="authTabLogin" {% endif %}method="post" action="/login">
       <input type="hidden" name="next" value="{{ _nxt }}">
-      <div class="field"><label for="al-email">Email</label>
+      <div class="field"><label for="al-email">{{ c.t("auth.email") }}</label>
         <input id="al-email" type="email" name="email" autocomplete="email" required></div>
-      <div class="field"><label for="al-pass">Lozinka</label>
+      <div class="field"><label for="al-pass">{{ c.t("auth.password") }}</label>
         <div class="pw"><input id="al-pass" type="password" name="password" autocomplete="current-password" required>
           <button type="button" class="pw-eye" aria-label="Prikaži lozinku" onclick="qmtEye(this)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
           </button></div></div>
-      <div class="auth-row"><a class="tlink" href="/forgot">Zaboravljena lozinka?</a></div>
-      <button type="submit" class="btn">Prijavi se</button>
+      <div class="auth-row"><a class="tlink" href="/forgot">{{ c.t("auth.forgot_link") }}</a></div>
+      <button type="submit" class="btn">{{ c.t("auth.login.submit") }}</button>
     </form>
     {% if _reg %}
     <form id="authSignup" role="tabpanel" aria-labelledby="authTabSignup" method="post" action="/signup" hidden>
-      {% if not signup_open %}<p class="hint auth-note">Račun zasad mogu otvoriti samo pozvani članovi — javi se treneru za pozivnicu.</p>{% endif %}
-      <div class="field"><label for="as-name">Ime (neobavezno)</label>
-        <input id="as-name" type="text" name="name" autocomplete="name" placeholder="npr. Ivan Horvat"></div>
-      <div class="field"><label for="as-email">Email</label>
+      {% if not signup_open %}{{ c.opt("auth.signup.invite", "p", ' class="hint auth-note"') }}{% endif %}
+      {% set _ph = copy_text("auth.signup.name_placeholder", copy_texts) %}
+      <div class="field"><label for="as-name">{{ c.t("auth.signup.name") }}</label>
+        <input id="as-name" type="text" name="name" autocomplete="name"{% if _ph %} placeholder="{{ _ph }}"{% endif %}></div>
+      <div class="field"><label for="as-email">{{ c.t("auth.email") }}</label>
         <input id="as-email" type="email" name="email" autocomplete="email" required></div>
-      <div class="field"><label for="as-pass">Lozinka (barem 8 znakova)</label>
+      <div class="field"><label for="as-pass">{{ c.t("auth.signup.password") }}</label>
         <div class="pw"><input id="as-pass" type="password" name="password" autocomplete="new-password" minlength="8" required>
           <button type="button" class="pw-eye" aria-label="Prikaži lozinku" onclick="qmtEye(this)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
           </button></div></div>
-      <button type="submit" class="btn">Otvori račun</button>
+      <button type="submit" class="btn">{{ c.t("auth.signup.submit") }}</button>
     </form>
     {% endif %}
   </div>
@@ -1640,33 +1680,33 @@
   <button type="button" class="a2hs-x" aria-label="Zatvori" onclick="qmtA2hsDismiss()">✕</button>
   <div class="a2hs-head">
     <img src="/static/icons/icon-192.png" alt="" width="44" height="44">
-    <div><strong>QMT</strong><div id="a2hsTitle" class="hint">Dodaj na početni zaslon</div></div>
+    <div><strong>QMT</strong><div id="a2hsTitle" class="hint">{{ c.t("app.install.title") }}</div></div>
   </div>
-  <p class="hint a2hs-lead">Raspored i karton jednim dodirom, kao aplikacija.</p>
+  {{ c.opt("app.install.lead", "p", ' class="hint a2hs-lead"') }}
   <ol class="a2hs-steps" id="a2hsIos" hidden>
-    <li><span class="n">1</span><span>Pritisni <b>Podijeli</b>
+    <li><span class="n">1</span><span>{{ c.t("app.install.ios_press") }} <b>{{ c.t("app.install.ios_share") }}</b>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
-      u pregledniku</span></li>
-    <li><span class="n">2</span><span>Odaberi <b>„Dodaj na početni zaslon”</b></span></li>
+      {{ c.t("app.install.ios_where") }}</span></li>
+    <li><span class="n">2</span><span>{{ c.t("app.install.pick") }} <b>{{ c.t("app.install.pick_item") }}</b></span></li>
   </ol>
   <ol class="a2hs-steps" id="a2hsAndroid" hidden>
-    <li><span class="n">1</span><span>Otvori izbornik preglednika <b>⋮</b></span></li>
-    <li><span class="n">2</span><span>Odaberi <b>„Dodaj na početni zaslon”</b></span></li>
+    <li><span class="n">1</span><span>{{ c.t("app.install.android_menu") }} <b>⋮</b></span></li>
+    <li><span class="n">2</span><span>{{ c.t("app.install.pick") }} <b>{{ c.t("app.install.pick_item") }}</b></span></li>
   </ol>
   <div class="a2hs-actions">
-    <button type="button" class="act act-quiet" onclick="qmtA2hsDismiss()">U redu</button>
-    <button type="button" id="a2hsInstall" class="btn btn-sm" hidden onclick="qmtA2hsInstall()">Instaliraj</button>
+    <button type="button" class="act act-quiet" onclick="qmtA2hsDismiss()">{{ c.t("app.install.ok") }}</button>
+    <button type="button" id="a2hsInstall" class="btn btn-sm" hidden onclick="qmtA2hsInstall()">{{ c.t("app.install.go") }}</button>
   </div>
 </div>
 {% endif %}
 {# any form carrying data-confirm asks first — see qmtAskConfirm below #}
 <dialog id="confirmDlg" class="fb-modal" aria-labelledby="confirmTitle">
   <div class="fb-box">
-    <h2 id="confirmTitle">Jesi li siguran/na?</h2>
+    <h2 id="confirmTitle">{{ c.t("app.confirm.title") }}</h2>
     <p class="fb-lead" id="confirmText"></p>
     <div class="fb-actions">
-      <button type="button" class="btn-ghost btn-sm" onclick="qmtConfirmClose()">Odustani</button>
-      <button type="button" class="btn btn-sm" id="confirmGo">Potvrdi</button>
+      <button type="button" class="btn-ghost btn-sm" onclick="qmtConfirmClose()">{{ c.t("app.confirm.cancel") }}</button>
+      <button type="button" class="btn btn-sm" id="confirmGo">{{ c.t("app.confirm.go") }}</button>
     </div>
   </div>
 </dialog>
@@ -1677,22 +1717,23 @@
 <dialog id="fbPrompt" class="fb-modal" aria-labelledby="fbTitle">
   <div class="fb-box">
     <form method="dialog" class="fb-x"><button type="submit" aria-label="Zatvori">✕</button></form>
-    <h2 id="fbTitle">Kako je bilo?</h2>
-    <p class="fb-lead">
-      {% if fbc == 1 %}Jedan odrađen termin još čeka tvoj osvrt.
-      {% elif fbc < 5 %}{{ fbc }} odrađena termina još čekaju tvoj osvrt.
+    <h2 id="fbTitle">{{ c.t("app.feedback.title") }}</h2>
+    {# one termin's sentence a slot; a count's code (its plural follows it) #}
+    {% if fbc == 1 %}{{ c.opt("app.feedback.one", "p", ' class="fb-lead"') }}
+    {% else %}<p class="fb-lead">
+      {% if fbc < 5 %}{{ fbc }} odrađena termina još čekaju tvoj osvrt.
       {% else %}{{ fbc }} odrađenih termina još čeka tvoj osvrt.{% endif %}
-    </p>
+    </p>{% endif %}
     <div class="fb-last">
       <strong>{{ feedback_prompt.title }}</strong>
       <span>{{ feedback_prompt.when }}</span>
     </div>
-    <p class="fb-note">Kratko: napor, osjećaj i komentar — pomaže treneru posložiti sljedeći trening.</p>
+    {{ c.opt("app.feedback.note", "p", ' class="fb-note"') }}
     <div class="fb-actions">
-      <form method="dialog"><button type="submit" class="btn-ghost btn-sm">Kasnije</button></form>
+      <form method="dialog"><button type="submit" class="btn-ghost btn-sm">{{ c.t("app.feedback.later") }}</button></form>
       {# showModal() focuses the first focusable node — send it to the primary
          action, not to the ✕ in the corner #}
-      <a class="btn btn-sm" href="/karton#osvrti" autofocus>Ispuni osvrt</a>
+      <a class="btn btn-sm" href="/karton#osvrti" autofocus>{{ c.t("app.feedback.fill") }}</a>
     </div>
   </div>
 </dialog>
@@ -1782,10 +1823,11 @@
     var d = document.getElementById("confirmDlg");
     if (!d || !d.showModal) { form.dataset.confirmed = "1"; form.submit(); return; }
     _cf = form;
+    // a form's own words, else the dialog's default ones (copy slots, app.confirm.*)
     document.getElementById("confirmTitle").textContent =
-      form.dataset.confirmTitle || "Jesi li siguran/na?";
+      form.dataset.confirmTitle || {{ copy_text("app.confirm.title", copy_texts) | tojson }};
     document.getElementById("confirmText").textContent = form.dataset.confirm || "";
-    document.getElementById("confirmGo").textContent = form.dataset.confirmCta || "Potvrdi";
+    document.getElementById("confirmGo").textContent = form.dataset.confirmCta || {{ copy_text("app.confirm.go", copy_texts) | tojson }};
     d.showModal();
   }
   document.addEventListener("submit", function (e) {
@@ -1816,7 +1858,8 @@
     var tl = document.getElementById("authTabLogin"), ts = document.getElementById("authTabSignup");
     if (tl) tl.setAttribute("aria-selected", login);
     if (ts) ts.setAttribute("aria-selected", !login);
-    document.getElementById("authTitle").textContent = login ? "Dobrodošli natrag" : "Otvori račun";
+    document.getElementById("authTitle").textContent = login ? {{ copy_text("auth.modal.title", copy_texts) | tojson }}
+                                                             : {{ copy_text("auth.modal.title_signup", copy_texts) | tojson }};
     var first = document.getElementById(login ? "al-email" : "as-name");
     if (first) first.focus();
   }

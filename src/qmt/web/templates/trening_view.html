@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_copy.html" as c with context %}
 {% block title %}{{ p.title }} — QMT{% endblock %}
 {% block head %}
 <style>
@@ -21,12 +22,12 @@
 {% block content %}
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><span class="here">{{ p.title }}</span></nav>
 {# a dvoranski programme (24.11.2026) says so to staff, the only ones who reach it #}
-<h1>{{ p.title }}{% if user.is_trainer and p.venue == "dvorana" %} <span class="venue-chip">dvoranski</span>{% endif %}</h1>
+<h1>{{ p.title }}{% if user.is_trainer and p.venue == "dvorana" %} {{ c.opt("program.head.venue", "span", ' class="venue-chip"') }}{% endif %}</h1>
 {% set n = p.days|length %}
 <p class="hint" style="margin-bottom:6px;">{{ n }} {{ plural(n, "trening", "treninga", "treninga") }}</p>
 {% if p.intro %}<p style="max-width:64ch; margin-bottom:10px; white-space:pre-line;">{{ p.intro }}</p>{% endif %}
 {% if user.is_trainer %}
-  <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/uredi">Uredi program</a>
+  <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/uredi">{{ c.t("program.edit") }}</a>
 {% endif %}
 
 <div class="days">
@@ -34,14 +35,15 @@
   <a class="card day-card" href="/treninzi/{{ p.id }}/dan/{{ d.id }}">
     <span class="dc-main">
       <strong>{{ d.label }}</strong>
-      <span class="hint">{% if d.weekday is not none %}Preporučeno: {{ WEEKDAYS[d.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}
-        {%- if d.has_circuit %} · kružni trening{% endif %}
-        {%- if st and st.open %} · {{ "nedovršen" if st.open.stale() else "u tijeku" }}{% elif st and st.count %} · odrađen {{ st.count }}×{% endif %}</span>
+      {# its words since 25.11.2026 copy slots (an emptied state's word takes its " · " along); the count and "odrađen 2×" code #}
+      <span class="hint">{% if d.weekday is not none %}{{ c.t("dan.meta.suggested") }} {{ WEEKDAYS[d.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}
+        {%- if d.has_circuit and copy_on("dan.meta.circuit") %} · {{ c.t("dan.meta.circuit") }}{% endif %}
+        {%- if st and st.open %}{% set word = "program.state.stale" if st.open.stale() else "program.state.open" %}{% if copy_on(word) %} · {{ c.t(word) }}{% endif %}{% elif st and st.count %} · odrađen {{ st.count }}×{% endif %}</span>
     </span>
     <span class="dc-go" aria-hidden="true">→</span>
   </a>
   {% else %}
-  <p class="hint">{% if user.is_trainer %}Program još nema treninga — dodaj prvi u uređivanju.{% else %}Program još nema treninga.{% endif %}</p>
+  {{ c.opt("program.empty_staff" if user.is_trainer else "program.empty", "p", ' class="hint"') }}
   {% endfor %}
 </div>
 {% endblock %}

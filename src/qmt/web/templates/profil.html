@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_copy.html" as c with context %}
 {% block title %}Profil — QMT{% endblock %}
 {% block head %}<style>
   /* the way to the member's plans, uplate and računi (/moja-clanarina since
@@ -19,44 +20,43 @@
   .acct .hint { font-size: .86rem; margin-top: 2px; }
 </style>{% endblock %}
 {% block content %}
-<h1>Profil</h1>
-<p class="hint">Tvoji osnovni podaci — vidi ih samo trener.</p>
+<h1>{{ c.t("profil.head.title") }}</h1>
+{{ c.opt("profil.head.lead", "p", ' class="hint"') }}
 
 {% if first_login and not user.profile_complete %}
-<div class="alert" role="status" style="max-width:560px;">
-  Dobrodošao/la! Dopuni osnovne podatke da te trener zna voditi — treba nam minuta.
-</div>
+{{ c.opt("profil.welcome", "div", ' class="alert" role="status" style="max-width:560px;"') }}
 {% endif %}
 
 <form method="post" action="/profil" class="card" style="max-width:560px; padding:18px 20px; margin-bottom:26px;">
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-    <div class="field"><label for="p-name">Ime</label>
+    <div class="field"><label for="p-name">{{ c.t("profil.form.name") }}</label>
       <input id="p-name" type="text" name="name" value="{{ user.name or '' }}" required></div>
-    <div class="field"><label for="p-last">Prezime</label>
+    <div class="field"><label for="p-last">{{ c.t("profil.form.last") }}</label>
       <input id="p-last" type="text" name="last_name" value="{{ user.last_name or '' }}" required></div>
-    <div class="field"><label for="p-born">Datum rođenja</label>
+    <div class="field"><label for="p-born">{{ c.t("profil.form.born") }}</label>
       <input id="p-born" type="date" name="birth_date"
              value="{{ user.birth_date.isoformat() if user.birth_date else '' }}"></div>
-    <div class="field"><label for="p-phone">Telefon (neobavezno)</label>
-      <input id="p-phone" type="tel" name="phone" value="{{ user.phone or '' }}" placeholder="09x xxx xxxx"></div>
+    {% set placeholder = copy_text("profil.form.phone_placeholder", copy_texts) %}
+    <div class="field"><label for="p-phone">{{ c.t("profil.form.phone") }}</label>
+      <input id="p-phone" type="tel" name="phone" value="{{ user.phone or '' }}"{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}></div>
     {# the karton's height (23.11.2026, Amir's karton: one number, no
        history), whole centimetres; empty for none #}
-    <div class="field"><label for="p-height">Visina (cm)</label>
+    <div class="field"><label for="p-height">{{ c.t("profil.form.height") }}</label>
       <input id="p-height" type="number" name="height" value="{{ user.height_cm or '' }}"
              min="100" max="250" step="1" inputmode="numeric"></div>
   </div>
-  <button type="submit" class="btn-signal">Spremi podatke</button>
+  <button type="submit" class="btn-signal">{{ c.t("profil.form.save") }}</button>
 </form>
 
 <div class="card acct">
-  <h2>Račun</h2>
+  <h2>{{ c.t("profil.account.title") }}</h2>
   <p class="mail">{{ user.email }}</p>
-  <p class="hint">Registriran/a od {{ user.created_at.astimezone(tz).strftime("%-d.%-m.%Y.") }}</p>
+  <p class="hint">{{ c.t("profil.account.since") }} {{ user.created_at.astimezone(tz).strftime("%-d.%-m.%Y.") }}</p>
 </div>
 
 {% if not user.is_trainer %}
 <div class="card mc-link">
-  <a class="act" href="/moja-clanarina">Moja članarina — planovi, uplate i računi →</a>
+  <a class="act" href="/moja-clanarina">{{ c.t("profil.link") }}</a>
 </div>
 {% endif %}
 {% endblock %}

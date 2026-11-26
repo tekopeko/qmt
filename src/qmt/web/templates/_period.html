@@ -13,10 +13,15 @@
    (under each row on the landing, under each group's heading on
    /moja-clanarina); whether there is one at all is the caller's (the
    landing: none while a guest sees no prices).
-   Use: {% from "_period.html" import period_switch %} … {{ period_switch("year") }} #}
+   Its two words are copy slots since 25.11.2026 (period.month / .year),
+   edited on /tekstovi: printed plain, not as an in-place box, because in
+   edit mode the switch must keep switching (the yearly prices are edited
+   in place behind it; a box on its words would take the press). Import it
+   with context, for them.
+   Use: {% from "_period.html" import period_switch with context %} … {{ period_switch("year") }} #}
 {% macro period_switch(start) -%}
   <div class="period" role="tablist" aria-label="Razdoblje plaćanja" hidden>
-    <button type="button" role="tab" aria-selected="{{ 'true' if start == 'month' else 'false' }}" data-period="month">Mjesečno</button>
-    <button type="button" role="tab" aria-selected="{{ 'true' if start == 'year' else 'false' }}" data-period="year">Godišnje</button>
+    <button type="button" role="tab" aria-selected="{{ 'true' if start == 'month' else 'false' }}" data-period="month">{{ copy_text("period.month", copy_texts) }}</button>
+    <button type="button" role="tab" aria-selected="{{ 'true' if start == 'year' else 'false' }}" data-period="year">{{ copy_text("period.year", copy_texts) }}</button>
   </div>
 {%- endmacro %}

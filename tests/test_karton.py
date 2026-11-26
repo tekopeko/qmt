@@ -1104,7 +1104,7 @@ def test_the_height_is_a_profile_field_and_heads_the_karton():
     make_user("trener@test.local", is_trainer=True)
     ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
     field = r'<input id="p-height" type="number" name="height" value="{}"\s+min="100" max="250" step="1" inputmode="numeric">'
-    assert re.search(field.format(""), ci.get("/profil").text) and '<label for="p-height">Visina (cm)</label>' in ci.get("/profil").text
+    assert re.search(field.format(""), ci.get("/profil").text) and '<label for="p-height"><span class="t">Visina (cm)</span></label>' in ci.get("/profil").text
     form = {"name": "ivan", "last_name": "Test", "birth_date": "1990-01-01", "phone": ""}
     r = ci.post("/profil", data={**form, "height": " 178 "}, follow_redirects=False)
     assert location(r) == "/profil?ok=Podaci su spremljeni." and db.get_user(ivan).height_cm == 178

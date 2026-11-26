@@ -512,6 +512,49 @@ osvježavanja stranice."); an `h3` per area (the kicker's look: 700 .7rem,
 (`dd`, .92rem), an `.ed` a click opens. Its own words are the editor's, no
 slot.
 
+**Tekstovi (`tekstovi.html`, 25.11.2026; Admin ▾ → Tekstovi).** Every plain
+slot of the app on one page (`copy.TEXT_PAGES`), the ones only a member or a
+guest sees among them: the /admin pages' look, `.tx` a 720px column under the
+h1 and its muted lead. The search first (`form.tx-search`, one full-width
+`input[type=search]`, `autocomplete="off"`; hidden without JS, which shows it:
+the whole list then), the library's way (vjezbe.html): every word typed, folded
+(`qmtFold`), in a row's label or its text as it is now; the count line under it
+(`.tx-found`, the hint's look, "12 od 543 · prikaži sve", the link a `.tlink`
+that clears the box) while the box holds text, `.tx-none` muted when nothing is
+kept; a row, an area or a page with nothing kept `hidden`. Then a `section.tx-page`
+per page, 28px apart: `.tx-head` a wrapping row, its h2 (1.15rem) and
+"Otvori stranicu →" (`.act`) where staff open the page; under the landing's, the
+upitnik's and the guide's h2 a muted .82rem line, "Liste, tablice i kartice
+uređuju se na samoj stranici."; then one `.card.tx-card` (2px 20px 12px, 16px
+sides under 600px) of its areas: each an `h3` in the karton panel's caption look
+(700 .7rem, .12em, uppercase, muted, 18px above it) over a `dl` of rows
+(`.tx-row`, 8px 0, a hairline over each): the label (`dt`, muted .82rem) over the
+text (`dd`, .92rem, an `.ed` a click opens in edit mode). An emptied text reads
+"(prazno)" (`.tx-empty`, muted) outside edit mode, its empty box in it. Its own
+words are the editor's, no slot.
+
+**Every member page's optional text** (25.11.2026): `_copy.html`'s
+`c.opt(key, tag, attrs)` prints the element around an optional slot only while
+it holds a text (a reader gets no element and no gap once it is emptied); the
+editor keeps the element, marked `data-opt`, and base.html hides it outside edit
+mode (`body:not(.editing) [data-opt]:has(.ed:empty)`). A control whose words
+sit beside a value keeps them in one `<span>` (a button, an `.act`, a summary
+and a pill are flex boxes: two items would take the gap between them). A word
+too long for its box breaks anywhere: base.html's `main span.t, dialog span.t,
+#a2hs span.t { overflow-wrap: anywhere }`, and `.fb-modal` and the rest bar
+whole (their scripts write words as bare text). Where a box takes its width
+from its words, "anywhere" would let it shrink to a letter, so the box is as
+wide as its words up to a bound instead (`width: max-content; max-width: 5em`
+on a `.pl-sets` header, 8em on the player's "dodatna serija"), or the word
+breaks only when it does not fit (`overflow-wrap: break-word` on a raspored
+card's button, its form `width: fit-content` up to the card's right padding:
+from 861px to 1000px "Rezerviraj" always reached into it).
+A pill or switch whose words are a slot gets `max-width: 100%` and its text
+`min-width: 0` (`.period`, `.chip`), so a long label wraps inside it; the
+install banner scrolls inside itself past the screen's height. Measured: with
+the pages' own words no word of a member page moves (the untouched tree beside
+the build, every word's place, 360–1280px).
+
 **Upitnik (`upitnik.html`, 26.10.2026; patterns.md §7).** One `form.quiz` (640px,
 centred) holds every step; for a member the page sets `solo_page` (`not can_edit_copy`),
 so the bar is the small pill with the brand alone; the trainer and the owner, who open

@@ -218,8 +218,8 @@ def test_cancel_and_delete_keep_paid_time_but_stop_renewing(stripe_on):
     m = db.memberships_for(ivan)[0]
     assert m.cancel_at_period_end and not m.auto_renew
     page = client_for("ivan@test.local").get("/moja-clanarina").text
-    assert '<span class="chip off">otkazana · vrijedi do kraja</span>' in page
-    assert f"Pretplata je otkazana i vrijedi do {m.dospijece:%-d.%-m.%Y.}</p>" in page
+    assert '<span class="chip off"><span class="t">otkazana · vrijedi do kraja</span></span>' in page
+    assert f'<span class="t">Pretplata je otkazana i vrijedi do</span> {m.dospijece:%-d.%-m.%Y.}</p>' in page
 
     r = post_event({"type": "customer.subscription.deleted", "data": {"object": {"id": "sub_1"}}})
     assert r.text == "deleted"
@@ -314,7 +314,7 @@ def test_dodaj_plan_shows_the_owners_prices_stripe_or_not(stripe_on, monkeypatch
     assert r.status_code == 200
     page = r.text
     online, grupni = _card(page, "online"), _card(page, "grupni")
-    assert "50 € / mjesečno" in _text(online) and ">Pretplati se karticom</button>" in online
+    assert "50 € / mjesečno" in _text(online) and '><span class="t">Pretplati se karticom</span></button>' in online
     assert "55 €" not in page and "55,00 €" not in page             # Stripe's online price: nowhere
     assert "60–80 € / paket Bazna cijena na 10.9.2026. : 60–80 € na upit Satni termini" in _text(grupni)  # its slots, monthly
                                                                     # (its bazna cijena under it) and yearly, then its text
@@ -322,7 +322,7 @@ def test_dodaj_plan_shows_the_owners_prices_stripe_or_not(stripe_on, monkeypatch
     for tier, key in (("start", "online"), ("pro", "online-pro"), ("elite", "online-elite")):
         form = _card(page, key)                                     # every QMove tier: its own form
         assert '<form method="post" action="/placanje/online">' in form, tier
-        assert f'<input type="hidden" name="tier" value="{tier}">' in form and ">Pretplati se karticom</button>" in form, tier
+        assert f'<input type="hidden" name="tier" value="{tier}">' in form and '><span class="t">Pretplati se karticom</span></button>' in form, tier
     assert "8, 12, 16 treninga mjesečno" not in _text(page)          # not the hint built from Stripe's tiers
     assert 'name="sessions" value="12"' in grupni and "12 treninga · 70 €" in _text(grupni)   # the picker, in the form
     assert "35 € / trening" in _text(page)
@@ -368,19 +368,19 @@ def test_moja_clanarina_follows_how_each_plan_is_paid(stripe_on):
 
     page = c.get("/moja-clanarina").text
     g = _card(page, "grupni")
-    assert '<span class="chip ok">aktivna</span>' in g
+    assert '<span class="chip ok"><span class="t">aktivna</span></span>' in g
     assert "Cijena 60–80 € / paket" in _text(g) and "70 €" not in g   # the owner's price, not Stripe's tier
     assert "Paket 12 treninga mjesečno" in _text(g)                # his tier: a fact of its own
     assert f"Pretplata se obnavlja automatski {m['grupni'].next_payment:%-d.%-m.%Y.} karticom." in _text(g)
-    assert 'href="/raspored">Rezerviraj termin →</a>' in g
-    assert '<button type="submit" class="act">Kartica, računi, otkazivanje</button>' in g
+    assert 'href="/raspored"><span><span class="t">Rezerviraj termin</span> →</span></a>' in g
+    assert '<button type="submit" class="act"><span class="t">Kartica, računi, otkazivanje</span></button>' in g
     assert "Promijeni paket" in g and g.count('action="/placanje/grupni/promjena"') == 2
     assert ">8 treninga · 60 €</button>" in g and ">16 treninga · 80 €</button>" in g
     assert 'data-confirm="Novi paket vrijedi odmah — 80 € mjesečno.' in g
 
     o = _card(page, "online")                                      # cash, sellable: onto the card
     assert "Sljedeću uplatu obavi do" in _text(o)
-    assert 'action="/placanje/online"' in o and ">Prebaci na karticu</button>" in o
+    assert 'action="/placanje/online"' in o and '><span class="t">Prebaci na karticu</span></button>' in o
     assert "Kartica, računi, otkazivanje" not in o and "promjena" not in o
 
     add = page[page.index('aria-labelledby="mcAdd"'):page.index('aria-labelledby="mcBills"')]
@@ -390,14 +390,14 @@ def test_moja_clanarina_follows_how_each_plan_is_paid(stripe_on):
 
     bills = page[page.index('aria-labelledby="mcBills"'):]
     assert "Računi i kartica u Stripe portalu" in bills            # the portal's invoices
-    assert "<th class=\"r\">Iznos</th>" in bills and "70,00 €" in bills and "Stripe" in bills
+    assert '<th class="r"><span class="t">Iznos</span></th>' in bills and "70,00 €" in bills and "Stripe" in bills
     assert "—" in bills                                            # the cash uplata, no amount
 
     # cancelled in the portal: it says so, and until when
     post_event({"type": "customer.subscription.updated",
                 "data": {"object": {"id": "sub_1", "cancel_at_period_end": True}}})
     g = _card(c.get("/moja-clanarina").text, "grupni")
-    assert '<span class="chip off">otkazana · vrijedi do kraja</span>' in g
+    assert '<span class="chip off"><span class="t">otkazana · vrijedi do kraja</span></span>' in g
     assert f"Pretplata je otkazana i vrijedi do {m['grupni'].dospijece:%-d.%-m.%Y.}" in _text(g)
 
 
@@ -410,11 +410,11 @@ def test_moja_clanarina_offers_the_card_for_a_cash_plan_a_lapsed_one_and_one_not
         mm.next_payment = mm.next_payment - timedelta(days=70)
     page = client_for("ana@test.local").get("/moja-clanarina").text
     gr = _card(page, "grupni")                                     # cash, sold by card in tiers: onto the card
-    assert 'action="/placanje/grupni"' in gr and ">Prebaci na karticu</button>" in gr
+    assert 'action="/placanje/grupni"' in gr and '><span class="t">Prebaci na karticu</span></button>' in gr
     assert 'name="sessions" value="12" checked' in gr             # the tier picker, the middle tier preselected
     o = _card(page, "online")
-    assert '<span class="chip lapsed">istekla</span>' in o
-    assert ">Pretplati se karticom</button>" in o and "Prebaci na karticu" not in o
+    assert '<span class="chip lapsed"><span class="t">istekla</span></span>' in o
+    assert '><span class="t">Pretplati se karticom</span></button>' in o and "Prebaci na karticu" not in o
     assert "Mjesečno, otkazivo bilo kad. Ili gotovinom u dvorani." in o
     assert "Pretplati se karticom" not in page[page.index('aria-labelledby="mcAdd"'):]   # nothing else is sold by card
     assert "Stripe portalu" not in page                            # no subscription: no portal
@@ -460,13 +460,13 @@ def test_the_owners_prices_print_everywhere_even_with_stripe_prices(stripe_on, m
     post_event(invoice_paid("in_1", "sub_1", cents=7000))          # grupni by card, 12 treninga at 70 €
     page = client_for("ivan@test.local").get("/moja-clanarina").text
     g = _card(page, "grupni")
-    cijena = g[g.index("<dt>Cijena</dt>"):g.index("<dt>Uplaćeno</dt>")]
+    cijena = g[g.index('<dt><span class="t">Cijena</span></dt>'):g.index('<dt><span class="t">Uplaćeno</span></dt>')]
     assert '<span class="t">60–80</span> € <small><span class="t">/ paket</span></small>' in cijena
     assert "Paket 12 treninga mjesečno" in _text(g) and "70 €" not in g
     assert ">8 treninga · 60 €</button>" in g and ">16 treninga · 80 €</button>" in g   # the switch: Stripe's
     assert asked                                                   # (read for those forms only)
     online = _card(page, "online")                                 # not held, sold by card
-    assert "50 € / mjesečno" in _text(online) and ">Pretplati se karticom</button>" in online
+    assert "50 € / mjesečno" in _text(online) and '><span class="t">Pretplati se karticom</span></button>' in online
     assert "55 €" not in page and "55,00 €" not in page
 
 

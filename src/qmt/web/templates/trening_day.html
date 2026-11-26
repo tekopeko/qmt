@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_copy.html" as c with context %}
 {% block title %}{{ day.label }} — {{ p.title }} — QMT{% endblock %}
 {% block head %}
 <style>
@@ -79,7 +80,7 @@
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Trening {{ day.position }}</span></nav>
 <h1>{{ day.label }}</h1>
 {% set k = day.items|length %}
-<p class="hint">{% if day.weekday is not none %}Preporučeno: {{ WEEKDAYS[day.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}{% if day.has_circuit %} · kružni trening{% endif %}</p>
+<p class="hint">{% if day.weekday is not none %}{{ c.t("dan.meta.suggested") }} {{ WEEKDAYS[day.weekday] }} · {% endif %}{{ k }} {{ plural(k, "vježba", "vježbe", "vježbi") }}{% if day.has_circuit and copy_on("dan.meta.circuit") %} · {{ c.t("dan.meta.circuit") }}{% endif %}</p>
 {# the viewer's state on the day, and the way into the player (30.10.2026):
    "Kreni" opens a pass, "Nastavi" goes on with the one in progress (the
    same form: the route lands on the first exercise it has not saved); a
@@ -88,22 +89,28 @@
    deleted since, 4.11.2026) still says so and keeps its way out: Nastavi
    (its finish screen) or a stale one's Završi trening, and Odbaci; Kreni
    only on a day with exercises #}
-{% if k or state.count or state.open %}<p class="dx-state">{{ state_line }}</p>{% endif %}
+{# the line: a pass in progress (not stale) and a day never done are copy
+   slots since 25.11.2026 (dan.state.open / .new; state_line "" for them),
+   the other two name a value (_state_line) #}
+{% if k or state.count or state.open %}
+  {% if state_line %}<p class="dx-state">{{ state_line }}</p>
+  {% else %}{{ c.opt("dan.state.open" if state.open else "dan.state.new", "p", ' class="dx-state"') }}{% endif %}
+{% endif %}
 {% if k or state.open %}
 <div class="dx-start">
   {% if stale %}
-  <div class="go"><a class="btn" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/kraj">Završi trening</a></div>
+  <div class="go"><a class="btn" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/kraj">{{ c.t("player.finish") }}</a></div>
   {% else %}
   <form class="go" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/kreni">
-    <button type="submit" class="btn">{{ "Nastavi" if state.open else "Kreni" }}</button>
+    <button type="submit" class="btn">{{ c.t("dan.go.resume" if state.open else "dan.go.start") }}</button>
   </form>
   {% endif %}
   {% if state.open %}
   <form method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/odustani"
-        data-confirm-title="Odbaciti započeti trening?"
-        data-confirm="Spremljene serije ovog pokušaja se brišu. Trening možeš započeti ponovno."
-        data-confirm-cta="Odbaci">
-    <button type="submit" class="act act-quiet">Odbaci započeti trening</button>
+        data-confirm-title="{{ copy_text('dan.drop.title', copy_texts) }}"
+        data-confirm="{{ copy_text('dan.drop.text', copy_texts) }}"
+        data-confirm-cta="{{ copy_text('dan.drop.cta', copy_texts) }}">
+    <button type="submit" class="act act-quiet">{{ c.t("dan.drop.button") }}</button>
   </form>
   {% endif %}
 </div>
@@ -111,11 +118,11 @@
 <div class="day-body">
   {% if day.intro %}<p class="day-intro">{{ day.intro }}</p>{% endif %}
   {% if user.is_trainer %}
-  <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/uredi">Uredi trening</a>
+  <a class="btn btn-quiet btn-sm" href="/treninzi/{{ p.id }}/dan/{{ day.id }}/uredi">{{ c.t("dan.edit") }}</a>
   {% endif %}
   {% if day.intro_video %}
   <section class="day-video ex-video" aria-label="Uvodni video">
-    <p class="hint">Uvodni video — pogledaj ga prije treninga.</p>
+    {{ c.opt("dan.video.hint", "p", ' class="hint"') }}
     <video src="/media/{{ day.intro_video }}" controls playsinline preload="metadata"></video>
   </section>
   {% endif %}
@@ -134,15 +141,15 @@
           <span class="dx-main">
             <span class="dx-n">Vježba {{ ns.n }}</span>
             <span class="dx-line"><span class="dx-name">{{ ex.name }}</span>{% if mark and mark.full %}<span class="dx-dose"><span class="dx-ok" role="img" aria-label="spremljeno">✓</span>{% if dose %} {{ dose }}{% endif %}</span>{% elif mark %}<span class="dx-dose"><span class="dx-rounds" role="img" aria-label="{{ mark.label }}">{{ mark.text }}</span>{% if dose %} {{ dose }}{% endif %}</span>{% elif dose %}<span class="dx-dose">{{ dose }}</span>{% endif %}</span>
-            {% set sub = ([it.note] if circ else [it.rest_text and "Odmor između serija: " ~ it.rest_text, it.rest_after_text and "Odmor nakon vježbe: " ~ it.rest_after_text, it.note])|select|list %}
+            {% set sub = ([it.note] if circ else [it.rest_text and c.t("dan.exercise.rest_between") ~ " " ~ it.rest_text, it.rest_after_text and c.t("dan.exercise.rest_after") ~ " " ~ it.rest_after_text, it.note])|select|list %}
             {% if sub %}<span class="dx-sub">{{ sub|join(" · ") }}</span>{% endif %}
           </span>
           <span class="dx-go" aria-hidden="true">▷</span>
         </summary>
         <div class="dx-body ex-video">
           {% if ex.video %}<video src="/media/{{ ex.video }}" controls playsinline preload="none"></video>
-          {% else %}<p class="hint">Vježba još nema videa.</p>{% endif %}
-          {% if ex.rep_note %}<p class="pre"><strong>Jedno ponavljanje:</strong> {{ ex.rep_note }}</p>{% endif %}
+          {% else %}{{ c.opt("dan.exercise.no_video", "p", ' class="hint"') }}{% endif %}
+          {% if ex.rep_note %}<p class="pre"><strong>{{ c.t("dan.exercise.rep") }}</strong> {{ ex.rep_note }}</p>{% endif %}
           {% if ex.instructions %}<p class="pre">{{ ex.instructions }}</p>{% endif %}
         </div>
       </details>
@@ -152,7 +159,7 @@
   {% endif %}
   {% endfor %}
   {% if not k %}
-  <p class="hint" style="margin-top:22px;">{% if user.is_trainer %}Trening još nema vježbi — dodaj ih u uređivanju.{% else %}Trening još nema vježbi.{% endif %}</p>
+  {{ c.opt("dan.empty_staff" if user.is_trainer else "dan.empty", "p", ' class="hint" style="margin-top:22px;"') }}
   {% endif %}
 
   {% if history %}
@@ -161,7 +168,7 @@
      deleted since stays in its Serije, not in the count); a day holding no
      exercise now, every entry (done_text, a deleted day's words) #}
   <section class="dx-hist" aria-labelledby="povijest">
-    <h2 class="dx-cap" id="povijest">Povijest</h2>
+    <h2 class="dx-cap" id="povijest">{{ c.t("dan.history.title") }}</h2>
     <ol class="hist">
       {% for w in history %}
       <li class="card hist-row">
@@ -171,7 +178,7 @@
         {% set lines = w.lines(order) %}
         {% if lines %}
         <details class="sets">
-          <summary>Serije</summary>
+          <summary>{{ c.t("dan.history.sets") }}</summary>
           <ul>{% for name, sets in lines %}<li><strong>{{ name }}:</strong> {% for s in sets %}<span class="set">{{ s }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</li>{% endfor %}</ul>
         </details>
         {% endif %}
