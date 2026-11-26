@@ -1,0 +1,112 @@
+{# The rest bar (30.10.2026, the player's; the owner: "a timer which he can
+   skip, in between sets as well as between exercises, which Shape Club also
+   has"; since 26.11.2026 shared with the gym training's page,
+   karton_trening.html, build 3: "the tick, the pause timer"). Included in
+   a page's content; its look is base.html's (.pl-rest). Hidden until a
+   rest: the page's own script starts one with window.qmtRest.begin(seconds)
+   (a ✓ with a pause, the player's rest at load), unlock() at a tap makes
+   the tone possible on iOS, stop() ends it. Its words are the player's
+   slots (player.rest.*), one slot on both pages. While it shows, a page's
+   dock (.pl-dock, the player's) is hidden and body.has-rest gives the
+   page's column room under it (each page's own rule). #}
+{% import "_copy.html" as c with context %}
+<div class="pl-rest" id="plRest" role="timer" hidden>
+  <span class="pl-rest-n"><span class="pl-rest-h">{{ c.t("player.rest.head") }}</span><span class="pl-rest-t">0:00</span></span>
+  <span class="pl-rest-track" aria-hidden="true"><span class="pl-rest-fill"></span></span>
+  <button type="button" class="pl-rest-skip">{{ c.t("player.rest.skip") }}</button>
+</div>
+<script>
+  // The rest bar's countdown (window.qmtRest). It runs from an end time,
+  // redrawn every 250 ms, so a tab woken from the background shows what is
+  // really left; "Preskoči odmor" ends it at once, silently. At zero the bar
+  // says "Kreni" for about 1.5 s, then goes; the phone vibrates and two short
+  // beeps play where the browser allows it. Leaving the page ends it; nothing
+  // is kept.
+  (function () {
+    var rest = document.getElementById("plRest");
+    if (!rest) return;
+    // the static words the script writes: copy slots (25.11.2026)
+    var REST = {{ copy_text("player.rest.head", copy_texts) | tojson }},
+        GO = {{ copy_text("player.rest.go", copy_texts) | tojson }};
+    var restH = rest.querySelector(".pl-rest-h"), restT = rest.querySelector(".pl-rest-t");
+    var fill = rest.querySelector(".pl-rest-fill");
+    var end = 0, span = 1, every = null, after = null, audio = null;
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    var clockOf = function (s) {
+      var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+      return (h ? h + ":" + pad(m) : m) + ":" + pad(s % 60);
+    };
+    var show = function (on) {
+      rest.hidden = !on;
+      var dock = document.querySelector(".pl-dock");
+      if (dock) dock.hidden = on;
+      document.body.classList.toggle("has-rest", on);
+    };
+    var stop = function () {
+      clearInterval(every); clearTimeout(after);
+      every = after = null;
+      show(false);
+    };
+    // The tone's AudioContext is made and resumed at the first ✓, a tap:
+    // that is what lets iOS sound it later. Where it cannot be made or
+    // resumed, no tone, and never an error.
+    var unlock = function () {
+      if (audio !== null) return;
+      audio = false;
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        audio = new AC();
+        var resumed = audio.resume && audio.resume();
+        if (resumed && resumed.catch) resumed.catch(function () {});
+      } catch (e) { audio = false; }
+    };
+    // two 880 Hz beeps of 120 ms, 100 ms apart, quiet
+    var beep = function () {
+      if (!audio || audio.state !== "running") return;
+      try {
+        var t0 = audio.currentTime + .02;
+        [0, .22].forEach(function (d) {
+          var o = audio.createOscillator(), g = audio.createGain(), t = t0 + d;
+          o.frequency.value = 880;
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(.08, t + .01);
+          g.gain.setValueAtTime(.08, t + .11);
+          g.gain.linearRampToValueAtTime(0, t + .12);
+          o.connect(g); g.connect(audio.destination);
+          o.start(t); o.stop(t + .13);
+        });
+      } catch (e) {}
+    };
+    // a phone vibrates only after a tap on the page (Chrome refuses it,
+    // with a console line, before one): asked only then
+    var buzz = function () {
+      try {
+        var ua = navigator.userActivation;
+        if (navigator.vibrate && (!ua || ua.hasBeenActive)) navigator.vibrate([150, 80, 150]);
+      } catch (e) {}
+    };
+    var draw = function () {
+      var left = end - Date.now();
+      if (left > 0) {
+        restT.textContent = clockOf(Math.ceil(left / 1000));
+        fill.style.transform = "scaleX(" + (left / span).toFixed(4) + ")";
+        return;
+      }
+      clearInterval(every); every = null;
+      restH.textContent = GO; restT.textContent = "0:00"; fill.style.transform = "scaleX(0)";
+      buzz(); beep();
+      after = setTimeout(stop, 1500);
+    };
+    var begin = function (s) {
+      clearInterval(every); clearTimeout(after); after = null;
+      span = s * 1000; end = Date.now() + span;
+      restH.textContent = REST;
+      show(true); draw();
+      every = setInterval(draw, 250);
+    };
+    rest.querySelector(".pl-rest-skip").addEventListener("click", stop);
+    window.addEventListener("pagehide", stop);
+    window.qmtRest = {begin: begin, stop: stop, unlock: unlock};
+  })();
+</script>

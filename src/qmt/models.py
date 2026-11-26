@@ -639,9 +639,16 @@ class TrainingLog(Base):
     {"exercise_id": 12, "name": "Goblet čučanj" (the library's name when
     logged, a snapshot as a pass's), "sets": [{"reps": 10, "kg": 20.0}, …]
     (db.read_sets' shape, reps and kg only: a set with no weight is kg 0),
-    "at": "<iso>"}; the same exercise may be in it twice. Written by db.py
-    only (db.read_log builds it), read through set_items; the karton's
-    estimated maxes read it (db.estimated_maxes).
+    "at": "<iso>"}; the same exercise may be in it twice. Read through
+    set_items; the karton's estimated maxes and history read it
+    (db._logged_sets).
+
+    No new row is written since 26.11.2026 (build 3: the plain osvrt form
+    and its exercise log, db.read_log, went; a termin's training is a
+    GymTraining since): the rows already there stay, listed, their napor,
+    osjećaj and comment (and a training outside a termin's date) edited
+    in place (db.update_training_log), their exercises read only, deleted;
+    "Nisam bio/la" still writes its absence row (db.mark_session_absent).
     """
 
     __tablename__ = "training_logs"
@@ -949,7 +956,7 @@ Index("uq_exercises_name", func.lower(Exercise.name), unique=True)
 
 class Program(Base):
     """An online course variant: tagged with a razina and a type (`goal`,
-    upitnik.GOALS: "Tip treninga" on its forms), matched, not assigned.
+    upitnik.GOALS: "Tip programa" on its forms), matched, not assigned.
 
     The online side is AUTOMATED — the upitnik routes a client into a razina,
     and he sees every programme of that razina, whatever its type (since
@@ -1562,3 +1569,247 @@ def duration_text(seconds: int | None) -> str:
         return ""
     minutes = max(1, (int(seconds) + 30) // 60)
     return f"{minutes} min" if minutes < 60 else f"{minutes // 60} h {minutes % 60:02d} min"
+
+
+class GymTraining(Base):
+    """A member's training in the gym (26.11.2026, build 3 of
+    roadmap/2026-11-26-gym-training-plan.md; the owner: "automatically add
+    the training with its title already after a user booked it and he can
+    already edit it 4 hours before the training up until the next day. Amir
+    can also edit it later." … "The training should have a date and time
+    written on it so that there is no confusion which training they edit.";
+    his note to Amir: "Kolko je zadano a kolko je napravio i onda
+    kvačica."). ONE page that grows as the training goes
+    (karton_trening.html): its exercises (GymTrainingItem) added one after
+    another, each with what was given (zadano) and its sets as done, ticked;
+    "Završi trening" is the osvrt. Not the online days and passes: a record
+    of its own, Kreni / Nastavi, the walk and the load next time are
+    online's alone.
+
+    A termin's training (`session_id`) exists for every live booking of it,
+    its row made the first time it is opened (db.gym_training_for: INSERT …
+    ON CONFLICT DO NOTHING on uq_gym_trainings_user_session, a partial
+    unique index, so two opens at once make one), its `title` and
+    `starts_at` the termin's then (snapshots: a record), `held_on` its
+    Zagreb date. A training outside a termin (POST /karton/trening) has no
+    session, title '' and no start, `held_on` the date the member picked. A
+    cancelled booking takes its training with it (db.cancel_booking): the
+    row goes when nothing was done in it, one that holds a record is let go
+    of its termin (session_id NULL), its title and date as they were, and
+    reads on as a training outside a termin. `effort` (1–10), `feeling` (a
+    FEELING_LABELS key) and `note` are the osvrt, `finished_at` its first
+    save. Written by db.py only, the row locked FOR UPDATE, each write asking
+    db.gym_can_write (the member's window; staff acting as him at any
+    time)."""
+
+    __tablename__ = "gym_trainings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("training_sessions.id", ondelete="SET NULL"),
+                                                   nullable=True)
+    title: Mapped[str] = mapped_column(String(160), server_default=text("''"), default="")
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    held_on: Mapped[SADate] = mapped_column(Date)
+    effort: Mapped[int | None] = mapped_column(Integer, nullable=True)       # RPE 1–10
+    feeling: Mapped[str | None] = mapped_column(String(10), nullable=True)  # FEELING_LABELS key
+    note: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                 onupdate=func.now())
+
+    __table_args__ = (
+        # a member's one training of a termin; a training outside one (NULL) as many as he likes
+        Index("uq_gym_trainings_user_session", "user_id", "session_id", unique=True,
+              postgresql_where=sql_text("session_id IS NOT NULL")),
+    )
+
+    items: Mapped[list["GymTrainingItem"]] = relationship(
+        back_populates="training", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="GymTrainingItem.position")
+
+    @property
+    def outside(self) -> bool:
+        """Made outside a termin (no start: its date the member's). One let
+        go of its termin (a cancelled booking that held a record) keeps the
+        termin's title and start, and is no termin's now (session_id)."""
+        return self.starts_at is None
+
+    def part_label(self, section: str) -> str:
+        """A part of the training as the page names it: its default name
+        (SECTIONS: "Glavni dio A"). Every place that names a part of a gym
+        training asks this (part B of the build gives a part a name of its
+        own here, as ProgramDay.part_label does a day's)."""
+        return SECTIONS.get(section, "")
+
+    @property
+    def by_section(self) -> dict[str, list["GymTrainingItem"]]:
+        """The rows per part, in SECTIONS' order, each part's in position
+        order: the page's order. A part with none holds an empty list."""
+        out: dict[str, list[GymTrainingItem]] = {key: [] for key in SECTIONS}
+        for it in self.items:                          # in position order
+            if it.section in out:
+                out[it.section].append(it)
+        return out
+
+    @property
+    def exercise_items(self) -> list["GymTrainingItem"]:
+        """The rows that are an exercise (one gone from the library too,
+        under its name), in the page's order; a slot is none."""
+        return [it for rows in self.by_section.values() for it in rows if not it.is_slot]
+
+    @property
+    def count_text(self) -> str:
+        """"5 vježbi", "1 vježba" (its exercises, plural's forms)."""
+        n = len(self.exercise_items)
+        return f"{n} {plural(n, 'vježba', 'vježbe', 'vježbi')}"
+
+    @property
+    def holds_anything(self) -> bool:
+        """A row in it, or its osvrt: what the diary lists as a training."""
+        return bool(self.items) or self.finished_at is not None
+
+    @property
+    def has_record(self) -> bool:
+        """Something was done in it: a set saved, or its osvrt. A cancelled
+        booking keeps such a training (let go of its termin) and takes one
+        with none along."""
+        return self.finished_at is not None or self.effort is not None or any(it.done_sets for it in self.items)
+
+    @property
+    def osvrt_text(self) -> str:
+        """The saved osvrt's facts on one line: "napor 7/10 · Dobro" (no
+        osjećaj: the napor alone); "" before it is saved."""
+        if self.effort is None:
+            return ""
+        return " · ".join(w for w in (f"napor {self.effort}/10", FEELING_LABELS.get(self.feeling or "", "")) if w)
+
+    def lines(self) -> list[tuple[str, str, list[str]]]:
+        """Each exercise as the diary's "Serije" says it, in the page's
+        order: (its name, what was given and the word after it, the sets as
+        done): ("Goblet čučanj", "zadano 3 × 10 · 20 kg — odrađeno", ["10 ×
+        20 kg", "10 × 20 kg", "8 × 20 kg", "težina 8/10"]); "zadano …" only
+        when anything was given, "odrađeno —" when nothing was ticked."""
+        return [it.line() for it in self.exercise_items]
+
+
+class GymTrainingItem(Base):
+    """An exercise of a gym training (26.11.2026, build 3; the owner's note
+    to Amir: "Šoša im da vježbu, on si zapiše kaj mu je dao u aplikaciji i
+    kolko je čega odradio na taj dan"), a card on the page: what was given
+    (zadano: `sets`, `reps`, `seconds`, `kg`, `rest_seconds`, the pause
+    after a set the rest bar counts down, and `note`; each NULL / '' for
+    none, within db.ITEM_LIMITS) and what was done (`done`, a JSON list of
+    the ticked sets as a pass's entry holds them: {"reps", "kg"} /
+    {"seconds"} / {"reps", "seconds"}, db.set_fields' shape of its zadano,
+    a circuit's set with its "round" (part B); db._checked_sets' rules, at
+    most db.MAX_SETS), its rating (`effort`, 1–10 or NULL: "Koliko je bilo
+    teško?", stored and printed only: the load next time is online's) and
+    when it was saved (`done_at`). `section` is one of SECTIONS (a CHECK),
+    `position` unique in the training, deferred to the commit (↑ / ↓ swap
+    two), the page reading the rows part by part in position order.
+
+    `exercise_id` is the library's row (SET NULL) and `exercise_name` its
+    name when added: a gym training is a record, so an exercise deleted from
+    the library stays in it by name (`gone`). A row with neither is a SLOT
+    (part B: a template's empty place, filled from the library). No cap on
+    the rows."""
+
+    __tablename__ = "gym_training_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    training_id: Mapped[int] = mapped_column(ForeignKey("gym_trainings.id", ondelete="CASCADE"), index=True)
+    section: Mapped[str] = mapped_column(String(12), server_default=text("'trening'"), default="trening")
+    position: Mapped[int] = mapped_column(Integer)
+    exercise_id: Mapped[int | None] = mapped_column(ForeignKey("exercises.id", ondelete="SET NULL"), nullable=True,
+                                                    index=True)
+    exercise_name: Mapped[str] = mapped_column(String(160), server_default=text("''"), default="")
+    hint: Mapped[str] = mapped_column(String(80), server_default=text("''"), default="")
+    sets: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 1), nullable=True)
+    rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    note: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    done: Mapped[str] = mapped_column(Text, server_default=text("'[]'"), default="[]")
+    effort: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        # deferred: ↑ / ↓ swap two positions, checked when the swap commits
+        UniqueConstraint("training_id", "position", name="uq_gym_training_items_position",
+                         deferrable=True, initially="DEFERRED"),
+        CheckConstraint("section IN ('zagrijavanje', 'trening', 'trening_b', 'trening_c', 'istezanje')",
+                        name="ck_gym_training_items_section"),
+    )
+
+    training: Mapped[GymTraining] = relationship(back_populates="items")
+    # the page shows each card's exercise (its clip, what one rep is): loaded with it
+    exercise: Mapped[Exercise | None] = relationship(lazy="joined")
+
+    # What was given, in a day item's words, one rule for both: "3 × 10 · 20
+    # kg", "3 × 30 s", "5 × 30 s" (ProgramDayItem's properties, which read the
+    # same columns: sets, reps, seconds, kg, rest_seconds)
+    dose = ProgramDayItem.dose
+    round_dose = ProgramDayItem.round_dose
+    _with_kg = ProgramDayItem._with_kg
+    rest_text = ProgramDayItem.rest_text
+
+    @property
+    def is_slot(self) -> bool:
+        """No exercise and no name (part B: a template's empty place)."""
+        return self.exercise_id is None and self.exercise is None and not self.exercise_name
+
+    @property
+    def gone(self) -> bool:
+        """An exercise deleted from the library since it was added: its
+        name kept, its sets as they were, nothing more to do with it but
+        take it out."""
+        return self.exercise_id is None and self.exercise is None and bool(self.exercise_name)
+
+    @property
+    def name(self) -> str:
+        """The library's name now, else the name when added."""
+        return self.exercise.name if self.exercise is not None else self.exercise_name
+
+    @staticmethod
+    def sets_of(raw: str | None) -> list[dict]:
+        """A stored `done` read: its sets in their order (a list of objects;
+        text that is no list is none)."""
+        try:
+            data = json.loads(raw or "[]")
+        except ValueError:
+            return []
+        return [s for s in data if isinstance(s, dict)] if isinstance(data, list) else []
+
+    @property
+    def done_sets(self) -> list[dict]:
+        """The sets done, as saved (sets_of)."""
+        return self.sets_of(self.done)
+
+    @property
+    def mark(self) -> str:
+        """The card's mark: "✓" when every planned set is ticked (with no
+        Serije given: when any is), "2/3" for some, "" for none."""
+        n = len(self.done_sets)
+        if not n:
+            return ""
+        return "✓" if self.sets is None or n >= self.sets else f"{n}/{self.sets}"
+
+    @property
+    def done_text(self) -> str:
+        """The sets done and the rating as one line: "10 × 20 kg · 10 × 20
+        kg · težina 8/10"; "" for nothing."""
+        words = [set_text(s) for s in self.done_sets]
+        if self.effort is not None:
+            words.append(f"težina {self.effort}/10")
+        return " · ".join(words)
+
+    def line(self) -> tuple[str, str, list[str]]:
+        """(its name, "zadano 3 × 10 · 20 kg — odrađeno", its sets and its
+        rating): GymTraining.lines'."""
+        planned = self.dose
+        done = [set_text(s) for s in self.done_sets]
+        head = (f"zadano {planned} — " if planned else "") + ("odrađeno" if done else "odrađeno —")
+        return self.name, head, done + ([f"težina {self.effort}/10"] if self.effort is not None else [])

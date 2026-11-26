@@ -23,6 +23,14 @@ below were settled as part 1's and part 2's briefs say: a member may log a train
 termin (dated); the gym log lives on the osvrt row (`TrainingLog.sets`), the maxes read it
 and the online passes; a photo is 15 MB at most, shrunk to 1600 px, one a month.
 
+**Part 1's form went on 26.11.2026** (build 3 of `roadmap/2026-11-26-gym-training-plan.md`,
+the gym training): the plain osvrt form and its exercise blocks are gone, and a member's
+training in the gym is its own page that comes with every booking (`gym_trainings`, its
+exercises, ticked sets and osvrt; a training outside a termin asks its date alone and opens
+the same page). The rows part 1 wrote stay readable and editable (napor, osjećaj, komentar;
+their exercises read only), and the maxes and the history read the gym trainings' saved sets
+beside them and the online passes.
+
 ## What already exists (every member, whatever plan)
 
 - `/karton`: the questionnaire's result and answers, the diary (every gym termin with its

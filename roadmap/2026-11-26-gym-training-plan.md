@@ -128,6 +128,33 @@ the app on the phone".
   "Otvori kao član", and Fable applied the same rule to the feature's name, "Gledaj kao
   član"; built with build 2.
 
+**Added in the evening, while build 3's first part was in review** (the owner testing
+on the live site) —
+- "Can we call this 'Tip Programa' instead of 'Tip Treninga' since that is the name of the
+  Programme and not of the training. We have Program->Trening->Vjezbe hierarchy.": the
+  label on both programme forms and its refusal's sentence; shipped with build 3's part A.
+- Where staff open a member's app. He looked for it on his own Karton tab ("I still can't
+  see an option to see the karton as another user here"), then, with a screenshot of a
+  member's card on Trenutne članarine: "I would remove the 'Karton ->' and the 'Kao član
+  ->' buttons here and only leave the 'Admin -> gledaj kao član option' as well as the
+  'Otvori kao član' amber button on the Karton tab of the Admin and Trainer with a search
+  bar where a user can be searched. The button to open as another user should also be in
+  amber." And of the line above the cards ("Stranica koju vide članovi — cjenik, tekstovi
+  i cijene uređuju se tamo: Moja članarina →"): "I would also remove this, this is now
+  obsolete." Fable's reading and the one consequence it guards: with "Karton →" gone the
+  trainer's read-only view has no link Amir can reach (Korisnici's is the owner's), and it
+  is the only place that shows the upitnik's "Zahtijeva pregled", the pain flag and every
+  answer; so staff acting as a member see those on his karton. Its own small build, after
+  part A.
+- The member's sex, for the grammar: "on login do we know the sex of the user and then to
+  use the correct grammar instead of 'Tvoji online treninzi i treninzi koje upišeš
+  sam/a.'" We do not (an account holds a name, a birth date, a phone, a height). Fable
+  proposed an optional "Spol" on the profile, the slash forms ("sam/a", "bio/la",
+  "siguran/na") resolved by it wherever a text prints, his own retyped texts too, as they
+  are until a member says; the owner: "yes". Built after the gym training.
+- One pytest at a time on the Mac (8 GB; other sessions test other repositories): wait for
+  the others, targeted files while working, the whole suite once at the end of a step.
+
 Not asked for, so not built: Amir preparing a termin's training for the whole group; a
 gym/online flag on an exercise; blocks beyond the five parts ("if Amir needs more, he will
 ask for a bigger change").
@@ -141,4 +168,11 @@ ask for a bigger change").
    the empty slots (Amir's templates). (Live 26.11.2026, `fe64c69`: STATUS.md.)
 3. **The gym training**: made at the booking, one page that grows as the training goes
    (add, zadano, tick what was done, the osvrt), started empty or from a template; the
-   diary, the history and the maxes; the plain form retired.
+   diary, the history and the maxes; the plain form retired. In two parts: **A**, the page,
+   its rules, the diary (STATUS.md says when it is live); **B**, a part's own name and
+   circuits ticked a round at a time, a dvoranski programme's training as a template, a
+   slot's card.
+4. **Where staff open a member's app** (the evening's addition above): the Karton tab's
+   search and amber button, the two buttons and the obsolete line off Trenutne članarine,
+   every such button amber, the trainer-only parts of the upitnik block while acting.
+5. **"Spol"** and the slash forms resolved by it.

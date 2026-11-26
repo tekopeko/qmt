@@ -1,0 +1,596 @@
+{% extends "base.html" %}
+{# The gym training (26.11.2026, build 3 of roadmap/2026-11-26-gym-training-plan.md,
+   part A; the owner: "automatically add the training with its title already
+   after a user booked it" … "The training should have a date and time
+   written on it so that there is no confusion which training they edit";
+   his note to Amir: "Kolko je zadano a kolko je napravio i onda kvačica").
+   ONE page that grows as the training goes, no Kreni, no walk, no clock:
+   the normal layout, the nav kept, a 640px column. Its head: the crumbs,
+   the kicker, the termin's title (outside a termin "Trening izvan
+   termina"), right under it the date and the time in 700, then the
+   state's line (until when it is open; closed, read only; staff outside
+   the member's window). Then the parts in SECTIONS' order, each only while
+   it holds a row, its caption (the day page's .dx-cap), its cards: a
+   native <details> per exercise, its summary the name, "Zadano: …" and the
+   mark (✓, "2/3"); open, its set table (the player's .pl-sets and ✓), "+
+   serija", its rating, "Kako se izvodi", and a quiet row (Uredi zadano, ↑,
+   ↓, Ukloni vježbu). "Dodaj vježbu" at the bottom while writable, then
+   "Završi trening" (the osvrt, karton_trening_osvrt.html) or, once saved,
+   the osvrt's facts with "Uredi osvrt"; at the very bottom, quiet,
+   "Isprazni trening" (outside a termin "Obriši trening"). The rest bar is
+   the player's (_rest_bar.html). No phone reminder and no install banner
+   here (no_nudges): the rest bar and the add card own the bottom. Every
+   part is a plain form without the script (a card's "Spremi" saves every
+   row that holds a number); the script ticks a set in place (a fetch that
+   saves the card's ticked rows whole), starts the pause, adds a row, and
+   makes the add card's combobox over the page's one #library-json. #}
+{% import "_copy.html" as c with context %}
+{% from "_tagbar.html" import tagbar %}
+{% set no_nudges = true %}
+{% block title %}{{ t.title or "Trening izvan termina" }} — {{ when }} — QMT{% endblock %}
+{% block head %}
+<style>
+  /* ===== the head: the kicker over the h1 (main > h1, base's), the date
+     and the time right under it, 700 and never muted (the owner: "so that
+     there is no confusion which training they edit"), outside a termin
+     with a quiet "promijeni datum" that opens its form under the line;
+     then the state's line, muted ===== */
+  .gt-kicker { font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
+               margin-bottom: 4px; overflow-wrap: anywhere; }
+  .gt-when { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 2px;
+             font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+  .gt-date[open] { flex: 1 0 100%; }
+  .gt-date > summary { list-style: none; cursor: pointer; }
+  .gt-date > summary::-webkit-details-marker { display: none; }
+  .gt-date-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 8px; font-weight: 400; }
+  .gt-date-form .field { margin: 0; flex: 0 1 220px; min-width: 0; }
+  .gt-date-form input { min-width: 0; min-height: 44px; }
+  .gt-state { margin-top: 4px; color: var(--muted); font-size: .92rem; overflow-wrap: anywhere; }
+  .gt { max-width: 640px; margin-top: clamp(18px, 3vw, 26px); }
+  .gt-empty { margin: 4px 0 18px; overflow-wrap: anywhere; }
+  .gt-part .dx-cap:first-child { margin-top: 0; }
+  .gt-part + .gt-part .dx-cap { margin-top: 26px; }
+  .gt-cards { display: grid; gap: 10px; }
+
+  /* ===== a card: a native <details> (it opens without the script), its
+     summary the row, 56px at least, the whole row the tap target: the
+     name in 700 over "Zadano: 3 × 10 · 20 kg" (muted), the mark at the
+     right ("✓" in --good when every planned set is ticked, "2/3" muted for
+     some), the day page's ▷ that turns down when open. Open: what was
+     given besides (the pause, the note), the set table, "+ serija", the
+     rating, "Kako se izvodi", the quiet row ===== */
+  details.gt-card { scroll-margin-top: 90px; }
+  details.gt-card > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px;
+                              min-height: 56px; padding: 12px 14px 12px 18px; border-radius: var(--r-lg);
+                              transition: background .15s; }
+  details.gt-card > summary::-webkit-details-marker { display: none; }
+  details.gt-card > summary:hover { background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
+  details.gt-card > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .gt-main { flex: 1; min-width: 0; }
+  .gt-name { display: block; font-weight: 700; overflow-wrap: anywhere; }
+  .gt-planned { display: block; margin-top: 2px; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums;
+                overflow-wrap: anywhere; }
+  .gt-mark { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .gt-mark.ok { color: var(--good); }
+  .gt-go { flex: none; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center;
+           justify-content: center; background: var(--surface-2); color: var(--text); font-size: .78rem;
+           transition: transform .2s; }
+  details.gt-card[open] > summary .gt-go { transform: rotate(90deg); }
+  .gt-body { padding: 0 16px 16px; }
+  @media (min-width: 600px) { .gt-body { padding: 0 18px 18px; } }
+  .gt-body > .alert { margin: 0 0 12px; }
+  .gt-body > .alert > span { min-width: 0; overflow-wrap: anywhere; }
+  .gt-sub { margin: 0 0 10px; color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+  .gt-log { margin-top: 4px; }
+  .gt-err { margin-top: 2px; color: var(--accent); font-size: .85rem; font-weight: 600; overflow-wrap: anywhere; }
+  .gt-foot-row { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 6px; }
+  .gt-save { min-width: 120px; }
+  /* a set log read only (the window closed, or an exercise gone from the
+     library): what was done as text */
+  .gt-done { font-size: .92rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .gt-done strong { font-weight: 600; color: var(--muted); }
+  /* "Kako se izvodi" (the player's .pl-how look): the clip (preload none:
+     ten cards fetch no ten clips), what one rep is, how it is done */
+  .gt-how { margin-top: 10px; }
+  .gt-how > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px;
+                      cursor: pointer; color: var(--text); font: 600 .9rem var(--font-body); }
+  .gt-how > summary::-webkit-details-marker { display: none; }
+  .gt-how > summary::before { content: "›"; content: "›" / ""; display: inline-block; color: var(--muted);
+                              font-size: 1.15rem; line-height: 1; transition: transform .2s; }
+  .gt-how[open] > summary::before { transform: rotate(90deg); }
+  .gt-how p { margin: 4px 0 6px; font-size: .92rem; white-space: pre-line; overflow-wrap: anywhere; }
+  .gt-how video { margin: 6px 0 8px; }
+  /* the quiet row: "Uredi zadano" (a <details> whose form, open, takes the
+     row's width under it, as the player's swap list does), ↑, ↓, "Ukloni
+     vježbu": one footprint, every pill .act-quiet */
+  .gt-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 12px; }
+  .gt-tools .act:disabled { opacity: .35; }
+  .gt-edit[open] { flex: 1 0 100%; }
+  .gt-edit > summary { list-style: none; cursor: pointer; width: fit-content; max-width: 100%; }
+  .gt-edit > summary::-webkit-details-marker { display: none; }
+  /* a closed <details>' content keeps a layout at its summary's width
+     (Chrome's ::details-content is content-visibility: hidden, laid out
+     when a script measures it): the forms of a closed "Uredi zadano" and
+     "promijeni datum", flex items as wide as their pill, take no box at
+     all, so nothing overflows that nobody sees */
+  .gt-edit:not([open]) > .gt-form, .gt-date:not([open]) > .gt-date-form { display: none; }
+  /* "Uredi zadano"'s fields: the day editor's row form's grid, two
+     columns on a phone, four from 600px, every control one height (44px
+     on a coarse pointer), a label its column cannot hold wrapping, each
+     field's control at its bottom, so a line's controls stay level */
+  .gt-form, .gt-nums { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; margin: 10px 0 4px; }
+  .gt-form > div, .gt-nums > div { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+  .gt-form label, .gt-nums label { margin-bottom: 3px; overflow-wrap: anywhere; }
+  .gt-form :is(input, select), .gt-nums input { height: 40px; padding: 0 10px; min-width: 0; }
+  .gt-form .gt-note-f, .gt-form .gt-go-f { grid-column: 1 / -1; }
+  .gt-form .gt-go-f .btn { width: 100%; height: 40px; }
+  @media (pointer: coarse) { .gt-form :is(input, select), .gt-nums input, .gt-form .gt-go-f .btn { height: 44px; } }
+  @media (min-width: 600px) {
+    .gt-form, .gt-nums { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .gt-form .gt-note-f { grid-column: span 3; }
+    .gt-form .gt-go-f { grid-column: auto; align-self: end; }
+  }
+
+  /* ===== "Dodaj vježbu": a card at the bottom while the page is writable:
+     its heading, the tag chips (base.html's .tagbar: a tap puts its word in
+     the combobox, whose list lies over what follows, never over the
+     chips), the library's combobox beside Dio from 600px, what was given
+     folded under "Zadano (neobavezno)", then Dodaj ===== */
+  .gt-addcard { padding: 18px 20px; margin-top: 18px; scroll-margin-top: 90px; }
+  @media (max-width: 599px) { .gt-addcard { padding: 16px; } }
+  .gt-addcard h2 { font-size: 1.05rem; margin-bottom: 12px; overflow-wrap: anywhere; }
+  .gt-addcard > .alert { margin: 0 0 14px; }
+  .gt-addcard > .alert > span { min-width: 0; overflow-wrap: anywhere; }
+  .gt-addcard .tagbar { margin: 0 0 14px; }
+  .gt-add-fields { display: grid; gap: 0 12px; }
+  @media (min-width: 600px) { .gt-add-fields { grid-template-columns: minmax(0, 1fr) 180px; } }
+  .gt-add-fields select { min-width: 0; }
+  @media (pointer: coarse) { .gt-add-fields :is(.cbx > input, select) { min-height: 44px; } }
+  .gt-zadano { margin: -4px 0 14px; }
+  .gt-zadano > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px;
+                         cursor: pointer; color: var(--muted); font: 600 .85rem var(--font-body); overflow-wrap: anywhere; }
+  .gt-zadano > summary::-webkit-details-marker { display: none; }
+  .gt-zadano > summary::before { content: "›"; content: "›" / ""; display: inline-block; font-size: 1.1rem; line-height: 1;
+                                 transition: transform .2s; }
+  .gt-zadano[open] > summary::before { transform: rotate(90deg); }
+  .gt-zadano > summary:hover { color: var(--text); }
+
+  /* ===== the end: "Završi trening" (the page's one .btn, the column's
+     width on a phone), or the osvrt once saved (its facts, the comment,
+     "Uredi osvrt"); then, quiet and in the accent, "Isprazni trening" /
+     "Obriši trening" (it deletes what was written: it asks first) ===== */
+  .gt-finish { margin-top: 22px; }
+  @media (max-width: 599px) { .gt-finish .btn { width: 100%; } }
+  .gt-osvrt { padding: 16px 18px; margin-top: 22px; }
+  .gt-osvrt h2 { font-size: 1.05rem; overflow-wrap: anywhere; }
+  .gt-osvrt .gt-facts { margin-top: 6px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .gt-osvrt .gt-comment { margin-top: 4px; color: var(--muted); font-size: .92rem; white-space: pre-line; overflow-wrap: anywhere; }
+  .gt-osvrt .act { margin-top: 10px; }
+  .gt-foot { margin-top: 26px; }
+  .gt-foot form { margin: 0; }
+  .gt-foot .gt-drop { color: var(--accent); }
+  .gt-foot .gt-drop:hover { color: var(--accent-strong); }
+  /* the rest bar (base.html's, _rest_bar.html) over the page's foot: room
+     for it while it shows, so nothing stays under it */
+  body.has-rest main { padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
+  body.has-rest:has(.copy-toggle) main { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+  /* a text the editor retypes wraps inside its pill rather than pushing the page */
+  main :is(.act, .btn, .btn-sm) { white-space: normal; overflow-wrap: anywhere; max-width: 100%; text-align: center; }
+</style>
+{% endblock %}
+{# a form's word comes back to its card (?stavka=) or to the add card
+   (?dodaj=1), never to the page's top, out of view on a phone scrolled there #}
+{% set here = focus is not none or in_add %}
+{% block error_alert %}{% if not here %}{{ super() }}{% endif %}{% endblock %}
+{% block ok_alert %}{% if not here %}{{ super() }}{% endif %}{% endblock %}
+
+{# a form's word inside its card or the add card #}
+{% macro said() -%}
+  {%- if request.query_params.get("error") %}<div class="alert" role="alert"><span>{{ request.query_params.get("error") }}</span></div>
+  {%- elif request.query_params.get("ok") %}<div class="alert ok" role="status">{{ request.query_params.get("ok") }}</div>{% endif -%}
+{%- endmacro %}
+
+{# an exercise's rating (the player's ten round buttons, its question's
+   slot), none chosen until a number is: posted with the card's sets #}
+{% macro rating(it) %}
+<div class="pl-rate">
+  <p class="pl-rate-h" id="gt-rate-{{ it.id }}">{{ c.t("player.rate.step") }} {{ c.opt("player.optional", "span", ' class="pl-opt"') }}</p>
+  <div class="scale-box">
+    <div class="scale" role="radiogroup" aria-labelledby="gt-rate-{{ it.id }}">
+      {% for n in range(1, 11) %}
+      <label class="sc"><input type="radio" name="effort" value="{{ n }}"{% if it.effort == n %} checked{% endif %}><span>{{ n }}</span></label>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{# a card: its summary (the name, what was given, the mark), then its set
+   table and rating while writable, what was done as text otherwise (an
+   exercise gone from the library: that, and "Ukloni vježbu") #}
+{% macro card(it, first, last) %}
+{% set planned = it.dose %}{% set f = fields[it.id] %}
+<details class="card gt-card" id="stavka-{{ it.id }}"{% if it.id == opened %} open{% endif %}>
+  <summary>
+    <span class="gt-main">
+      <span class="gt-name">{{ it.name }}</span>
+      {% if planned %}<span class="gt-planned">{{ c.t("gym.card.planned") }} {{ planned }}</span>{% endif %}
+    </span>
+    <span class="gt-mark{% if it.mark == '✓' %} ok{% endif %}" data-mark{% if it.mark %} role="img" aria-label="{{ 'odrađeno' if it.mark == '✓' else it.mark ~ ' serije odrađene' }}"{% endif %}>{{ it.mark }}</span>
+    <span class="gt-go" aria-hidden="true">▷</span>
+  </summary>
+  <div class="gt-body">
+    {% if it.id == focus %}{{ said() }}{% endif %}
+    {% set sub = [it.rest_text and c.t("dan.exercise.rest_between") ~ " " ~ it.rest_text, it.note]|select|list %}
+    {% if sub %}<p class="gt-sub">{{ sub|join(" · ") }}</p>{% endif %}
+    {% if writable and not it.gone %}
+    {# the set table: a row per planned set (three when none was given),
+       the ticked ones as saved; its shape the zadano's (db.set_fields,
+       `polja`: a page drawn for another shape is refused) #}
+    <form class="gt-log" id="gt-log-{{ it.id }}" method="post" action="/karton/trening/{{ t.id }}/stavke/{{ it.id }}/odradeno"
+          data-sets="{{ it.sets or '' }}" data-rest="{{ it.rest_seconds or '' }}" data-max="{{ max_sets }}"
+          data-reps="{{ it.reps if it.reps is not none else '' }}" data-kg="{{ it.kg|kg_value }}"
+          data-sec="{{ it.seconds if it.seconds is not none else '' }}">
+      <input type="hidden" name="polja" value="{{ f }}">
+      <input type="hidden" name="rows" value="{{ rows[it.id]|length }}">
+      <table class="pl-sets">
+        <thead><tr><th scope="col">{{ c.t("player.col.set") }}</th>{% if "reps" in f %}<th scope="col">{{ c.t("player.col.reps") }}</th>{% endif %}{% if "kg" in f %}<th scope="col">{{ c.t("player.col.kg") }}</th>{% endif %}{% if "seconds" in f %}<th scope="col">{{ c.t("player.col.sec") }}</th>{% endif %}<th scope="col" class="pl-tick" aria-label="Odrađena serija" hidden><span aria-hidden="true">✓</span></th></tr></thead>
+        <tbody>
+          {% for r in rows[it.id] %}{% set n = loop.index %}{% set who = "Serija " ~ n %}
+          <tr{% if r.ticked %} class="is-done"{% endif %}>
+            <th scope="row">{{ n }}</th>
+            {% if "reps" in f %}<td><input type="number" name="reps_{{ n }}" value="{{ r.reps }}" inputmode="numeric" min="0" max="999" step="1" aria-label="{{ who }}: ponavljanja"></td>{% endif %}
+            {% if "kg" in f %}<td><input type="number" name="kg_{{ n }}" value="{{ r.kg }}" inputmode="decimal" min="0" max="500" step="0.5" aria-label="{{ who }}: kilogrami"></td>{% endif %}
+            {% if "seconds" in f %}<td><input type="number" name="sec_{{ n }}" value="{{ r.sec }}" inputmode="numeric" min="0" max="3600" step="1" aria-label="{{ who }}: sekunde"></td>{% endif %}
+            <td class="pl-tick" hidden><button type="button" class="pl-done" aria-pressed="{{ 'true' if r.ticked else 'false' }}" aria-label="{{ who }} odrađena">✓</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="gt-err" role="status" hidden></p>
+      <div class="gt-foot-row">
+        <button type="button" class="act gt-add-set" hidden>{{ c.t("gym.card.add_set") }}</button>
+        {{ rating(it) }}
+        <button type="submit" class="btn btn-sm gt-save">{{ c.t("gym.card.save") }}</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="gt-done"><strong>{{ c.t("gym.card.done") }}</strong> {{ it.done_text or "—" }}</p>
+    {% endif %}
+    {% set ex = it.exercise %}
+    {% if ex and (ex.video or ex.rep_note or ex.instructions) %}
+    <details class="gt-how ex-video">
+      <summary>{{ c.t("player.step.how") }}</summary>
+      {% if ex.video %}<video src="/media/{{ ex.video }}" controls playsinline preload="none"></video>{% endif %}
+      {% if ex.rep_note %}<p><strong>{{ c.t("dan.exercise.rep") }}</strong> {{ ex.rep_note }}</p>{% endif %}
+      {% if ex.instructions %}<p>{{ ex.instructions }}</p>{% endif %}
+    </details>
+    {% endif %}
+    {% if writable %}
+    <div class="gt-tools">
+      {% if not it.gone %}
+      <details class="gt-edit"{% if zadano and it.id == focus %} open{% endif %}>
+        <summary class="act act-quiet">{{ c.t("gym.card.edit") }}</summary>
+        <form class="gt-form" method="post" action="/karton/trening/{{ t.id }}/stavke/{{ it.id }}">
+          <div><label for="gt-{{ it.id }}-dio">{{ c.t("gym.form.section") }}</label>
+            <select id="gt-{{ it.id }}-dio" name="section">
+              {% for k in SECTIONS %}<option value="{{ k }}"{% if k == it.section %} selected{% endif %}>{{ t.part_label(k) }}</option>{% endfor %}
+            </select></div>
+          <div><label for="gt-{{ it.id }}-sets">{{ c.t("gym.form.sets") }}</label>
+            <input id="gt-{{ it.id }}-sets" type="number" name="sets" inputmode="numeric" min="1" max="99" value="{{ it.sets if it.sets is not none else '' }}"></div>
+          <div><label for="gt-{{ it.id }}-reps">{{ c.t("gym.form.reps") }}</label>
+            <input id="gt-{{ it.id }}-reps" type="number" name="reps" inputmode="numeric" min="1" max="999" value="{{ it.reps if it.reps is not none else '' }}"></div>
+          <div><label for="gt-{{ it.id }}-secs">{{ c.t("gym.form.seconds") }}</label>
+            <input id="gt-{{ it.id }}-secs" type="number" name="seconds" inputmode="numeric" min="1" max="3600" value="{{ it.seconds if it.seconds is not none else '' }}"></div>
+          <div><label for="gt-{{ it.id }}-kg">{{ c.t("gym.form.kg") }}</label>
+            <input id="gt-{{ it.id }}-kg" type="number" name="kg" inputmode="decimal" min="0.5" max="500" step="0.5" value="{{ it.kg|kg_value }}"></div>
+          <div><label for="gt-{{ it.id }}-rest">{{ c.t("gym.form.rest") }}</label>
+            <input id="gt-{{ it.id }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600" value="{{ it.rest_seconds if it.rest_seconds is not none else '' }}"></div>
+          <div class="gt-note-f"><label for="gt-{{ it.id }}-note">{{ c.t("gym.form.note") }}</label>
+            <input id="gt-{{ it.id }}-note" type="text" name="note" maxlength="500" value="{{ it.note }}"></div>
+          <div class="gt-go-f"><button type="submit" class="btn btn-sm">{{ c.t("gym.form.save") }}</button></div>
+        </form>
+      </details>
+      <button type="submit" form="gt-up-{{ it.id }}" class="act act-quiet"{% if first %} disabled{% endif %} aria-label="Pomakni gore: {{ it.name }}">↑</button>
+      <button type="submit" form="gt-down-{{ it.id }}" class="act act-quiet"{% if last %} disabled{% endif %} aria-label="Pomakni dolje: {{ it.name }}">↓</button>
+      {% endif %}
+      <button type="submit" form="gt-x-{{ it.id }}" class="act act-quiet">{{ c.t("gym.card.remove") }}</button>
+    </div>
+    {% endif %}
+  </div>
+</details>
+{% endmacro %}
+
+{% block content %}
+<nav class="crumbs" aria-label="Putanja"><a href="/karton">Karton</a><span class="sep">/</span><span class="here">Trening</span></nav>
+{{ c.opt("gym.head.kicker", "p", ' class="gt-kicker"') }}
+<h1>{% if t.title %}{{ t.title }}{% else %}{{ c.t("gym.head.outside") }}{% endif %}</h1>
+<div class="gt-when">
+  <span>{{ when }}</span>
+  {% if can_date %}
+  <details class="gt-date"{% if request.query_params.get("error") and not here %} open{% endif %}>
+    <summary class="act act-quiet">{{ c.t("gym.head.date_change") }}</summary>
+    <form class="gt-date-form" method="post" action="/karton/trening/{{ t.id }}/datum">
+      <div class="field"><label for="gt-day">{{ c.t("gym.head.date_field") }}</label>
+        <input id="gt-day" type="date" name="day" value="{{ t.held_on.isoformat() }}"
+               min="{{ first_day.isoformat() }}" max="{{ today.isoformat() }}" required></div>
+      <button type="submit" class="btn btn-sm">{{ c.t("gym.head.date_save") }}</button>
+    </form>
+  </details>
+  {% endif %}
+</div>
+{# the state's line: open until when (its slot, the day code), closed (read
+   only), staff outside the member's window; before the window rule 2's
+   sentence (code); outside a termin none #}
+{% if state_key == "gym.state.open" %}<p class="gt-state">{{ c.t("gym.state.open") }} {{ state_text }}.</p>
+{% elif state_key %}{{ c.opt(state_key, "p", ' class="gt-state"') }}
+{% elif state_text %}<p class="gt-state">{{ state_text }}</p>{% endif %}
+
+<div class="gt">
+  {% if not items and writable %}{{ c.opt("gym.empty", "p", ' class="hint gt-empty"') }}{% endif %}
+  {# the parts in SECTIONS' order, each while it holds a row, as the
+     training names it (part_label: its default name in part A) #}
+  {% for key in SECTIONS %}{% set part = t.by_section[key]|rejectattr("is_slot")|list %}
+  {% if part %}
+  <section class="gt-part" aria-labelledby="dio-{{ key }}">
+    <h2 class="dx-cap" id="dio-{{ key }}">{{ t.part_label(key) }}</h2>
+    <div class="gt-cards">
+      {% for it in part %}{{ card(it, loop.first, loop.last) }}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+  {% endfor %}
+
+  {% if writable %}
+  {# "Dodaj vježbu": the library's combobox over the page's one
+     #library-json (the script's: without it there is nothing to pick),
+     the tag chips above it, the Dio of the row added last, what was given
+     folded; the new card comes back open, the focus in its first input #}
+  <form id="dodaj" class="card gt-addcard" method="post" action="/karton/trening/{{ t.id }}/stavke">
+    <h2>{{ c.t("gym.add.title") }}</h2>
+    {% if in_add %}{{ said() }}{% endif %}
+    {{ tagbar(tags) }}
+    <div class="gt-add-fields">
+      <div class="field"><label for="gt-add-ex">{{ c.t("gym.add.exercise") }}</label>
+        <input type="hidden" id="gt-add-ex" name="exercise_id" value=""></div>
+      <div class="field"><label for="gt-add-dio">{{ c.t("gym.form.section") }}</label>
+        <select id="gt-add-dio" name="section">
+          {% for k in SECTIONS %}<option value="{{ k }}"{% if k == add_dio %} selected{% endif %}>{{ t.part_label(k) }}</option>{% endfor %}
+        </select></div>
+    </div>
+    <details class="gt-zadano">
+      <summary>{{ c.t("gym.add.planned") }}</summary>
+      <div class="gt-nums">
+        <div><label for="gt-add-sets">{{ c.t("gym.form.sets") }}</label>
+          <input id="gt-add-sets" type="number" name="sets" inputmode="numeric" min="1" max="99"></div>
+        <div><label for="gt-add-reps">{{ c.t("gym.form.reps") }}</label>
+          <input id="gt-add-reps" type="number" name="reps" inputmode="numeric" min="1" max="999"></div>
+        <div><label for="gt-add-secs">{{ c.t("gym.form.seconds") }}</label>
+          <input id="gt-add-secs" type="number" name="seconds" inputmode="numeric" min="1" max="3600"></div>
+        <div><label for="gt-add-kg">{{ c.t("gym.form.kg") }}</label>
+          <input id="gt-add-kg" type="number" name="kg" inputmode="decimal" min="0.5" max="500" step="0.5"></div>
+        <div><label for="gt-add-rest">{{ c.t("gym.form.rest") }}</label>
+          <input id="gt-add-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600"></div>
+      </div>
+    </details>
+    <button type="submit" class="btn btn-sm">{{ c.t("gym.add.go") }}</button>
+    <script type="application/json" id="library-json">{{ library_rows|tojson }}</script>
+  </form>
+  {% endif %}
+
+  {% if t.finished_at %}
+  <section class="card gt-osvrt" aria-labelledby="gt-osvrt-h">
+    <h2 id="gt-osvrt-h">{{ c.t("gym.done.title") }}</h2>
+    <p class="gt-facts">{{ t.osvrt_text }}</p>
+    {% if t.note %}<p class="gt-comment">{{ t.note }}</p>{% endif %}
+    {% if writable %}<a class="act" href="/karton/trening/{{ t.id }}/osvrt">{{ c.t("gym.done.edit") }}</a>{% endif %}
+  </section>
+  {% elif writable %}
+  <div class="gt-finish"><a class="btn" href="/karton/trening/{{ t.id }}/osvrt">{{ c.t("player.finish") }}</a></div>
+  {% endif %}
+
+  {% if writable and (t.session_id is none or t.items) %}
+  <div class="gt-foot">
+    {% if t.session_id is none %}
+    <form method="post" action="/karton/trening/{{ t.id }}/obrisi"
+          data-confirm-title="{{ copy_text('gym.confirm.delete_title', copy_texts) }}"
+          data-confirm="{{ copy_text('gym.confirm.delete_text', copy_texts) }}"
+          data-confirm-cta="{{ copy_text('gym.confirm.delete_cta', copy_texts) }}">
+      <button type="submit" class="act act-quiet gt-drop">{{ c.t("gym.foot.delete") }}</button>
+    </form>
+    {% else %}
+    <form method="post" action="/karton/trening/{{ t.id }}/isprazni"
+          data-confirm-title="{{ copy_text('gym.confirm.empty_title', copy_texts) }}"
+          data-confirm="{{ copy_text('gym.confirm.empty_text', copy_texts) }}"
+          data-confirm-cta="{{ copy_text('gym.confirm.empty_cta', copy_texts) }}">
+      <button type="submit" class="act act-quiet gt-drop">{{ c.t("gym.foot.empty") }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if writable %}
+{# each card's ↑ / ↓ and "Ukloni vježbu" (their buttons name these: a form
+   holds no form); "Ukloni vježbu" asks first while the exercise holds a
+   ticked set (its words always on the form, data-ask*, which the script
+   turns into its data-confirm* as the ticks come and go) #}
+{% for it in t.items %}
+<form id="gt-up-{{ it.id }}" method="post" action="/karton/trening/{{ t.id }}/stavke/{{ it.id }}/pomak"><input type="hidden" name="smjer" value="gore"></form>
+<form id="gt-down-{{ it.id }}" method="post" action="/karton/trening/{{ t.id }}/stavke/{{ it.id }}/pomak"><input type="hidden" name="smjer" value="dolje"></form>
+{% set ask_title, ask, ask_cta = copy_text("gym.confirm.remove_title", copy_texts), copy_text("gym.confirm.remove_text", copy_texts), copy_text("gym.confirm.remove_cta", copy_texts) %}
+<form id="gt-x-{{ it.id }}" method="post" action="/karton/trening/{{ t.id }}/stavke/{{ it.id }}/obrisi"
+      data-ask-title="{{ ask_title }}" data-ask="{{ ask }}" data-ask-cta="{{ ask_cta }}"
+      {%- if it.done_sets %} data-confirm-title="{{ ask_title }}" data-confirm="{{ ask }}" data-confirm-cta="{{ ask_cta }}"{% endif %}></form>
+{% endfor %}
+{% include "_rest_bar.html" %}
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if writable %}
+<script>
+  // The gym training's script (26.11.2026, build 3). Without it every part
+  // is a plain form: a card's "Spremi" saves every row that holds a number.
+  (function () {
+    var NOT_SAVED = {{ copy_text("gym.card.failed", copy_texts) | tojson }};
+    var rest = window.qmtRest;
+
+    // "Dodaj vježbu": base.html's combobox over the library the page holds
+    // once (#library-json: [id, name, tags], the alphabet's order), its
+    // value the hidden exercise_id, the tag chips putting their word in it;
+    // Dodaj with nothing picked stops at "Odaberi vježbu s popisa.".
+    var lib = document.getElementById("library-json"), value = document.getElementById("gt-add-ex");
+    var addForm = document.getElementById("dodaj");
+    if (lib && value && addForm && window.qmtCombobox) {
+      try {
+        var all = JSON.parse(lib.textContent).map(function (x) { return {id: String(x[0]), name: x[1], tags: x[2] || ""}; });
+        qmtCombobox({rows: all, value: value}, {form: addForm, tagbar: addForm.querySelector(".tagbar")});
+      } catch (e) {}
+    }
+
+    // A card's set table (rule 4, "a tick saves"). Its ✓ column, "+ serija"
+    // and the ticks are the script's; "Spremi" (the no-JS way) goes. A ✓
+    // marks its row and saves the card's ticked rows whole, a fetch POST
+    // (base.html adds the page's identity to it while staff act as the
+    // member; its answer JSON), then starts the pause when the exercise has
+    // one; a second press unticks and saves; a ticked row's number changed,
+    // or the rating chosen, saves too. The saves of a card go one after
+    // another, each carrying the table as it is when it goes. A failed one
+    // (offline, a refusal) unticks the row that asked for it and says why
+    // under the table: a tick shown is a set saved (a tick on a row with no
+    // number is refused, "Upiši broj pa označi seriju.", the focus then in
+    // that row's first input). The summary's mark
+    // follows the ticks (✓ every planned set, with none planned any; "2/3"
+    // some), and "Ukloni vježbu" asks first while a set is ticked.
+    [].forEach.call(document.querySelectorAll("form.gt-log"), function (form) {
+      var card = form.closest("details.gt-card"), body = form.querySelector("tbody");
+      var err = form.querySelector(".gt-err"), more = form.querySelector(".gt-add-set");
+      var mark = card.querySelector("[data-mark]"), count = form.querySelector("input[name=rows]");
+      var planned = parseInt(form.getAttribute("data-sets"), 10) || 0;
+      var pause = parseInt(form.getAttribute("data-rest"), 10) || 0;
+      var max = parseInt(form.getAttribute("data-max"), 10) || 20;
+      var drop = document.getElementById("gt-x-" + card.id.replace("stavka-", ""));
+      var queue = Promise.resolve();
+      [].forEach.call(form.querySelectorAll(".pl-tick"), function (c) { c.hidden = false; });
+      var save = form.querySelector(".gt-save");
+      if (save) save.hidden = true;
+      function pressed(row) { return row.querySelector(".pl-done").getAttribute("aria-pressed") === "true"; }
+      function press(row, on) {
+        row.querySelector(".pl-done").setAttribute("aria-pressed", on ? "true" : "false");
+        row.classList.toggle("is-done", on);
+      }
+      function ticked() { return [].filter.call(body.rows, pressed); }
+      function follow() {
+        var n = ticked().length, full = n && (!planned || n >= planned);
+        mark.textContent = full ? "✓" : n ? n + "/" + planned : "";
+        mark.classList.toggle("ok", !!full);
+        if (n) { mark.setAttribute("role", "img"); mark.setAttribute("aria-label", full ? "odrađeno" : n + "/" + planned + " serije odrađene"); }
+        else { mark.removeAttribute("role"); mark.removeAttribute("aria-label"); }
+        if (drop) {
+          ["-title", "", "-cta"].forEach(function (s) {
+            if (n) drop.setAttribute("data-confirm" + s, drop.getAttribute("data-ask" + s) || "");
+            else drop.removeAttribute("data-confirm" + s);
+          });
+        }
+      }
+      function said(why) {
+        err.textContent = why || "";
+        err.hidden = !why;
+      }
+      function blank(row) {
+        return [].every.call(row.querySelectorAll("input"), function (i) { return !i.value.trim(); });
+      }
+      function send(row, quiet) {
+        queue = queue.then(function () {
+          var fd = new FormData(), rows = ticked();
+          fd.append("polja", form.elements.polja.value);
+          fd.append("rows", String(rows.length));
+          rows.forEach(function (r, k) {
+            [].forEach.call(r.querySelectorAll("input"), function (i) { fd.append(i.name.replace(/_\d+$/, "_" + (k + 1)), i.value); });
+          });
+          var rated = form.querySelector("input[name=effort]:checked");
+          fd.append("effort", rated ? rated.value : "");
+          return fetch(form.action, {method: "POST", body: fd, credentials: "same-origin", headers: {"Accept": "application/json"}})
+            .then(function (r) {
+              return r.json().catch(function () { return {}; }).then(function (j) { return {ok: r.ok && j.ok, error: j.error, heard: true}; });
+            })
+            .catch(function () { return {ok: false}; })
+            .then(function (res) {
+              if (res.ok) { if (!quiet) said(""); return; }
+              if (row) {
+                press(row, false);
+                // a refusal (the server answered, nothing saved): what is
+                // still ticked is saved again, so the page and the record
+                // agree (a ticked row whose number was cleared is unticked
+                // here and must go from the record too); a row with no
+                // number takes the focus, to be typed
+                if (res.heard) {
+                  send(null, true);
+                  if (blank(row)) row.querySelector("input").focus();
+                }
+              }
+              follow();
+              said(res.error || NOT_SAVED);
+            });
+        });
+      }
+      form.addEventListener("click", function (e) {
+        var b = e.target.closest(".pl-done");
+        if (!b) return;
+        if (rest) rest.unlock();
+        var row = b.closest("tr"), on = !pressed(row);
+        press(row, on);
+        follow();
+        send(on ? row : null);
+        // no pause after a tick on a row with no number: it is refused
+        if (on && pause > 0 && rest && !blank(row)) rest.begin(pause);
+      });
+      // a ticked row's number changed: the card saves again (its row the one
+      // a failure unticks); the rating chosen: the same, no row to untick
+      form.addEventListener("change", function (e) {
+        var row = e.target.closest("tbody tr");
+        if (row && pressed(row)) send(row);
+        else if (e.target.name === "effort") send(null);
+      });
+      // the no-JS "Spremi" is gone; Enter in an input is no submit either
+      form.addEventListener("submit", function (e) { e.preventDefault(); });
+      // "+ serija": a row more (up to the most a set log takes), the
+      // zadano's numbers in it, not ticked
+      function fitMore() { more.hidden = body.rows.length >= max; }
+      more.addEventListener("click", function () {
+        var last = body.rows[body.rows.length - 1];
+        if (!last || body.rows.length >= max) return;
+        var row = last.cloneNode(true), n = body.rows.length + 1;
+        row.querySelector("th").textContent = String(n);
+        [].forEach.call(row.querySelectorAll("input"), function (i) {
+          var f = i.name.split("_")[0];
+          i.value = form.getAttribute("data-" + f) || "";
+          i.name = f + "_" + n;
+          i.setAttribute("aria-label", i.getAttribute("aria-label").replace(/^Serija \d+/, "Serija " + n));
+        });
+        var tick = row.querySelector(".pl-done");
+        tick.setAttribute("aria-label", "Serija " + n + " odrađena");
+        press(row, false);
+        body.appendChild(row);
+        count.value = String(body.rows.length);
+        fitMore();
+        row.querySelector("input").focus();
+      });
+      fitMore();
+    });
+
+    // A card just added (?dodano=1): the focus in its first input, after the
+    // browser's move to its #stavka-<id> (which takes a focus given before it)
+    var params = new URLSearchParams(location.search), focus = params.get("stavka");
+    if (params.get("dodano") === "1" && focus) {
+      window.addEventListener("load", function () {
+        setTimeout(function () {
+          var first = document.querySelector("#stavka-" + focus + " .gt-body input:not([type=hidden])");
+          if (first) first.focus();
+        }, 0);
+      });
+    }
+  })();
+</script>
+{% endif %}
+{% endblock %}

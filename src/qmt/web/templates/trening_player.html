@@ -113,27 +113,9 @@
      page's own, "dodatna serija", is 6.8em), up to 8em, inside which a
      long text wraps */
   .pl-x { display: block; width: max-content; max-width: 8em; font: 500 .7rem var(--font-body); color: var(--muted); }
-  /* the ✓ per set (30.10.2026): a column at the right, as narrow as its
-     button; a round 44px button per row (aria-pressed), a hairline circle
-     with a muted ✓, pressed the green fill; its row then .is-done, the
-     set's number in --good (the inputs as they were, still editable).
-     Rendered hidden, the script's, as "+" is: without it the log is what
-     it was */
-  .pl-sets .pl-tick { width: 1%; }
-  .pl-done { width: 44px; height: 44px; padding: 0; border-radius: 50%; box-shadow: none;
-             background: var(--surface); color: var(--muted); border: 1px solid var(--line);
-             font: 700 1.05rem/1 var(--font-body); }
-  .pl-done:hover { background: var(--surface-2); color: var(--text); transform: none; }
-  .pl-done[aria-pressed="true"] { background: var(--good-fill); color: var(--good-ink); border-color: transparent; }
-  .pl-done[aria-pressed="true"]:hover { background: var(--good-strong); color: var(--good-ink); }
-  .pl-sets tr.is-done > th { color: var(--good); }
-  /* the ✓ column's words for a screen reader ("Odrađena serija"), never
-     shown. Not the usual 1px box: its text overflows that box, which the
-     audit's element-overflow check refuses. The text at its own width,
-     wholly clipped away (clip-path clips its hit area too), set against
-     its cell's right edge, so it reaches no further right than the cell */
-  .pl-sets thead th.pl-tick { position: relative; }
-  .pl-sr { position: absolute; top: 0; right: 0; white-space: nowrap; clip-path: inset(50%); pointer-events: none; }
+  /* the ✓ per set (30.10.2026; its look base.html's since 26.11.2026, the
+     gym training's page ticks its sets too): rendered hidden, the
+     script's, as "+" is: without it the log is what it was */
   .pl-foot { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; margin-top: 4px; }
   .pl-add { width: 40px; height: 40px; padding: 0; font: 600 1.3rem/1 var(--font-body); }
   .pl-save { align-self: stretch; }
@@ -143,15 +125,8 @@
      ("Prošli put (23.11.): 10 × 20 kg, težina 5 — malo više: 21 kg.") */
   .pl-next { margin-top: 2px; color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
   /* the rating (25.11.2026, "Koliko je bilo teško? (neobavezno)"): under the
-     set log, above Spremi, the question in the card's text (600 .9rem,
-     "(neobavezno)" muted), then the finish screen's ten round buttons
-     (base.html's .scale-box / .scale / .sc: five and five where ten do not
-     fit) at 36px, 40px on a coarse pointer; none chosen, a radio group */
-  .pl-rate { align-self: stretch; margin-top: 4px; }
-  .pl-rate-h { margin-bottom: 10px; font: 600 .9rem var(--font-body); color: var(--text); overflow-wrap: anywhere; }
-  .pl-opt { color: var(--muted); font: 500 .8rem var(--font-body); }
-  .pl-rate .sc > span { max-width: 36px; font-size: .92rem; }
-  @media (pointer: coarse) { .pl-rate .sc > span { max-width: 40px; } }
+     set log, above Spremi (its look, .pl-rate, base.html's since
+     26.11.2026: the gym training's cards ask it too) */
 
   /* ===== a circuit's round (25.11.2026; the owner's note to Amir: "on
      označi koje krugove koje je odradio. Pauza ide na kraju kruga a između
@@ -232,41 +207,12 @@
   body:has(#copyToggle) .pl-dock { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
   .pl { padding-bottom: 56px; }
 
-  /* ===== the rest bar (30.10.2026; the owner: "a timer which he can skip,
-     in between sets as well as between exercises, which Shape Club also
-     has"): fixed at the bottom at every width, in the dock's place and its
-     glass (dark in both themes, theme-free as the dock), the column's
-     width (16px from the screen's edges, 640px at most, centred), 64px,
-     clear of staff's ✎ pill as the dock is. Left to right: "ODMOR" (the
-     set log's header words, muted on the dark) over the countdown (Inter
-     800, tabular, white), a 4px track whose accent fill drains as the rest
-     runs, and "Preskoči odmor", a white pill (not "Preskoči": the
-     quiet "Preskoči →" under Spremi skips the exercise). At zero the eyebrow says "KRENI"
-     for about 1.5 s, then the bar goes. While it shows the dock is hidden
-     and .pl gets room under it (.has-rest), so nothing stays under the
-     bar. Rendered hidden, the script's ===== */
-  .pl-rest { position: fixed; left: 16px; right: 16px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 45;
-             max-width: 640px; min-height: 64px; margin: 0 auto; display: flex; align-items: center; gap: 14px;
-             padding: 0 12px 0 18px; border-radius: var(--r-lg); background: rgba(22, 22, 24, .86); color: #fff;
-             border: 1px solid rgba(255, 255, 255, .09); box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
-             backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-             /* its words are copy slots (25.11.2026), the eyebrow written by
-                the script ("ODMOR", "KRENI"): a long word breaks anywhere */
-             overflow-wrap: anywhere; }
-  body:has(#copyToggle) .pl-rest { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
-  .pl-rest-n { flex: 0 1 auto; min-width: 4.4rem; display: flex; flex-direction: column; gap: 1px; }
-  .pl-rest-h { font: 700 .72rem/1.2 var(--font-body); letter-spacing: .12em; text-transform: uppercase;
-               color: rgba(255, 255, 255, .62); }
-  .pl-rest-t { font: 800 1.4rem/1.1 var(--font-body); font-variant-numeric: tabular-nums; color: #fff; }
-  .pl-rest-track { flex: 1; min-width: 0; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .18);
-                   overflow: hidden; }
-  .pl-rest-fill { display: block; height: 100%; background: var(--accent); transform-origin: left; }  /* scaleX: the rest left */
-  .pl-rest-skip { flex: 0 1 auto; min-width: 0; min-height: 40px; padding: 0 18px; border: none; border-radius: 999px; box-shadow: none;
-                  background: #fff; color: rgb(22, 22, 24); font: 700 .88rem var(--font-body); }
-  .pl-rest-skip:hover { background: rgba(255, 255, 255, .86); color: rgb(22, 22, 24); transform: none; }
-  @media (pointer: coarse) { .pl-rest-skip { min-height: 44px; } }
-  .pl.has-rest { padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
-  body:has(#copyToggle) .pl.has-rest { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+  /* ===== the rest bar (30.10.2026; _rest_bar.html and base.html's look
+     since 26.11.2026, when the gym training's page needed the same bar):
+     while it shows the dock is hidden and .pl gets room under it
+     (body.has-rest, the partial's), so nothing stays under the bar ===== */
+  body.has-rest .pl { padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+  body.has-rest:has(#copyToggle) .pl { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
 
   @media (min-width: 1000px) {
     .pl { max-width: 1044px; padding-bottom: 0; }
@@ -522,12 +468,9 @@
 {# its words the list's heading (a slot), the count code; one span: the pill is a flex box #}
 <a class="pl-dock" href="#popis"><span>{{ c.t("player.list.title") }} · {{ done_n }}/{{ n_items }} ✓</span></a>
 {# the rest bar: shown by the script for a rest (a ✓ with data-rest, or
-   data-odmor at load), counted down, skippable #}
-<div class="pl-rest" id="plRest" role="timer" hidden>
-  <span class="pl-rest-n"><span class="pl-rest-h">{{ c.t("player.rest.head") }}</span><span class="pl-rest-t">0:00</span></span>
-  <span class="pl-rest-track" aria-hidden="true"><span class="pl-rest-fill"></span></span>
-  <button type="button" class="pl-rest-skip">{{ c.t("player.rest.skip") }}</button>
-</div>
+   data-odmor at load), counted down, skippable; since 26.11.2026 a partial
+   the gym training's page prints too (_rest_bar.html, window.qmtRest) #}
+{% include "_rest_bar.html" %}
 {# leaving the pass asks: finish it (the finish screen) or discard it #}
 {% set leave_mode = "player" %}{% include "_pass_leave.html" %}
 {% endblock %}
@@ -542,9 +485,7 @@
   // the rest bar (below).
   (function () {
     // the static words the script writes: copy slots (25.11.2026)
-    var EXTRA = {{ copy_text("player.step.extra_set", copy_texts) | tojson }},
-        REST = {{ copy_text("player.rest.head", copy_texts) | tojson }},
-        GO = {{ copy_text("player.rest.go", copy_texts) | tojson }};
+    var EXTRA = {{ copy_text("player.step.extra_set", copy_texts) | tojson }};
     var timer = document.querySelector(".pl-timer");
     if (timer) {
       var start = Date.parse(timer.getAttribute("data-started")), clock = timer.querySelector(".pl-clock");
@@ -595,110 +536,28 @@
     // starts nothing. The ticks live on the page: nothing is posted, a reload
     // loses them, "Spremi" saves the sets as before. The rest between
     // exercises comes with the screen (the form's data-odmor, set by the
-    // previous exercise's save) and starts at load. The countdown runs from
-    // an end time, redrawn every 250 ms, so a tab woken from the background
-    // shows what is really left; "Preskoči odmor" ends it at once, silently. At
-    // zero the bar says "Kreni" for about 1.5 s, then goes; the phone
-    // vibrates and two short beeps play where the browser allows it. Leaving
-    // the page ends it; nothing is kept.
-    var rest = document.getElementById("plRest");
+    // previous exercise's save) and starts at load. The bar itself, its
+    // countdown, its tone and its "Kreni", is _rest_bar.html's
+    // (window.qmtRest, 26.11.2026: the gym training's page shares it).
+    var rest = window.qmtRest;
     if (form && rest) {
-      var dock = document.querySelector(".pl-dock"), pl = document.querySelector(".pl");
-      var restH = rest.querySelector(".pl-rest-h"), restT = rest.querySelector(".pl-rest-t");
-      var fill = rest.querySelector(".pl-rest-fill");
-      var end = 0, span = 1, every = null, after = null, audio = null;
-      var pad = function (n) { return (n < 10 ? "0" : "") + n; };
-      var clockOf = function (s) {
-        var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
-        return (h ? h + ":" + pad(m) : m) + ":" + pad(s % 60);
-      };
-      var show = function (on) {
-        rest.hidden = !on;
-        if (dock) dock.hidden = on;
-        if (pl) pl.classList.toggle("has-rest", on);
-      };
-      var stop = function () {
-        clearInterval(every); clearTimeout(after);
-        every = after = null;
-        show(false);
-      };
-      // The tone's AudioContext is made and resumed at the first ✓, a tap:
-      // that is what lets iOS sound it later. Where it cannot be made or
-      // resumed, no tone, and never an error.
-      var unlock = function () {
-        if (audio !== null) return;
-        audio = false;
-        try {
-          var AC = window.AudioContext || window.webkitAudioContext;
-          if (!AC) return;
-          audio = new AC();
-          var resumed = audio.resume && audio.resume();
-          if (resumed && resumed.catch) resumed.catch(function () {});
-        } catch (e) { audio = false; }
-      };
-      // two 880 Hz beeps of 120 ms, 100 ms apart, quiet
-      var beep = function () {
-        if (!audio || audio.state !== "running") return;
-        try {
-          var t0 = audio.currentTime + .02;
-          [0, .22].forEach(function (d) {
-            var o = audio.createOscillator(), g = audio.createGain(), t = t0 + d;
-            o.frequency.value = 880;
-            g.gain.setValueAtTime(0, t);
-            g.gain.linearRampToValueAtTime(.08, t + .01);
-            g.gain.setValueAtTime(.08, t + .11);
-            g.gain.linearRampToValueAtTime(0, t + .12);
-            o.connect(g); g.connect(audio.destination);
-            o.start(t); o.stop(t + .13);
-          });
-        } catch (e) {}
-      };
-      // a phone vibrates only after a tap on the page (Chrome refuses it,
-      // with a console line, before one): asked only then
-      var buzz = function () {
-        try {
-          var ua = navigator.userActivation;
-          if (navigator.vibrate && (!ua || ua.hasBeenActive)) navigator.vibrate([150, 80, 150]);
-        } catch (e) {}
-      };
-      var draw = function () {
-        var left = end - Date.now();
-        if (left > 0) {
-          restT.textContent = clockOf(Math.ceil(left / 1000));
-          fill.style.transform = "scaleX(" + (left / span).toFixed(4) + ")";
-          return;
-        }
-        clearInterval(every); every = null;
-        restH.textContent = GO; restT.textContent = "0:00"; fill.style.transform = "scaleX(0)";
-        buzz(); beep();
-        after = setTimeout(stop, 1500);
-      };
-      var begin = function (s) {                         // not "start": the timer's above is a var of this scope
-        clearInterval(every); clearTimeout(after); after = null;
-        span = s * 1000; end = Date.now() + span;
-        restH.textContent = REST;
-        show(true); draw();
-        every = setInterval(draw, 250);
-      };
-      rest.querySelector(".pl-rest-skip").addEventListener("click", stop);
-      window.addEventListener("pagehide", stop);
       [].forEach.call(form.querySelectorAll(".pl-tick"), function (c) { c.hidden = false; });
       var between = parseInt(form.getAttribute("data-rest"), 10) || 0;
       form.addEventListener("click", function (e) {
         var b = e.target.closest(".pl-done");
         if (!b) return;
-        unlock();
+        rest.unlock();
         var on = b.getAttribute("aria-pressed") !== "true";
         b.setAttribute("aria-pressed", on ? "true" : "false");
         b.closest("tr").classList.toggle("is-done", on);
-        if (on && between > 0) begin(between);
+        if (on && between > 0) rest.begin(between);
       });
       // The rest between exercises starts at load, when no tap has happened
       // on this page yet: no AudioContext exists and the browser may refuse
       // to vibrate, so this rest may end silent and still. The bar's "Kreni"
       // is the signal then (a ✓ pressed meanwhile makes the tone possible).
       var odmor = parseInt(form.getAttribute("data-odmor"), 10) || 0;
-      if (odmor > 0) begin(odmor);
+      if (odmor > 0) rest.begin(odmor);
     }
 
     var prev = document.querySelector(".pl-nav.prev"), next = document.querySelector(".pl-nav.next");

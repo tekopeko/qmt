@@ -999,6 +999,74 @@
     .pl-sets thead th > .t { display: inline-block; width: max-content; max-width: 5em; }
     .pl-sets td { padding: 0 4px; }
     .pl-sets input { height: 44px; padding: 0 10px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+    /* the ✓ per set (30.10.2026, the player's; base's since 26.11.2026,
+       when the gym training's page ticked its sets too): a column at the
+       right, as narrow as its button; a round 44px button per row
+       (aria-pressed), a hairline circle with a muted ✓, pressed the green
+       fill; its row then .is-done, the set's number in --good (the inputs
+       as they were, still editable) */
+    .pl-sets .pl-tick { width: 1%; }
+    .pl-done { width: 44px; height: 44px; padding: 0; border-radius: 50%; box-shadow: none;
+               background: var(--surface); color: var(--muted); border: 1px solid var(--line);
+               font: 700 1.05rem/1 var(--font-body); }
+    .pl-done:hover { background: var(--surface-2); color: var(--text); transform: none; }
+    .pl-done[aria-pressed="true"] { background: var(--good-fill); color: var(--good-ink); border-color: transparent; }
+    .pl-done[aria-pressed="true"]:hover { background: var(--good-strong); color: var(--good-ink); }
+    .pl-sets tr.is-done > th { color: var(--good); }
+    /* the ✓ column's words for a screen reader ("Odrađena serija"), never
+       shown. Not the usual 1px box: its text overflows that box, which the
+       audit's element-overflow check refuses. The text at its own width,
+       wholly clipped away (clip-path clips its hit area too), set against
+       its cell's right edge, so it reaches no further right than the cell */
+    .pl-sets thead th.pl-tick { position: relative; }
+    .pl-sr { position: absolute; top: 0; right: 0; white-space: nowrap; clip-path: inset(50%); pointer-events: none; }
+    /* an exercise's rating (25.11.2026, the player's "Koliko je bilo teško?
+       (neobavezno)"; base's since 26.11.2026, the gym training's cards ask
+       it too): the question in the card's text (600 .9rem, "(neobavezno)"
+       muted), then the finish screen's ten round buttons (.scale-box /
+       .scale / .sc: five and five where ten do not fit) at 36px, 40px on a
+       coarse pointer; none chosen, a radio group */
+    .pl-rate { align-self: stretch; margin-top: 4px; }
+    .pl-rate-h { margin-bottom: 10px; font: 600 .9rem var(--font-body); color: var(--text); overflow-wrap: anywhere; }
+    .pl-opt { color: var(--muted); font: 500 .8rem var(--font-body); }
+    .pl-rate .sc > span { max-width: 36px; font-size: .92rem; }
+    @media (pointer: coarse) { .pl-rate .sc > span { max-width: 40px; } }
+    /* ===== the rest bar (_rest_bar.html; 30.10.2026, the player's, the
+       owner: "a timer which he can skip, in between sets as well as between
+       exercises, which Shape Club also has"; base's since 26.11.2026, the
+       gym training's page counts its pauses too): fixed at the bottom at
+       every width, in the player's dock's place and its glass (dark in both
+       themes, theme-free as the dock), a 640px column's width (16px from
+       the screen's edges, 640px at most, centred), 64px, clear of staff's ✎
+       pill as the dock is. Left to right: "ODMOR" (the set log's header
+       words, muted on the dark) over the countdown (Inter 800, tabular,
+       white), a 4px track whose accent fill drains as the rest runs, and
+       "Preskoči odmor", a white pill (not "Preskoči": the player's quiet
+       "Preskoči →" skips the exercise). At zero the eyebrow says "KRENI" for
+       about 1.5 s, then the bar goes. While it shows, body.has-rest: each
+       page gives its column room under it. Rendered hidden, the script's ===== */
+    .pl-rest { position: fixed; left: 16px; right: 16px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 45;
+               max-width: 640px; min-height: 64px; margin: 0 auto; display: flex; align-items: center; gap: 14px;
+               padding: 0 12px 0 18px; border-radius: var(--r-lg); background: rgba(22, 22, 24, .86); color: #fff;
+               border: 1px solid rgba(255, 255, 255, .09); box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+               backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+               /* its words are copy slots (25.11.2026), the eyebrow written by
+                  the script ("ODMOR", "KRENI"): a long word breaks anywhere */
+               overflow-wrap: anywhere; }
+    /* lifted over the editor's ✎ pill, found by its class (its id stays
+       out of a member's page, whose source never names the editor) */
+    body:has(.copy-toggle) .pl-rest { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
+    .pl-rest-n { flex: 0 1 auto; min-width: 4.4rem; display: flex; flex-direction: column; gap: 1px; }
+    .pl-rest-h { font: 700 .72rem/1.2 var(--font-body); letter-spacing: .12em; text-transform: uppercase;
+                 color: rgba(255, 255, 255, .62); }
+    .pl-rest-t { font: 800 1.4rem/1.1 var(--font-body); font-variant-numeric: tabular-nums; color: #fff; }
+    .pl-rest-track { flex: 1; min-width: 0; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .18);
+                     overflow: hidden; }
+    .pl-rest-fill { display: block; height: 100%; background: var(--accent); transform-origin: left; }  /* scaleX: the rest left */
+    .pl-rest-skip { flex: 0 1 auto; min-width: 0; min-height: 40px; padding: 0 18px; border: none; border-radius: 999px; box-shadow: none;
+                    background: #fff; color: rgb(22, 22, 24); font: 700 .88rem var(--font-body); }
+    .pl-rest-skip:hover { background: rgba(255, 255, 255, .86); color: rgb(22, 22, 24); transform: none; }
+    @media (pointer: coarse) { .pl-rest-skip { min-height: 44px; } }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition: none !important; animation: none !important; }
@@ -1078,6 +1146,10 @@
    nothing beside the question; the logo is the way out, as on the auth pages. #}
 {% set solo = solo_page is defined and solo_page %}
 {% set brand_only = auth_page or solo %}
+{# A page whose foot is its own (26.11.2026, the gym training: its rest bar
+   and "Dodaj vježbu"; a training in progress is not the moment), set by the
+   page ({% set no_nudges = true %}): no phone reminder, no install banner #}
+{% set nudges = not (no_nudges is defined and no_nudges) %}
 {# a guest's bar is Shape's small pill (.compact): it shrinks to its content #}
 <header class="topbar{% if not user or solo %} compact{% endif %}">
   <div class="brand-slot"><a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
@@ -1109,7 +1181,9 @@
       {% if staff %}<p class="nav-cap">Kao član</p>{% endif %}
       <a href="/" class="{% if path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if path.startswith('/raspored') %}on{% endif %}">Raspored</a>
-      {% set at_karton = path == '/karton' if staff else (path.startswith('/karton') or path.startswith('/upitnik')) %}
+      {# one's own gym training (26.11.2026) is under one's own karton, staff's too #}
+      {% set own_karton = path == '/karton' or path.startswith('/karton/trening') or path.startswith('/karton/termin/') %}
+      {% set at_karton = own_karton if staff else (path.startswith('/karton') or path.startswith('/upitnik')) %}
       <a href="/karton" class="{% if at_karton %}on{% endif %}">Karton</a>
       {# a paid product: without an active online plan the tab doesn't exist #}
       {% if show_online %}<a href="/treninzi" class="{% if path.startswith('/treninzi') and not at_vjezbe %}on{% endif %}">Online treninzi</a>{% endif %}
@@ -1129,7 +1203,7 @@
       {% set at_kao = path == '/kao' or path.startswith('/kao/') %}
       {% set at_termini = path.startswith('/admin') %}
       {# a client's karton is opened from Trenutne članarine (24.11.2026) #}
-      {% set at_clanarine = path.startswith('/clanarine') or path.startswith('/karton/') %}
+      {% set at_clanarine = path.startswith('/clanarine') or (path.startswith('/karton/') and not own_karton) %}
       {% set at_upitnik = path.startswith('/upitnik') %}
       {% set at_tekstovi = path.startswith('/tekstovi') %}
       {% set at_korisnici = is_owner and path.startswith('/korisnici') %}
@@ -1799,7 +1873,7 @@
   })();
 </script>
 {% endif %}
-{% if user and not can_edit_copy and not user.phone and not solo
+{% if user and not can_edit_copy and not user.phone and not solo and nudges
       and not request.url.path.startswith('/profil') %}
 {# the phone reminder (26.11.2026): a member with no phone number, on every
    page but a one-task page and the profile (whose field it leads to),
@@ -1816,11 +1890,12 @@
   <div class="phone-actions"><a class="btn btn-sm" href="/profil#p-phone">{{ c.t("app.phone.go") }}</a></div>
 </div>
 {% endif %}
-{% if user and not can_edit_copy and not actor %}
+{% if user and not can_edit_copy and not actor and nudges %}
 {# the install banner — a PWA nobody installs is a website. JS decides whether
    to show it (phone, browser tab, not the first page, not dismissed in the
    last week, not installed, not with the phone reminder). Never while a
-   staff member acts as a member (26.11.2026): it is about the device. #}
+   staff member acts as a member (26.11.2026): it is about the device; nor
+   on a page whose foot is its own (no_nudges: the gym training). #}
 <div id="a2hs" class="card a2hs" hidden role="dialog" aria-labelledby="a2hsTitle">
   <button type="button" class="a2hs-x" aria-label="Zatvori" onclick="qmtA2hsDismiss()">✕</button>
   <div class="a2hs-head">
@@ -1877,8 +1952,10 @@
     <div class="fb-actions">
       <form method="dialog"><button type="submit" class="btn-ghost btn-sm">{{ c.t("app.feedback.later") }}</button></form>
       {# showModal() focuses the first focusable node — send it to the primary
-         action, not to the ✕ in the corner #}
-      <a class="btn btn-sm" href="/karton#osvrti" autofocus>{{ c.t("app.feedback.fill") }}</a>
+         action, not to the ✕ in the corner. Since 26.11.2026 (build 3) it
+         leads to the newest owed termin's training, whose "Završi trening"
+         is the osvrt #}
+      <a class="btn btn-sm" href="/karton/termin/{{ feedback_prompt.session_id }}/trening" autofocus>{{ c.t("app.feedback.fill") }}</a>
     </div>
   </div>
 </dialog>

@@ -88,7 +88,7 @@ from sqlalchemy import inspect as sa_inspect, text as sa_text
 from sqlalchemy.exc import IntegrityError
 
 from qmt import auth, config, copy, db, storage
-from qmt.models import PLAN_TYPES, Base, Booking, SiteCopy, User
+from qmt.models import PLAN_TYPES, Base, Booking, SiteCopy, TrainingLog, User
 from qmt.web.app import addon_amounts, app, reference_prices
 
 # every page that has editable text and staff open (25.11.2026: the raspored, the
@@ -1610,7 +1610,9 @@ def test_an_emptied_text_stays_empty_and_only_a_number_gets_its_default_back():
     controls' words are required too (its headings, buttons, links,
     labels, <summary> texts, table headers and confirms' texts: none can be
     left blank; the karton's tests below), and so are every other member
-    page's (the same day: theirs and a caption before a value; NEW, below)."""
+    page's (the same day: theirs and a caption before a value; NEW, below),
+    and since 26.11.2026 the gym training's (gym.*, its controls' words and
+    the caption before the window's end; GYM_OPTIONAL the rest)."""
     make_user("ivan@test.local", plans=("rehabilitacija",)); make_user("trener@test.local", is_trainer=True)
     gym_examples()
     t = client_for("trener@test.local")
@@ -1619,7 +1621,8 @@ def test_an_emptied_text_stays_empty_and_only_a_number_gets_its_default_back():
         *(f"price.{plan}.year_amount" for plan in PLAN_TYPES if plan != "online"), "addon.online", "addon.dvorana",
         *copy.BASE_OF.values(), "price.base_label",                             # the bazna cijena's (23.11.2026)
         *(k for k in copy.SLOTS if k.startswith("karton.") and k not in KARTON_OPTIONAL),   # the karton's (25.11.2026)
-        *(k for k in NEW if k not in NEW_OPTIONAL)}                                # every member page's (25.11.2026)
+        *(k for k in NEW if k not in NEW_OPTIONAL),                                # every member page's (25.11.2026)
+        *(k for k in copy.SLOTS if k.startswith(GYM_PREFIXES) and k not in GYM_OPTIONAL)}   # the gym training's (26.11.2026)
     assert copy.clean("") == "" and copy.clean(" \n\t \n ") == ""             # what an emptied text stores
 
     def line(page: str) -> str:                     # Individualno's line, its markup
@@ -2116,9 +2119,11 @@ KARTON_OPTIONAL = {
     "karton.history.unknown",
     "karton.maxes.empty", "karton.termini.canceled", "karton.termini.empty", "karton.diary.lead", "karton.diary.online",
     "karton.diary.outside", "karton.diary.absent_chip", "karton.diary.canceled", "karton.diary.empty",
-    "karton.osvrt.placeholder", "karton.log.hint", "karton.staff.own_lead", "karton.staff.review", "karton.staff.old",
+    "karton.staff.own_lead", "karton.staff.review", "karton.staff.old",
     "karton.staff.upitnik_none", "karton.staff.limits_flag", "karton.staff.maxes_empty", "karton.staff.diary_lead",
-    "karton.staff.own_diary_lead", "karton.staff.no_osvrt", "karton.staff.diary_empty", "karton.staff.own_diary_empty"}
+    "karton.staff.own_diary_lead", "karton.staff.diary_empty", "karton.staff.own_diary_empty",
+    # the gym training's (26.11.2026, build 3): when it opens, a termin's row with none yet
+    "karton.termini.gym_before", "karton.termini.gym_after", "karton.diary.gym_none_open", "karton.diary.gym_none"}
 # texts karton.html printed before they were slots (at b82221d), copied from
 # it character for character: what their defaults are (the words before a
 # link carry the dash that led to it)
@@ -2134,15 +2139,12 @@ KARTON_BEFORE = {
                          "ponavljanja. Vježbe bez utega: najviše ponavljanja.",
     "karton.termini.canceled": "OTKAZANO",
     "karton.termini.open": "Otvori raspored →",
-    "karton.diary.lead": "Svaki odrađeni termin završi ovdje — ispuni osvrt (napor, osjećaj, komentar) ili označi da "
+    "karton.diary.lead": "Svaki odrađeni termin završi ovdje — upiši trening (vježbe, serije, osvrt) ili označi da "
                          "nisi bio/la.",
     "karton.diary.canceled": "Otkazano",
     "karton.diary.absent": "Nisam bio/la",
     "karton.outside.add": "+ Dodaj trening izvan termina",
     "karton.osvrt.effort": "Napor (1 lagano – 10 maksimalno)",
-    "karton.log.hint": "Upiši vježbe i serije — iz njih se računaju tvoji maksimumi. Sekunde (plank i slično) upiši u "
-                       "komentar.",
-    "karton.log.col_reps": "Pon.",
     "karton.confirm.osvrt_cta": "Obriši osvrt",
     "karton.confirm.absent_text": "Termin se miče iz dnevnika kao odrađen trening i ostaje zabilježen kao izostanak. "
                                   "Uvijek ga možeš vratiti klikom na Poništi.",
@@ -2160,17 +2162,43 @@ def attended(uid: int, hours_ago: float) -> int:
     return sid
 
 
+def legacy_log(uid: int, day: date, effort: int | None, note: str, feeling: str | None = None,
+               sets: list[dict] | None = None, session_id: int | None = None) -> int:
+    """A TrainingLog row as the plain form of 23.11.2026 left it (an osvrt,
+    a training outside a termin with session_id None): none is made since
+    26.11.2026 (build 3), the rows already there stay; its id."""
+    with db.session_scope() as s:
+        row = TrainingLog(user_id=uid, session_id=session_id, date=day, effort=effort, feeling=feeling, note=note,
+                          sets=json.dumps(sets or [], ensure_ascii=False))
+        s.add(row)
+        s.flush()
+        return row.id
+
+
+def gym_rows(uid: int, sid: int, exercise: int) -> int:
+    """The member's gym training of a termin (26.11.2026, build 3), made as
+    opening it makes it, an exercise in it with what was given and a set
+    ticked and rated, its osvrt: its id."""
+    tid = db.gym_training_for(uid, sid, staff=True)
+    iid = db.add_gym_item(tid, uid, exercise, "trening", 3, 10, None, 20, 60, staff=True)
+    db.save_gym_done(iid, uid, [{"reps": 10, "kg": 20.0}], 8, staff=True)
+    db.finish_gym_training(tid, uid, 7, "dobro", "Dvorana.", staff=True)
+    return tid
+
+
 def karton_rows(uid: int, member: bool) -> None:
     """A karton with every kind of row it prints (the long-text walk, the
     edits below): fourteen weights (the history folds; since 25.11.2026 one
     with a document, and a document alone on a day of its own), a photo of
     this month (its file in this test's MEDIA_DIR), a limitation and two
     documents under it (a PDF and an image: both chips), a training outside
-    a termin and an online pass with their sets (the maxes, the exercise's
-    history). A member's (`member`) also: a v2 upitnik that needs a review,
-    in pain; an osvrt with sets on a termin, a termin still owed one, one
-    he missed, one the trainer canceled; a booking ahead and a canceled
-    one."""
+    a termin (the plain form's, as it stands on prod) and an online pass
+    with their sets (the maxes, the exercise's history). A member's
+    (`member`) also: a v2 upitnik that needs a review, in pain; an osvrt
+    with sets on a termin (the plain form's), a termin with its gym
+    training (26.11.2026), a termin still owed one inside its window, one
+    he missed, one the trainer canceled; a booking ahead whose training is
+    open, one further ahead and a canceled one."""
     today, n = config.today(), len(db.exercises())
     bench, plank = (db.create_exercise(f"{name} {n}") for name in ("Potisak s klupe", "Plank"))
     entry = {"exercise_id": bench, "name": f"Potisak s klupe {n}", "sets": [{"reps": 6, "kg": 90.0}],
@@ -2188,7 +2216,7 @@ def karton_rows(uid: int, member: bool) -> None:
     db.set_limitations(uid, "Bol u koljenu pri čučnju.")
     db.add_limitation_file(uid, f"nalaz-{uid}-0123456789abcdef.pdf", "Nalaz_magnetske_rezonance_desnog_koljena_ortopedija")
     db.add_limitation_file(uid, f"nalaz-{uid}-fedcba9876543210.jpg", "Sken")
-    db.add_training_log(uid, today - timedelta(days=2), 7, "Sam u teretani.", feeling="dobro", sets=[entry])
+    legacy_log(uid, today - timedelta(days=2), 7, "Sam u teretani.", feeling="dobro", sets=[entry])
     pid = db.create_program(f"Online {n}", None, "pocetna", "cijelo")
     did = db.add_day(pid)
     item = db.add_day_item(did, plank, "trening")
@@ -2202,10 +2230,16 @@ def karton_rows(uid: int, member: bool) -> None:
                "q15": True, "q17": "Operacija koljena."}
     db.save_onboarding(uid, json.dumps(answers), 6.4, "srednja", "cijelo", version=2, pain_level=5, pain_high=False,
                        needs_review=True, consented_at=datetime.now(config.TZ))
-    db.add_session_feedback(uid, attended(uid, 50), 8, "odlicno", "Dobar dan.", sets=[entry])
-    attended(uid, 3)                                                           # owed its osvrt
+    gone = attended(uid, 50)
+    legacy_log(uid, (datetime.now(config.TZ) - timedelta(hours=50)).date(), 8, "Dobar dan.", feeling="odlicno",
+               sets=[entry], session_id=gone)
+    gym_rows(uid, attended(uid, 26), bench)                                    # a gym training (26.11.2026)
+    attended(uid, 3)                                                           # owed its training, inside its window
     db.mark_session_absent(uid, attended(uid, 75))
     db.set_session_canceled(attended(uid, 100), True)
+    soon = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(hours=2), 60, 8, None)
+    with db.session_scope() as s:                                              # its training open: "Upiši trening →"
+        s.add(Booking(user_id=uid, session_id=soon))
     for days, canceled in ((1, False), (2, True)):
         sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=days), 60, 8, None)
         with db.session_scope() as s:
@@ -2220,22 +2254,26 @@ def spans(page: str, key: str) -> list[str]:
 
 
 def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
-    """Every static text of the karton is a slot (25.11.2026): 129 of them
+    """Every static text of the karton is a slot (25.11.2026): 120 of them
     (110, and the same day's later build's 16: the documents, the body
     form's hint, "Povijest vježbe", the document's confirm; since
     26.11.2026 the height's six, karton.weight.height_*, in place of the
-    three that led to /profil),
+    three that led to /profil: 129; then build 3, the gym training, took
+    the plain form's seventeen away, its exercise block's nine, the osvrt
+    form's five, "Ispuni osvrt", its Spremi and "bez osvrta", and brought
+    eight: a termin's row's state and its way in, the termini's, a training
+    outside a termin's "Dodaj trening"),
     karton.<area>.<name>, registered area by area in the page's order
     (copy.KARTON_AREAS: the panel lists them so, each once), every one a
     text of CAP characters labelled for the editor's bar ("Karton: naslov",
-    "Karton · masa: gumb Upiši", "Karton · osvrt: pitanje"). A control's
+    "Karton · masa: gumb Upiši", "Karton · osvrt: polje Napor"). A control's
     words are required, a lead, a hint, a kicker, a chip, an empty line or
     a placeholder not. Their defaults are what karton.html printed before,
     character for character (spot-checked against its old texts), each as
     clean() keeps a text; the weight card's heading is "Tjelesna
     kompozicija" since the later build (Amir: "Tjelesna masa tu bi
     promijenio u tjelesna kompozicija")."""
-    assert len(KARTON) == 129 and KARTON == [k for k in copy.SLOTS if k.startswith("karton.")]
+    assert len(KARTON) == 120 and KARTON == [k for k in copy.SLOTS if k.startswith("karton.")]
     areas = [key.split(".")[1] for key in KARTON]
     assert list(dict.fromkeys(areas)) == list(copy.KARTON_AREAS)                 # area by area, in the page's order
     assert [key for _, keys in copy.KARTON_PANEL for key in keys] == KARTON      # the panel: every one, once, in order
@@ -2246,9 +2284,9 @@ def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
         assert slot.label.startswith("Karton") and slot.label.count(":") == 1, key
         assert slot.default and copy.clean(slot.default) == slot.default, key
         assert slot.required == (key not in KARTON_OPTIONAL), key
-    assert len(KARTON_OPTIONAL) == 40 and KARTON_OPTIONAL <= set(KARTON)
+    assert len(KARTON_OPTIONAL) == 41 and KARTON_OPTIONAL <= set(KARTON)
     for key, label in (("karton.head.title", "Karton: naslov"), ("karton.weight.add", "Karton · masa: gumb Upiši"),
-                       ("karton.osvrt.title", "Karton · osvrt: pitanje")):
+                       ("karton.osvrt.effort", "Karton · osvrt: polje Napor")):
         assert copy.SLOTS[key].label == label, key
     assert {key: copy.SLOTS[key].default for key in KARTON_BEFORE} == KARTON_BEFORE
     assert copy.SLOTS["karton.weight.title"].default == "Tjelesna kompozicija"
@@ -2284,11 +2322,11 @@ def test_an_edited_karton_text_shows_where_each_view_prints_it():
     upitnik_examples()
     karton_rows(ivan, member=True); karton_rows(trener, member=False)
     new = {"karton.head.title": "Moja knjižica", "karton.limits.title": "Što me boli",
-           "karton.weight.add": "Novi unos", "karton.diary.sets": "Sve serije", "karton.diary.fill": "Napiši osvrt",
+           "karton.weight.add": "Novi unos", "karton.diary.sets": "Sve serije", "karton.diary.gym_fill": "Upiši svoj trening",
            "karton.staff.answers": "Svi odgovori", "karton.staff.own_lead": "Moj dnevnik i tijelo.",
-           "karton.staff.no_osvrt": "osvrt nije napisan", "karton.log.col_kg": "Težina",
+           "karton.diary.gym_none_open": "trening čeka upis", "karton.termini.gym_link": "Na trening →",
            "karton.confirm.absent_title": "Nisi došao/la?", "karton.confirm.weight_cta": "Makni unos",
-           "karton.limits.placeholder": "npr. leđa", "karton.osvrt.placeholder": "Kako je prošlo?"}
+           "karton.limits.placeholder": "npr. leđa"}
     t = client_for("trener@test.local")
     for key, text in new.items():
         assert t.post(f"/copy/{key}", data={"text": text}).json()["text"] == text, key
@@ -2296,8 +2334,9 @@ def test_an_edited_karton_text_shows_where_each_view_prints_it():
                        t.get(f"/karton/{ivan}").text)
     for key, pages in (("karton.head.title", (mine, own)), ("karton.limits.title", (mine, own, view)),
                        ("karton.weight.add", (mine, own)), ("karton.diary.sets", (mine, own, view)),
-                       ("karton.diary.fill", (mine,)), ("karton.staff.answers", (view,)),
-                       ("karton.staff.own_lead", (own,)), ("karton.staff.no_osvrt", (view,))):
+                       ("karton.diary.gym_fill", (mine,)), ("karton.staff.answers", (view,)),
+                       ("karton.staff.own_lead", (own,)), ("karton.diary.gym_none_open", (mine, view)),
+                       ("karton.termini.gym_link", (mine,))):
         for page in pages:
             shown = spans(page, key) if 'id="copyToggle"' in page else [
                 unescape(x) for x in re.findall(r'<span class="t">(.*?)</span>', page, re.S)]
@@ -2305,11 +2344,10 @@ def test_an_edited_karton_text_shows_where_each_view_prints_it():
     assert '<h1><span class="t">Moja knjižica</span></h1>' in mine and "Moja knjižica" not in view.split("</h1>")[0]
     page = own.split('<section class="card k-texts"')[0]                                    # the page, not the panel
     assert "Svi odgovori" not in mine and "Svi odgovori" not in page and "Moj dnevnik i tijelo." not in mine
-    assert "osvrt nije napisan" not in mine and "osvrt nije napisan" not in page
-    assert '<th scope="col"><span class="t">Težina</span></th>' in mine.split('<template id="ex-block">')[1]
+    assert "Upiši svoj trening" not in view and "Na trening →" not in view and "Na trening →" not in page   # his own way in
     assert 'data-confirm-title="Nisi došao/la?"' in mine and 'data-confirm-cta="Makni unos"' in mine
     assert 'data-confirm-cta="Makni unos"' in own and 'data-confirm-cta="Makni unos"' not in view   # his rows only
-    assert 'placeholder="npr. leđa">' in mine and 'placeholder="Kako je prošlo?">' in mine
+    assert 'placeholder="npr. leđa">' in mine
     assert "Obrisati unos?" in mine and 'data-copy="' not in mine                           # the others as they were
 
 
@@ -2325,7 +2363,7 @@ def test_an_emptied_karton_text_prints_nothing_for_a_member():
     karton_rows(ivan, member=True)
     t = client_for("trener@test.local")
     emptied = ("karton.head.lead", "karton.diary.online", "karton.diary.absent_chip", "karton.diary.canceled",
-               "karton.maxes.hint", "karton.termini.canceled", "karton.osvrt.placeholder", "karton.upitnik.eyebrow",
+               "karton.maxes.hint", "karton.termini.canceled", "karton.diary.gym_none_open", "karton.upitnik.eyebrow",
                "karton.upitnik.no_plan", "karton.weight.empty", "karton.photos.empty", "karton.photos.hint",
                "karton.limits.empty", "karton.staff.review", "karton.limits.chip_pdf", "karton.limits.chip_image",
                "karton.weight.hint", "karton.history.empty")
@@ -2333,12 +2371,13 @@ def test_an_emptied_karton_text_prints_nothing_for_a_member():
         assert t.post(f"/copy/{key}", data={"text": ""}).json()["text"] == "", key
     mine = client_for("ivan@test.local").get("/karton").text
     for gone in ('<span class="chip">', '<span class="chip off">', 'class="hint mx-hint"', "<strong style=",
-                 'placeholder="npr. kilaže', '<span class="eyebrow">', 'class="hint ms-hint"'):
+                 'class="hint le-state"', '<span class="eyebrow">', 'class="hint ms-hint"'):
         assert gone not in mine, gone
     online = mine.split('<div class="log-entry online"')[1].split('<div class="log-entry')[0]
     assert "le-kicker" not in online and '<div class="le-head">' in online       # the online pass: no kicker
-    assert mine.count('<div class="le-kicker">') == 1                            # the other kicker stays
+    assert mine.count('<div class="le-kicker"><span class="t">') == 1            # the other kicker stays
     assert '<div class="le-kicker"><span class="t">Trening izvan termina</span></div>' in mine
+    assert '<div class="le-kicker">Grupni trening</div>' in mine                  # a gym training's: its title, no slot
     assert '<p class="hint">\n  <span class="k-body">' in mine                    # his lead emptied: the body line alone
     ana = client_for("ana@test.local").get("/karton").text                       # her own: no plan, nothing written
     assert re.search(r"</h1>\s*(<!--.*?-->\s*)?<div class=\"k-cards\">", ana)    # no lead, no body line: no <p>
@@ -2387,6 +2426,12 @@ NEW_PREFIXES = ("raspored.", "treninzi.", "program.", "dan.", "player.", "kraj."
                 "clanarina.lapsed.", "clanarina.add.", "clanarina.addon.", "clanarina.bills.portal",
                 "clanarina.bills.col_", "prehrana.kicker", "prehrana.text_", "prehrana.hint_", "prehrana.open")
 NEW = [key for key in copy.SLOTS if key.startswith(NEW_PREFIXES)]
+# the gym training's page (26.11.2026, build 3): gym.<area>.* (the landing's gym.kicker and gym.h2 are the landing's)
+GYM_PREFIXES = ("gym.head.", "gym.state.", "gym.empty", "gym.card.", "gym.form.", "gym.add.", "gym.done.", "gym.foot.",
+                "gym.osvrt.", "gym.confirm.")
+# of them, the ones that are no control's words (a kicker, a state's whole
+# sentence, the empty line): emptied, they stay empty (tests/test_gym.py's too)
+GYM_OPTIONAL = {"gym.head.kicker", "gym.state.closed", "gym.state.staff", "gym.empty", "gym.osvrt.kicker"}
 # the ones that are no control's words (a lead, a hint, a kicker, a chip, a
 # state's word, an empty line, a placeholder): emptied, they stay empty
 NEW_OPTIONAL = {
@@ -3165,7 +3210,14 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     db.create_user("petra@test.local", "petra", auth.hash_password("lozinka123"))   # no profile yet: its welcome
     db.mark_email_verified("petra@test.local")
     member_day = online_day()
-    attended(ana, 30)
+    owed = attended(ana, 3)                           # inside its training's window: the prompt asks (26.11.2026)
+    # her gym training of it (26.11.2026, build 3): an exercise with what was
+    # given, a set ticked; another she has not ticked yet
+    ana_gym = db.gym_training_for(ana, owed)
+    goblet = db.create_exercise("Goblet čučanj u dvorani", "Pete na podu.", "Spust do paralele.", "noge, bučice")
+    for planned in ((3, 10, None, 20, 60), (2, None, 30, None, 30)):
+        db.add_gym_item(ana_gym, ana, goblet, "trening", *planned)
+    db.save_gym_done(db.gym_training(ana_gym, ana).items[0].id, ana, [{"reps": 10, "kg": 20.0}], 8)
     soon = datetime.now(config.TZ).replace(hour=18, minute=0, second=0, microsecond=0) + timedelta(days=2)
     for hours, cap, kind, hers, off in ((0, 8, "grupni", True, False), (1, 8, "grupni", False, False),
                                         (2, 1, "individualni", False, False), (3, 1, "individualni", True, False),
@@ -3186,7 +3238,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 db.set_copy(key, copy.dump_items([make(min(slot.max_chars, n))] * min(slot.max_items, ITEMS)), None)
             elif isinstance(slot, copy.RowsSlot):       # every table 12 rows long, each cell 300 characters
                 db.set_copy(key, copy.dump_rows([[make(min(slot.max_chars, LONG))] * 2] * min(slot.max_rows, ITEMS)), None)
-            elif key.startswith(("vodic.", "karton.") + NEW_PREFIXES):   # the guide's, the karton's and every
+            elif key.startswith(("vodic.", "karton.") + NEW_PREFIXES + GYM_PREFIXES):   # the guide's, the karton's,
+                # the gym training's (26.11.2026) and every
                 # member page's texts (25.11.2026) 300 characters in three lines (span.t: the breaks show)
                 db.set_copy(key, "\n".join([make(LONG // 3)] * 3), None)
             elif key in copy.BASE_OF or key in copy.BASE_OF.values():   # a price and its base (23.11.2026) hold
@@ -3786,13 +3839,12 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         kind of row), the trainer's own (a staff member's), out of edit mode
         and in it (the panel "Svi tekstovi kartona" under the diary, every
         text there), and his view of ivan's (25.11.2026). On each, every
-        form opened (its .editing, as its button does) with an exercise
-        block added to each (the block's words), and every <details> open.
+        form opened (its .editing, as its button does), and every <details>
+        open.
         Nothing overflows, widens the page or is cut (MEASURE); no page
         errors."""
         out, errs = [], []
         OPEN = """() => { for (const f of document.querySelectorAll('main .le-edit')) f.closest('[id]').classList.add('editing');
-          for (const b of document.querySelectorAll('main .xl-add')) if (b.offsetParent) b.click();
           for (const d of document.querySelectorAll('main details')) d.open = true;
           if (document.activeElement) document.activeElement.blur(); }"""
         for w in widths:
@@ -3829,7 +3881,9 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         phone: never on a desktop), the online list, the programme, the day
         (each exercise open, as a tap opens it), the player (a step with its
         rest bar, the dock, the leave dialog, both rounds, the finish screen
-        and its leave dialog), her profile and the error page; sara's gates
+        and its leave dialog), her gym training (26.11.2026: every card open,
+        a ✓ and its rest bar, its osvrt's page), her profile and the error
+        page; sara's gates
         (no plan: the raspored's line, the online list's card); a new
         member's profile with its welcome; the trainer's programme, day (each
         exercise open) and /tekstovi in edit mode. Nothing overflows, widens the page or is cut
@@ -3920,6 +3974,14 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             tap(a, "header a.brand")
             measure(a, "the finish screen's leave dialog", "#leaveDlg"); a.keyboard.press("Escape")
             a.request.post(server + base + "/odustani")
+            gym = f"/karton/trening/{ana_gym}"                              # her gym training (26.11.2026)
+            go(a, gym, "the gym training", unfold=True)
+            # a set more and its ✓ (it saves; each width's walk its own row): the rest bar
+            a.evaluate("() => document.querySelector('main details.gt-card:last-of-type .gt-add-set').click()")
+            tap(a, "main details.gt-card:last-of-type tbody tr:last-child .pl-done")
+            measure(a, "the gym training, its rest bar", "#plRest")
+            a.evaluate("() => { const b = document.querySelector('#plRest .pl-rest-skip'); if (b) b.click(); }")
+            go(a, gym + "/osvrt", "the gym training's osvrt")
 
             s = opened("sara@test.local")                                   # sara: no plan
             for path in ("/raspored", "/treninzi"):

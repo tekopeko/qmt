@@ -26,7 +26,8 @@ from sqlalchemy.orm import Session, aliased, joinedload, load_only, selectinload
 
 from . import config, copy, upitnik
 from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, ActingLog, Announcement, Base, Booking,
-                     Exercise, GymCard, LimitationFile, Membership, OnboardingResponse, Payment, Program, ProgramDay,
+                     Exercise, GymCard, GymTraining, GymTrainingItem, LimitationFile, Membership, OnboardingResponse,
+                     Payment, Program, ProgramDay,
                      ProgramDayCircuit, ProgramDayItem, ProgramDayPart, ProgressPhoto, ReminderLog, SessionTemplate,
                      SiteCopy,
                      TrainingLog, TrainingSession,
@@ -1021,12 +1022,19 @@ def cancel_deadline(sess: TrainingSession) -> datetime:
 
 
 def cancel_booking(user_id: int, session_id: int) -> None:
+    """Drop a booking, and with it its gym training (26.11.2026, build 3:
+    "A cancelled booking takes its training with it"), in the same
+    transaction, the training's row locked as every write to it locks it:
+    the row and its items go when nothing was done in it (no item holds a
+    set, no osvrt: GymTraining.has_record); one that holds a record is kept
+    and let go of its termin (session_id NULL), so it reads on as a training
+    outside a termin, its title and date as they were."""
     now = datetime.now(config.TZ)
     with session_scope() as s:
         b = s.scalar(select(Booking).where(Booking.session_id == session_id,
                                            Booking.user_id == user_id))
         if b is None:
-            raise BookingError("Nemaš rezervaciju za ovaj termin.")
+            raise BookingError(NO_BOOKING)
         sess = s.get(TrainingSession, session_id)
         # The cutoff protects the trainer's planning — meaningless for a session
         # the trainer already canceled, so dropping those is always allowed.
@@ -1034,6 +1042,13 @@ def cancel_booking(user_id: int, session_id: int) -> None:
             raise BookingError(
                 f"Otkazivanje je moguće najkasnije {config.CANCEL_CUTOFF_HOURS} h prije termina."
             )
+        t = s.scalar(select(GymTraining).where(GymTraining.user_id == user_id, GymTraining.session_id == session_id)
+                     .options(selectinload(GymTraining.items)).with_for_update())
+        if t is not None:
+            if t.has_record:
+                t.session_id = None
+            else:
+                s.delete(t)
         s.delete(b)
 
 
@@ -1502,23 +1517,32 @@ def get_onboarding(user_id: int) -> OnboardingResponse | None:
                         .where(OnboardingResponse.user_id == user_id))
 
 
-def pending_feedback(user_id: int, days: int = 7) -> list[TrainingSession]:
-    """Attended sessions that ENDED (within the last `days`) and still have no
-    feedback — the karton prompts these. Old unfilled ones expire quietly."""
+def pending_feedback(user_id: int) -> list[TrainingSession]:
+    """The booked termini a member still owes his training, newest first
+    (the login's osvrt prompt, the karton's fresh rows). Since 26.11.2026
+    (build 3: the gym training) a termin is owed only while its gym
+    training's window is open (gym_window: until the midnight two days after
+    its date), once it has ended, and while it has neither a finished gym
+    training (its osvrt saved) nor a TrainingLog (an absence mark, an osvrt
+    of the plain form before it); not one the trainer canceled. One past its
+    window expires quietly."""
     now = datetime.now(config.TZ)
     with session_scope() as s:
-        done = select(TrainingLog.session_id).where(
+        logged = select(TrainingLog.session_id).where(
             TrainingLog.user_id == user_id, TrainingLog.session_id.is_not(None))
+        finished = select(GymTraining.session_id).where(
+            GymTraining.user_id == user_id, GymTraining.session_id.is_not(None), GymTraining.finished_at.is_not(None))
         rows = s.scalars(
             select(TrainingSession)
             .join(Booking, Booking.session_id == TrainingSession.id)
             .where(Booking.user_id == user_id,
                    ~TrainingSession.canceled,
-                   TrainingSession.starts_at >= now - timedelta(days=days),
-                   ~TrainingSession.id.in_(done))
+                   TrainingSession.starts_at >= now - timedelta(days=3),     # no window is longer
+                   TrainingSession.starts_at < now,
+                   ~TrainingSession.id.in_(logged), ~TrainingSession.id.in_(finished))
             .order_by(TrainingSession.starts_at.desc())).all()
-    # "ended" depends on each session's own duration — filter in Python
-    return [x for x in rows if x.starts_at + timedelta(minutes=x.duration_min) < now]
+    # "ended" depends on each session's own duration, the window on its date: in Python
+    return [x for x in rows if x.starts_at + timedelta(minutes=x.duration_min) < now < gym_window(x.starts_at)[1]]
 
 
 def _log_target(s, user_id: int, session_id: int) -> TrainingSession:
@@ -1541,19 +1565,6 @@ def _log_target(s, user_id: int, session_id: int) -> TrainingSession:
     return sess
 
 
-def add_session_feedback(user_id: int, session_id: int, effort: int,
-                         feeling: str | None, note: str, sets: list[dict] | None = None) -> None:
-    """Feedback is tied to an ATTENDED, FINISHED termin — never free-floating.
-    `sets` is the exercises logged with it (read_log's entries; none: an
-    empty log), checked again here (_checked_log: ValueError)."""
-    log = _checked_log(sets)
-    with session_scope() as s:
-        sess = _log_target(s, user_id, session_id)
-        s.add(TrainingLog(user_id=user_id, session_id=session_id,
-                          date=sess.starts_at.astimezone(config.TZ).date(),
-                          effort=effort, feeling=feeling, note=note, sets=log))
-
-
 def mark_session_absent(user_id: int, session_id: int, note: str = "") -> None:
     """"Nisam bio/la" — the client's own no-show. It closes the termin off the
     same way an osvrt does (one row per user+session, so the karton stops
@@ -1566,32 +1577,16 @@ def mark_session_absent(user_id: int, session_id: int, note: str = "") -> None:
                           effort=None, feeling=None, note=note, absent=True))
 
 
-def add_training_log(user_id: int, day: date, effort: int | None, note: str,
-                     feeling: str | None = None, sets: list[dict] | None = None) -> int:
-    """A diary row without a session link: a training outside a termin
-    (23.11.2026, POST /karton/trening: its date read by read_day, its
-    exercises by read_log), and the seeds' rows; a termin's osvrt goes
-    through add_session_feedback. `sets` checked again (_checked_log:
-    ValueError). Its id."""
-    log = _checked_log(sets)
-    with session_scope() as s:
-        entry = TrainingLog(user_id=user_id, date=day, effort=effort,
-                            feeling=feeling, note=note, sets=log)
-        s.add(entry)
-        s.flush()
-        return entry.id
-
-
 def update_training_log(log_id: int, user_id: int, effort: int | None,
-                        feeling: str | None, note: str, sets: list[dict] | None = None,
-                        day: date | None = None) -> bool:
-    """Edit an osvrt in place. Only what the client wrote is editable — the
-    termin it hangs off, and its date, are facts and stay put. `sets`, the
-    exercises logged (read_log's entries), replaces the whole log; None
-    keeps it. `day` moves a training outside a termin to that date (read
-    by read_day); a termin's osvrt keeps its date whatever is posted, and
-    None keeps it."""
-    log = None if sets is None else _checked_log(sets)
+                        feeling: str | None, note: str, day: date | None = None) -> bool:
+    """Edit an osvrt in place: a TrainingLog row of the plain form of
+    23.11.2026 (no new one is made since 26.11.2026, build 3: a termin's
+    training is a GymTraining; the rows already there stay as they are).
+    Only what the client wrote is editable — the termin it hangs off, and
+    its date, are facts and stay put; its exercises (`sets`) are read only
+    since build 3. `day` moves a training outside a termin to that date
+    (read by read_day); a termin's osvrt keeps its date whatever is posted,
+    and None keeps it."""
     with session_scope() as s:
         entry = s.scalar(select(TrainingLog).where(TrainingLog.id == log_id,
                                                    TrainingLog.user_id == user_id))
@@ -1601,8 +1596,6 @@ def update_training_log(log_id: int, user_id: int, effort: int | None,
         entry.effort = effort
         entry.feeling = feeling
         entry.note = note
-        if log is not None:
-            entry.sets = log
         if day is not None and entry.session_id is None:
             entry.date = day
         return True
@@ -1639,73 +1632,20 @@ def booking_history(user_id: int, limit: int = 20) -> list[TrainingSession]:
             .order_by(TrainingSession.starts_at.desc()).limit(limit)))
 
 
-# ---------- the exercise log on a training (23.11.2026) ----------
+# ---------- a training outside a termin's date (23.11.2026) ----------
 #
-# Amir: "da si on može sam upisati koji trening je radio … izračun maksova".
-# A termin's osvrt, its edit, and a training outside a termin carry the same
-# block of exercises (karton.html): ex_<n>, the exercise's id (the library's
-# select, a combobox with the script), and its sets, reps_<n>_<i> and
-# kg_<n>_<i>; n is the block, i the set, both read in their numbers' order,
-# gaps allowed (a block removed on the page leaves one). read_log turns the
-# posted form into TrainingLog.sets' entries; the writes check them again
-# (_checked_log), as save_sets checks a pass's sets.
+# The plain form of 23.11.2026 (an osvrt's block of exercises, read_log, and
+# a training outside a termin written in one form) went on 26.11.2026 with
+# build 3: a termin's training is a GymTraining (below), made with the
+# booking, and so is one outside a termin. Its TrainingLog rows stay, read as
+# before (TrainingLog.sets: their exercises read only). What stays here: a
+# training outside a termin's date, and the two sentences the library's
+# pickers say.
 
-MAX_LOG_EXERCISES = 15
 NO_EXERCISE = "Odaberi vježbu s popisa."
 UNKNOWN_EXERCISE = "Nepoznata vježba."
-TOO_MANY_EXERCISES = f"Najviše {MAX_LOG_EXERCISES} vježbi."
 BAD_DAY = "Neispravan datum."
 FIRST_DAY = date(2020, 1, 1)          # a training outside a termin: no date before it
-_LOG_FIELD = re.compile(r"(ex|reps|kg)_([0-9]{1,4})(?:_([0-9]{1,4}))?")
-
-
-def read_log(form) -> list[dict]:
-    """The exercise blocks a karton form posts (`form`: its fields, a
-    mapping of name to value) as TrainingLog.sets stores them: an entry per
-    exercise in the blocks' order, {"exercise_id", "name" (the library's
-    name now, a snapshot), "sets" (read_sets', reps and kg only: a set with
-    reps and no weight is kg 0), "at" (now)}; the same exercise twice is two
-    entries. A block with no set typed is dropped, an exercise picked or
-    not. ValueError with the sentence to show: a block with sets and no
-    exercise (NO_EXERCISE, "Odaberi vježbu s popisa."), an exercise that is
-    not in the library (UNKNOWN_EXERCISE, "Nepoznata vježba."), a set's
-    number (read_sets': "Neispravan broj.", "Najviše 20 serija."), more than
-    MAX_LOG_EXERCISES exercises (TOO_MANY_EXERCISES, "Najviše 15 vježbi.").
-    The exercises are looked up in one query."""
-    blocks: dict[int, dict] = {}
-    for key in list(form.keys()):
-        m = _LOG_FIELD.fullmatch(key)
-        if m is None or (m.group(1) == "ex") != (m.group(3) is None):
-            continue
-        value = form.get(key)
-        value = value if isinstance(value, str) else ""
-        block = blocks.setdefault(int(m.group(2)), {"ex": "", "rows": {}})
-        if m.group(1) == "ex":
-            block["ex"] = value.strip()
-        else:
-            block["rows"].setdefault(int(m.group(3)), {})[m.group(1)] = value
-    logged = []
-    for n in sorted(blocks):
-        block = blocks[n]
-        rows = [block["rows"][i] for i in sorted(block["rows"])]
-        if not any((row.get(f) or "").strip() for row in rows for f in ("reps", "kg")):
-            continue                                     # no set: nothing to log
-        if not block["ex"]:
-            raise ValueError(NO_EXERCISE)
-        if not re.fullmatch(r"[0-9]{1,9}", block["ex"]):
-            raise ValueError(UNKNOWN_EXERCISE)
-        logged.append((int(block["ex"]), read_sets(rows, ("reps", "kg"))))
-    if len(logged) > MAX_LOG_EXERCISES:
-        raise ValueError(TOO_MANY_EXERCISES)
-    if not logged:
-        return []
-    with session_scope() as s:
-        names = dict(s.execute(select(Exercise.id, Exercise.name)
-                               .where(Exercise.id.in_({ex for ex, _ in logged}))).all())
-    if any(ex not in names for ex, _ in logged):
-        raise ValueError(UNKNOWN_EXERCISE)
-    at = datetime.now(config.TZ).isoformat(timespec="seconds")
-    return [{"exercise_id": ex, "name": names[ex], "sets": sets, "at": at} for ex, sets in logged]
 
 
 def read_day(raw: str | None, today: date | None = None) -> date:
@@ -1720,27 +1660,6 @@ def read_day(raw: str | None, today: date | None = None) -> date:
     if day is None or not FIRST_DAY <= day <= (today or config.today()):
         raise ValueError(BAD_DAY)
     return day
-
-
-def _checked_log(entries) -> str:
-    """An exercise log (read_log's entries; None for none) checked again
-    where it is written, as the column stores it (JSON): at most
-    MAX_LOG_EXERCISES entries, each an exercise's id and name and its sets
-    (_checked_sets, reps and kg only). ValueError as read_log's."""
-    entries = list(entries or [])
-    if len(entries) > MAX_LOG_EXERCISES:
-        raise ValueError(TOO_MANY_EXERCISES)
-    clean = []
-    for e in entries:
-        ex = e.get("exercise_id") if isinstance(e, dict) else None
-        if type(ex) is not int or not isinstance(e.get("name"), str):
-            raise ValueError(UNKNOWN_EXERCISE)
-        sets = _checked_sets(e.get("sets") or [])
-        if any("seconds" in st for st in sets):
-            raise ValueError(BAD_NUMBER)
-        clean.append({"exercise_id": ex, "name": e["name"], "sets": sets,
-                      "at": str(e.get("at") or datetime.now(config.TZ).isoformat(timespec="seconds"))})
-    return json.dumps(clean, ensure_ascii=False)
 
 
 # ---------- the estimated maxes (23.11.2026) ----------
@@ -1760,7 +1679,8 @@ class Max:
     "1rm", `value` the one-rep max in kg (to the nearest 0.5) from the set
     `kg` × `reps`, or "reps", `value` the most reps in a set with no weight
     (`kg` 0); `on` the day of that set, `source` where it was logged, "gym"
-    (a training's osvrt) or "online" (a pass)."""
+    (a training's osvrt of the plain form, or since 26.11.2026 a gym
+    training) or "online" (a pass)."""
     exercise_id: int
     name: str
     kind: str
@@ -1806,33 +1726,62 @@ def _to_half(x: Fraction) -> float:
 OUTSIDE_TERMIN = "Trening izvan termina"      # where a training outside a termin was (exercise_history)
 
 
+def gone_key(name: str) -> int:
+    """The key an exercise gone from the library is read under in a gym
+    training (26.11.2026: its item's exercise_id is NULL once it is deleted,
+    the item keeping its name): a negative number made from its folded name
+    (models.fold), the same for every training that holds that name, never
+    a library id (they are positive). The history's ?vjezba= takes it."""
+    import zlib
+
+    return -(zlib.crc32(fold(name).encode()) % 2_000_000_000) - 1
+
+
 def _logged_sets(user_id: int) -> list[tuple]:
     """Every exercise entry a member logged, oldest first: each training's
     exercise log (TrainingLog.sets, on its date; where: its termin's title,
-    or OUTSIDE_TERMIN for a training outside a termin) and each finished
-    online pass's (WorkoutLog.done, on the day it was started; where: the
-    day's label as the pass keeps it; an entry is the exercise done, the
-    similar one when it was swapped in). Each (on, 0 a training / 1 a pass,
-    the row's id, the entry's place in it, source "gym" / "online", where,
-    the entry), sorted by their first four (on one day a pass after a
-    training, then by row and place). The one reading of a member's sets
-    (25.11.2026): estimated_maxes, logged_exercises and exercise_history
-    each go over it."""
+    or OUTSIDE_TERMIN for a training outside a termin), since 26.11.2026
+    each gym training's saved sets (GymTrainingItem.done, on its held_on,
+    as soon as they are saved, no osvrt needed; where: its title and its
+    time, "Grupni trening · 18:00", or OUTSIDE_TERMIN; an exercise gone from
+    the library read under its name, gone_key) and each finished online
+    pass's (WorkoutLog.done, on the day it was started; where: the day's
+    label as the pass keeps it; an entry is the exercise done, the similar
+    one when it was swapped in). Each (on, 0 a training's log / 1 a gym
+    training / 2 a pass, the row's id, the entry's place in it, source "gym"
+    / "online", where, the entry), sorted by their first four (on one day a
+    pass after a training, then by row and place). The one reading of a
+    member's sets (25.11.2026): estimated_maxes, logged_exercises and
+    exercise_history each go over it."""
     with session_scope() as s:
         gym = s.execute(select(TrainingLog.date, TrainingLog.id, TrainingLog.sets, TrainingSession.title)
                         .select_from(TrainingLog)
                         .outerjoin(TrainingSession, TrainingSession.id == TrainingLog.session_id)
                         .where(TrainingLog.user_id == user_id)).all()
+        trainings = s.execute(
+            select(GymTraining.held_on, GymTraining.id, GymTraining.title, GymTraining.starts_at,
+                   GymTrainingItem.position, GymTrainingItem.exercise_id, GymTrainingItem.exercise_name,
+                   GymTrainingItem.done)
+            .join(GymTrainingItem, GymTrainingItem.training_id == GymTraining.id)
+            .where(GymTraining.user_id == user_id, GymTrainingItem.done != "[]")).all()
         online = s.execute(select(WorkoutLog.started_at, WorkoutLog.id, WorkoutLog.done, WorkoutLog.day_label)
                            .where(WorkoutLog.user_id == user_id, WorkoutLog.finished_at.is_not(None))).all()
     found = []
     for on, row_id, raw, title in gym:
         for k, entry in enumerate(TrainingLog.entries(raw)):
             found.append((on, 0, row_id, k, "gym", title or OUTSIDE_TERMIN, entry))
+    for on, row_id, title, starts, position, ex, name, raw in trainings:
+        sets = GymTrainingItem.sets_of(raw)
+        if not sets or (ex is None and not name):                # nothing saved, or a slot
+            continue
+        time = f"{starts.astimezone(config.TZ):%H:%M}" if starts is not None else ""
+        where = " · ".join(w for w in (title, time) if w) or OUTSIDE_TERMIN
+        entry = {"exercise_id": ex if ex is not None else gone_key(name), "name": name, "sets": sets}
+        found.append((on, 1, row_id, position, "gym", where, entry))
     for started, row_id, raw, label in online:
         on = started.astimezone(config.TZ).date()
         for k, entry in enumerate(e for e in WorkoutLog._object(raw).values() if isinstance(e, dict)):
-            found.append((on, 1, row_id, k, "online", label, entry))
+            found.append((on, 2, row_id, k, "online", label, entry))
     found.sort(key=lambda f: f[:4])
     return found
 
@@ -3774,3 +3723,369 @@ def exercises_by_id(ids) -> dict[int, Exercise]:
     with session_scope() as s:
         return {e.id: e for e in s.scalars(select(Exercise).where(Exercise.id.in_(ids))
                                            .options(selectinload(Exercise.alternatives_to)))}
+
+
+# ---------- the gym training (26.11.2026, build 3) ----------
+# roadmap/2026-11-26-gym-training-plan.md, build 3; the owner: "I would remove
+# the 'dodaj trening' and automatically add the training with its title
+# already after a user booked it and he can already edit it 4 hours before
+# the training up until the next day. Amir can also edit it later." … "and me
+# of course, the owner." … "Everyone does his own type of training. Amir wont
+# prepare gym trainings ahead of time, but live." A member's training is ONE
+# page that grows as it goes (models.GymTraining, GymTrainingItem): an
+# exercise added with what was given (zadano), its sets ticked as they are
+# done (each tick saves), the osvrt at the end. A training is its member's
+# alone: every function here matches it by its id AND its member. Every write
+# takes the training's row FOR UPDATE first (the items are read and written
+# under it, so two saves at once keep both) and asks gym_can_write: a termin's
+# training is its member's from GYM_OPENS_HOURS before the termin until the
+# end of the day after it, a training outside a termin always; staff acting
+# as the member (`staff`: app._actor) at any time. A refused write changes
+# nothing. No load next time and no "Prošli put": next_load reads the online
+# passes alone.
+
+NO_BOOKING = "Nemaš rezervaciju za ovaj termin."
+TERMIN_CANCELED = "Termin je otkazan."
+GYM_SHUT = "Upis ovog treninga je zatvoren."                                     # a member, after the window
+GYM_CLOSED = "Upis ovog treninga je zatvoren — trener ga i dalje može urediti."  # a write refused
+
+
+def gym_opens_text() -> str:
+    """Rule 2's sentence for a member before the window, the hours from
+    config: "Trening se otvara 4 h prije termina."."""
+    return f"Trening se otvara {config.GYM_OPENS_HOURS} h prije termina."
+
+
+def gym_window(starts_at: datetime) -> tuple[datetime, datetime]:
+    """When a termin's training is its member's to write: (from
+    GYM_OPENS_HOURS before its start, until the midnight two days after its
+    Zagreb date: the end of the day after the termin), [from, until)."""
+    day = starts_at.astimezone(config.TZ).date()
+    return (starts_at - timedelta(hours=config.GYM_OPENS_HOURS),
+            datetime.combine(day + timedelta(days=2), datetime.min.time(), tzinfo=config.TZ))
+
+
+def gym_window_open(starts_at: datetime, now: datetime | None = None) -> bool:
+    """Whether a termin's training is its member's to write now (gym_window)."""
+    opens, closes = gym_window(starts_at)
+    return opens <= (now or datetime.now(config.TZ)) < closes
+
+
+def gym_can_write(training: GymTraining, now: datetime | None = None, staff: bool = False) -> bool:
+    """May this training be written now (rule 1, asked by every write)? A
+    training outside a termin (or let go of its termin: no session) is its
+    member's always; a termin's inside its window (gym_window_open, its start
+    as snapshotted); staff acting as the member (`staff`) at any time, before
+    the window and after it."""
+    if staff or training.session_id is None:
+        return True
+    return training.starts_at is not None and gym_window_open(training.starts_at, now)
+
+
+def gym_training_for(user_id: int, session_id: int, staff: bool = False) -> int:
+    """The id of a member's training of a termin, made the first time it is
+    opened (rule 2, the codebase's lazy idiom): it needs his booking of that
+    termin (BookingError NO_BOOKING, "Nemaš rezervaciju za ovaj termin."),
+    the termin not canceled (TERMIN_CANCELED, "Termin je otkazan."), and for
+    a member to make it, the window open (before it gym_opens_text(), "Trening
+    se otvara 4 h prije termina."; after it GYM_SHUT, "Upis ovog treninga je
+    zatvoren."); one already made is his to open whatever the hour (the page
+    says what may be written). INSERT … ON CONFLICT DO NOTHING on the partial
+    unique index (uq_gym_trainings_user_session), so two opens at once make
+    one row; its title and start the termin's now, held_on its Zagreb date."""
+    now = datetime.now(config.TZ)
+    with session_scope() as s:
+        sess = s.get(TrainingSession, session_id)
+        booked = s.scalar(select(func.count()).select_from(Booking).where(
+            Booking.session_id == session_id, Booking.user_id == user_id))
+        if sess is None or not booked:
+            raise BookingError(NO_BOOKING)
+        if sess.canceled:
+            raise BookingError(TERMIN_CANCELED)
+        have = s.scalar(select(GymTraining.id).where(GymTraining.user_id == user_id,
+                                                     GymTraining.session_id == session_id))
+        if have is not None:
+            return have
+        if not staff:
+            opens, closes = gym_window(sess.starts_at)
+            if now < opens:
+                raise BookingError(gym_opens_text())
+            if now >= closes:
+                raise BookingError(GYM_SHUT)
+        s.execute(pg_insert(GymTraining).values(
+            user_id=user_id, session_id=session_id, title=sess.title[:160], starts_at=sess.starts_at,
+            held_on=sess.starts_at.astimezone(config.TZ).date(), note="",
+        ).on_conflict_do_nothing(index_elements=["user_id", "session_id"],
+                                 index_where=GymTraining.session_id.is_not(None)))
+        return s.scalar(select(GymTraining.id).where(GymTraining.user_id == user_id,
+                                                     GymTraining.session_id == session_id))
+
+
+def add_gym_outside(user_id: int, day: date) -> int:
+    """A training outside a termin on `day` (POST /karton/trening, its date
+    read by read_day): no session, no title, no start. Its id."""
+    with session_scope() as s:
+        t = GymTraining(user_id=user_id, session_id=None, title="", starts_at=None, held_on=day, note="")
+        s.add(t)
+        s.flush()
+        return t.id
+
+
+def _gym_query():
+    """A gym training with its items and each item's exercise (a joined load),
+    usable once the session is closed."""
+    return select(GymTraining).options(selectinload(GymTraining.items))
+
+
+def gym_training(training_id: int, user_id: int) -> GymTraining | None:
+    """A member's training (its items and their exercises loaded); None for
+    another's or none."""
+    with session_scope() as s:
+        return s.scalar(_gym_query().where(GymTraining.id == training_id, GymTraining.user_id == user_id))
+
+
+def gym_trainings(user_id: int) -> list[GymTraining]:
+    """Every training of a member's, newest first (its date, then the
+    newest made): the karton's diary."""
+    with session_scope() as s:
+        return list(s.scalars(_gym_query().where(GymTraining.user_id == user_id)
+                              .order_by(GymTraining.held_on.desc(), GymTraining.id.desc())))
+
+
+def _gym_locked(s: Session, training_id: int, user_id: int, staff: bool) -> GymTraining | None:
+    """A member's training, its row locked FOR UPDATE (every write's first
+    step), its items read fresh under the lock; None for another's or none.
+    BookingError GYM_CLOSED when it may not be written now (gym_can_write)."""
+    t = s.scalar(select(GymTraining).where(GymTraining.id == training_id, GymTraining.user_id == user_id)
+                 .with_for_update())
+    if t is None:
+        return None
+    if not gym_can_write(t, datetime.now(config.TZ), staff):
+        raise BookingError(GYM_CLOSED)
+    return t
+
+
+def _gym_items(s: Session, training_id: int) -> list[GymTrainingItem]:
+    """A training's items in position order, read under its lock."""
+    return list(s.scalars(select(GymTrainingItem).where(GymTrainingItem.training_id == training_id)
+                          .order_by(GymTrainingItem.position).execution_options(populate_existing=True)))
+
+
+def _gym_item_locked(s: Session, item_id: int, user_id: int, staff: bool,
+                     training_id: int | None = None) -> tuple[GymTraining, GymTrainingItem] | None:
+    """(the training, the item) under the training's lock; None for an item
+    that is no member's, or not of `training_id` when it is named."""
+    tid = s.scalar(select(GymTrainingItem.training_id).where(GymTrainingItem.id == item_id))
+    if tid is None or (training_id is not None and tid != training_id):
+        return None
+    t = _gym_locked(s, tid, user_id, staff)
+    it = s.get(GymTrainingItem, item_id, populate_existing=True) if t is not None else None
+    if it is None or it.training_id != tid:
+        return None
+    return t, it
+
+
+def add_gym_item(training_id: int, user_id: int, exercise_id: int, section: str, sets: int | None = None,
+                 reps: int | None = None, seconds: int | None = None, kg=None, rest_seconds: int | None = None,
+                 staff: bool = False) -> int | None:
+    """Put a library exercise last in a training, in a part (SECTIONS), with
+    what was given, each optional (None: none) and within ITEM_LIMITS (the
+    day editor's rules: sets 1–99, reps 1–999, seconds 1–3600, kg 0.5–500
+    in steps of 0.5, the pause 0–3600), its name snapshotted; the new item's
+    id. None for a training that is no member's. ValueError with the
+    sentence to show: NO_SECTION for a part that is none, BAD_NUMBER,
+    UNKNOWN_EXERCISE for an exercise not in the library (deleted while it
+    was added too); BookingError GYM_CLOSED when the training may not be
+    written. The exercise's row is taken FOR KEY SHARE first (add_day_item's
+    order), then the training's."""
+    if section not in SECTIONS:
+        raise ValueError(NO_SECTION)
+    _checked_item_numbers(sets=sets, reps=reps, seconds=seconds, kg=kg, rest_seconds=rest_seconds)
+    try:
+        with session_scope() as s:
+            e = s.get(Exercise, exercise_id, with_for_update={"read": True, "key_share": True})
+            if e is None:
+                raise ValueError(UNKNOWN_EXERCISE)
+            t = _gym_locked(s, training_id, user_id, staff)
+            if t is None:
+                return None
+            last = s.scalar(select(func.coalesce(func.max(GymTrainingItem.position), 0))
+                            .where(GymTrainingItem.training_id == training_id))
+            it = GymTrainingItem(training_id=training_id, section=section, position=last + 1, exercise_id=e.id,
+                                 exercise_name=e.name[:160], hint="", sets=sets, reps=reps, seconds=seconds,
+                                 kg=None if kg is None else _checked_item_kg(kg), rest_seconds=rest_seconds,
+                                 note="", done="[]")
+            s.add(it)
+            t.updated_at = func.now()
+            s.flush()
+            return it.id
+    except IntegrityError:                           # the exercise deleted under it: the foreign key
+        raise ValueError(UNKNOWN_EXERCISE) from None
+
+
+def update_gym_item(item_id: int, user_id: int, section: str, sets: int | None, reps: int | None,
+                    seconds: int | None, kg, rest_seconds: int | None, note: str, staff: bool = False,
+                    training_id: int | None = None) -> bool:
+    """Save what was given for an exercise ("Uredi zadano": its part, sets,
+    reps, seconds, kg, the pause after a set, a note; the day editor's row
+    form's rules: ITEM_LIMITS, the note ITEM_NOTE_MAX, an item moved to
+    another part goes last in it). What was done stays as saved. False for
+    an item that is no member's (or not of `training_id`). ValueError with
+    the sentence to show (NO_SECTION, BAD_NUMBER, the note's length);
+    BookingError GYM_CLOSED."""
+    if section not in SECTIONS:
+        raise ValueError(NO_SECTION)
+    _checked_item_numbers(sets=sets, reps=reps, seconds=seconds, kg=kg, rest_seconds=rest_seconds)
+    note = (note or "").strip()
+    if len(note) > ITEM_NOTE_MAX:
+        raise ValueError(f"Napomena može imati najviše {ITEM_NOTE_MAX} znakova.")
+    with session_scope() as s:
+        found = _gym_item_locked(s, item_id, user_id, staff, training_id)
+        if found is None:
+            return False
+        t, it = found
+        if section != it.section:
+            it.section = section
+            it.position = s.scalar(select(func.max(GymTrainingItem.position))
+                                   .where(GymTrainingItem.training_id == t.id)) + 1
+        it.sets, it.reps, it.seconds, it.rest_seconds, it.note = sets, reps, seconds, rest_seconds, note
+        it.kg = None if kg is None else _checked_item_kg(kg)
+        t.updated_at = func.now()
+        return True
+
+
+def move_gym_item(item_id: int, user_id: int, direction: str, staff: bool = False,
+                  training_id: int | None = None) -> bool:
+    """Swap an exercise with its neighbour in the SAME part: "gore" the one
+    before it, "dolje" the one after (move_day_item's rule). False: no such
+    item of the member's, a direction that is neither, or none beyond it that
+    way. BookingError GYM_CLOSED."""
+    if direction not in ("gore", "dolje"):
+        return False
+    with session_scope() as s:
+        found = _gym_item_locked(s, item_id, user_id, staff, training_id)
+        if found is None:
+            return False
+        t, it = found
+        rows = [r for r in _gym_items(s, t.id) if r.section == it.section]
+        i = next(k for k, r in enumerate(rows) if r.id == item_id)
+        j = i - 1 if direction == "gore" else i + 1
+        if not 0 <= j < len(rows):
+            return False
+        rows[i].position, rows[j].position = rows[j].position, rows[i].position
+        t.updated_at = func.now()
+        return True
+
+
+def delete_gym_item(item_id: int, user_id: int, staff: bool = False, training_id: int | None = None) -> bool:
+    """Take an exercise out of a training, its sets with it (the page asks
+    first when it holds a ticked set). False for an item that is no
+    member's. BookingError GYM_CLOSED."""
+    with session_scope() as s:
+        found = _gym_item_locked(s, item_id, user_id, staff, training_id)
+        if found is None:
+            return False
+        t, it = found
+        s.delete(it)
+        t.updated_at = func.now()
+        return True
+
+
+def save_gym_done(item_id: int, user_id: int, sets: list[dict], effort: int | None = None, staff: bool = False,
+                  training_id: int | None = None) -> bool:
+    """Write what was done of an exercise (rule 4, "a tick saves"): the list
+    of its ticked rows, saved whole at each tick, untick or change of a
+    ticked row's number ([] for none ticked), and its rating (`effort`,
+    1–10 or None), which travels with it; done_at now (None with no set).
+    The sets as db._checked_sets has them (a shape of SET_SHAPES, the
+    numbers in SET_LIMITS, at most MAX_SETS, a circuit's round kept), under
+    the training's row lock, as every write: two saves at once keep both
+    exercises'. False for an item that is no member's. ValueError with the
+    sentence to show ("Neispravan broj.", "Najviše 20 serija.";
+    UNKNOWN_EXERCISE for an exercise gone from the library or a slot: its
+    sets are read only); BookingError GYM_CLOSED."""
+    sets = _checked_sets(sets) if sets else []
+    effort = _checked_effort(effort)
+    with session_scope() as s:
+        found = _gym_item_locked(s, item_id, user_id, staff, training_id)
+        if found is None:
+            return False
+        t, it = found
+        if it.exercise_id is None:
+            raise ValueError(UNKNOWN_EXERCISE)
+        it.done = json.dumps(sets, ensure_ascii=False)
+        it.effort = effort
+        it.done_at = datetime.now(config.TZ) if sets else None
+        t.updated_at = func.now()
+        return True
+
+
+def empty_gym_training(training_id: int, user_id: int, staff: bool = False) -> bool:
+    """"Isprazni trening": every exercise of the training and its sets go;
+    the training stays (a termin's exists for its booking), its osvrt as it
+    was. False for one that is no member's. BookingError GYM_CLOSED."""
+    with session_scope() as s:
+        t = _gym_locked(s, training_id, user_id, staff)
+        if t is None:
+            return False
+        s.execute(sa_delete(GymTrainingItem).where(GymTrainingItem.training_id == training_id))
+        t.updated_at = func.now()
+        return True
+
+
+def delete_gym_training(training_id: int, user_id: int, staff: bool = False) -> bool:
+    """"Obriši trening": a training outside a termin (or one let go of its
+    termin), with its exercises and its osvrt. False for one that is no
+    member's, or a termin's (it goes with its booking: cancel_booking)."""
+    with session_scope() as s:
+        t = _gym_locked(s, training_id, user_id, staff)
+        if t is None or t.session_id is not None:
+            return False
+        s.delete(t)
+        return True
+
+
+def set_gym_day(training_id: int, user_id: int, day: date, staff: bool = False) -> bool:
+    """"promijeni datum": a training made outside a termin to `day` (read by
+    read_day). False for one that is no member's, or one with a termin's
+    start (a termin's date is a fact, a training let go of its termin keeps
+    it)."""
+    with session_scope() as s:
+        t = _gym_locked(s, training_id, user_id, staff)
+        if t is None or t.session_id is not None or t.starts_at is not None:
+            return False
+        t.held_on = day
+        t.updated_at = func.now()
+        return True
+
+
+def finish_gym_training(training_id: int, user_id: int, effort: int | None, feeling: str | None, note: str,
+                        staff: bool = False) -> bool:
+    """The osvrt ("Završi trening", and "Uredi osvrt" after it): napor 1–10
+    (needed), osjećaj (a FEELING_LABELS key, or none), a comment (stripped);
+    finished_at its first save, kept at the next. False for a training that
+    is no member's. ValueError BAD_OSVRT ("Neispravan osvrt.") for a napor
+    outside 1–10 or an osjećaj that is none; BookingError GYM_CLOSED."""
+    if effort is None or type(effort) is not int or not 1 <= effort <= 10 or (feeling and feeling not in FEELING_LABELS):
+        raise ValueError(BAD_OSVRT)
+    with session_scope() as s:
+        t = _gym_locked(s, training_id, user_id, staff)
+        if t is None:
+            return False
+        t.effort, t.feeling, t.note = effort, feeling or None, (note or "").strip()
+        if t.finished_at is None:
+            t.finished_at = datetime.now(config.TZ)
+        t.updated_at = func.now()
+        return True
+
+
+def gym_clip(name: str, user_id: int) -> bool:
+    """Whether a stored clip is an exercise's that is in one of this
+    member's gym trainings (rule 7: /media shows it to him whatever his
+    plans)."""
+    with session_scope() as s:
+        return bool(s.scalar(
+            select(func.count()).select_from(GymTrainingItem)
+            .join(GymTraining, GymTraining.id == GymTrainingItem.training_id)
+            .join(Exercise, Exercise.id == GymTrainingItem.exercise_id)
+            .where(GymTraining.user_id == user_id, Exercise.video == name)))

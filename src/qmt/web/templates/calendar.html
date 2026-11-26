@@ -134,6 +134,8 @@
   .next-termin .nt-off { margin-left: 4px; color: var(--danger); font-size: .82rem; font-weight: 700; }
   .next-termin .nt-title { font-size: .92rem; font-weight: 600; overflow-wrap: anywhere; }
   .next-termin .nt-late { margin-top: 2px; color: var(--muted); font-size: .8rem; }
+  /* its gym training's way in (26.11.2026), under the title while open */
+  .next-termin .nt-gym { margin-top: 8px; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
   .next-termin .unbook { flex: none; margin: 0; }
 
   /* ===== phones (≤860px): one day at a time (17.10.2026) =====
@@ -413,6 +415,9 @@
       {% if nb.canceled %}{{ c.opt("raspored.next.canceled", "span", ' class="nt-off"') }}{% else %}<span class="nt-rel">{{ nb.relative }}</span>{% endif %}</div>
     <div class="nt-title">{{ nb.title }}{% if nb.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
     {% if not nb.can_cancel %}<div class="nt-late">{{ c.t("raspored.next.cutoff") }} {{ cutoff_hours }} h prije termina</div>{% endif %}
+    {# its gym training's way in while the training is open (26.11.2026,
+       build 3), the karton's slot: the same words doing the same job #}
+    {% if nb.gym_open %}<a class="act nt-gym" href="/karton/termin/{{ nb.id }}/trening">{{ c.t("karton.termini.gym_link") }}</a>{% endif %}
   </div>
   {% if nb.can_cancel %}{{ unbook(nb) }}{% endif %}
 </section>

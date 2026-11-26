@@ -463,19 +463,19 @@ def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
 
 
 def test_a_programme_is_one_of_four_types_core_last():
-    """A programme's type ("Tip treninga" on both its forms, "Cilj" until
+    """A programme's type ("Tip programa" on both its forms since 26.11.2026, "Tip treninga" from 23.11., "Cilj" until
     23.11.2026; the column stays `goal`) is one of four since 23.11.2026
     (the owner: "we need 'cijelo tijelo' 'gornji dio tijela' 'donji dio
     tijela', but also 'core'"), Core last, in "Novi program" and "Uredi
     program" alike; staff's table names it under "Tip", a razina's
     programmes in the types' order (Core fourth). A type or a razina that
-    is none is refused on both routes, "Odaberi razinu i tip treninga.",
+    is none is refused on both routes, "Odaberi razinu i tip programa.",
     nothing stored or changed."""
     ct, *_ = trainer_with_clients()
     types = [("cijelo", "Cijelo tijelo"), ("gornji", "Gornji dio tijela"), ("donji", "Donji dio tijela"),
              ("core", "Core")]
     page = ct.get("/treninzi").text
-    assert '<div class="field"><label for="np-goal">Tip treninga</label>' in page and ">Cilj<" not in page
+    assert '<div class="field"><label for="np-goal">Tip programa</label>' in page and ">Cilj<" not in page
     assert '<th style="padding:8px 6px;">Tip</th><th>Program</th>' in page
     new = page.split('id="np-goal"')[1].split("</select>")[0]
     assert re.findall(r'<option value="(\w+)">([^<]*)</option>', new) == types
@@ -489,15 +489,15 @@ def test_a_programme_is_one_of_four_types_core_last():
     srednja = table.split("Srednja razina</td>")[1].split("Napredna razina</td>")[0]
     assert re.findall(r'<td style="padding:9px 6px; white-space:nowrap;">([^<]*)</td>', srednja) == [l for _, l in types]
     edit = ct.get(f"/treninzi/{pid}/uredi").text
-    assert '<div class="field"><label for="pe-goal">Tip treninga</label>' in edit and ">Cilj<" not in edit
+    assert '<div class="field"><label for="pe-goal">Tip programa</label>' in edit and ">Cilj<" not in edit
     sel = edit.split('id="pe-goal"')[1].split("</select>")[0]
     assert re.findall(r'<option value="(\w+)" (?:selected)?>([^<]*)</option>', sel) == types
     assert '<option value="core" selected>Core</option>' in sel
     for bad in ({"level": "srednja", "goal": "ruke"}, {"level": "x", "goal": "core"}):
         r = ct.post("/treninzi", data={"title": "X", **bad}, follow_redirects=False)
-        assert location(r) == "/treninzi?error=Odaberi razinu i tip treninga.", bad
+        assert location(r) == "/treninzi?error=Odaberi razinu i tip programa.", bad
         r = ct.post(f"/treninzi/{pid}/edit", data={"title": "X", **bad}, follow_redirects=False)
-        assert location(r) == f"/treninzi/{pid}/uredi?error=Odaberi razinu i tip treninga.", bad
+        assert location(r) == f"/treninzi/{pid}/uredi?error=Odaberi razinu i tip programa.", bad
     p = db.get_program(pid)
     assert stored_counts()[0] == 4 and (p.title, p.level, p.goal) == ("Core 1", "srednja", "core")
 
@@ -510,7 +510,7 @@ OPTION = re.compile(r'<option value="(\w+)"( selected)?>([^<]*)</option>')
 
 def test_a_programme_is_online_or_dvoranski_on_both_forms():
     """A programme's "Vrsta" (24.11.2026, the owner: "'dvoranski' or
-    'online'"; models.VENUES): a select after Tip treninga and Razina, the
+    'online'"; models.VENUES): a select after Tip programa and Razina, the
     three in one auto-fit grid (a row where they fit, stacked on a phone),
     on "Novi program" (Online, Dvoranski; Online chosen) and on "Uredi
     program" (the programme's chosen). Created dvoranski, it is one; a form
@@ -3271,6 +3271,10 @@ KG = "d0ed87d5c98f_program_day_items_kg.py"
 # that drops the days drops it first and makes it again on top) and the
 # slots (program_day_items.exercise_id NULLable, its hint)
 PARTS = "a7d3c5e9f214_day_parts_and_slots.py"
+# c4e1b7f9a2d6 (26.11.2026, build 3): the gym trainings, whose items' key
+# points at exercises: a test that drops the library drops them first and
+# makes them again on top
+GYM = "c4e1b7f9a2d6_gym_trainings.py"
 
 
 def _old_items() -> list[tuple]:
@@ -3341,15 +3345,16 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     top makes the items days (and 4f9d6f7103ad gives them the rest after an
     exercise; fc1840b0a981 the days' circuits; d0ed87d5c98f the items'
     planned weight; a7d3c5e9f214 Glavni dio C, the parts' names and the
-    slots), and every table is the
-    models'."""
+    slots; c4e1b7f9a2d6 the gym trainings, whose items point at the
+    library), and every table is the models'."""
     mig = _migration("4c2e8a6f1d39_exercise_library.py")
     assert (mig.revision, mig.down_revision) == ("4c2e8a6f1d39", "b18ebed39701")
     with db.engine.begin() as conn:                                         # the tables as before the revision
         # (workout_logs, 3890252ee50f's, program_day_circuits, fc1840b0a981's, and
-        # program_day_parts, a7d3c5e9f214's, point at program_days: they go first)
-        conn.execute(sa_text("DROP TABLE workout_logs, program_day_circuits, program_day_parts, program_day_items, "
-                             "program_days, exercise_alternatives, exercises"))
+        # program_day_parts, a7d3c5e9f214's, point at program_days, and
+        # gym_training_items, c4e1b7f9a2d6's, at exercises: they go first)
+        conn.execute(sa_text("DROP TABLE gym_training_items, gym_trainings, workout_logs, program_day_circuits, "
+                             "program_day_parts, program_day_items, program_days, exercise_alternatives, exercises"))
         conn.execute(sa_text("CREATE TABLE program_items (id serial PRIMARY KEY, "
                              "program_id integer NOT NULL REFERENCES programs (id) ON DELETE CASCADE, "
                              "position integer NOT NULL, title varchar(160) NOT NULL, body text, "
@@ -3408,7 +3413,9 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     _run(_migration(CIRCUITS).upgrade)                                       # and the days' circuits
     _run(_migration(KG).upgrade)                                             # and the items' planned weight
     _run(_migration(PARTS).upgrade)                                          # and C, the parts' names, the slots
-    assert "program_items" not in _tables() and _schema_diffs(TRENINZI | {"program_day_circuits", "program_day_parts"}) == []
+    _run(_migration(GYM).upgrade)                                            # and the gym trainings
+    assert "program_items" not in _tables() and _schema_diffs(
+        TRENINZI | {"program_day_circuits", "program_day_parts", "gym_trainings", "gym_training_items"}) == []
     assert _library() == library
     assert [[(i.exercise.name, i.sets, i.reps, i.seconds, i.note) for i in items_of(p)] for p in (p1, p2, p3)] == [
         [("Goblet čučanj", 3, 8, None, "8 kg"), ("Plank", None, None, None, "")],

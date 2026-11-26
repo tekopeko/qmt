@@ -63,7 +63,14 @@ ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana",
 # (25.11.2026) is the first round's screen of that day's circuit part (the
 # seed's DEMO_CIRCUIT: Glavni dio A), found by the list's first row under a
 # caption that says "kružno".
-CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "/moja-clanarina", "/prehrana", "/profil", "/treninzi",
+# The gym training (26.11.2026, build 3): "gym:filled" is ivan's training of
+# yesterday's termin (the seed's: three exercises, sets ticked, one rated, its
+# osvrt), found on his karton by its diary row's "Otvori trening"; "gym:osvrt"
+# that training's osvrt; "gym:open" the termin of today inside its window with
+# nothing written yet, by its row's "Upiši trening" (which makes the training
+# the first time it is opened: the seed leaves none).
+CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "gym:filled",
+          "gym:osvrt", "gym:open", "/moja-clanarina", "/prehrana", "/profil", "/treninzi",
           "trening:1", "dan:1", "kreni:1", "krug:1", "kraj:1", "/upitnik", "/upitnik?od=1", "/vodic"]
 # the library of exercises (30.10.2026): its list, and one exercise's page,
 # "vjezba:<name>", found on the list by the seed's name (scripts/seed_demo.py:
@@ -268,6 +275,27 @@ def player(pg, r: str) -> str | None:
     return path
 
 
+# a diary row's way into a gym training on the client's karton: a training's "Otvori trening", a termin's "Upiši trening"
+GYM_LINKS = {"filled": '.log-entry.gym a[href^="/karton/trening/"]', "open": '.log-entry a[href^="/karton/termin/"]'}
+FIRST_HREF = """sel => { const a = document.querySelector(sel); return a ? a.getAttribute('href') : null; }"""
+
+
+def gym(pg, r: str) -> str | None:
+    """The client's gym trainings (26.11.2026): "gym:filled" and "gym:open"
+    by their diary rows' links (GYM_LINKS), "gym:osvrt" the filled one's
+    osvrt. Each kept in FOUND."""
+    kind = r.split(":")[1]
+    if kind == "osvrt":
+        filled = FOUND.get("gym:filled") or gym(pg, "gym:filled")
+        return filled + "/osvrt" if filled else None
+    pg.goto(BASE + "/karton")
+    pg.wait_for_load_state("networkidle")
+    path = pg.evaluate(FIRST_HREF, GYM_LINKS[kind])
+    if path:
+        FOUND[r] = path
+    return path
+
+
 def template(pg, r: str) -> str | None:
     """The seed's template (TEMPLATE_TITLE): "predlozak:uredi" its first
     day's editor, "predlozak:dan" that day's page; found once, kept in
@@ -308,6 +336,11 @@ def run(pg, routes, who, theme, width, findings):
             path = player(pg, r)
             if not path:
                 findings["head"].append((key, f"nothing found for {r!r} (the demo seed? dan:N first?)"))
+                continue
+        elif r.startswith("gym:"):                     # the client's gym trainings, by his karton's links
+            path = gym(pg, r)
+            if not path:
+                findings["head"].append((key, f"nothing found for {r!r} (the demo seed's gym training?)"))
                 continue
         elif r.startswith("predlozak:"):               # the seed's template of slots (26.11.2026)
             path = template(pg, r)

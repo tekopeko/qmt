@@ -27,8 +27,12 @@
   <li class="roster-row">
     <strong>{{ p.full_name or "—" }}</strong><span class="hint">{{ p.email }}</span>
     {% if p.id not in staff_ids %}
+    {# into his account, landing on his training of this termin (26.11.2026,
+       build 3: rule 2 there; a termin canceled or a booking gone says its
+       sentence on his karton) #}
     <form method="post" action="/kao/{{ p.id }}">
       <input type="hidden" name="natrag" value="/admin/session/{{ sess.id }}">
+      <input type="hidden" name="kamo" value="/karton/termin/{{ sess.id }}/trening">
       <button type="submit" class="act">Kao član →</button>
     </form>
     {% endif %}

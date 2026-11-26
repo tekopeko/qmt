@@ -12,7 +12,9 @@ asked after the safety questions, 16 and 17) and ivan's answers to them, and
 (30.10.2026, the player) ivan's two finished passes of his Trening 1, whose
 Glavni dio A is done as a circuit since 24.11.2026 (DEMO_CIRCUIT); and since
 26.11.2026 one dvoranski programme, a template of empty slots with a renamed
-circuit part (TEMPLATE, seed_template).
+circuit part (TEMPLATE, seed_template), and ivan's gym training of
+yesterday's group termin, filled in (GYM_TRAINING, seed_gym_training), beside
+a termin today whose training is open and empty.
 """
 
 from __future__ import annotations
@@ -92,9 +94,10 @@ def main() -> None:
 
     print("timetable (dev RESET — replaces all templates/sessions/bookings):")
     from sqlalchemy import delete
-    from qmt.models import (Booking, LimitationFile, Membership, OnboardingResponse, Payment, ProgressPhoto,
-                            TrainingLog, TrainingSession, Weight, WorkoutLog)
+    from qmt.models import (Booking, GymTraining, LimitationFile, Membership, OnboardingResponse, Payment,
+                            ProgressPhoto, TrainingLog, TrainingSession, Weight, WorkoutLog)
     with db.session_scope() as s:
+        s.execute(delete(GymTraining))      # the gym trainings (26.11.2026) and their items: seed_gym_training's
         s.execute(delete(Booking))
         s.execute(delete(TrainingSession))
         s.execute(delete(SessionTemplate))
@@ -427,19 +430,61 @@ def seed_karton() -> None:
                        version=upitnik.VERSION, pain_level=result.pain_level, pain_high=result.pain_high,
                        needs_review=result.needs_review, consented_at=db.datetime.now(db.config.TZ))
     today = db.config.today()
-    db.add_training_log(ivan.id, today - timedelta(days=2), 7,
-                        "Čučanj 3×8 · 60 kg\nPotisak s klupe 3×10 · 40 kg\nVeslanje 3×12 · 35 kg",
-                        feeling="dobro")
-    db.add_training_log(ivan.id, today - timedelta(days=5), 5,
-                        "Mobilnost + core, lagani dan.")
-    # a termin that ended two hours ago -> karton greets Ivan with "Kako je bilo?"
-    from qmt.models import Booking
+    # two rows of the plain form of 23.11.2026 (trainings outside a termin,
+    # an osvrt each): no new one is made since 26.11.2026 (build 3), the
+    # rows already there stay, so the demo keeps two to show them
+    from qmt.models import Booking, TrainingLog
+    with db.session_scope() as s:
+        s.add(TrainingLog(user_id=ivan.id, date=today - timedelta(days=2), effort=7, feeling="dobro",
+                          note="Čučanj 3×8 · 60 kg\nPotisak s klupe 3×10 · 40 kg\nVeslanje 3×12 · 35 kg"))
+        s.add(TrainingLog(user_id=ivan.id, date=today - timedelta(days=5), effort=5,
+                          note="Mobilnost + core, lagani dan."))
+    # a termin that ended two hours ago -> his training's window open, empty,
+    # and the login's prompt asks for it ("Kako je bilo?")
     sid = db.add_oneoff_session("Grupni trening",
                                 db.datetime.now(db.config.TZ) - timedelta(hours=2),
                                 60, 8, None, "grupni")
     with db.session_scope() as s:
         s.add(Booking(user_id=ivan.id, session_id=sid))
-    print(f"  Ivan: upitnik ({level}, {upitnik.score_text(result.score)}), 2 zapisa, 1 osvrt na čekanju")
+    print(f"  Ivan: upitnik ({level}, {upitnik.score_text(result.score)}), 2 stara zapisa, 1 trening na čekanju")
+
+
+# Ivan's gym training of yesterday's group termin (26.11.2026, build 3 of
+# roadmap/2026-11-26-gym-training-plan.md): three exercises with what was
+# given, (name, part, sets, reps, seconds, kg, pause), their sets as ticked
+# (reps, kg, seconds per set: the shape the zadano asks) and the one rating,
+# then the osvrt.
+GYM_TRAINING = [
+    ("Goblet čučanj", "trening", 3, 10, None, 20, 60, [(10, 20, None), (10, 20, None), (8, 20, None)], 8),
+    ("Sklekovi", "trening", 3, 12, None, None, 45, [(12, 0, None), (12, 0, None), (10, 0, None)], None),
+    ("Plank", "trening", 3, None, 40, None, 30, [(None, None, 40), (None, None, 40), (None, None, 35)], None),
+]
+GYM_OSVRT = (7, "dobro", "Goblet zadnja serija teška, ostalo ide.")
+
+
+def seed_gym_training() -> None:
+    """Yesterday's group termin at 18:00, booked by ivan, his training of it
+    filled in (GYM_TRAINING: every set ticked, the goblet rated; GYM_OSVRT);
+    after seed_program (the library) and seed_karton (today's termin, left
+    empty: its training opens the first time he opens it)."""
+    from datetime import datetime, time, timedelta
+
+    from qmt.models import Booking
+
+    ivan = db.get_user_by_email("ivan@qmt.local")
+    day = db.config.today() - timedelta(days=1)
+    sid = db.add_oneoff_session("Grupni trening", datetime.combine(day, time(18, 0), tzinfo=db.config.TZ),
+                                60, 8, None, "grupni")
+    with db.session_scope() as s:
+        s.add(Booking(user_id=ivan.id, session_id=sid))
+    tid = db.gym_training_for(ivan.id, sid, staff=True)
+    ids = {e.name: e.id for e, _ in db.exercises()}
+    for name, section, sets, reps, seconds, kg, pause, done, effort in GYM_TRAINING:
+        iid = db.add_gym_item(tid, ivan.id, ids[name], section, sets, reps, seconds, kg, pause, staff=True)
+        sets_done = [{"seconds": sec} if sec is not None else {"reps": r, "kg": float(k)} for r, k, sec in done]
+        db.save_gym_done(iid, ivan.id, sets_done, effort, staff=True)
+    db.finish_gym_training(tid, ivan.id, *GYM_OSVRT, staff=True)
+    print(f"  Ivan: trening u dvorani {day:%-d.%-m.} 18:00, {len(GYM_TRAINING)} vježbe, osvrt")
 
 
 # Ivan's history in the player (30.10.2026, stage 3): two finished passes of
@@ -516,6 +561,7 @@ if __name__ == "__main__":
     seed_upitnik()
     print("karton:")
     seed_karton()
+    seed_gym_training()
     print("online treninzi (povijest):")
     seed_passes()
     print("aktualno:")

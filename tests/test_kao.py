@@ -696,6 +696,7 @@ def test_the_shortcuts_lead_into_the_members_account():
                      clanarine, re.S)
     roster = c.get(f"/admin/session/{sid}").text
     assert (f'<form method="post" action="/kao/{ivan}">\n      <input type="hidden" name="natrag" value="/admin/session/{sid}">\n'
+            f'      <input type="hidden" name="kamo" value="/karton/termin/{sid}/trening">\n'   # his training of it (build 3)
             '      <button type="submit" class="act">Kao član →</button>') in roster
     assert f'action="/kao/{coach}"' not in roster
     view = c.get(f"/karton/{ivan}").text

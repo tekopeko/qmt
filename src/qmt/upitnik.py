@@ -75,7 +75,7 @@ db.client_can_view; the owner: "I want to allow the users to be able to
 access all types of training. The questionnaire only determines the level of
 fitness and the trainings are available for everybody."): a client gets
 every programme of his level, whatever its type (GOALS, the programme's
-"Tip treninga"). Every version-2 response still stores GOAL, "cijelo", as
+"Tip programa"). Every version-2 response still stores GOAL, "cijelo", as
 its goal; it gates nothing. q1's goal is kept in the answers and shown on
 the karton; it routes nothing yet.
 
@@ -113,7 +113,7 @@ LEVELS = {
     "napredna": "Napredna razina",
 }
 
-# The programmes' types (models.Program.goal, "Tip treninga" on the
+# The programmes' types (models.Program.goal, "Tip programa" on the
 # programme's forms; "core" the fourth since 23.11.2026, the owner: "we need
 # 'cijelo tijelo' 'gornji dio tijela' 'donji dio tijela', but also 'core'").
 # A client sees every type of his level (db.programs_for_level), grouped

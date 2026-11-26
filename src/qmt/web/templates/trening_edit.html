@@ -22,7 +22,7 @@
   {# three selects in a row where they fit, one under the other on a phone;
      Vrsta (24.11.2026): Online or Dvoranski, a gym programme no client sees #}
   <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0 12px;">
-    <div class="field"><label for="pe-goal">Tip treninga</label>
+    <div class="field"><label for="pe-goal">Tip programa</label>
       <select id="pe-goal" name="goal" required>
         {% for k, l in goals.items() %}<option value="{{ k }}" {% if k == p.goal %}selected{% endif %}>{{ l }}</option>{% endfor %}
       </select></div>

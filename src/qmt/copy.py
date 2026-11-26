@@ -137,7 +137,19 @@ the script writes for an exercise gone from the library), the tables'
 cells, LEVELS, FEELING_LABELS and the months
 (the app's words everywhere), the upitnik's own questions and answers
 (rows and slots of their own), the routes' flashes, every aria-label and
-alt, the page's <title>, the crumbs and the nav.
+alt, the page's <title>, the crumbs and the nav. Since 26.11.2026 (build 3:
+the gym training) the exercise block's words and the osvrt form's left the
+registry with the plain form they printed in (karton.log.*, five of
+karton.osvrt.*, karton.diary.fill, karton.outside.save,
+karton.staff.no_osvrt), and a termin's row and the upcoming termini say the
+training's state and its way in (karton.diary.gym_*, karton.termini.gym_*).
+
+The gym training's page (karton_trening.html and its osvrt's,
+karton_trening_osvrt.html; 26.11.2026, build 3) prints slots of its own,
+gym.<area>.<name> (the landing's gym.kicker and gym.h2 are the landing's),
+and the player's where the same words do the same job (the set table's
+headers, the rating, the rest bar, "Kako se izvodi", "Završi trening", the
+finish screen's osvrt fields).
 
 Every other member-facing text since 25.11.2026 (the owner to Amir:
 "svugdje ikad uvest pravilo da može uređivat"; to Fable: "If there is a
@@ -803,7 +815,7 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "karton.maxes.col_exercise": Slot("Vježba", CAP, "Karton · maksimumi: stupac Vježba", required=True),
     "karton.maxes.col_value": Slot("Procjena", CAP, "Karton · maksimumi: stupac Procjena", required=True),
     "karton.maxes.col_from": Slot("Iz", CAP, "Karton · maksimumi: stupac Iz", required=True),
-    "karton.maxes.empty": Slot("Još nema serija — upiši vježbe uz osvrt treninga.", CAP,
+    "karton.maxes.empty": Slot("Još nema serija — upiši vježbe u svoj trening.", CAP,
                                "Karton · maksimumi: kad nema serija"),
     # "Povijest vježbe" (25.11.2026, the owner: "We need a search bar for each
     # user. Admins can access everyone's karton and search a particular
@@ -821,8 +833,17 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "karton.termini.canceled": Slot("OTKAZANO", CAP, "Karton · termini: oznaka otkazanog termina"),
     "karton.termini.empty": Slot("Nema rezervacija.", CAP, "Karton · termini: kad nema rezervacija"),
     "karton.termini.open": Slot("Otvori raspored →", CAP, "Karton · termini: poveznica na raspored", required=True),
+    # a termin's gym training (26.11.2026, build 3): its way in while it is
+    # open (the raspored's "Tvoj sljedeći termin" prints the same slot), and
+    # once under the list when it opens, the hours between the two (code)
+    "karton.termini.gym_link": Slot("Upiši trening →", CAP, "Karton · termini: poveznica Upiši trening (i na rasporedu)",
+                                    required=True),
+    "karton.termini.gym_before": Slot("Trening upisuješ od", CAP,
+                                      "Karton · termini: kad se upisuje trening, prije broja sati"),
+    "karton.termini.gym_after": Slot("h prije termina do kraja idućeg dana.", CAP,
+                                     "Karton · termini: kad se upisuje trening, iza broja sati"),
     "karton.diary.title": Slot("Dnevnik treninga", CAP, "Karton · dnevnik: naslov", required=True),
-    "karton.diary.lead": Slot("Svaki odrađeni termin završi ovdje — ispuni osvrt (napor, osjećaj, komentar) ili "
+    "karton.diary.lead": Slot("Svaki odrađeni termin završi ovdje — upiši trening (vježbe, serije, osvrt) ili "
                               "označi da nisi bio/la.", CAP, "Karton · dnevnik: uvodna rečenica"),
     "karton.diary.online": Slot("Online trening", CAP, "Karton · dnevnik: oznaka online treninga"),
     "karton.diary.outside": Slot("Trening izvan termina", CAP, "Karton · dnevnik: oznaka treninga izvan termina"),
@@ -831,7 +852,13 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "karton.diary.absent_chip": Slot("Nisam bio/la", CAP, "Karton · dnevnik: oznaka izostanka"),
     "karton.diary.undo": Slot("Poništi", CAP, "Karton · dnevnik: gumb Poništi", required=True),
     "karton.diary.canceled": Slot("Otkazano", CAP, "Karton · dnevnik: oznaka otkazanog termina"),
-    "karton.diary.fill": Slot("Ispuni osvrt", CAP, "Karton · dnevnik: gumb Ispuni osvrt", required=True),
+    # a termin's row with no gym training yet (26.11.2026, build 3: "Ispuni
+    # osvrt" went with its form), inside its window and after it, and a
+    # training's way in from its row
+    "karton.diary.gym_none_open": Slot("Trening još nije upisan.", CAP, "Karton · dnevnik: trening još nije upisan"),
+    "karton.diary.gym_fill": Slot("Upiši trening", CAP, "Karton · dnevnik: gumb Upiši trening", required=True),
+    "karton.diary.gym_none": Slot("Trening nije upisan.", CAP, "Karton · dnevnik: trening nije upisan"),
+    "karton.diary.gym_open": Slot("Otvori trening", CAP, "Karton · dnevnik: gumb Otvori trening", required=True),
     "karton.diary.absent": Slot("Nisam bio/la", CAP, "Karton · dnevnik: gumb Nisam bio/la", required=True),
     "karton.diary.sets": Slot("Serije", CAP, "Karton · dnevnik: Serije", required=True),
     "karton.diary.empty": Slot("Još nema odrađenih termina —", CAP, "Karton · dnevnik: prazan dnevnik, prije poveznice"),
@@ -841,28 +868,14 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "karton.outside.title": Slot("Trening izvan termina", CAP, "Karton · trening izvan termina: naslov obrasca",
                                  required=True),
     "karton.outside.day": Slot("Datum", CAP, "Karton · trening izvan termina: polje Datum", required=True),
-    "karton.outside.save": Slot("Spremi trening", CAP, "Karton · trening izvan termina: gumb Spremi", required=True),
+    "karton.outside.create": Slot("Dodaj trening", CAP, "Karton · trening izvan termina: gumb Dodaj trening",
+                                  required=True),
     "karton.outside.cancel": Slot("Odustani", CAP, "Karton · trening izvan termina: gumb Odustani", required=True),
-    "karton.osvrt.title": Slot("Kako je bilo?", CAP, "Karton · osvrt: pitanje", required=True),
     "karton.osvrt.effort": Slot("Napor (1 lagano – 10 maksimalno)", CAP, "Karton · osvrt: polje Napor", required=True),
     "karton.osvrt.feeling": Slot("Osjećaj", CAP, "Karton · osvrt: polje Osjećaj", required=True),
-    "karton.osvrt.note": Slot("Komentar (neobavezno)", CAP, "Karton · osvrt: polje Komentar", required=True),
-    "karton.osvrt.placeholder": Slot("npr. kilaže, što je išlo dobro/loše", CAP, "Karton · osvrt: primjer u komentaru"),
-    "karton.osvrt.save": Slot("Spremi osvrt", CAP, "Karton · osvrt: gumb Spremi osvrt", required=True),
-    "karton.osvrt.cancel": Slot("Odustani", CAP, "Karton · osvrt: gumb Odustani", required=True),
     "karton.osvrt.note_edit": Slot("Komentar", CAP, "Karton · osvrt: polje Komentar pri uređivanju", required=True),
     "karton.osvrt.edit_save": Slot("Spremi", CAP, "Karton · osvrt: gumb Spremi pri uređivanju", required=True),
     "karton.osvrt.edit_cancel": Slot("Odustani", CAP, "Karton · osvrt: gumb Odustani pri uređivanju", required=True),
-    "karton.log.title": Slot("Vježbe (neobavezno)", CAP, "Karton · vježbe: naslov", required=True),
-    "karton.log.hint": Slot("Upiši vježbe i serije — iz njih se računaju tvoji maksimumi. Sekunde (plank i slično) "
-                            "upiši u komentar.", CAP, "Karton · vježbe: objašnjenje"),
-    "karton.log.add": Slot("+ Dodaj vježbu", CAP, "Karton · vježbe: gumb Dodaj vježbu", required=True),
-    "karton.log.exercise": Slot("Vježba", CAP, "Karton · vježbe: polje Vježba", required=True),
-    "karton.log.col_set": Slot("Set", CAP, "Karton · vježbe: stupac Set", required=True),
-    "karton.log.col_reps": Slot("Pon.", CAP, "Karton · vježbe: stupac Pon.", required=True),
-    "karton.log.col_kg": Slot("Kg", CAP, "Karton · vježbe: stupac Kg", required=True),
-    "karton.log.add_set": Slot("+ serija", CAP, "Karton · vježbe: gumb + serija", required=True),
-    "karton.log.remove": Slot("Ukloni vježbu", CAP, "Karton · vježbe: gumb Ukloni vježbu", required=True),
     "karton.confirm.weight_title": Slot("Obrisati unos?", CAP, "Karton · brisanje mase: naslov", required=True),
     "karton.confirm.weight_cta": Slot("Obriši unos", CAP, "Karton · brisanje mase: gumb", required=True),
     "karton.confirm.photo_title": Slot("Obrisati fotografiju?", CAP, "Karton · brisanje fotografije: naslov",
@@ -900,7 +913,6 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "karton.staff.diary_lead": Slot("Odrađeni termini i osvrti.", CAP, "Karton · pogled trenera: uvodna rečenica dnevnika"),
     "karton.staff.own_diary_lead": Slot("Tvoji online treninzi i treninzi koje upišeš sam/a.", CAP,
                                         "Karton · osoblje: uvodna rečenica dnevnika"),
-    "karton.staff.no_osvrt": Slot("bez osvrta", CAP, "Karton · pogled trenera: oznaka bez osvrta"),
     "karton.staff.diary_empty": Slot("Još nema odrađenih termina.", CAP, "Karton · pogled trenera: prazan dnevnik"),
     "karton.staff.own_diary_empty": Slot("Još nema treninga u dnevniku.", CAP, "Karton · osoblje: prazan dnevnik"),
     # ==== every other page a member or a guest reaches (25.11.2026, the
@@ -1116,6 +1128,80 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "leave.error": Slot("Nije uspjelo — pokušaj ponovno.", CAP, "Trening · izlazak: kad odbacivanje ne uspije",
                         required=True),
     "leave.back": Slot("Natrag na osvrt", CAP, "Trening · izlazak: gumb Natrag na osvrt", required=True),
+    # ---- the gym training (karton_trening.html and its osvrt,
+    # karton_trening_osvrt.html; 26.11.2026, build 3 of
+    # roadmap/2026-11-26-gym-training-plan.md): a member's training in the
+    # gym, one page that grows as it goes. Where the same words do the same
+    # job as in the player (the set table's headers, the rating's question,
+    # the rest bar, "Kako se izvodi", "Jedno ponavljanje:", "Završi trening")
+    # or on its finish screen (the osvrt's Napor, Osjećaj, Komentar, "Spremi
+    # trening"), that slot prints in both: player.*, dan.*, kraj.*. Not
+    # slots: the date and the time, the window's end ("četvrtka 26.11. u
+    # ponoć"), a mark ("2/3"), a set's and the zadano's numbers, the osvrt's
+    # facts ("napor 7/10 · Dobro"), the crumbs ----
+    "gym.head.kicker": Slot("Trening u dvorani", CAP, "Trening u dvorani: mala oznaka"),
+    "gym.head.outside": Slot("Trening izvan termina", CAP, "Trening u dvorani: naslov treninga izvan termina",
+                             required=True),
+    "gym.head.date_change": Slot("promijeni datum", CAP, "Trening u dvorani: gumb promijeni datum", required=True),
+    "gym.head.date_field": Slot("Datum", CAP, "Trening u dvorani: polje Datum", required=True),
+    "gym.head.date_save": Slot("Spremi", CAP, "Trening u dvorani: gumb Spremi datum", required=True),
+    # the state's line under the date: the window's end after the first (code;
+    # its words a caption before a value, so required); the other two whole
+    # sentences, which emptied print no line
+    "gym.state.open": Slot("Upis je otvoren do", CAP, "Trening u dvorani · stanje: Upis je otvoren do, prije dana",
+                           required=True),
+    "gym.state.closed": Slot("Upis je zatvoren — trener ga i dalje može urediti.", CAP,
+                             "Trening u dvorani · stanje: upis zatvoren"),
+    "gym.state.staff": Slot("Za člana je upis zatvoren; uređuješ kao trener.", CAP,
+                            "Trening u dvorani · stanje: trener izvan članova roka"),
+    "gym.empty": Slot("Trening je još prazan — dodaj prvu vježbu.", CAP, "Trening u dvorani: prazan trening"),
+    # an exercise's card
+    "gym.card.planned": Slot("Zadano:", CAP, "Trening u dvorani · vježba: Zadano:, prije zadanog", required=True),
+    "gym.card.add_set": Slot("+ serija", CAP, "Trening u dvorani · vježba: gumb + serija", required=True),
+    "gym.card.save": Slot("Spremi", CAP, "Trening u dvorani · vježba: gumb Spremi (bez JavaScripta)", required=True),
+    "gym.card.failed": Slot("Nije spremljeno — pokušaj ponovno.", CAP,
+                            "Trening u dvorani · vježba: kad se kvačica ne spremi", required=True),
+    "gym.card.done": Slot("Odrađeno:", CAP, "Trening u dvorani · vježba: Odrađeno:, prije serija", required=True),
+    "gym.card.edit": Slot("Uredi zadano", CAP, "Trening u dvorani · vježba: gumb Uredi zadano", required=True),
+    "gym.card.remove": Slot("Ukloni vježbu", CAP, "Trening u dvorani · vježba: gumb Ukloni vježbu", required=True),
+    # what was given: "Uredi zadano"'s fields and the add card's, one slot each
+    "gym.form.section": Slot("Dio", CAP, "Trening u dvorani · zadano: polje Dio", required=True),
+    "gym.form.sets": Slot("Serije", CAP, "Trening u dvorani · zadano: polje Serije", required=True),
+    "gym.form.reps": Slot("Ponavljanja", CAP, "Trening u dvorani · zadano: polje Ponavljanja", required=True),
+    "gym.form.seconds": Slot("Sekunde", CAP, "Trening u dvorani · zadano: polje Sekunde", required=True),
+    "gym.form.kg": Slot("Kilaža (kg)", CAP, "Trening u dvorani · zadano: polje Kilaža", required=True),
+    "gym.form.rest": Slot("Pauza (s)", CAP, "Trening u dvorani · zadano: polje Pauza", required=True),
+    "gym.form.note": Slot("Napomena", CAP, "Trening u dvorani · zadano: polje Napomena", required=True),
+    "gym.form.save": Slot("Spremi", CAP, "Trening u dvorani · zadano: gumb Spremi", required=True),
+    # "Dodaj vježbu", the card at the bottom
+    "gym.add.title": Slot("Dodaj vježbu", CAP, "Trening u dvorani · dodaj vježbu: naslov", required=True),
+    "gym.add.exercise": Slot("Vježba", CAP, "Trening u dvorani · dodaj vježbu: polje Vježba", required=True),
+    "gym.add.planned": Slot("Zadano (neobavezno)", CAP, "Trening u dvorani · dodaj vježbu: Zadano (neobavezno)",
+                            required=True),
+    "gym.add.go": Slot("Dodaj", CAP, "Trening u dvorani · dodaj vježbu: gumb Dodaj", required=True),
+    # the osvrt once saved, and the page's foot
+    "gym.done.title": Slot("Osvrt", CAP, "Trening u dvorani · kraj: naslov spremljenog osvrta", required=True),
+    "gym.done.edit": Slot("Uredi osvrt", CAP, "Trening u dvorani · kraj: gumb Uredi osvrt", required=True),
+    "gym.foot.empty": Slot("Isprazni trening", CAP, "Trening u dvorani · kraj: gumb Isprazni trening", required=True),
+    "gym.foot.delete": Slot("Obriši trening", CAP, "Trening u dvorani · kraj: gumb Obriši trening", required=True),
+    # the osvrt's page (its fields the finish screen's: kraj.*)
+    "gym.osvrt.kicker": Slot("Osvrt na trening", CAP, "Trening u dvorani · osvrt: mala oznaka"),
+    "gym.osvrt.back": Slot("Natrag na trening", CAP, "Trening u dvorani · osvrt: poveznica Natrag na trening",
+                           required=True),
+    # the confirms (base.html's #confirmDlg)
+    "gym.confirm.remove_title": Slot("Ukloniti vježbu?", CAP, "Trening u dvorani · uklanjanje vježbe: naslov",
+                                     required=True),
+    "gym.confirm.remove_text": Slot("Upisane serije ove vježbe se brišu.", CAP,
+                                    "Trening u dvorani · uklanjanje vježbe: tekst", required=True),
+    "gym.confirm.remove_cta": Slot("Ukloni vježbu", CAP, "Trening u dvorani · uklanjanje vježbe: gumb", required=True),
+    "gym.confirm.empty_title": Slot("Isprazniti trening?", CAP, "Trening u dvorani · pražnjenje: naslov", required=True),
+    "gym.confirm.empty_text": Slot("Sve vježbe i upisane serije ovog treninga se brišu.", CAP,
+                                   "Trening u dvorani · pražnjenje: tekst", required=True),
+    "gym.confirm.empty_cta": Slot("Isprazni", CAP, "Trening u dvorani · pražnjenje: gumb", required=True),
+    "gym.confirm.delete_title": Slot("Obrisati trening?", CAP, "Trening u dvorani · brisanje: naslov", required=True),
+    "gym.confirm.delete_text": Slot("Trening izvan termina briše se sa svim vježbama, serijama i osvrtom.", CAP,
+                                    "Trening u dvorani · brisanje: tekst", required=True),
+    "gym.confirm.delete_cta": Slot("Obriši trening", CAP, "Trening u dvorani · brisanje: gumb", required=True),
     # ---- the profile (profil.html) ----
     "profil.head.title": Slot("Profil", CAP, "Profil: naslov", required=True),
     "profil.head.lead": Slot("Tvoji osnovni podaci — vidi ih samo trener.", CAP, "Profil: uvodna rečenica"),
@@ -1236,7 +1322,7 @@ KARTON_AREAS = {"head": "Zaglavlje", "upitnik": "Upitnik", "limits": "Ograničen
                 "weight": "Tjelesna kompozicija", "photos": "Napredak — fotografije", "maxes": "Procijenjeni maksimumi",
                 "history": "Povijest vježbe",
                 "termini": "Nadolazeći termini", "diary": "Dnevnik treninga", "outside": "Trening izvan termina",
-                "osvrt": "Osvrt na trening", "log": "Vježbe u osvrtu", "confirm": "Prozori za potvrdu",
+                "osvrt": "Osvrt na trening", "confirm": "Prozori za potvrdu",
                 "staff": "Pogled trenera i karton osoblja"}
 # (caption, the area's keys in registry order) per area, for the panel
 KARTON_PANEL = tuple((caption, tuple(key for key in SLOTS if key.startswith(f"karton.{area}.")))
@@ -1256,7 +1342,7 @@ _TEXT_RULES = (
     ("Početna", "/", True, (
         ("Naslovnica", ("hero.", "stage.")),
         ("Ponuda", ("offer.", "landing.offer.", "landing.cta.")),
-        ("Dvorana", ("gym.",)),
+        ("Dvorana", ("gym.kicker", "gym.h2")),   # the gym training's gym.<area>.* are its own page's
         ("Galerija", ("landing.gallery.",)),
         ("Radno vrijeme i kontakt", ("info.",)),
         ("Podnožje", ("footer",)))),
@@ -1287,6 +1373,16 @@ _TEXT_RULES = (
         ("Odmor", ("player.rest.",)),
         ("Kraj treninga", ("kraj.",)),
         ("Prozor za izlazak", ("leave.",)))),
+    # the gym training (26.11.2026, build 3): a member's own page, no one
+    # address for staff to open (a training of theirs outside a termin is
+    # one, a member's they reach as the member)
+    ("Trening u dvorani", None, False, (
+        ("Zaglavlje", ("gym.head.", "gym.state.", "gym.empty")),
+        ("Vježba", ("gym.card.", "gym.form.")),
+        ("Dodaj vježbu", ("gym.add.",)),
+        ("Kraj treninga", ("gym.done.", "gym.foot.")),
+        ("Osvrt", ("gym.osvrt.",)),
+        ("Prozori za potvrdu", ("gym.confirm.",)))),
     ("Moja članarina", "/moja-clanarina", False, (
         ("Zaglavlje", ("clanarina.h.title", "cjenik.hint")),
         ("Tvoji planovi", ("clanarina.h.plans", "clanarina.plan.", "clanarina.chip.", "clanarina.fact.",

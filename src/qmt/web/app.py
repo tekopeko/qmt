@@ -6,6 +6,7 @@ middleware — if this grows routes the way mojimakrosi did, promote it.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -261,10 +262,15 @@ def _has_online(user) -> bool:
 
 
 def _pop_feedback_prompt(request: Request, user):
-    """One-shot after login: termini finished in the last 7 days that still have
-    no osvrt. The flag is popped on the FIRST page rendered, so the prompt asks
-    once per login and never follows the client around the app. Already being on
-    the karton counts as answered — the forms are right there."""
+    """One-shot after login: the termini he still owes his training
+    (db.pending_feedback: ended, inside the training's window, neither a
+    finished gym training nor an osvrt or absence of before). The flag is
+    popped on the FIRST page rendered, so the prompt asks once per login and
+    never follows the client around the app. Already being on the karton
+    (a training's page among it) counts as answered — the forms are right
+    there. Since 26.11.2026 (build 3) its way leads to the newest owed
+    termin's training (/karton/termin/<id>/trening), where "Završi trening"
+    is the osvrt."""
     if user is None or not request.session.pop("fb_prompt", False):
         return None
     if request.url.path.startswith("/karton"):
@@ -275,7 +281,7 @@ def _pop_feedback_prompt(request: Request, user):
     latest = pending[0].starts_at.astimezone(config.TZ)
     # formatted here: the prompt renders on whatever page the login landed on,
     # and those contexts carry no tz
-    return {"count": len(pending), "title": pending[0].title,
+    return {"count": len(pending), "title": pending[0].title, "session_id": pending[0].id,
             "when": f"{WEEKDAYS_SHORT[latest.weekday()]} {latest:%-d.%-m. %H:%M}"}
 
 
@@ -1441,7 +1447,8 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
     # is chronological, so grouping consecutive rows by local date suffices —
     # and it may span two weeks, hence dates (not weekdays) as the group key.
     mine_days = []
-    for sess in db.my_upcoming(user.id):
+    mine = db.my_upcoming(user.id)
+    for sess in mine:
         local = sess.starts_at.astimezone(config.TZ)
         if not mine_days or mine_days[-1]["date"] != local.date():
             mine_days.append({"date": local.date(), "name": WEEKDAYS[local.weekday()],
@@ -1465,6 +1472,9 @@ def calendar(request: Request, week: str | None = None, series: str | None = Non
         first = mine_days[0]
         next_booking = dict(first["sessions"][0], name=first["name"],
                             relative=_relative_day(first["date"], today))
+        # its gym training's way in while the training is open (26.11.2026,
+        # build 3: from GYM_OPENS_HOURS before it until the end of the next day)
+        next_booking["gym_open"] = not mine[0].canceled and db.gym_window_open(mine[0].starts_at, now)
 
     # Right after a booking (POST /book adds ?series=<id>): offer the same slot
     # on every following week of the paid period. Only on the client's own
@@ -2152,25 +2162,47 @@ def _diary_rows(subject_id: int) -> list[dict]:
     they were started, each with its day's number of exercises now (`size`,
     None for a day that is gone or holds no exercise now) and, since
     4.11.2026, how many of those it saved (`done`: an entry whose exercise
-    has left the day since is not counted; with no size, every entry)."""
+    has left the day since is not counted; with no size, every entry).
+
+    Since 26.11.2026 (build 3) his gym trainings join them (db.gym_trainings):
+    a termin's rides on its termin's row (`gym`; the template shows it once
+    it holds anything), each termin's row saying whether its training is
+    his to write now (`open`: db.gym_window_open); one outside a termin (or
+    let go of its termin, or of a termin past booking_history's twenty, or
+    of one still ahead that holds something) has a row of its own, `open`
+    by db.gym_can_write. A termin's training that holds nothing and no row
+    of its termin here is no row: its termin says so once it is past."""
     from datetime import datetime, time
 
     sessions = db.booking_history(subject_id)
     logs = db.training_logs(subject_id)
+    gyms = db.gym_trainings(subject_id)
+    now = datetime.now(config.TZ)
     by_session = {x.session_id: x for x in logs if x.session_id}
+    gym_by_session = {g.session_id: g for g in gyms if g.session_id}
 
-    rows, attached = [], set()
+    rows, attached, gym_attached = [], set(), set()
     for s in sessions:
         log = by_session.get(s.id)
         if log is not None:
             attached.add(log.id)
-        rows.append({"session": s, "log": log, "at": s.starts_at.astimezone(config.TZ)})
+        g = gym_by_session.get(s.id)
+        if g is not None:
+            gym_attached.add(g.id)
+        rows.append({"session": s, "log": log, "gym": g, "at": s.starts_at.astimezone(config.TZ),
+                     "open": db.gym_window_open(s.starts_at, now)})
     for x in logs:
         if x.id in attached:
             continue
         at = (x.session.starts_at.astimezone(config.TZ) if x.session
               else datetime.combine(x.date, time(0), tzinfo=config.TZ))
         rows.append({"session": x.session, "log": x, "at": at})
+    for g in gyms:
+        if g.id in gym_attached or (g.session_id is not None and not g.holds_anything):
+            continue
+        at = (g.starts_at.astimezone(config.TZ) if g.starts_at is not None
+              else datetime.combine(g.held_on, time(0), tzinfo=config.TZ))
+        rows.append({"session": None, "log": None, "gym": g, "at": at, "open": db.gym_can_write(g, now)})
     workouts = db.passes(subject_id)
     held = db.day_item_ids({w.day_id for w in workouts if w.day_id is not None})
     for w in workouts:
@@ -2179,18 +2211,6 @@ def _diary_rows(subject_id: int) -> list[dict]:
                      "size": len(ids) if ids else None, "done": w.done_in(ids) if ids else w.done_count})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows
-
-
-def _log_entries(log, held: set[int]) -> list[dict]:
-    """A training's exercise log as its edit form's script builds it (the
-    fieldset's data-log, 23.11.2026): each entry's exercise, its name as
-    logged, whether it has left the library since (`gone`: not among
-    `held`, the library's ids; its block comes with nothing picked and a
-    line naming it), and its sets, reps and kg."""
-    return [{"exercise_id": e.get("exercise_id"), "name": str(e.get("name", "")),
-             "gone": e.get("exercise_id") not in held,
-             "sets": [{"reps": st.get("reps"), "kg": st.get("kg")} for st in e.get("sets") or [] if isinstance(st, dict)]}
-            for e in log.set_items]
 
 
 # The weight card's history (23.11.2026): the newest twelve in the list,
@@ -2255,14 +2275,12 @@ def _render_karton(request: Request, viewer, subject, own: bool):
            if born else None)
     pending = db.pending_feedback(subject.id) if own else []
     diary = _diary_rows(subject.id)
-    # the exercise log (23.11.2026), in the client's own forms only (the
-    # trainer's view writes nothing): the library once for the whole page,
-    # [id, name, tags] in the alphabet's order (#library-json, every
-    # block's combobox), and each written osvrt's log as its edit form's
-    # script builds it (data-log)
-    library = [e for e, _ in db.exercises()] if own else []
-    held = {e.id for e in library}
-    log_entries = {r["log"].id: _log_entries(r["log"], held) for r in diary if own and r.get("log")}
+    # the upcoming termini (26.11.2026, build 3): a termin whose gym training
+    # is open carries its way in ("Upiši trening →", the member's window,
+    # db.gym_window_open), never on the trainer's view
+    now = datetime.now(config.TZ)
+    upcoming = db.my_upcoming(subject.id)
+    gym_open_ids = {s.id for s in upcoming if own and not s.canceled and db.gym_window_open(s.starts_at, now)}
     # the body and the photos (23.11.2026, Amir's karton, part 2): the
     # weights, the newest day first (the rail card's value and history, the
     # head line's "Masa"), the photos, the newest month first, and for the
@@ -2283,7 +2301,9 @@ def _render_karton(request: Request, viewer, subject, own: bool):
     logged = db.logged_exercises(subject.id)
     hx, hx_unknown, picked = None, False, request.query_params.get("vjezba", "").strip()
     if picked:
-        pick = int(picked) if picked.isascii() and picked.isdigit() and len(picked) <= 9 else None
+        # a library id, or since 26.11.2026 an exercise gone from the library
+        # in a gym training, read under its name's negative key (db.gone_key)
+        pick = int(picked) if re.fullmatch(r"-?[0-9]{1,10}", picked) else None
         found = next((e for e in logged if e.exercise_id == pick), None)
         if found is None:
             hx_unknown = True
@@ -2305,14 +2325,11 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         u_rows=u_rows, u_chips=u_chips, u_score=u_score, pain_ask=upitnik.PAIN_ASK, pain_where=pain_where,
         pain_note=texts.get("upitnik.pain_note", copy.SLOTS["upitnik.pain_note"].default),
         diary=diary,
-        # just-finished termini open their osvrt form straight away; older ones
-        # keep it folded so the diary stays a list, not a wall of forms
+        # the termini he still owes his training stand out in the diary
         pending_ids={x.id for x in pending},
         feelings=FEELING_LABELS,
-        upcoming=db.my_upcoming(subject.id),
-        maxes=maxes,
-        library_rows=[[e.id, e.name, e.tags] for e in library], log_entries=log_entries,
-        max_log=db.MAX_LOG_EXERCISES, max_sets=db.MAX_SETS, first_day=db.FIRST_DAY,
+        upcoming=upcoming, gym_open_ids=gym_open_ids, gym_hours=config.GYM_OPENS_HOURS,
+        maxes=maxes, first_day=db.FIRST_DAY,
         weights=weights, weights_shown=WEIGHTS_SHOWN, latest_kg=latest_kg,
         body_line=_body_line(subject.height_cm, latest_kg),
         photos=photos, photo_months=db.photo_months(today) if own else [],
@@ -2574,63 +2591,25 @@ def upitnik_pitanje_obrisi(request: Request, question_id: int):
     return RedirectResponse("/upitnik" + (f"#step-q{near}" if near else ""), status_code=303)
 
 
-async def _posted_log(request: Request, without):
-    """The exercise log a karton form posts (db.read_log: ValueError with
-    its sentence), read only when the form says it carries one (log=1, the
-    hidden field the page's script adds where it builds the exercise
-    blocks); `without` otherwise: a form sent without the script has no
-    block, so a new osvrt or training logs none ([]) and an edit keeps the
-    log it has (None), never emptied by a page that could not show it."""
-    form = await request.form()
-    return db.read_log(form) if form.get("log") == "1" else without
-
-
-@app.post("/karton/feedback/{session_id}")
-async def karton_feedback(request: Request, session_id: int, effort: int = Form(...),
-                          feeling: str = Form(""), note: str = Form("")):
-    """Post-training osvrt — offered by the app after a booked termin ends,
-    never a free-floating diary entry. Since 23.11.2026 with the exercises
-    done (the form's exercise blocks, _posted_log: none without the page's
-    script); a refusal stores nothing and says why (what was typed is not
-    kept)."""
-    from urllib.parse import quote
-
-    user = current_user(request)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-    if not 1 <= effort <= 10 or (feeling and feeling not in FEELING_LABELS):
-        return RedirectResponse("/karton?error=Neispravan+osvrt.", status_code=303)
-    try:
-        sets = await _posted_log(request, [])
-        db.add_session_feedback(user.id, session_id, effort,
-                                feeling or None, note.strip(), sets=sets)
-    except (db.BookingError, ValueError) as e:
-        return RedirectResponse(f"/karton?error={quote(str(e))}", status_code=303)
-    return RedirectResponse("/karton?ok=Osvrt+je+spremljen.", status_code=303)
-
-
 @app.post("/karton/trening")
-async def karton_training(request: Request, effort: int = Form(...), feeling: str = Form(""),
-                          note: str = Form(""), day: str = Form("")):
-    """A training outside a termin (23.11.2026, Amir: "da si on može sam
-    upisati koji trening je radio"): its date (db.read_day: not in the
-    future, not before 2020), napor, osjećaj, a comment and the exercises
-    done (_posted_log), a diary row of its own (db.add_training_log, no
-    termin). A refusal stores nothing and says why."""
+def karton_training(request: Request, day: str = Form("")):
+    """"+ Dodaj trening izvan termina" (since 26.11.2026, build 3: the date
+    alone, today by default): a gym training outside a termin on that date
+    (db.read_day: not in the future, not before 2020; db.add_gym_outside),
+    then its page, where it is written as a termin's is. A date refused:
+    back at the form with its sentence, nothing made. Until then the plain
+    form of 23.11.2026 (napor, osjećaj, komentar and an exercise log in one
+    form, a TrainingLog row): its rows stay, read and edited as before."""
     from urllib.parse import quote
 
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    if not 1 <= effort <= 10 or (feeling and feeling not in FEELING_LABELS):
-        return RedirectResponse("/karton?error=Neispravan+osvrt.", status_code=303)
     try:
         when = db.read_day(day)
-        sets = await _posted_log(request, [])
-        log_id = db.add_training_log(user.id, when, effort, note.strip(), feeling=feeling or None, sets=sets)
     except ValueError as e:
-        return RedirectResponse(f"/karton?error={quote(str(e))}", status_code=303)
-    return RedirectResponse(f"/karton?ok=Trening+je+spremljen.#log-{log_id}", status_code=303)
+        return RedirectResponse(f"/karton?error={quote(str(e))}#trening-novi", status_code=303)
+    return RedirectResponse(f"/karton/trening/{db.add_gym_outside(user.id, when)}", status_code=303)
 
 
 @app.post("/karton/absent/{session_id}")
@@ -2650,14 +2629,15 @@ def karton_absent(request: Request, session_id: int):
 
 
 @app.post("/karton/log/{log_id}/edit")
-async def karton_log_edit(request: Request, log_id: int, effort: int = Form(...),
-                          feeling: str = Form(""), note: str = Form(""), day: str | None = Form(None)):
+def karton_log_edit(request: Request, log_id: int, effort: int = Form(...),
+                    feeling: str = Form(""), note: str = Form(""), day: str | None = Form(None)):
     """The client corrects their own osvrt — same fields, same rules as
-    writing it. Its exercises (_posted_log) replace the whole log; a form
-    sent without the page's script carries none and keeps it. A training
-    outside a termin's date may move too (`day`, db.read_day: the form of
-    such a row posts it), a termin's never (db.update_training_log keeps
-    it). A refusal changes nothing and says why."""
+    writing it was: a TrainingLog row of the plain form of 23.11.2026 (none
+    is made since 26.11.2026, build 3), its napor, osjećaj and komentar; its
+    exercises are read only since then. A training outside a termin's date
+    may move too (`day`, db.read_day: the form of such a row posts it), a
+    termin's never (db.update_training_log keeps it). A refusal changes
+    nothing and says why."""
     from urllib.parse import quote
 
     user = current_user(request)
@@ -2667,8 +2647,7 @@ async def karton_log_edit(request: Request, log_id: int, effort: int = Form(...)
         return RedirectResponse("/karton?error=Neispravan+osvrt.", status_code=303)
     try:
         when = None if day is None else db.read_day(day)
-        sets = await _posted_log(request, None)
-        saved = db.update_training_log(log_id, user.id, effort, feeling or None, note.strip(), sets=sets, day=when)
+        saved = db.update_training_log(log_id, user.id, effort, feeling or None, note.strip(), day=when)
     except ValueError as e:
         return RedirectResponse(f"/karton?error={quote(str(e))}", status_code=303)
     if not saved:
@@ -2960,6 +2939,413 @@ def karton_photo_delete(request: Request, photo_id: int):
     return _karton_back("napredak", ok="Fotografija je obrisana.")
 
 
+# ---------- the gym training (26.11.2026, build 3) ----------
+#
+# roadmap/2026-11-26-gym-training-plan.md, build 3, part A; the owner: "I
+# would remove the 'dodaj trening' and automatically add the training with
+# its title already after a user booked it" … "The training should have a
+# date and time written on it so that there is no confusion which training
+# they edit."; and, of the online player's walk: "Maybe a whole 'Kreni' kind
+# of dynamic does not apply to gym trainings the best way" (ONE page, no
+# Kreni, no clock). A member's training (models.GymTraining) is one page
+# that grows as it goes (karton_trening.html): "Dodaj vježbu" at its foot, an
+# exercise a card with what was given (zadano) and its set table, a tick per
+# set that saves (rule 4), the rest bar after it, "Završi trening" the osvrt
+# (karton_trening_osvrt.html). The routes are the effective user's own
+# (current_user: the member, staff acting as him too): another member's
+# training is 404. Every write asks db.gym_can_write, `staff` being app._actor
+# (staff acting as the member write at any time); a refused one changes
+# nothing and says so. Each works as a plain form, back at its card
+# (?stavka=<id>#stavka-<id>, the card open, its word in it) or at the add
+# card (?dodaj=1#dodaj); the tick is a fetch POST as well (its answer JSON,
+# for an Accept of application/json), which base.html marks with the page's
+# identity while staff act as the member, as it marks every form.
+
+# the end of a training's window as its state line says it: "do četvrtka 26.11. u ponoć"
+WEEKDAYS_GEN = ("ponedjeljka", "utorka", "srijede", "četvrtka", "petka", "subote", "nedjelje")
+GYM_SAVED = "Spremljeno."
+# a tick on a row that holds no number (an exercise given no zadano: its
+# inputs start empty): refused, so that a tick shown is always a set saved
+GYM_EMPTY_ROW = "Upiši broj pa označi seriju."
+
+
+def _gym_staff(request: Request) -> bool:
+    """Staff acting as the member (rule 1: they write at any time)."""
+    return _actor(request) is not None
+
+
+def _gym_of(request: Request, training_id: int):
+    """(the effective user, his training) for a route; (None, None) for a
+    guest; 404 for a training that is not his."""
+    user = current_user(request)
+    if user is None:
+        return None, None
+    t = db.gym_training(training_id, user.id)
+    if t is None:
+        raise HTTPException(status_code=404)
+    return user, t
+
+
+def _gym_item(t, item_id: int):
+    """An item of this training, or 404."""
+    it = next((x for x in t.items if x.id == item_id), None)
+    if it is None:
+        raise HTTPException(status_code=404)
+    return it
+
+
+def _gym_back(training_id: int, item: int | None = None, add: bool = False, error: str | None = None,
+              ok: str | None = None, zadano: bool = False) -> RedirectResponse:
+    """Back to the training's page: at an item's card (open, its word in
+    it; `zadano` its "Uredi zadano" open again after a refusal), at the add
+    card (`add`), or at the top."""
+    from urllib.parse import quote
+
+    query = [f"stavka={item}"] if item is not None else []
+    query += ["dodaj=1"] if add else []
+    query += ["uredi=1"] if zadano else []
+    query += [f"error={quote(error)}"] if error else [f"ok={quote(ok)}"] if ok else []
+    anchor = f"#stavka-{item}" if item is not None else "#dodaj" if add else ""
+    return RedirectResponse(f"/karton/trening/{training_id}" + ("?" + "&".join(query) if query else "") + anchor,
+                            status_code=303)
+
+
+def _gym_until(starts_at: datetime) -> str:
+    """When a termin's training closes for its member, its state line's
+    words after "Upis je otvoren do": the day after the termin, "četvrtka
+    26.11. u ponoć" (its midnight: db.gym_window)."""
+    day = starts_at.astimezone(config.TZ).date() + timedelta(days=1)
+    return f"{WEEKDAYS_GEN[day.weekday()]} {day.day}.{day.month}. u ponoć"
+
+
+def _gym_when(t) -> str:
+    """The training's date and time as its page says them, right under its
+    title: "srijeda 25.11.2026. · 18:00" (a termin's, its start), "srijeda
+    25.11.2026." (outside a termin, its date)."""
+    if t.starts_at is not None:
+        at = t.starts_at.astimezone(config.TZ)
+        return f"{DAY_WEEKDAYS[at.weekday()]} {at:%-d.%-m.%Y.} · {at:%H:%M}"
+    return f"{DAY_WEEKDAYS[t.held_on.weekday()]} {t.held_on:%-d.%-m.%Y.}"
+
+
+def _gym_rows(it) -> list[dict]:
+    """A card's set table, {"reps", "kg", "sec": an input's value, "ticked"}
+    per row: the ticked sets as saved, then a row per planned set left
+    (three when no Serije was given), each prefilled with the zadano's reps,
+    seconds and kg and nothing else (rule 5: no load next time here)."""
+    planned = min(it.sets or 3, db.MAX_SETS)
+    first = {"reps": "" if it.reps is None else str(it.reps), "kg": _kg_value(it.kg),
+             "sec": "" if it.seconds is None else str(it.seconds)}
+    rows = [dict(_set_values(st), ticked=True) for st in it.done_sets[:db.MAX_SETS]]
+    return rows + [dict(first, ticked=False) for _ in range(planned - len(rows))]
+
+
+def _gym_page(request: Request, user, t, status_code: int = 200):
+    """The training's page (karton_trening.html). Its state line: a termin's
+    training open to its member says until when ("Upis je otvoren do
+    četvrtka 26.11. u ponoć"), closed after it ("Upis je zatvoren — trener
+    ga i dalje može urediti.", read only), before it rule 2's sentence;
+    staff acting as him outside his window "Za člana je upis zatvoren;
+    uređuješ kao trener."; a training outside a termin none. ?stavka=<id>
+    names the card a form came back to (open, its word in it; ?uredi=1 its
+    "Uredi zadano" open, ?dodano=1 the focus in its first input: one just
+    added); else the first card not done is open. The add card's Dio is the
+    part of the row added last, else Glavni dio A."""
+    now = datetime.now(config.TZ)
+    staff = _gym_staff(request)
+    writable = db.gym_can_write(t, now, staff)
+    state_key, state_text = None, ""
+    if t.session_id is not None:
+        if db.gym_can_write(t, now):
+            state_key, state_text = "gym.state.open", _gym_until(t.starts_at)
+        elif staff:
+            state_key = "gym.state.staff"
+        elif t.starts_at is not None and now < db.gym_window(t.starts_at)[0]:
+            state_text = db.gym_opens_text()
+        else:
+            state_key = "gym.state.closed"
+    items = t.exercise_items
+    focus = _id(request.query_params.get("stavka"))
+    focus = focus if any(it.id == focus for it in t.items) else None
+    opened = focus if focus is not None else next((it.id for it in items if not it.gone and it.mark != "✓"), None)
+    last = max(t.items, key=lambda it: it.id, default=None)
+    texts = db.copy_texts()
+    return templates.TemplateResponse(request, "karton_trening.html", _ctx(
+        request, user, copy_texts=texts, t=t, items=items, when=_gym_when(t), writable=writable,
+        state_key=state_key, state_text=state_text, can_date=writable and t.session_id is None and t.outside,
+        rows={it.id: _gym_rows(it) for it in items if not it.gone},
+        fields={it.id: ",".join(db.set_fields(it)) for it in items},
+        focus=focus, opened=opened, zadano=request.query_params.get("uredi") == "1",
+        added=request.query_params.get("dodano") == "1", in_add=request.query_params.get("dodaj") == "1",
+        add_dio=last.section if last is not None else "trening",
+        library_rows=[[e.id, e.name, e.tags] for e, _ in db.exercises()] if writable else [],
+        tags=_tag_chips() if writable else [], max_sets=db.MAX_SETS, first_day=db.FIRST_DAY,
+        today=config.today()), status_code=status_code)
+
+
+@app.get("/karton/termin/{session_id}/trening")
+def gym_from_termin(request: Request, session_id: int):
+    """A termin's training (rule 2): the member's, made the first time it
+    is opened (db.gym_training_for: his booking, the termin not canceled,
+    the window open for a member; staff acting as him at any time), then
+    its page. A refusal: his karton, its sentence at the top. The way in
+    from the karton's rows and upcoming termini, the raspored's "Tvoj
+    sljedeći termin", the login's osvrt prompt, and a roster's "Kao član →"."""
+    from urllib.parse import quote
+
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse(f"/login?next={quote(request.url.path)}", status_code=303)
+    try:
+        training_id = db.gym_training_for(user.id, session_id, staff=_gym_staff(request))
+    except db.BookingError as e:
+        return RedirectResponse(f"/karton?error={quote(str(e))}", status_code=303)
+    return RedirectResponse(f"/karton/trening/{training_id}", status_code=303)
+
+
+@app.get("/karton/trening/{training_id}", response_class=HTMLResponse)
+def gym_page(request: Request, training_id: int):
+    """A training's page, the member's own (another's 404)."""
+    from urllib.parse import quote
+
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse(f"/login?next={quote(request.url.path)}", status_code=303)
+    return _gym_page(request, user, t)
+
+
+def _gym_osvrt(request: Request, user, t, error: str | None = None, form: dict | None = None,
+               status_code: int = 200):
+    """The osvrt's page (karton_trening_osvrt.html): the finish screen's
+    clothes, its napor, osjećaj and comment the saved ones (or what a
+    refused one posted)."""
+    v = form or {"effort": t.effort, "feeling": t.feeling or "", "note": t.note or ""}
+    return templates.TemplateResponse(request, "karton_trening_osvrt.html", _ctx(
+        request, user, t=t, when=_gym_when(t), feelings=FEELING_LABELS, error=error, v=v), status_code=status_code)
+
+
+@app.get("/karton/trening/{training_id}/osvrt", response_class=HTMLResponse)
+def gym_osvrt_page(request: Request, training_id: int):
+    """"Završi trening" (and "Uredi osvrt"): the osvrt. Not writable now:
+    the training's page, which says so."""
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not db.gym_can_write(t, staff=_gym_staff(request)):
+        return RedirectResponse(f"/karton/trening/{training_id}", status_code=303)
+    return _gym_osvrt(request, user, t)
+
+
+@app.post("/karton/trening/{training_id}/osvrt")
+def gym_osvrt_save(request: Request, training_id: int, effort: str = Form(""), feeling: str = Form(""),
+                   note: str = Form("")):
+    """The osvrt saved (db.finish_gym_training: napor 1–10, osjećaj, a
+    comment), then the karton at the training's diary row, "Trening je
+    spremljen."; a refused one the page again, its sentence and what was
+    chosen; a training no longer writable its page, saying so."""
+    from urllib.parse import quote
+
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    try:
+        saved = db.finish_gym_training(training_id, user.id, _id(effort), feeling or None, note,
+                                       staff=_gym_staff(request))
+    except ValueError as e:
+        return _gym_osvrt(request, user, t, error=str(e), status_code=400,
+                          form={"effort": _id(effort), "feeling": feeling, "note": note})
+    except db.BookingError as e:
+        return _gym_back(training_id, error=str(e))
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"/karton?ok={quote('Trening je spremljen.')}#gt-{training_id}", status_code=303)
+
+
+@app.post("/karton/trening/{training_id}/stavke")
+def gym_item_add(request: Request, training_id: int, exercise_id: str = Form(""), section: str = Form("trening"),
+                 sets: str = Form(""), reps: str = Form(""), seconds: str = Form(""), kg: str = Form(""),
+                 rest: str = Form("")):
+    """"Dodaj vježbu": an exercise of the library, last in the part chosen,
+    with what was given (Serije, Ponavljanja, Sekunde, Kilaža (kg), Pauza
+    (s), each optional; the day editor's rules: db.add_gym_item), then the
+    page at its card, open, the focus in its first input (?dodano=1).
+    Nothing picked: "Odaberi vježbu s popisa."; a refusal at the add card,
+    nothing added."""
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    chosen = _id(exercise_id)
+    if chosen is None:
+        return _gym_back(training_id, add=True, error=db.NO_EXERCISE)
+    try:
+        numbers = {"sets": _count(sets), "reps": _count(reps), "seconds": _count(seconds), "kg": db.read_item_kg(kg),
+                   "rest_seconds": _count(rest)}
+        item_id = db.add_gym_item(training_id, user.id, chosen, section, **numbers, staff=_gym_staff(request))
+    except (ValueError, db.BookingError) as e:
+        return _gym_back(training_id, add=True, error=str(e))
+    if item_id is None:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"/karton/trening/{training_id}?stavka={item_id}&dodano=1#stavka-{item_id}",
+                            status_code=303)
+
+
+@app.post("/karton/trening/{training_id}/stavke/{item_id}")
+def gym_item_save(request: Request, training_id: int, item_id: int, section: str = Form("trening"),
+                  sets: str = Form(""), reps: str = Form(""), seconds: str = Form(""), kg: str = Form(""),
+                  rest: str = Form(""), note: str = Form("")):
+    """"Uredi zadano": an exercise's part, sets, reps, seconds, kg, the
+    pause after a set and a note (db.update_gym_item, the day editor's row
+    form's rules); back at its card with "Spremljeno." or the refusal, its
+    form open again then."""
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    _gym_item(t, item_id)
+    try:
+        saved = db.update_gym_item(item_id, user.id, section, _count(sets), _count(reps), _count(seconds),
+                                   db.read_item_kg(kg), _count(rest), note, staff=_gym_staff(request),
+                                   training_id=training_id)
+    except (ValueError, db.BookingError) as e:
+        return _gym_back(training_id, item=item_id, error=str(e), zadano=True)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return _gym_back(training_id, item=item_id, ok=GYM_SAVED)
+
+
+@app.post("/karton/trening/{training_id}/stavke/{item_id}/odradeno")
+async def gym_item_done(request: Request, training_id: int, item_id: int):
+    """What was done of an exercise (rule 4, "a tick saves"): its set
+    table's rows that hold a number, `rows` rows of reps_n / kg_n (sec_n:
+    the shape its zadano asks, db.set_fields, named by the form's `polja`,
+    a page drawn for another shape refused as the player refuses a changed
+    day), and its rating (`effort`), saved whole (db.save_gym_done). The
+    page's script posts the ticked rows alone at each tick, untick or change
+    of a ticked row (fetch, Accept: application/json: {"ok", "error",
+    "mark"}, 400 with the sentence for a refusal; a ticked row with no
+    number in it is one, GYM_EMPTY_ROW, "Upiši broj pa označi seriju.",
+    nothing saved); without it the card's "Spremi" posts every row, back at
+    the card."""
+    as_json = "application/json" in request.headers.get("accept", "")
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        if as_json:
+            return JSONResponse({"ok": False, "error": "Prijavi se ponovno.", "mark": ""}, status_code=401)
+        return RedirectResponse("/login", status_code=303)
+    it = _gym_item(t, item_id)
+    form = await request.form()
+
+    def field(name: str) -> str:
+        value = form.get(name)
+        return value if isinstance(value, str) else ""
+
+    def answer(error: str | None = None, mark: str = ""):
+        if as_json:
+            return JSONResponse({"ok": error is None, "error": error or "", "mark": mark},
+                                status_code=400 if error else 200)
+        return _gym_back(training_id, item=item_id, error=error, ok=None if error else GYM_SAVED)
+
+    fields = db.set_fields(it)
+    if field("polja") != ",".join(fields):
+        return answer(DAY_CHANGED)
+    n = min(max(_id(field("rows")) or 0, 0), 30)
+    raw = [{f: field(f"{SET_INPUTS[f]}_{i}") for f in fields} for i in range(1, n + 1)]
+    # the script posts the ticked rows alone: one with no number in it is no
+    # set (read_sets would drop it, the page still showing its tick), so the
+    # whole save is refused and the page unticks it (Fable's review,
+    # 26.11.2026); the no-JS "Spremi" posts every row, the empty ones dropped
+    if as_json and any(not any(value.strip() for value in row.values()) for row in raw):
+        return answer(GYM_EMPTY_ROW)
+    try:
+        typed = any(value.strip() for row in raw for value in row.values())
+        sets = db.read_sets(raw, fields) if typed else []
+        saved = db.save_gym_done(item_id, user.id, sets, db.read_effort(field("effort")),
+                                 staff=_gym_staff(request), training_id=training_id)
+    except (ValueError, db.BookingError) as e:
+        return answer(str(e))
+    if not saved:
+        raise HTTPException(status_code=404)
+    it.done = json.dumps(sets)                        # the detached copy, for its mark
+    return answer(mark=it.mark)
+
+
+@app.post("/karton/trening/{training_id}/stavke/{item_id}/pomak")
+def gym_item_move(request: Request, training_id: int, item_id: int, smjer: str = Form("")):
+    """↑ / ↓: an exercise and its neighbour in its part trade places
+    (db.move_gym_item); back at its card."""
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    _gym_item(t, item_id)
+    try:
+        db.move_gym_item(item_id, user.id, smjer, staff=_gym_staff(request), training_id=training_id)
+    except db.BookingError as e:
+        return _gym_back(training_id, item=item_id, error=str(e))
+    return _gym_back(training_id, item=item_id)
+
+
+@app.post("/karton/trening/{training_id}/stavke/{item_id}/obrisi")
+def gym_item_delete(request: Request, training_id: int, item_id: int):
+    """"Ukloni vježbu": out of the training, its sets with it (the page asks
+    first when it holds a ticked set)."""
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    _gym_item(t, item_id)
+    try:
+        db.delete_gym_item(item_id, user.id, staff=_gym_staff(request), training_id=training_id)
+    except db.BookingError as e:
+        return _gym_back(training_id, item=item_id, error=str(e))
+    return _gym_back(training_id, ok="Vježba je uklonjena.")
+
+
+@app.post("/karton/trening/{training_id}/isprazni")
+def gym_empty(request: Request, training_id: int):
+    """"Isprazni trening": every exercise and its sets go, the training and
+    its osvrt stay (db.empty_gym_training)."""
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    try:
+        db.empty_gym_training(training_id, user.id, staff=_gym_staff(request))
+    except db.BookingError as e:
+        return _gym_back(training_id, error=str(e))
+    return _gym_back(training_id, ok="Trening je ispražnjen.")
+
+
+@app.post("/karton/trening/{training_id}/datum")
+def gym_day(request: Request, training_id: int, day: str = Form("")):
+    """"promijeni datum", a training outside a termin's (db.read_day's
+    rules; db.set_gym_day); a termin's training, or one let go of its
+    termin, has no such form: 404."""
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if t.session_id is not None or not t.outside:
+        raise HTTPException(status_code=404)
+    try:
+        db.set_gym_day(training_id, user.id, db.read_day(day), staff=_gym_staff(request))
+    except (ValueError, db.BookingError) as e:
+        return _gym_back(training_id, error=str(e))
+    return _gym_back(training_id, ok="Datum je spremljen.")
+
+
+@app.post("/karton/trening/{training_id}/obrisi")
+def gym_delete(request: Request, training_id: int):
+    """"Obriši trening", a training outside a termin's (or one let go of its
+    termin), its exercises and osvrt with it (db.delete_gym_training); a
+    termin's goes with its booking: 404 here. Then the karton."""
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if t.session_id is not None:
+        raise HTTPException(status_code=404)
+    try:
+        db.delete_gym_training(training_id, user.id, staff=_gym_staff(request))
+    except db.BookingError as e:
+        return _gym_back(training_id, error=str(e))
+    return RedirectResponse("/karton?ok=Trening+je+obrisan.#osvrti", status_code=303)
+
+
 # ---------- treninzi (custom training programmes) ----------
 
 # The exercises' clips (the library, 30.10.2026): what a file may be by its
@@ -3122,7 +3508,7 @@ def create_program(request: Request, title: str = Form(...), intro: str = Form("
     if not title:
         return RedirectResponse("/treninzi?error=Naziv+je+obavezan.", status_code=303)
     if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
-        return RedirectResponse("/treninzi?error=Odaberi+razinu+i+tip+treninga.", status_code=303)
+        return RedirectResponse("/treninzi?error=Odaberi+razinu+i+tip+programa.", status_code=303)
     if venue not in VENUES:
         return RedirectResponse(f"/treninzi?error={quote(BAD_VENUE)}", status_code=303)
     pid = db.create_program(title, intro.strip() or None, level, goal, venue)
@@ -4064,7 +4450,7 @@ def program_edit(request: Request, program_id: int, title: str = Form(...),
     if redirect:
         return redirect
     if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
-        return RedirectResponse(f"/treninzi/{program_id}/uredi?error=Odaberi+razinu+i+tip+treninga.",
+        return RedirectResponse(f"/treninzi/{program_id}/uredi?error=Odaberi+razinu+i+tip+programa.",
                                 status_code=303)
     if venue is not None and venue not in VENUES:
         return RedirectResponse(f"/treninzi/{program_id}/uredi?error={quote(BAD_VENUE)}", status_code=303)
@@ -4467,7 +4853,9 @@ def media(request: Request, name: str):
     public static mount: staff (the trainer, the owner) watch any, a client
     one whose exercise is in a programme he is matched to (or may stand in
     for one that is: a swap's target, db.video_programs), or whose day is
-    one of its days, while his online plan runs. Since 23.11.2026 also a
+    one of its days, while his online plan runs; since 26.11.2026 one of
+    an exercise in one of his gym trainings, whatever his plans (the
+    training's "Kako se izvodi", db.gym_clip). Since 23.11.2026 also a
     member's file from his karton (db.file_owner): his monthly photo, and
     since 25.11.2026 a document under his limitations or of his "Tjelesna
     kompozicija" (his health documents): the member whose file it is and
@@ -4490,8 +4878,10 @@ def media(request: Request, name: str):
         programs = db.video_programs(name)
         if programs is None:
             raise HTTPException(status_code=404)
-        if not staff and (not _has_online(user)
-                          or not any(db.client_can_view(p, user.id) for p in programs)):
+        # since 26.11.2026 (build 3) also an exercise's clip that is in one
+        # of his gym trainings, whatever his plans (db.gym_clip)
+        if not staff and not db.gym_clip(name, user.id) and (
+                not _has_online(user) or not any(db.client_can_view(p, user.id) for p in programs)):
             raise HTTPException(status_code=403, detail="Ovo nije tvoj sadržaj.")
     private = {"Cache-Control": "private"} if owner is not None else None
     if storage.r2_enabled():

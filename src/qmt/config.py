@@ -199,6 +199,13 @@ BOOKING_WEEKS = int(os.environ.get("BOOKING_WEEKS", "4"))
 # longer be continued, only finished with its osvrt or discarded, and its
 # length runs to its last save, not to the osvrt a day later.
 PASS_STALE_HOURS = int(os.environ.get("PASS_STALE_HOURS", "2"))
+# A termin's gym training (26.11.2026, build 3 of
+# roadmap/2026-11-26-gym-training-plan.md; the owner: "he can already edit it
+# 4 hours before the training up until the next day"): open to its member
+# from GYM_OPENS_HOURS (4) before the termin's start until the end of the day
+# after the termin (Zagreb: the midnight two days after its date); staff
+# acting as the member write at any time (db.gym_can_write).
+GYM_OPENS_HOURS = int(os.environ.get("GYM_OPENS_HOURS", "4"))
 # Staff acting as a member ("Gledaj kao član", 26.11.2026, the owner: "Amir
 # can look at the app just like the user sees the app and he can do
 # everything the user does in the same way"): after ACT_AS_IDLE_MINUTES (30)

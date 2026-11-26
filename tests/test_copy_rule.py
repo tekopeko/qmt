@@ -73,18 +73,21 @@ def fragments(source: str) -> set[str]:
 
 # The member-facing templates (the brief of 25.11.2026, its decision 1, and
 # the karton of the same day): every page a member or a guest reaches, and
-# the partials they print.
+# the partials they print. Since 26.11.2026 (build 3) the gym training's two
+# pages, the rest bar the player and it share, and the tag chips its "Dodaj
+# vježbu" prints (the day editor's and the library's until then).
 MEMBER_TEMPLATES = (
     "base.html", "landing.html", "calendar.html", "karton.html", "treninzi.html", "trening_view.html",
     "trening_day.html", "trening_player.html", "trening_kraj.html", "_pass_leave.html", "moja_clanarina.html",
     "_plan_price.html", "_period.html", "_tiers.html", "prehrana.html", "upitnik.html", "_vodic.html", "vodic.html",
     "profil.html", "login.html", "signup.html", "forgot.html", "reset.html", "verify_sent.html", "error.html",
+    "karton_trening.html", "karton_trening_osvrt.html", "_rest_bar.html", "_tagbar.html",
 )
 # The templates only staff reach: they stay as they are (the owner was told so).
 STAFF_TEMPLATES = (
     "admin.html", "clanarine.html", "korisnici.html", "statistika.html", "roster.html", "template_edit.html",
     "treninzi_admin.html", "trening_edit.html", "trening_day_edit.html", "vjezbe.html", "vjezba.html",
-    "tekstovi.html", "_tagbar.html", "kao.html", "kao_zapisi.html",
+    "tekstovi.html", "kao.html", "kao_zapisi.html",
 )
 
 # a sentence built around a value: the fixed words whose grammar hangs on a
@@ -151,6 +154,8 @@ ALLOWED: dict[str, set[str]] = {
         "Vježba",                            # "Vježba 3"
         "Odrađena serija",                   # a screen reader's words, as an aria-label
     },
+    "karton_trening.html": {"Karton", "Trening"},   # the crumbs (26.11.2026, the gym training)
+    "_tagbar.html": {"još"},                 # "još 5": a count (the tag chips past the first twelve)
     "trening_kraj.html": {
         "od",                                # "6 od 8 vježbi"
         "Započet", "i nije završen — nastavak više nije moguć.",   # around its day ("jučer")
@@ -196,7 +201,8 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
         problems += [f"{name}: {f!r} is allowed but no longer printed: take it off the list" for f in sorted(allowed - found)]
     assert not problems, "\n".join(problems)
     # short (118 on 25.11.2026, most of them the nav, the karton's and the
-    # upitnik editor's): a long list means texts were left out
+    # upitnik editor's; 125 since 26.11.2026: the gym training's crumbs and
+    # the tag chips' count): a long list means texts were left out
     assert sum(len(v) for v in ALLOWED.values()) <= 125
 
 
@@ -222,13 +228,13 @@ def test_every_plain_slot_is_on_the_texts_page_once():
     placed = [k for *_, areas in copy.TEXT_PAGES for _, keys in areas for k in keys]
     assert sorted(placed) == sorted(plain) and len(placed) == len(set(placed))
     assert [page for page, *_ in copy.TEXT_PAGES] == [
-        "Početna", "Raspored", "Karton", "Online treninzi", "Trening (izvođenje)", "Moja članarina", "Prehrana",
-        "Upitnik", "Vodič", "Profil", "Prijava i registracija", "Aplikacija"]
+        "Početna", "Raspored", "Karton", "Online treninzi", "Trening (izvođenje)", "Trening u dvorani",
+        "Moja članarina", "Prehrana", "Upitnik", "Vodič", "Profil", "Prijava i registracija", "Aplikacija"]
     assert {page: href for page, href, *_ in copy.TEXT_PAGES} == {
         "Početna": "/", "Raspored": "/raspored", "Karton": "/karton", "Online treninzi": "/treninzi",
-        "Trening (izvođenje)": None, "Moja članarina": "/moja-clanarina", "Prehrana": "/prehrana",
-        "Upitnik": "/upitnik", "Vodič": "/vodic", "Profil": "/profil", "Prijava i registracija": None,
-        "Aplikacija": None}
+        "Trening (izvođenje)": None, "Trening u dvorani": None, "Moja članarina": "/moja-clanarina",
+        "Prehrana": "/prehrana", "Upitnik": "/upitnik", "Vodič": "/vodic", "Profil": "/profil",
+        "Prijava i registracija": None, "Aplikacija": None}
     assert [page for page, _, lists, _ in copy.TEXT_PAGES if lists] == ["Početna", "Upitnik", "Vodič"]
     order = {k: n for n, k in enumerate(copy.SLOTS)}
     for page, _, _, areas in copy.TEXT_PAGES:

@@ -93,7 +93,7 @@ from sqlalchemy import inspect as sa_inspect, text as sa_text
 from sqlalchemy.exc import IntegrityError
 
 from qmt import auth, config, db
-from qmt.models import Base, Booking, WorkoutLog, set_text
+from qmt.models import Base, Booking, TrainingLog, WorkoutLog, set_text
 from qmt.web import app as web
 from qmt.web.app import app
 
@@ -982,7 +982,9 @@ def test_the_karton_lists_the_passes_among_the_termini():
     now = datetime.now(config.TZ)
     old_termin = attended_session(ivan, now - timedelta(days=5, hours=2))
     new_termin = attended_session(ivan, now - timedelta(days=1, hours=3))
-    db.add_session_feedback(ivan, new_termin, 6, "dobro", "Termin.")
+    with db.session_scope() as s:                                          # an osvrt of the plain form (gone 26.11.2026)
+        s.add(TrainingLog(user_id=ivan, session_id=new_termin, date=(now - timedelta(days=1, hours=3)).date(),
+                          effort=6, feeling="dobro", note="Termin."))
     a = finished(ivan, d, {2: [{"reps": 10, "kg": 20.0}, {"reps": 8, "kg": 20.0}], 3: [{"seconds": 40}]},
                  effort=7, feeling="odlicno", note="Online.", days_ago=3, minutes=38)
     b = finished(ivan, d, {1: [{"reps": 15, "kg": 0.0}]}, effort=5, feeling="slabo", days_ago=0, minutes=65)

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{# The gym training's osvrt (26.11.2026, build 3, part A): "Završi trening"
+   on the training's page, and "Uredi osvrt" once it is saved. The online
+   finish screen's clothes (trening_kraj.html: its 640px column, napor as
+   the scale's ten round buttons, required; osjećaj as its choice rows,
+   optional; a comment, optional; "Spremi trening"), its words that
+   screen's slots (kraj.*): the same words doing the same job. The normal
+   layout, the nav kept, as the training's page; no nudges. A refused osvrt
+   comes back as this page, its sentence under the title and what was
+   chosen kept; saved, the karton at the training's diary row. #}
+{% import "_copy.html" as c with context %}
+{% set no_nudges = true %}
+{% block title %}{{ t.title or "Trening izvan termina" }} — {{ when }} — QMT{% endblock %}
+{% block head %}
+<style>
+  .kr { max-width: 640px; }
+  .kr-eyebrow { font: 700 .74rem var(--font-body); letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
+                overflow-wrap: anywhere; }
+  .kr h1 { font-size: clamp(1.45rem, 5vw, 2rem); line-height: 1.15; margin: 8px 0 6px; overflow-wrap: anywhere; }
+  .kr-when { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kr .alert { margin: 14px 0 0; }
+  .kr .alert > span { min-width: 0; overflow-wrap: anywhere; }
+  .kr-form { margin-top: 8px; }
+  .kr-field { margin-top: 26px; }
+  .kr-field .dx-cap { margin: 0 0 12px; }
+  .kr-field .dx-cap label { display: inline; margin: 0; font: inherit; letter-spacing: inherit; text-transform: inherit;
+                            color: inherit; cursor: inherit; }
+  .kr-opt { text-transform: none; letter-spacing: 0; font: 500 .8rem var(--font-body); }
+  .kr-field textarea { min-height: 96px; resize: vertical; font-size: 1rem; line-height: 1.5; }
+  .kr-go { margin-top: 26px; }
+  @media (max-width: 599px) { .kr-go .btn { width: 100%; } }
+  .kr-more { margin-top: 18px; }
+  main :is(.act, .btn) { white-space: normal; overflow-wrap: anywhere; max-width: 100%; text-align: center; }
+</style>
+{% endblock %}
+{# a refused osvrt's sentence stands under the title (below) #}
+{% block error_alert %}{% endblock %}
+{% block content %}
+<div class="kr">
+  {{ c.opt("gym.osvrt.kicker", "p", ' class="kr-eyebrow"') }}
+  <h1>{% if t.title %}{{ t.title }}{% else %}{{ c.t("gym.head.outside") }}{% endif %}</h1>
+  <p class="kr-when">{{ when }}</p>
+  {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
+
+  <form class="kr-form" method="post" action="/karton/trening/{{ t.id }}/osvrt">
+    <section class="kr-field" aria-labelledby="kr-napor">
+      <h2 class="dx-cap" id="kr-napor">{{ c.t("kraj.effort") }}</h2>
+      <div class="scale-box">
+        <div class="scale" role="radiogroup" aria-labelledby="kr-napor">
+          {% for n in range(1, 11) %}
+          <label class="sc"><input type="radio" name="effort" value="{{ n }}" required{% if v.effort == n %} checked{% endif %}><span>{{ n }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+      {% if copy_on("kraj.effort_low") or copy_on("kraj.effort_high") %}
+      <p class="scale-ends"><span>{{ c.t("kraj.effort_low") }}</span><span>{{ c.t("kraj.effort_high") }}</span></p>
+      {% endif %}
+    </section>
+    <section class="kr-field" aria-labelledby="kr-osjecaj">
+      <h2 class="dx-cap" id="kr-osjecaj">{{ c.t("kraj.feeling") }} {{ c.opt("player.optional", "span", ' class="kr-opt"') }}</h2>
+      <div class="opts" role="radiogroup" aria-labelledby="kr-osjecaj">
+        {% for key, label in feelings.items() %}
+        <label class="opt"><input type="radio" name="feeling" value="{{ key }}"{% if v.feeling == key %} checked{% endif %}><span class="t">{{ label }}</span></label>
+        {% endfor %}
+      </div>
+    </section>
+    <section class="kr-field">
+      <h2 class="dx-cap"><label for="kr-note">{{ c.t("kraj.note") }}</label> {{ c.opt("player.optional", "span", ' class="kr-opt"') }}</h2>
+      {% set placeholder = copy_text("kraj.note_placeholder", copy_texts) %}
+      <textarea id="kr-note" name="note" rows="3"{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}>{{ v.note }}</textarea>
+    </section>
+    <div class="kr-go"><button type="submit" class="btn">{{ c.t("kraj.save") }}</button></div>
+  </form>
+
+  <div class="kr-more">
+    <a class="act act-quiet" href="/karton/trening/{{ t.id }}">{{ c.t("gym.osvrt.back") }}</a>
+  </div>
+</div>
+{% endblock %}
