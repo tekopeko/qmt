@@ -169,7 +169,7 @@ ask for a bigger change").
 3. **The gym training**: made at the booking, one page that grows as the training goes
    (add, zadano, tick what was done, the osvrt), started empty or from a template; the
    diary, the history and the maxes; the plain form retired. In two parts: **A**, the page,
-   its rules, the diary (STATUS.md says when it is live); **B**, a part's own name and
+   its rules, the diary (live 26.11.2026, `e92a6af`: STATUS.md); **B**, a part's own name and
    circuits ticked a round at a time, a dvoranski programme's training as a template, a
    slot's card.
 4. **Where staff open a member's app** (the evening's addition above): the Karton tab's
