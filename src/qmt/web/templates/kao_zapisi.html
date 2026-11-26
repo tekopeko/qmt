@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Radnje u ime članova — QMT{% endblock %}
+{% block head %}
+<style>
+  /* the record of staff acting as members (26.11.2026; the owner's alone:
+     "Only a record for me"): one table, newest first, 100 a page. Its
+     cells wrap on a phone (a path breaks anywhere), so the table never
+     scrolls sideways; the time and the action in tabular figures. Under
+     it "Novije" / "Starije" (.act). */
+  .kz { width: 100%; max-width: 980px; border-collapse: collapse; font-size: .88rem; }
+  .kz th { text-align: left; padding: 8px 6px; border-bottom: 2px solid var(--line);
+           font: 600 .76rem var(--font-body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .kz td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  .kz .num { font-variant-numeric: tabular-nums; }
+  .kz .when { white-space: nowrap; }
+  /* on a phone five columns broke every name and date mid-word (Fable's
+     review, 26.11.2026): a row is three lines there, the time (muted,
+     small), "Trener QMT → Ana Kovač", then the action and its status,
+     which read in that order without the head (not shown there) */
+  @media (max-width: 600px) {
+    .kz thead { display: none; }
+    .kz, .kz tbody, .kz tr { display: block; }
+    .kz tr { padding: 10px 2px; border-bottom: 1px solid var(--line); }
+    .kz td { display: inline; padding: 0; border: 0; }
+    .kz td.when { display: block; color: var(--muted); font-size: .8rem; }
+    .kz td.who, .kz td.as { font-weight: 600; }
+    .kz td.as::before { content: " → "; color: var(--muted); font-weight: 400; }
+    .kz td.as::after { content: ""; display: block; }
+    .kz td.st { color: var(--muted); }
+    .kz td.st::before { content: " · "; }
+  }
+  .kz-empty { color: var(--muted); }
+  .kz-pages { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Radnje u ime članova</h1>
+<p class="hint">Sve što je osoblje napravilo u pregledu kao član: kada, tko, kao koga i što. Član to nigdje ne vidi.</p>
+{% if rows %}
+<table class="kz">
+  <thead><tr><th scope="col">Vrijeme</th><th scope="col">Tko</th><th scope="col">Kao koga</th><th scope="col">Radnja</th><th scope="col">Status</th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="num when">{{ r.at.astimezone(tz).strftime("%-d.%-m.%Y. %H:%M:%S") }}</td>
+      <td class="who">{{ r.actor_name }}</td>
+      <td class="as">{{ r.member_name }}</td>
+      <td class="num">{{ r.method }} {{ r.path }}</td>
+      <td class="num st">{{ r.status if r.status is not none else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="kz-empty">Još nema zapisa.</p>
+{% endif %}
+{% if page > 1 or older %}
+<nav class="kz-pages" aria-label="Stranice zapisa">
+  {% if page > 1 %}<a class="act" href="/kao/zapisi{% if page > 2 %}?str={{ page - 1 }}{% endif %}">← Novije</a>{% endif %}
+  {% if older %}<a class="act" href="/kao/zapisi?str={{ page + 1 }}">Starije →</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

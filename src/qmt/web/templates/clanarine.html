@@ -12,6 +12,14 @@
      room (the Status column is at its narrowest there, and broke the
      note word by word) */
   .trust { margin-top: 4px; color: var(--warn); font-size: .78rem; font-weight: 600; }
+  /* a member's two ways in (26.11.2026): his karton as the trainer reads
+     it, and his account as he has it ("Kao član →", a form): one pair, one
+     footprint, beside his name */
+  .row-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .row-acts form { margin: 0; }
+  /* the link takes the button's font, so the two are one height and weight
+     (a <button> has base.html's `button` font, an <a> the body's) */
+  .row-acts a.btn-sm { font: 600 .8rem var(--font-body); }
 </style>
 {% endblock %}
 {% block content %}
@@ -39,7 +47,16 @@
     <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
       <strong>{{ row.user.full_name or "—" }}</strong><span class="hint">{{ row.user.email }}</span>
     </div>
-    <a class="btn-sm btn-ghost" href="/karton/{{ row.user.id }}">Karton →</a>
+    <div class="row-acts">
+      <a class="btn-sm btn-ghost" href="/karton/{{ row.user.id }}">Karton →</a>
+      {# into the member's account, his app as he has it (26.11.2026: "Gledaj kao člana"), back here at "Izađi" #}
+      {% if row.can_act %}
+      <form method="post" action="/kao/{{ row.user.id }}">
+        <input type="hidden" name="natrag" value="/clanarine">
+        <button type="submit" class="btn-sm btn-ghost">Kao član →</button>
+      </form>
+      {% endif %}
+    </div>
   </div>
 
   {% if row.plans %}

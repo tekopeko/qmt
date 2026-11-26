@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased, joinedload, load_only, selectinload, sessionmaker
 
 from . import config, copy, upitnik
-from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, Announcement, Base, Booking,
+from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, ActingLog, Announcement, Base, Booking,
                      Exercise, GymCard, LimitationFile, Membership, OnboardingResponse, Payment, Program, ProgramDay,
                      ProgramDayCircuit, ProgramDayItem, ProgressPhoto, ReminderLog, SessionTemplate, SiteCopy,
                      TrainingLog, TrainingSession,
@@ -112,12 +112,13 @@ def reset_password(email: str, password_hash: str, expected_marker: str) -> bool
         return True
 
 
-HEIGHT_LIMITS = (100, 250)       # cm, the profile's "Visina (cm)" (23.11.2026)
+HEIGHT_LIMITS = (100, 250)       # cm, "Visina (cm)": the profile's from 23.11.2026, the karton's since 26.11.2026
 BAD_HEIGHT = "Neispravna visina."
 
 
 def read_height(raw: str | None) -> int | None:
-    """The profile's "Visina (cm)" as its form posts it: "" (or spaces) is
+    """"Visina (cm)" as its form posts it (the karton's "Tjelesna
+    kompozicija" since 26.11.2026, /profil's until then): "" (or spaces) is
     none; else whole centimetres in ASCII digits within HEIGHT_LIMITS
     (100–250), or ValueError BAD_HEIGHT ("Neispravna visina.")."""
     value = (raw or "").strip()
@@ -136,9 +137,9 @@ def update_profile(user_id: int, name: str, last_name: str,
     """The profile's fields, every one as given: the form posts them all.
     `height_cm` (23.11.2026, read_height's) is the karton's height, None for
     none, checked again here (ValueError BAD_HEIGHT); a caller that does not
-    name it (KEEP, the default: the seeds, the tests' users) leaves the
-    stored height as it is, so only /profil, which posts the field, ever
-    clears it."""
+    name it (KEEP, the default: /profil since 26.11.2026, whose form has no
+    height any more, the seeds, the tests' users) leaves the stored height
+    as it is: the karton's form sets it (set_height)."""
     if height_cm is not KEEP and height_cm is not None and (
             type(height_cm) is not int or not HEIGHT_LIMITS[0] <= height_cm <= HEIGHT_LIMITS[1]):
         raise ValueError(BAD_HEIGHT)
@@ -153,6 +154,48 @@ def update_profile(user_id: int, name: str, last_name: str,
         if height_cm is not KEEP:
             u.height_cm = height_cm
         return True
+
+
+def set_height(user_id: int, height_cm: int | None) -> bool:
+    """The member's height from his karton's "Tjelesna kompozicija"
+    (26.11.2026, the owner's note: "visinu maknut iz profila u karton"):
+    read_height's whole centimetres within HEIGHT_LIMITS, None to clear it,
+    checked again here (ValueError BAD_HEIGHT). False for no such account."""
+    if height_cm is not None and (type(height_cm) is not int
+                                  or not HEIGHT_LIMITS[0] <= height_cm <= HEIGHT_LIMITS[1]):
+        raise ValueError(BAD_HEIGHT)
+    with session_scope() as s:
+        u = s.get(User, user_id)
+        if u is None:
+            return False
+        u.height_cm = height_cm
+        return True
+
+
+# ---------- staff acting as a member: the record (26.11.2026, models.ActingLog) ----------
+
+ACTING_LOG_PAGE = 100            # /kao/zapisi's rows a page
+
+
+def record_acting(actor: User, member: User, method: str, path: str, status: int | None) -> None:
+    """One row of the record: `actor` (the staff member) did `method` `path`
+    as `member`, answered `status` (None when unknown). The names as they
+    are now (the full name, else the email); the path cut to its column (a
+    path only: the caller never passes a query)."""
+    with session_scope() as s:
+        s.add(ActingLog(actor_id=actor.id, actor_name=(actor.full_name or actor.email)[:320],
+                        member_id=member.id, member_name=(member.full_name or member.email)[:320],
+                        method=method[:10], path=path[:300], status=status))
+
+
+def acting_log(page: int = 1) -> tuple[list[ActingLog], bool]:
+    """A page of the record, newest first, ACTING_LOG_PAGE rows (page 1 the
+    newest), and whether an older page has rows."""
+    page = max(page, 1)
+    with session_scope() as s:
+        rows = list(s.scalars(select(ActingLog).order_by(ActingLog.at.desc(), ActingLog.id.desc())
+                              .offset((page - 1) * ACTING_LOG_PAGE).limit(ACTING_LOG_PAGE + 1)))
+    return rows[:ACTING_LOG_PAGE], len(rows) > ACTING_LOG_PAGE
 
 
 def list_all_users() -> list[User]:
@@ -1622,7 +1665,7 @@ def read_log(form) -> list[dict]:
     not. ValueError with the sentence to show: a block with sets and no
     exercise (NO_EXERCISE, "Odaberi vježbu s popisa."), an exercise that is
     not in the library (UNKNOWN_EXERCISE, "Nepoznata vježba."), a set's
-    number (read_sets': "Neispravan broj.", "Najviše 12 serija."), more than
+    number (read_sets': "Neispravan broj.", "Najviše 20 serija."), more than
     MAX_LOG_EXERCISES exercises (TOO_MANY_EXERCISES, "Najviše 15 vježbi.").
     The exercises are looked up in one query."""
     blocks: dict[int, dict] = {}
@@ -1932,9 +1975,10 @@ def exercise_history(user_id: int, exercise_id: int) -> list[Done]:
 # biti proizvoljna i po želji … ograničenja koja će se on napisati, bolovi
 # itd."; the owner: "Height is one number, weight a dated history,
 # limitations a free text, the photo optional and shrunk like the landing's
-# photos, visible to the member and Amir only." The height is the profile's
-# (read_height, update_profile); the rest is the member's own, on his karton,
-# and the trainer reads it on /karton/{id}.
+# photos, visible to the member and Amir only." The height was the profile's
+# until 26.11.2026 and is the karton's since (read_height, set_height: the
+# owner's note, "visinu maknut iz profila u karton"); all of it is the
+# member's own, on his karton, and the trainer reads it on /karton/{id}.
 
 WEIGHT_LIMITS = (Decimal(20), Decimal(300))    # kg
 BAD_WEIGHT = "Neispravna masa."
@@ -2951,7 +2995,10 @@ def move_day_item(item_id: int, direction: str) -> bool:
 SET_LIMITS = {"reps": (0, 999), "kg": (0, 500), "seconds": (0, 3600)}
 ROUND_LIMITS = (1, 99)           # a circuit's set's round (24.11.2026: save_circuit_round), (least, most)
 EFFORT_LIMITS = (1, 10)          # an exercise's rating (25.11.2026, "Koliko je bilo teško?"), (least, most)
-MAX_SETS = 12
+# a set log's rows at most, the player's and the karton's: 20 since
+# 26.11.2026 (the owner: "Lets increase the 12 sets to 20 sets limit."),
+# which a circuit of 20 rounds (CIRCUIT_LIMITS) fills, a set a round
+MAX_SETS = 20
 NO_SET = "Upiši bar jednu seriju."
 NO_ROUND_EXERCISE = "Upiši bar jednu vježbu."    # a circuit's round with every exercise empty
 TOO_MANY_SETS = f"Najviše {MAX_SETS} serija."
@@ -3011,7 +3058,7 @@ def read_sets(rows: list[dict[str, str]], fields: tuple[str, ...]) -> list[dict]
     that has a number, an empty field is 0 (a weight of 0 is none).
     ValueError with the sentence to show: a number that is none or out of
     its range ("Neispravan broj."), no set left ("Upiši bar jednu
-    seriju."), more than MAX_SETS ("Najviše 12 serija."); fields that are
+    seriju."), more than MAX_SETS ("Najviše 20 serija."); fields that are
     none of SET_SHAPES BAD_NUMBER too."""
     fields = tuple(fields)
     if fields not in SET_SHAPES:
@@ -3383,19 +3430,29 @@ def next_set(st: dict, band: str | None) -> dict:
     lower) a weighted set's kg × (1 + PROGRESS_UP_PERCENT %), to the nearest
     0.5 and at least 0.5 more (500 at most), a set with no weight its reps
     + PROGRESS_REPS_STEP (999 at most), a timed set (it holds seconds, with
-    its reps or without) its seconds + PROGRESS_SECONDS_STEP (3600 at most);
-    "down" (9 or 10) the kg × (1 − PROGRESS_DOWN_PERCENT %), to the nearest
-    0.5 and at least 0.5 less (never below 0.5), the reps × (1 − down %)
-    rounded down and at least one less (never below 1), the seconds the
-    same way (never below 5); never more than it was. The set's other
-    fields (its round) are kept."""
+    its reps or without) the smallest multiple of 5 at or past its seconds
+    + PROGRESS_SECONDS_STEP (3600 at most: 30 → 35, 27 → 35); "down" (9 or
+    10) the kg × (1 − PROGRESS_DOWN_PERCENT %), to the nearest 0.5 and at
+    least 0.5 less (never below 0.5), the reps × (1 − down %) rounded down
+    and at least one less (never below 1), the seconds × (1 − down %)
+    rounded down to a multiple of 5 and at least 5 less (never below 5: 30
+    → 25, 45 → 40, 10 → 5); never more than it was (5 → 5, 3 → 3). Seconds
+    move in steps of 5 since 26.11.2026 (the owner: "make sure this is
+    rounded to a logical number"; 30 s rated 9 gave 27 s until then). The
+    set's other fields (its round) are kept."""
     out = dict(st)
     if band not in ("up", "down"):
         return out
     up = band == "up"
     if "seconds" in st:
-        field, value, step, least, most = "seconds", st.get("seconds") or 0, config.PROGRESS_SECONDS_STEP, 5, 3600
-    elif (st.get("kg") or 0) > 0:
+        value = st.get("seconds") or 0
+        if up:
+            out["seconds"] = max(value, min(-(-(value + config.PROGRESS_SECONDS_STEP) // 5) * 5, 3600))
+        else:
+            x = math.floor(min(Fraction(value * (100 - config.PROGRESS_DOWN_PERCENT), 100), Fraction(value - 5)) / 5) * 5
+            out["seconds"] = min(max(x, 5), value)
+        return out
+    if (st.get("kg") or 0) > 0:
         kg = Fraction(st["kg"])
         if up:
             x = max(Fraction(_to_half(kg * (100 + config.PROGRESS_UP_PERCENT) / 100)), kg + Fraction(1, 2))

@@ -557,7 +557,7 @@
     var form = document.getElementById("plLog"), add = document.getElementById("plAdd");
     if (form && add) {
       var body = form.querySelector("tbody"), count = form.querySelector("input[name=rows]");
-      var max = parseInt(form.getAttribute("data-max"), 10) || 12;
+      var max = parseInt(form.getAttribute("data-max"), 10) || 20;
       var fit = function () { add.hidden = body.rows.length >= max; };
       add.addEventListener("click", function () {
         var last = body.rows[body.rows.length - 1];

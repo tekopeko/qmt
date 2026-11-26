@@ -18,6 +18,9 @@
              color: var(--muted); margin-bottom: 5px; }
   .acct .mail { font-weight: 600; overflow-wrap: anywhere; }
   .acct .hint { font-size: .86rem; margin-top: 2px; }
+  /* the phone reminder's "Upiši broj" lands at #p-phone (26.11.2026): the
+     field clear of the floating pill */
+  #p-phone { scroll-margin-top: 96px; }
 </style>{% endblock %}
 {% block content %}
 <h1>{{ c.t("profil.head.title") }}</h1>
@@ -39,11 +42,8 @@
     {% set placeholder = copy_text("profil.form.phone_placeholder", copy_texts) %}
     <div class="field"><label for="p-phone">{{ c.t("profil.form.phone") }}</label>
       <input id="p-phone" type="tel" name="phone" value="{{ user.phone or '' }}"{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}></div>
-    {# the karton's height (23.11.2026, Amir's karton: one number, no
-       history), whole centimetres; empty for none #}
-    <div class="field"><label for="p-height">{{ c.t("profil.form.height") }}</label>
-      <input id="p-height" type="number" name="height" value="{{ user.height_cm or '' }}"
-             min="100" max="250" step="1" inputmode="numeric"></div>
+    {# (the height, a field here from 23.11.2026, is the karton's since
+       26.11.2026: its "Tjelesna kompozicija") #}
   </div>
   <button type="submit" class="btn-signal">{{ c.t("profil.form.save") }}</button>
 </form>
@@ -59,4 +59,14 @@
   <a class="act" href="/moja-clanarina">{{ c.t("profil.link") }}</a>
 </div>
 {% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  // the phone reminder's "Upiši broj" (base.html, 26.11.2026) leads to
+  // /profil#p-phone: the field takes the focus
+  (function () {
+    var field = location.hash === "#p-phone" && document.getElementById("p-phone");
+    if (field) field.focus();
+  })();
+</script>
 {% endblock %}

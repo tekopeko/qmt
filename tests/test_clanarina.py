@@ -884,7 +884,8 @@ def test_the_clanarine_forms_offer_the_tiers_by_name():
 
     page = t.get("/clanarine").text
     add = member_card(page, "sara@test.local")
-    add = add[add.index('<select name="plan"'):add.index("</form>")]
+    start = add.index('<select name="plan"')                         # the add form (its card's head has "Kao član →"'s form, 26.11.2026)
+    add = add[start:add.index("</form>", start)]
     assert select_in(add, '<select name="tier" aria-label="Paket (samo online)"') == [(v, False, n) for v, n in names]
     assert select_in(add, '<select name="sessions" aria-label="Treninga mjesečno (samo grupni)"')[0] == ("", False, "neograničeno")
     assert " hidden" not in add                                         # the server hides neither

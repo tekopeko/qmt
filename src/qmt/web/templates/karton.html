@@ -241,6 +241,9 @@
      .editing shows the .le-edit under the head); the trainer's view reads
      them. A save or a refusal comes back to the card (#masa, #ogranicenja,
      #napredak), clear of the floating bar. ===== */
+  /* "Otvori kao člana" under the trainer's view's head line (26.11.2026):
+     one .act, tucked under the lead, the cards below it */
+  .kao-open { margin:-8px 0 22px; }
   .k-body { display:block; font-variant-numeric:tabular-nums; }
   span.t:not(:empty) + .k-body { margin-top:4px; }     /* under the lead; an emptied lead leaves no gap */
   .kc-head { display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap; }
@@ -252,7 +255,7 @@
      25.11.2026 the limitations hold a second block with a form of its
      own, the documents' (.lim-docs, its own toggle), which Uredi leaves
      shut */
-  :is(.masa, .limits, .photos, .lim-docs).editing > .le-edit { display:block; }
+  :is(.masa, .limits, .photos, .lim-docs, .ms-hgt).editing > .le-edit { display:block; }
   /* a quiet ✕ (the calendar's .unbook-x): a weight's, a photo's; 32px round
      at every pointer, a faint wash on hover; its form asks first */
   .k-x { width:32px; height:32px; padding:0; border:none; border-radius:50%; flex:none;
@@ -262,13 +265,22 @@
                                    color:var(--text); transform:none; }
   .masa .ms-list form { margin:0; flex:none; }
 
-  /* "Tjelesna masa": the height from the profile under the head (muted,
-     "uredi" the member's way to /profil), the newest weight big and its
+  /* "Tjelesna masa": the height under the head (muted; the member's own
+     form beside it since 26.11.2026, below), the newest weight big and its
      day under it, the form (Kilogrami beside Datum), then the history: a
      row per day, newest first, "12.11.2026. · 82,5 kg" and the member's ✕;
      past twelve the rest under "prikaži sve" (base.html's details.sets
      fold), the trainer's whole history folded under "Povijest" */
   .masa .ms-height { font-size:.82rem; margin-top:4px; overflow-wrap:anywhere; }
+  /* the height on one's own karton (26.11.2026, /profil's field until
+     then): its line and the quiet "uredi" / "upiši" pill beside it (a
+     wrap under it when the words are long), which opens its own form
+     under the line (#visina, qmtToggleForm, as the limitations' documents
+     have theirs): one number field, 200px at most, 44px tall, then Spremi
+     and Odustani */
+  .masa .ms-hgt .ms-height { display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; }
+  .masa .ms-hgt .le-edit { padding-top:8px; }
+  .masa .ms-hfield input { max-width:200px; min-height:44px; }
   .masa .ms-val { font:800 1.6rem/1.15 var(--font-body); font-variant-numeric:tabular-nums; margin-top:10px; }
   .masa .ms-date { font-size:.82rem; margin-top:2px; font-variant-numeric:tabular-nums; }
   .masa .ms-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.35fr); gap:12px; }
@@ -580,6 +592,16 @@
   {% else %}{{ subject.email }}{% if age %} · {{ age }} god.{% endif %}{% if subject.phone %} · {{ subject.phone }}{% endif %}{% if body_line %} · {{ body_line }}{% endif %}{% endif %}
 </p>
 {% endif %}
+{# the trainer's view of a member's karton (26.11.2026): the way into his
+   account, his app as he has it ("Gledaj kao člana"; staff's own chrome,
+   no slot), back here at "Izađi". This view itself stays: it shows what a
+   member never sees. #}
+{% if can_act %}
+<form class="kao-open" method="post" action="/kao/{{ subject.id }}">
+  <input type="hidden" name="natrag" value="/karton/{{ subject.id }}">
+  <button type="submit" class="act">Otvori kao člana</button>
+</form>
+{% endif %}
 
 {# the cards above the diary, in their reading order (25.11.2026): one
    column below 1000px; from 1000px two (.k-cards' grid), the upitnik block
@@ -750,7 +772,8 @@
    "tjelesna visina, tjelesna masa"; the owner: "Height is one number,
    weight a dated history"; since 25.11.2026, Amir: "Tjelesna masa tu bi
    promijenio u tjelesna kompozicija gdje opet mogu dodati pdf ili sliku
-   ili samo upisati ručno masu"): the height from the profile, the newest
+   ili samo upisati ručno masu"): the height (the member's own to type
+   here since 26.11.2026, /profil's until then), the newest
    mass and its day (an entry may be a document alone: the newest entry
    that has one), the member's form (a mass, a document, or both; one
    entry a day: a second save that day replaces what it gives), then the
@@ -763,10 +786,26 @@
     <h2 id="masa-h">{{ c.t("karton.weight.title") }}</h2>
     {% if own %}<button type="button" class="act" onclick="qmtToggleForm('masa')">{{ c.t("karton.weight.add") }}</button>{% endif %}
   </div>
-  {% if subject.height_cm %}
-  <p class="hint ms-height">Visina {{ subject.height_cm }} cm{% if own %} · <a class="tlink" href="/profil">{{ c.t("karton.weight.height_edit") }}</a>{% endif %}</p>
-  {% elif own %}
-  <p class="hint ms-height">{{ c.t("karton.weight.no_height") }} <a class="tlink" href="/profil">{{ c.t("karton.weight.no_height_link") }}</a>.</p>
+  {# the height (26.11.2026: here, /profil's until then; the owner's note,
+     "visinu maknut iz profila u karton"): on one's own karton its line
+     with a quiet "uredi" ("upiši" with none) that opens its one field, the
+     card's other forms' look; the trainer's view reads it #}
+  {% if own %}
+  <div class="ms-hgt" id="visina">
+    <p class="hint ms-height">{% if subject.height_cm %}Visina {{ subject.height_cm }} cm{% else %}{{ c.t("karton.weight.height_none") }}{% endif %}
+      <button type="button" class="act act-quiet" onclick="qmtToggleForm('visina')">{{ c.t("karton.weight.height_change") if subject.height_cm else c.t("karton.weight.height_add") }}</button></p>
+    <form class="le-edit" method="post" action="/karton/visina">
+      <div class="field ms-hfield"><label for="ms-height">{{ c.t("karton.weight.height_field") }}</label>
+        <input id="ms-height" type="number" name="visina" value="{{ subject.height_cm or '' }}"
+               min="100" max="250" step="1" inputmode="numeric"></div>
+      <div class="kc-btns">
+        <button type="submit" class="btn-sm btn-signal">{{ c.t("karton.weight.height_save") }}</button>
+        <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('visina')">{{ c.t("karton.weight.height_cancel") }}</button>
+      </div>
+    </form>
+  </div>
+  {% elif subject.height_cm %}
+  <p class="hint ms-height">Visina {{ subject.height_cm }} cm</p>
   {% endif %}
   {% if latest_kg %}
   <p class="ms-val">{{ latest_kg.kg_text }} kg</p>
@@ -1275,7 +1314,7 @@
   // naming it, so saving it unchanged stops at "Odaberi vježbu s popisa.".
   // A hidden log=1 is added to the fieldset: the routes read the blocks
   // only when it is there, so a form without this script (no block at all)
-  // never empties a stored log. "+ serija" adds a row (12 at most),
+  // never empties a stored log. "+ serija" adds a row (20 at most since 26.11.2026),
   // "Ukloni vježbu" takes the block away (the focus to "+ Dodaj vježbu"),
   // "+ Dodaj vježbu" adds a block (15 at most) numbered past the highest
   // of its form (a gap a removed block leaves stays: the server reads what

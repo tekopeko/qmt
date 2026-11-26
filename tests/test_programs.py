@@ -3243,7 +3243,7 @@ def _phone(browser, server: str, email: str):
     pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
     pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
     pg.goto(server + "/login")
-    pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+    pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
     pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
     pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
     return ctx, pg, errors

@@ -159,7 +159,7 @@ def test_phone_shows_one_day_switches_it_and_opens_the_sheet(server):
             pg = ctx.new_page(); errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.goto(server + "/login")
-            pg.evaluate("localStorage.setItem('qmt-a2hs', 'installed')")      # no install banner in the way
+            pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")      # no install banner, no phone reminder in the way
             pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
             pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
             pg.goto(f"{server}/raspored?week={mon}"); pg.wait_for_load_state("networkidle")
@@ -295,7 +295,7 @@ def test_phone_series_with_a_skipped_date_opens_the_dialog_and_u_redu_closes_it(
         pg = ctx.new_page(); errs = []
         pg.on("pageerror", lambda e: errs.append(str(e)))
         pg.goto(server + "/login")
-        pg.evaluate("localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
         pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
         pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
         pg.goto(f"{server}/raspored?week={mon}&day={wed}"); pg.wait_for_load_state("networkidle")
@@ -399,7 +399,7 @@ def test_phone_switches_to_the_month_and_back(server):
             pg = ctx.new_page(); errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.goto(server + "/login")
-            pg.evaluate("t => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-theme', t); }",
+            pg.evaluate("t => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); localStorage.setItem('qmt-theme', t); }",
                         theme)
             pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
             pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")

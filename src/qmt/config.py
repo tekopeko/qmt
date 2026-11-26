@@ -199,15 +199,24 @@ BOOKING_WEEKS = int(os.environ.get("BOOKING_WEEKS", "4"))
 # longer be continued, only finished with its osvrt or discarded, and its
 # length runs to its last save, not to the osvrt a day later.
 PASS_STALE_HOURS = int(os.environ.get("PASS_STALE_HOURS", "2"))
+# Staff acting as a member ("Gledaj kao člana", 26.11.2026, the owner: "Amir
+# can look at the app just like the user sees the app and he can do
+# everything the user does in the same way"): after ACT_AS_IDLE_MINUTES (30)
+# with no request the view ends, and the first request after it, GET or POST,
+# executes nothing and goes back to the picker (app._acting_guard; a logout
+# still logs out).
+ACT_AS_IDLE_MINUTES = int(os.environ.get("ACT_AS_IDLE_MINUTES", "30"))
 # The load next time (25.11.2026, the owner: an exercise rated "7 or harder
 # then the next appearance of that particular exercise does not increase its
 # difficulty but stays the same or if its 9 or 10 out of 10 difficulty, then
 # it gets slightly reduced by a certain percentage"; db.next_load): rated 6
 # or lower, a weight goes up PROGRESS_UP_PERCENT % (5; to the nearest half
 # kilo, half a kilo at least), a set with no weight PROGRESS_REPS_STEP reps
-# (1), a timed one PROGRESS_SECONDS_STEP seconds (5); rated 9 or 10, a weight
-# and the reps or seconds go down PROGRESS_DOWN_PERCENT % (10; a step at
-# least); 7 or 8, and no rating, as he did it.
+# (1), a timed one PROGRESS_SECONDS_STEP seconds (5; since 26.11.2026 to the
+# next multiple of 5 at or past that); rated 9 or 10, a weight and the reps
+# go down PROGRESS_DOWN_PERCENT % (10; a step at least), the seconds the same
+# and down to a multiple of 5, 5 less at least; 7 or 8, and no rating, as he
+# did it.
 PROGRESS_UP_PERCENT = int(os.environ.get("PROGRESS_UP_PERCENT", "5"))
 PROGRESS_DOWN_PERCENT = int(os.environ.get("PROGRESS_DOWN_PERCENT", "10"))
 PROGRESS_REPS_STEP = int(os.environ.get("PROGRESS_REPS_STEP", "1"))

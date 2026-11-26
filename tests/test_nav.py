@@ -7,7 +7,8 @@ online plan runs) · Moja članarina · Prehrana. Staff's, the trainer's and the
 owner's: that row (without Karton until 24.11.2026, when staff got a karton
 of their own; the owner: "Lets show the Karton tab in the Admin view as
 well"), then "Admin ▾", a menu in the account
-menu's component: Termini (/admin), Trenutne članarine (/clanarine), Upitnik
+menu's component: Gledaj kao člana (/kao, staff act as a member, 26.11.2026),
+Termini (/admin), Trenutne članarine (/clanarine), Upitnik
 (/upitnik), Vježbe (/treninzi/vjezbe, the library of exercises, 30.10.2026),
 Tekstovi (/tekstovi, every text of the app on one page, 25.11.2026)
 and, the owner's only, Korisnici and Statistika. The tab is .on
@@ -125,8 +126,9 @@ def account_menu(page: str) -> list[str]:
 
 MEMBER_ROW = [("/", "Početna"), ("/raspored", "Raspored"), ("/karton", "Karton"), ("/treninzi", "Online treninzi"),
               ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")]
-TRAINER_ITEMS = [("/admin", "Termini"), ("/clanarine", "Trenutne članarine"), ("/upitnik", "Upitnik"),
-                 ("/treninzi/vjezbe", "Vježbe"), ("/tekstovi", "Tekstovi")]
+# "Gledaj kao člana" first since 26.11.2026 (staff act as a member: /kao)
+TRAINER_ITEMS = [("/kao", "Gledaj kao člana"), ("/admin", "Termini"), ("/clanarine", "Trenutne članarine"),
+                 ("/upitnik", "Upitnik"), ("/treninzi/vjezbe", "Vježbe"), ("/tekstovi", "Tekstovi")]
 OWNER_ITEMS = TRAINER_ITEMS + [("/korisnici", "Korisnici"), ("/statistika", "Statistika")]
 ACCOUNT = ["Profil", "Tamna tema", "Odjava"]
 
@@ -152,8 +154,9 @@ def test_staff_get_the_members_row_and_admin_with_their_items():
     """The member's row, Karton in it since 24.11.2026 (staff have a karton
     of their own now; the owner: "Lets show the Karton tab in the Admin
     view as well so that Amir can check out the changes we made there"),
-    then Admin ▾: five items for a trainer who is not the owner (Tekstovi
-    since 25.11.2026), seven for the owner. Two captions for the drawer, Karton under "Kao član", and the
+    then Admin ▾: six items for a trainer who is not the owner (Tekstovi
+    since 25.11.2026, "Gledaj kao člana" first since 26.11.2026), eight for
+    the owner. Two captions for the drawer, Karton under "Kao član", and the
     account menu without a Moja članarina item: the tab is in their row."""
     make_user("trener@test.local", is_trainer=True)                     # the owner, who trains too (the demo's trener)
     make_user("coach@test.local", is_trainer=True)                      # a trainer who is not the owner
@@ -171,7 +174,7 @@ def test_staff_get_the_members_row_and_admin_with_their_items():
 def test_an_owner_who_does_not_train_is_staff_too():
     """Staff is the trainer or the owner (the routes' _require_trainer): an
     owner without is_trainer gets the same bar, Karton in it (24.11.2026),
-    all seven items. Online treninzi follows his plans, as for anyone but a
+    all eight items. Online treninzi follows his plans, as for anyone but a
     trainer (show_online, unchanged)."""
     make_user("trener@test.local", plans=("grupni",))                  # the owner, not a trainer, no online plan
     page = client_for("trener@test.local").get("/raspored").text
@@ -181,7 +184,8 @@ def test_an_owner_who_does_not_train_is_staff_too():
 
 
 def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
-    """On Termini (its sub-pages too), Trenutne članarine (and since
+    """On Gledaj kao člana (26.11.2026: /kao, and its record, /kao/zapisi),
+    Termini (its sub-pages too), Trenutne članarine (and since
     24.11.2026 a client's karton, /karton/<id>, which is reached from it),
     Upitnik, Vježbe (an exercise's page too: under /treninzi, yet Online
     treninzi is not .on there), Tekstovi, Korisnici and Statistika the Admin tab is
@@ -195,7 +199,8 @@ def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
     tid = db.add_template("Grupni trening", 0, 7 * 60, 60, 8, None)
     eid = db.create_exercise("Plank")
     c = client_for("trener@test.local")
-    for path, item in (("/admin", "Termini"), (f"/admin/templates/{tid}", "Termini"),
+    for path, item in (("/kao", "Gledaj kao člana"), ("/kao/zapisi", "Gledaj kao člana"),
+                       ("/admin", "Termini"), (f"/admin/templates/{tid}", "Termini"),
                        ("/clanarine", "Trenutne članarine"), (f"/karton/{ivan}", "Trenutne članarine"),
                        ("/upitnik", "Upitnik"),
                        ("/treninzi/vjezbe", "Vježbe"), ("/treninzi/vjezbe/nova", "Vježbe"),
@@ -243,7 +248,7 @@ def open_page(browser, server: str, email: str, width: int, path: str):
     pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
     pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
     pg.goto(server + "/login")
-    pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")      # the install banner stays out of the way
+    pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")      # the install banner and the phone reminder stay out of the way
     pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
     pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
     go(pg, server + path)
@@ -350,7 +355,7 @@ def test_the_bar_menu_and_drawer_in_a_browser(server):
                     # the keyboard: Enter opens it, Tab reaches the first item, Escape gives the focus back
                     pg.focus("#adminBtn"); pg.keyboard.press("Enter")
                     pg.keyboard.press("Tab")
-                    check(pg.evaluate("document.activeElement.textContent.trim()") == "Termini",
+                    check(pg.evaluate("document.activeElement.textContent.trim()") == "Gledaj kao člana",
                           f"Tab after Enter is on {pg.evaluate('document.activeElement.textContent.trim()')!r}")
                     pg.keyboard.press("Escape")
                     check(pg.evaluate(OPEN) == [False, "false"] and pg.evaluate("document.activeElement.id") == "adminBtn",

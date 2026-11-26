@@ -119,8 +119,9 @@ class User(Base):
     # The karton's body facts (23.11.2026, Amir: "tjelesna visina, tjelesna
     # masa … ograničenja koja će se on napisati, bolovi itd."; migration
     # 0401f7fb9861): the height, one number with no history (the owner:
-    # "Height not needing a history"), typed on /profil, 100–250 cm
-    # (db.read_height), NULL for none; and the member's own free text of his
+    # "Height not needing a history"), typed on the karton's "Tjelesna
+    # kompozicija" since 26.11.2026 (on /profil until then), 100–250 cm
+    # (db.read_height, db.set_height), NULL for none; and the member's own free text of his
     # limitations and pains, on the karton, cleaned as copy is (copy.clean,
     # db.set_limitations), "" for none. His weight is a dated history of its
     # own (Weight), his monthly photos too (ProgressPhoto).
@@ -547,6 +548,32 @@ class Payment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User | None] = relationship()
+
+
+class ActingLog(Base):
+    """The record of staff acting as a member (26.11.2026, "Gledaj kao
+    člana"; the owner: "Only a record for me"): one row for each entry into
+    a member's account (POST /kao/<id>) and for every request that is not a
+    GET executed while a staff member acts as one (the exit and a logout
+    too), read on /kao/zapisi by the owner alone; the member sees no mark.
+    `actor_id` is the staff member, `member_id` the member, both SET NULL so
+    a deleted account leaves the trail, with their names as they were
+    (`actor_name`, `member_name`: the full name, else the email); `method`
+    and `path` the request's (the path only, never its query), `status` the
+    response's (NULL when none came: the app failed). Written by
+    app._acting_guard, which never lets the write fail a request."""
+
+    __tablename__ = "acting_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_name: Mapped[str] = mapped_column(String(320))
+    member_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    member_name: Mapped[str] = mapped_column(String(320))
+    method: Mapped[str] = mapped_column(String(10))
+    path: Mapped[str] = mapped_column(String(300))
+    status: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
 
 
 class OnboardingResponse(Base):

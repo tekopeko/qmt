@@ -116,7 +116,7 @@ def open_page(browser, server: str, email: str, width: int, still: bool = False,
     pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
     pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
     pg.goto(server + "/login")
-    pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")      # the install banner stays out of the way
+    pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")      # the install banner and the phone reminder stay out of the way
     pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
     pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
     pg.goto(server + path); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")

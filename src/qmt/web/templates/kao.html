@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Gledaj kao člana — QMT{% endblock %}
+{% block head %}
+<style>
+  /* "Gledaj kao člana" (26.11.2026, Admin ▾'s first item; the owner: "Amir
+     can look at the app just like the user sees the app and he can do
+     everything the user does in the same way"): every member, the /admin
+     pages' look, a 720px column. The search filters as it is typed (the
+     library's and /tekstovi's way: shown by the script, the whole list
+     without it), then ONE card of rows, a hairline between the ones shown:
+     the name in 700 over the email (muted) and the running plans (muted,
+     small), and at the row's end "Otvori →" (.act, a form: into his
+     account), which wraps under the words on a narrow phone. */
+  .kao { max-width: 720px; }
+  .kao-log { margin: -10px 0 18px; }
+  .kao-search { margin: 0 0 12px; }
+  .kao-search input { width: 100%; }
+  .kao-found { margin: -4px 0 10px; }
+  .kao-list { overflow: hidden; }
+  .kao-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-height: 60px; padding: 10px 18px; }
+  .kao-row:not([hidden]) ~ .kao-row:not([hidden]) { border-top: 1px solid var(--line); }
+  .kao-who { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .kao-who strong { font-weight: 700; overflow-wrap: anywhere; }
+  .kao-mail { color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
+  .kao-plans { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+  .kao-row form { margin: 0 0 0 auto; flex: none; }
+  .kao-none, .kao-empty { padding: 16px 18px; color: var(--muted); overflow-wrap: anywhere; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Gledaj kao člana</h1>
+<p class="hint">Otvori aplikaciju kao član: vidiš što on vidi i radiš što on može. Sve što ovako promijeniš bilježi se.</p>
+{% if is_owner %}<p class="hint kao-log"><a class="tlink" href="/kao/zapisi">Zapis svih radnji →</a></p>{% endif %}
+<div class="kao">
+  {% if members %}
+  <form class="kao-search" role="search" hidden>
+    <input type="search" name="q" placeholder="Ime ili email" aria-label="Traži člana po imenu ili emailu" autocomplete="off">
+  </form>
+  <p class="hint kao-found" aria-live="polite" hidden><span class="kao-n">{{ members|length }}</span> od {{ members|length }} · <a class="tlink" href="/kao">prikaži sve</a></p>
+  <div class="card kao-list">
+    {% for m in members %}
+    <div class="kao-row" data-find="{{ m.name }} · {{ m.user.email }}">
+      <div class="kao-who">
+        <strong>{{ m.name }}</strong>
+        {% if m.name != m.user.email %}<span class="kao-mail">{{ m.user.email }}</span>{% endif %}
+        <span class="kao-plans">{{ m.plans or "bez članarine" }}</span>
+      </div>
+      <form method="post" action="/kao/{{ m.user.id }}"><button type="submit" class="act">Otvori →</button></form>
+    </div>
+    {% endfor %}
+    <p class="kao-none" hidden>Nijedan član ne odgovara traženju „<span class="kao-q"></span>”.</p>
+  </div>
+  {% else %}
+  <div class="card"><p class="kao-empty">Još nema članova.</p></div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // The search filters as it is typed (the library's way, vjezbe.html): a
+  // row is kept when every word typed is in its name or its email, both
+  // folded (qmtFold, base.html: "kovac" finds "Kovač"). The count ("3 od 41
+  // · prikaži sve") shows while the box holds text, the none line when
+  // nothing is kept, and the address follows (?q=, replaceState a little
+  // after the last key), so a reload or Back shows the same list. Enter
+  // sends nothing; "prikaži sve" clears the box in place. Without the
+  // script the box stays hidden and the whole list shows.
+  (function () {
+    var form = document.querySelector("form.kao-search"), box = form && form.querySelector("input");
+    var count = document.querySelector(".kao-found"), none = document.querySelector(".kao-none");
+    if (!box || !count || !none) return;
+    var shownN = count.querySelector(".kao-n"), quoted = none.querySelector(".kao-q"), later = null;
+    var rows = [].map.call(document.querySelectorAll(".kao-row[data-find]"), function (row) {
+      return [row, qmtFold(row.getAttribute("data-find"))];
+    });
+    function filter(follow) {
+      var typed = box.value.trim(), words = qmtFold(typed).split(/\s+/).filter(Boolean), kept = 0;
+      rows.forEach(function (r) {
+        var hit = words.every(function (w) { return r[1].indexOf(w) >= 0; });
+        r[0].hidden = !hit;
+        if (hit) kept++;
+      });
+      shownN.textContent = kept;
+      count.hidden = !typed;
+      quoted.textContent = typed;
+      none.hidden = kept > 0;
+      if (follow) {
+        // a little after the last key (WebKit refuses more than 100 replaceState calls in 30 s)
+        clearTimeout(later);
+        later = setTimeout(function () {
+          try { history.replaceState(null, "", location.pathname + (typed ? "?q=" + encodeURIComponent(typed) : "")); } catch (e) {}
+        }, 250);
+      }
+    }
+    form.hidden = false;
+    box.addEventListener("input", function () { filter(true); });
+    form.addEventListener("submit", function (e) { e.preventDefault(); box.blur(); });
+    count.querySelector("a").addEventListener("click", function (e) {
+      e.preventDefault();
+      box.value = ""; filter(true); box.focus();
+    });
+    var q = new URLSearchParams(location.search).get("q");
+    if (q) box.value = q;
+    filter(false);
+    window.addEventListener("pageshow", function (e) { if (e.persisted) filter(false); });
+  })();
+</script>
+{% endblock %}

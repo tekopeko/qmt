@@ -620,8 +620,9 @@ def test_read_log_refuses_what_it_cannot_store():
     """Sets with no exercise ("Odaberi vježbu s popisa.", the block's select
     empty or not posted at all), an exercise that is not in the library, or
     no number ("Nepoznata vježba."), a set's number read_sets refuses
-    ("Neispravan broj."), more than 12 sets in a block ("Najviše 12
-    serija."), more than 15 exercises ("Najviše 15 vježbi."; 15 go)."""
+    ("Neispravan broj."), more than 20 sets in a block ("Najviše 20
+    serija."; 12 until 26.11.2026, the owner: "Lets increase the 12 sets to
+    20 sets limit."), more than 15 exercises ("Najviše 15 vježbi."; 15 go)."""
     ex = library("Potisak s klupe")
     bench = ex["Potisak s klupe"]
     assert refused({"ex_0": "", "reps_0_1": "8", "kg_0_1": ""}) == "Odaberi vježbu s popisa."
@@ -632,8 +633,8 @@ def test_read_log_refuses_what_it_cannot_store():
     assert refused(block(0, "1e3", (8, 20))) == "Nepoznata vježba."
     for reps, kg in (("-1", ""), ("8", "20,3"), ("8", "501"), ("1000", ""), ("osam", ""), ("8", "2.25")):
         assert refused(block(0, bench, (reps, kg))) == "Neispravan broj.", (reps, kg)
-    assert refused(block(0, bench, *[(5, 20)] * 13)) == "Najviše 12 serija."
-    assert len(db.read_log(block(0, bench, *[(5, 20)] * 12))[0]["sets"]) == 12
+    assert refused(block(0, bench, *[(5, 20)] * 21)) == "Najviše 20 serija."
+    assert len(db.read_log(block(0, bench, *[(5, 20)] * 20))[0]["sets"]) == 20
     fifteen = {k: v for n in range(15) for k, v in block(n, bench, (5, 20)).items()}
     assert len(db.read_log(fifteen)) == 15
     assert refused({**fifteen, **block(15, bench, (5, 20))}) == "Najviše 15 vježbi."
@@ -1092,41 +1093,70 @@ def stored_files() -> list[str]:
     return sorted(p.name for p in config.MEDIA_DIR.iterdir()) if config.MEDIA_DIR.exists() else []
 
 
-def test_the_height_is_a_profile_field_and_heads_the_karton():
-    """"Visina (cm)" on /profil (optional, whole centimetres, 100–250): saved
-    with the rest and shown back in its field; 99, 251, "178,5", "178.5",
-    "abc" and "-178" refused ("Neispravna visina."), nothing changed; empty
-    clears it. The karton's head line says it, "Visina 178 cm" (the member's
-    on its own line under the lead, the trainer's after the age), and so
-    does the weight card's head (the member's with "uredi" to /profil); with
-    no height neither line has it, the member's card asks for it."""
+def test_the_height_is_the_kartons_and_heads_it():
+    """The height on the karton's "Tjelesna kompozicija" since 26.11.2026
+    (the owner's note: "visinu maknut iz profila u karton"; a /profil field
+    from 23.11.2026): on one's own karton, a member's and a staff member's,
+    "Visina 178 cm" with a quiet "uredi" (with none, "Visina nije upisana"
+    and "upiši") that opens its form, one field "Visina (cm)" (whole
+    centimetres, 100–250, a number input) and Spremi / Odustani → POST
+    /karton/visina: saved ("Visina je spremljena.", back at #masa); 99,
+    251, "178,5", "178.5", "abc" and "-178" refused ("Neispravna
+    visina."), nothing changed; empty clears it. The karton's head line
+    says it, "Visina 178 cm" (the member's on its own line under the
+    lead, the trainer's after the age), and the trainer's card reads it,
+    no form; with no height neither line has it. /profil has no height
+    any more: its field is gone, and a save that still posts one (an old
+    page) keeps the stored height as it is, as does every profile save.
+    The trainer's own karton has his own height form; a guest goes to
+    log in."""
     ivan = make_user("ivan@test.local")
-    make_user("trener@test.local", is_trainer=True)
+    trener = make_user("trener@test.local", is_trainer=True)
     ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
-    field = r'<input id="p-height" type="number" name="height" value="{}"\s+min="100" max="250" step="1" inputmode="numeric">'
-    assert re.search(field.format(""), ci.get("/profil").text) and '<label for="p-height"><span class="t">Visina (cm)</span></label>' in ci.get("/profil").text
-    form = {"name": "ivan", "last_name": "Test", "birth_date": "1990-01-01", "phone": ""}
-    r = ci.post("/profil", data={**form, "height": " 178 "}, follow_redirects=False)
-    assert location(r) == "/profil?ok=Podaci su spremljeni." and db.get_user(ivan).height_cm == 178
-    assert re.search(field.format("178"), ci.get("/profil").text)
+    profil = ci.get("/profil").text
+    assert 'name="height"' not in profil and "p-height" not in profil and "Visina" not in profil
+    page = ci.get("/karton").text
+    masa = card(page, "card masa")
+    assert ('<p class="hint ms-height">Visina nije upisana\n      <button type="button" class="act act-quiet" '
+            "onclick=\"qmtToggleForm('visina')\">upiši</button></p>") in masa
+    form = masa.split('<div class="ms-hgt" id="visina">')[1].split("</form>")[0]
+    assert '<form class="le-edit" method="post" action="/karton/visina">' in form
+    assert re.search(r'<label for="ms-height">Visina \(cm\)</label>\s*<input id="ms-height" type="number" name="visina" '
+                     r'value=""\s+min="100" max="250" step="1" inputmode="numeric">', form)
+    assert ">Spremi</button>" in form and "qmtToggleForm('visina')\">Odustani</button>" in form
+    r = ci.post("/karton/visina", data={"visina": " 178 "}, follow_redirects=False)
+    assert location(r) == "/karton?ok=Visina je spremljena.#masa" and db.get_user(ivan).height_cm == 178
     for bad in ("99", "251", "178,5", "178.5", "abc", "-178"):
-        r = ci.post("/profil", data={**form, "height": bad}, follow_redirects=False)
-        assert location(r) == "/profil?error=Neispravna visina." and db.get_user(ivan).height_cm == 178, bad
+        r = ci.post("/karton/visina", data={"visina": bad}, follow_redirects=False)
+        assert location(r) == "/karton?error=Neispravna visina.#masa" and db.get_user(ivan).height_cm == 178, bad
     with pytest.raises(ValueError, match="Neispravna visina."):
-        db.update_profile(ivan, "ivan", "Test", date(1990, 1, 1), "", height_cm=300)
+        db.set_height(ivan, 300)
     page, seen = ci.get("/karton").text, ct.get(f"/karton/{ivan}").text
     assert head_line(page) == "Dnevnik treninga, upitnik i termini na jednom mjestu. Visina 178 cm"
     assert '<span class="k-body">Visina 178 cm</span>' in page
     assert head_line(seen) == f"ivan@test.local · {age_of(date(1990, 1, 1))} god. · Visina 178 cm"
-    assert '<p class="hint ms-height">Visina 178 cm · <a class="tlink" href="/profil">uredi</a></p>' in card(page, "card masa")
-    assert '<p class="hint ms-height">Visina 178 cm</p>' in card(seen, "card masa")
-    r = ci.post("/profil", data={**form, "height": ""}, follow_redirects=False)            # emptied: none
-    assert location(r) == "/profil?ok=Podaci su spremljeni." and db.get_user(ivan).height_cm is None
+    assert ('<p class="hint ms-height">Visina 178 cm\n      <button type="button" class="act act-quiet" '
+            "onclick=\"qmtToggleForm('visina')\">uredi</button></p>") in card(page, "card masa")
+    assert 'value="178"' in card(page, "card masa").split('id="visina"')[1].split("</form>")[0]
+    masa = card(seen, "card masa")                                                    # the trainer reads it
+    assert '<p class="hint ms-height">Visina 178 cm</p>' in masa and "visina" not in masa and "<form" not in masa
+    old = {"name": "ivan", "last_name": "Test", "birth_date": "1990-01-01", "phone": ""}
+    for height in ("", "190", "abc"):                                                 # /profil keeps it
+        r = ci.post("/profil", data={**old, "height": height}, follow_redirects=False)
+        assert location(r) == "/profil?ok=Podaci su spremljeni." and db.get_user(ivan).height_cm == 178, height
+    r = ci.post("/karton/visina", data={"visina": ""}, follow_redirects=False)        # emptied: none
+    assert location(r) == "/karton?ok=Visina je spremljena.#masa" and db.get_user(ivan).height_cm is None
     page, seen = ci.get("/karton").text, ct.get(f"/karton/{ivan}").text
     assert head_line(page) == "Dnevnik treninga, upitnik i termini na jednom mjestu." and '<span class="k-body">' not in page
     assert "Visina" not in head_line(seen) and "ms-height" not in card(seen, "card masa")
-    assert ('<p class="hint ms-height">Visina nije upisana — <a class="tlink" href="/profil">upiši je na profilu</a>.</p>'
-            in card(page, "card masa"))
+    assert "Visina nije upisana" in card(page, "card masa")
+    own = card(karton_only(ct.get("/karton").text), "card masa")                       # staff's own karton: his form
+    assert 'action="/karton/visina"' in own
+    r = ct.post("/karton/visina", data={"visina": "185"}, follow_redirects=False)
+    assert location(r) == "/karton?ok=Visina je spremljena.#masa"
+    assert db.get_user(trener).height_cm == 185 and db.get_user(ivan).height_cm is None
+    r = TestClient(app).post("/karton/visina", data={"visina": "180"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
     assert "BMI" not in page and "ITM" not in page                                       # not asked
 
 
@@ -2179,7 +2209,7 @@ def _phone(browser, server: str, email: str):
     pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
     pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
     pg.goto(server + "/login")
-    pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+    pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
     pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
     pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
     return ctx, pg, errors
@@ -2401,12 +2431,12 @@ def test_the_body_cards_on_a_phone(server):
               and all(left >= 0 and left + width <= 390 for _, left, width in at.values()), f"the cards' places: {at}")
         # the weight
         pg.tap("#masa .kc-head .act")
-        check(pg.is_visible("#masa form.le-edit") and pg.evaluate("() => document.activeElement.id") == "ms-kg"
+        check(pg.is_visible("#masa > form.le-edit") and pg.evaluate("() => document.activeElement.id") == "ms-kg"
               and pg.input_value("#ms-day") == today.isoformat(), "Upiši: the form, its focus or its day")
         pg.fill("#ms-kg", "82.5")
         check(pg.evaluate(OVERFLOW) == 0, f"the weight form overflows by {pg.evaluate(OVERFLOW)}px")
         with pg.expect_navigation():
-            pg.tap("#masa button[type=submit]")
+            pg.tap("#masa > form.le-edit button[type=submit]")
         pg.wait_for_load_state("networkidle")
         check([(w.measured_on, w.kg) for w in db.weights(ivan)] == [(today, Decimal("82.5"))], f"stored: {db.weights(ivan)}")
         check(pg.text_content("#masa .ms-val") == "82,5 kg" and pg.text_content("#masa .ms-date") == full(today)
@@ -2512,7 +2542,7 @@ def test_the_documents_and_the_history_on_a_phone(server):
         pg.set_input_files("#ms-doc", files=[{"name": "InBody.pdf", "mimeType": "application/pdf", "buffer": PDF}])
         check(pg.evaluate(OVERFLOW) == 0, f"the body form overflows by {pg.evaluate(OVERFLOW)}px")
         with pg.expect_navigation():
-            pg.tap("#masa button[type=submit]")
+            pg.tap("#masa > form.le-edit button[type=submit]")
         pg.wait_for_load_state("networkidle")
         check(pg.locator("#masa .ms-list li > span").all_text_contents()
               == [f"{full(yday)} · InBody.pdf", f"{full(today - timedelta(days=3))} · 82 kg"]
@@ -2549,12 +2579,12 @@ def test_the_documents_and_the_history_on_a_phone(server):
         ctx = browser.new_context(viewport={"width": 360, "height": 780}, has_touch=True, is_mobile=True)
         pg = ctx.new_page(); errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.goto(server + "/login"); pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.goto(server + "/login"); pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
         pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
         pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
         pg.goto(f"{server}/karton?vjezba={ex['Potisak s klupe']}"); pg.wait_for_load_state("networkidle")
         pg.evaluate("() => { qmtToggleForm('lim-docs'); qmtToggleForm('masa'); document.activeElement.blur(); }")
-        check(pg.is_visible("#lim-docs form.le-edit") and pg.is_visible("#masa form.le-edit"), "360px: the forms shut")
+        check(pg.is_visible("#lim-docs form.le-edit") and pg.is_visible("#masa > form.le-edit"), "360px: the forms shut")
         check(pg.evaluate(OVERFLOW) == 0 and set(pg.evaluate(WIDER).values()) == {0},
               f"360px: overflow {pg.evaluate(OVERFLOW)}, wider {pg.evaluate(WIDER)}")
         problems += [f"360px {e}" for e in errors]
@@ -2685,13 +2715,62 @@ def test_the_karton_is_one_column_then_two_in_its_order(server):
                 ctx = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
                 pg = ctx.new_page()
                 pg.goto(server + "/login")
-                pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+                pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
                 pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
                 pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
                 pg.goto(server + path); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
                 at = pg.evaluate(LAYOUT)
                 problems += [f"{email} {path} {w}px: {p}" for p in _lies_wrong(at, heads, w)]
                 ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+def test_an_exercise_takes_twenty_sets_on_a_phone(server):
+    """At 390px, touch: in a training outside a termin, an exercise
+    block's "+ serija" adds a row at a tap up to 20 (12 until 26.11.2026,
+    the owner: "Lets increase the 12 sets to 20 sets limit."), then goes;
+    every row's inputs 44px tall, the page never wider than the screen;
+    Spremi stores the 20 sets. No page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    ivan = make_user("ivan@test.local")
+    ex = library(("Potisak s klupe", "prsa, šipka"))
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx, pg, errors = _phone(browser, server, "ivan@test.local")
+        pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle")
+        form = "#trening-novi form.le-edit"
+        pg.tap("#trening-novi > button.act")
+        pg.select_option("#nt-effort", "7")
+        pg.tap(f"{form} .xl-add")
+        pg.keyboard.type("pot"); pg.keyboard.press("Enter")
+        for _ in range(30):
+            if not pg.is_visible(f"{form} .xb-add"):
+                break
+            pg.tap(f"{form} .xb-add")
+        rows = pg.locator(f"{form} .xb tbody tr").count()
+        heights = pg.evaluate(f"() => [...document.querySelectorAll('{form} .xb tbody input')].map(i => i.getBoundingClientRect().height)")
+        check(rows == 20 and not pg.is_visible(f"{form} .xb-add"), f"+ serija stopped at {rows} rows")
+        check(len(heights) == 40 and min(heights) >= 44, f"the inputs' heights: {sorted(set(heights))}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the karton overflows by {pg.evaluate(OVERFLOW)}px with 20 rows")
+        for i in range(1, 21):
+            pg.fill(f"{form} input[name=reps_0_{i}]", "5"); pg.fill(f"{form} input[name=kg_0_{i}]", "40")
+        with pg.expect_navigation():
+            pg.tap(f"{form} button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+        logs = db.training_logs(ivan)
+        check(len(logs) == 1 and logs[0].set_items[0]["exercise_id"] == ex["Potisak s klupe"]
+              and logs[0].set_items[0]["sets"] == [{"reps": 5, "kg": 40.0}] * 20, "the 20 sets were not stored")
+        problems += errors
+        ctx.close()
         browser.close()
     print("\n".join(problems))
     assert not problems, f"{len(problems)} problems, listed above"

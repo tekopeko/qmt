@@ -72,8 +72,10 @@ CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?vie
 # client's walk found as "dan:1" (staff's /treninzi is the table of every
 # programme, so the owner's walk takes the path the client's found).
 # /tekstovi (25.11.2026): every text of the app on one page, Admin ▾'s.
+# /kao (26.11.2026): "Gledaj kao člana", the picker of members to act as;
+# /kao/zapisi its record, the owner's.
 OWNER = ["/", "/raspored", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi",
-         "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi", "/profil", "/tekstovi"]
+         "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi", "/profil", "/tekstovi", "/kao", "/kao/zapisi"]
 
 FIND_EXERCISE = """n => { const row = [...document.querySelectorAll('a.ex-row')]
   .find(a => (a.querySelector('.ex-name') || {}).textContent === n); return row ? row.getAttribute('href') : null; }"""

@@ -82,6 +82,22 @@ the app on the phone".
   circuits, the tick per set, the pause).
 - "Everyone does his own type of training. Amir wont prepare gym trainings ahead of time,
   but live. So either the user does it himself when he is there or Amir does it for them."
+- **One screen, no "Kreni"** (later the same day): "Will the user be able to add
+  exercises dynamically like add an exercise, do it, check that he did it and input the
+  weight and number of reps and then add the second exercises only after? Maybe a whole
+  'Kreni' kind of dynamic does not apply to gym trainings the best way." Fable agreed (the
+  player assumes the whole training is known before it starts, true online, not in the
+  gym) and proposed, and the owner took ("yes, design the third build this way"): the
+  training is ONE page that grows as it goes. "+ Dodaj vježbu" is always there; an added
+  exercise is a card, open, with what was given (zadano, optional: it fills the rows) and
+  its set rows, which he corrects to what he did and ticks, a tick saving that set and
+  starting the pause; the next exercise is added when he gets to it; "Završi trening" at
+  the bottom is the osvrt. What carries over from online: the parts and circuits (a
+  circuit ticked a round at a time), the tick, the pause timer, the optional rating, the
+  clip under "Kako se izvodi", the templates (a slot is a card he taps to choose its
+  exercise). What does not, for the gym: Kreni / Nastavi and the exercise-by-exercise
+  walk, a separate editing screen for members (Amir keeps the full editor for his
+  templates), the training's running clock. Online stays as it is.
 - Exercises: "Amir said we dont separate exercises between online and dvoranski. They are
   all the same." No flag; the whole library everywhere.
 - The rating: "I would still put the feedback per exercise available but optional. The
@@ -116,6 +132,6 @@ ask for a bigger change").
    phone reminder.
 2. **A training's parts**: Glavni dio C, a part's own name, and in a dvoranski programme
    the empty slots (Amir's templates).
-3. **The gym training**: made at the booking, edited with the day editor and done in the
-   player, started from a template or empty; the diary, the history and the maxes; the
-   plain form retired.
+3. **The gym training**: made at the booking, one page that grows as the training goes
+   (add, zadano, tick what was done, the osvrt), started empty or from a template; the
+   diary, the history and the maxes; the plain form retired.

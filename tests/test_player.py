@@ -490,8 +490,10 @@ def test_the_set_log_is_read_saved_and_refused():
     next exercise, or the finish screen after the last. Refused (the
     screen again, 400, the sentence under the name, what was typed kept):
     a number out of its range or none ("Neispravan broj."), nothing left
-    ("Upiši bar jednu seriju."), more than 12 ("Najviše 12 serija."). A
-    re-save replaces the entry, which names the exercise and its section."""
+    ("Upiši bar jednu seriju."), more than 20 ("Najviše 20 serija."; 12
+    until 26.11.2026, the owner: "Lets increase the 12 sets to 20 sets
+    limit."; 20 go). A re-save replaces the entry, which names the
+    exercise and its section."""
     trainer, ivan, ana = people()
     d = build_day()
     ci = client_for("ivan@test.local")
@@ -520,10 +522,15 @@ def test_the_set_log_is_read_saved_and_refused():
             assert re.search(r'<h1 class="pl-name" id="pl-name">Goblet čučanj</h1>\s*<div class="alert" role="alert">', r.text)
             kept = {**{"reps_1": "10", "kg_1": "20"}, **change}
             assert inputs(r.text) == [("reps", "1", kept["reps_1"]), ("kg", "1", kept["kg_1"].replace(",", "."))], change
-    many = {"rows": "13", "item": str(d.items[1]), **{f"reps_{i}": "5" for i in range(1, 14)}}
+    many = {"rows": "21", "item": str(d.items[1]), **{f"reps_{i}": "5" for i in range(1, 22)}}
     r = ci.post(f"{d.base}/vjezba/2", data=many)
-    assert r.status_code == 400 and alert(r.text) == ["Najviše 12 serija."] and len(inputs(r.text)) == 26
+    assert r.status_code == 400 and alert(r.text) == ["Najviše 20 serija."] and len(inputs(r.text)) == 42
     assert db.get_pass(log_id, ivan).done_items[d.items[1]]["sets"][0] == {"reps": 10, "kg": 2.5}   # untouched
+    twenty = {"rows": "20", "item": str(d.items[1]), **{f"reps_{i}": "5" for i in range(1, 21)}}
+    r = ci.post(f"{d.base}/vjezba/2", data=twenty, follow_redirects=False)          # 20 go
+    assert r.status_code == 303 and len(db.get_pass(log_id, ivan).done_items[d.items[1]]["sets"]) == 20
+    page = ci.get(f"{d.base}/vjezba/2").text                                       # saved: 20 rows, no room for more
+    assert len(inputs(page)) == 40 and 'data-max="20"' in page
     r = ci.post(f"{d.base}/vjezba/3", data={"rows": "2", "item": str(d.items[2]), "sec_1": "3601", "sec_2": ""})
     assert r.status_code == 400 and alert(r.text) == ["Neispravan broj."]
     r = ci.post(f"{d.base}/vjezba/3", data={"rows": "3", "item": str(d.items[2]), "sec_1": "40", "sec_2": "", "sec_3": "35"},
@@ -1956,7 +1963,12 @@ NEXT_SETS = [
     ({"reps": 12, "kg": 0.0}, "up", {"reps": 13, "kg": 0.0}),              # no weight: a rep more
     ({"reps": 999, "kg": 0.0}, "up", {"reps": 999, "kg": 0.0}),
     ({"seconds": 40}, "up", {"seconds": 45}),                              # timed: 5 s more
-    ({"seconds": 3598}, "up", {"seconds": 3600}),
+    # seconds in steps of 5 since 26.11.2026 (the owner: "rounded to a
+    # logical number"): up, the smallest multiple of 5 at or past +5
+    ({"seconds": 30}, "up", {"seconds": 35}),
+    ({"seconds": 27}, "up", {"seconds": 35}),                              # 32 → 35
+    ({"seconds": 3598}, "up", {"seconds": 3600}),                          # 3600 at most
+    ({"seconds": 3600}, "up", {"seconds": 3600}),
     ({"reps": 5, "seconds": 30}, "up", {"reps": 5, "seconds": 35}),        # reps and seconds: the seconds
     ({"reps": 10, "kg": 20.0, "round": 2}, "up", {"reps": 10, "kg": 21.0, "round": 2}),   # its round kept
     ({"reps": 10, "kg": 20.0}, "down", {"reps": 10, "kg": 18.0}),          # × 0.9
@@ -1969,12 +1981,19 @@ NEXT_SETS = [
     ({"reps": 2, "kg": 0.0}, "down", {"reps": 1, "kg": 0.0}),              # one less at least
     ({"reps": 1, "kg": 0.0}, "down", {"reps": 1, "kg": 0.0}),              # never below 1
     ({"reps": 0, "kg": 0.0}, "down", {"reps": 0, "kg": 0.0}),              # never more than it was
-    ({"seconds": 40}, "down", {"seconds": 36}),
-    ({"seconds": 9}, "down", {"seconds": 8}),                              # 8.1 → 8
+    # down: × 0.9 rounded down to a multiple of 5, 5 less at least, never
+    # below 5, never more than it was
+    ({"seconds": 30}, "down", {"seconds": 25}),                            # 27 → 25 (27 until 26.11.2026)
+    ({"seconds": 45}, "down", {"seconds": 40}),                            # 40.5 → 40
+    ({"seconds": 40}, "down", {"seconds": 35}),                            # 36 → 35
+    ({"seconds": 60}, "down", {"seconds": 50}),                            # 54 → 50
+    ({"seconds": 10}, "down", {"seconds": 5}),
+    ({"seconds": 12}, "down", {"seconds": 5}),                             # 5 less at least: 7 → 5
+    ({"seconds": 9}, "down", {"seconds": 5}),
     ({"seconds": 6}, "down", {"seconds": 5}),
     ({"seconds": 5}, "down", {"seconds": 5}),                              # never below 5
-    ({"seconds": 3}, "down", {"seconds": 3}),
-    ({"reps": 5, "seconds": 30}, "down", {"reps": 5, "seconds": 27}),
+    ({"seconds": 3}, "down", {"seconds": 3}),                              # never more than it was
+    ({"reps": 5, "seconds": 30}, "down", {"reps": 5, "seconds": 25}),
     ({"reps": 10, "kg": 20.0}, "same", {"reps": 10, "kg": 20.0}),          # 7–8: as he did it
     ({"seconds": 40}, None, {"seconds": 40}),                              # no rating: as he did it
 ]
@@ -2002,7 +2021,7 @@ def test_the_load_next_time_follows_the_rating(monkeypatch):
                                                     ({"reps": 12, "kg": 0.0}, "up"), ({"reps": 12, "kg": 0.0}, "down"),
                                                     ({"seconds": 40}, "up"), ({"seconds": 40}, "down"))] == [
         {"reps": 10, "kg": 22.0}, {"reps": 10, "kg": 16.0}, {"reps": 14, "kg": 0.0}, {"reps": 9, "kg": 0.0},
-        {"seconds": 50}, {"seconds": 32}]
+        {"seconds": 50}, {"seconds": 30}]                                   # 32 → 30: a multiple of 5
     monkeypatch.undo()
 
     import subprocess
@@ -2052,12 +2071,12 @@ def test_the_card_says_the_load_and_the_set_log_starts_from_it():
     """After a rated pass the next one's set log starts from the load next
     time: a weighted exercise's KG (rated 9: 20 → 18; its reps the
     plan's), one done with no weight its PON. (rated 5: 12 → 13), a timed
-    one its SEK. (rated 9: 40 → 36); an unrated one as before (KG as he
+    one its SEK. (rated 9: 40 → 35, in steps of 5 since 26.11.2026); an unrated one as before (KG as he
     did it, PON. and SEK. the plan's); one never logged the plan's numbers
     and the plan's kg. The card says it under the dose (.pl-next): "Prošli
     put (D): 10 × 20 kg, težina 9 — malo lakše: 18 kg.", "…, težina 8 —
     ostaje isto.", "Prošli put (D): 12 ponavljanja, težina 5 — malo više:
-    13 ponavljanja.", "Prošli put (D): 40 s, težina 9 — malo lakše: 36 s.";
+    13 ponavljanja.", "Prošli put (D): 40 s, težina 9 — malo lakše: 35 s.";
     with no rating nothing is said. A circuit's round says a word after an
     exercise's planned dose ("malo više" / "isto" / "malo lakše") and its
     inputs start from the load of its place (the weight of this pass's
@@ -2092,8 +2111,8 @@ def test_the_card_says_the_load_and_the_set_log_starts_from_it():
                             ("reps", "3", "10"), ("kg", "3", "18"), ("reps", "4", ""), ("kg", "4", "")]
     assert line(2) == f"Prošli put ({day}): 10 × 20 kg, težina 9 — malo lakše: 18 kg."
     page = ci.get(f"{d.base}/vjezba/3").text                               # 3 × 40 s, rated 9
-    assert inputs(page) == [("sec", "1", "36"), ("sec", "2", "27"), ("sec", "3", "27"), ("sec", "4", "")]
-    assert line(3) == f"Prošli put ({day}): 40 s, težina 9 — malo lakše: 36 s."
+    assert inputs(page) == [("sec", "1", "35"), ("sec", "2", "25"), ("sec", "3", "25"), ("sec", "4", "")]
+    assert line(3) == f"Prošli put ({day}): 40 s, težina 9 — malo lakše: 35 s."
     page = ci.get(f"{d.base}/vjezba/4").text                               # never logged: the plan's kg
     assert inputs(page) == [("reps", "1", ""), ("kg", "1", "5"), ("reps", "2", ""), ("kg", "2", "")]
     assert line(4) is None and 'class="pl-next"' not in page
@@ -2134,14 +2153,14 @@ def test_the_card_says_the_load_and_the_set_log_starts_from_it():
     rows = blocks(page)
     assert re.findall(r'<p class="cr-dose">([^<]*)</p>', rows[0]) == ["10 ponavljanja · 16 kg · malo više", "pete na podu"]
     assert re.findall(r'<p class="cr-dose">([^<]*)</p>', rows[1]) == ["40 s · malo lakše"]
-    assert inputs(page) == [("reps", str(c.goblet), "10"), ("kg", str(c.goblet), "21"), ("sec", str(c.plank), "36")]
+    assert inputs(page) == [("reps", str(c.goblet), "10"), ("kg", str(c.goblet), "21"), ("sec", str(c.plank), "35")]
     assert 'class="pl-next"' not in page
     page = ci.get(f"{c.base}/vjezba/3").text                               # round 2: its place's load
-    assert inputs(page) == [("reps", str(c.goblet), "10"), ("kg", str(c.goblet), "31.5"), ("sec", str(c.plank), "36")]
+    assert inputs(page) == [("reps", str(c.goblet), "10"), ("kg", str(c.goblet), "31.5"), ("sec", str(c.plank), "35")]
     ci.post(f"{c.base}/vjezba/2", data=round_form(1, {f"reps_{c.goblet}": "10", f"kg_{c.goblet}": "21",
                                                       f"sec_{c.plank}": "36"}, effort="8"))
     page = ci.get(f"{c.base}/vjezba/3").text                               # this pass's round 1 weight first
-    assert inputs(page) == [("reps", str(c.goblet), "10"), ("kg", str(c.goblet), "21"), ("sec", str(c.plank), "36")]
+    assert inputs(page) == [("reps", str(c.goblet), "10"), ("kg", str(c.goblet), "21"), ("sec", str(c.plank), "35")]
     assert re.findall(r'<p class="cr-dose">([^<]*)</p>', blocks(page)[0])[0] == "10 ponavljanja · 16 kg · malo više"
 
 
@@ -2313,7 +2332,7 @@ def test_a_client_walks_a_day_on_a_phone(server):
         pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
         pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
         pg.goto(server + "/login")
-        pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
         pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
         pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
         pg.goto(server + d.base); pg.wait_for_load_state("networkidle")
@@ -2416,7 +2435,7 @@ def test_the_rest_timers_on_a_phone(server):
         pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
         pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
         pg.goto(server + "/login")
-        pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
         pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
         pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
         pg.goto(server + base); pg.wait_for_load_state("networkidle")
@@ -2501,7 +2520,7 @@ def test_leaving_the_player_on_a_phone(server):
         pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
         pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
         pg.goto(server + "/login")
-        pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
         pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
         pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
         player, kraj = f"{server}{base}/vjezba/1", f"{server}{base}/kraj"
@@ -2622,7 +2641,7 @@ def test_a_circuit_on_a_phone(server):
         pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
         pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
         pg.goto(server + "/login")
-        pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
         pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
         pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
         pg.goto(server + base); pg.wait_for_load_state("networkidle")
@@ -2710,7 +2729,7 @@ def test_a_rating_lowers_the_load_on_a_phone(server):
         pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
         pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
         pg.goto(server + "/login")
-        pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
         pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
         pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
         pg.goto(server + base); pg.wait_for_load_state("networkidle")
@@ -2750,6 +2769,62 @@ def test_a_rating_lowers_the_load_on_a_phone(server):
         check(pg.text_content(".pl-next") == f"Prošli put ({today.day}.{today.month}.): 10 × 20 kg, težina 9 — malo lakše: 18 kg.",
               f"the line: {pg.text_content('.pl-next')!r}")
         check(pg.evaluate(OVERFLOW) == 0, f"the step with the line overflows by {pg.evaluate(OVERFLOW)}px")
+        problems += errors
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+def test_the_set_log_takes_twenty_rows_on_a_phone(server):
+    """At 390px, touch: the set log's "+" adds a row at a tap up to 20 (12
+    until 26.11.2026, the owner: "Lets increase the 12 sets to 20 sets
+    limit."; db.MAX_SETS), then goes, the rows field counting them; every
+    row's inputs 44px tall, the page never wider than the screen; Spremi
+    stores the 20 sets. No page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    trainer, ivan, ana = people()
+    d = build_day()
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        pg = ctx.new_page(); errors: list[str] = []
+        pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
+        pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
+        pg.goto(server + "/login")
+        pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
+        pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        pg.goto(server + d.base); pg.wait_for_load_state("networkidle")
+        with pg.expect_navigation():
+            pg.tap(".dx-start .go button")
+        pg.wait_for_load_state("networkidle")
+        check(pg.url == f"{server}{d.base}/vjezba/1", f"Kreni led to {pg.url}")
+        for _ in range(30):
+            if not pg.is_visible("#plAdd"):
+                break
+            pg.tap("#plAdd")
+        rows = pg.locator("#plLog tbody tr").count()
+        check(rows == 20 and pg.input_value("#plLog input[name=rows]") == "20" and not pg.is_visible("#plAdd"),
+              f"+ stopped at {rows} rows (the rows field {pg.input_value('#plLog input[name=rows]')})")
+        heights = pg.evaluate("() => [...document.querySelectorAll('#plLog tbody input')].map(i => i.getBoundingClientRect().height)")
+        check(len(heights) == 40 and min(heights) >= 44, f"the inputs' heights: {sorted(set(heights))}")
+        check(pg.evaluate(OVERFLOW) == 0, f"the player overflows by {pg.evaluate(OVERFLOW)}px with 20 rows")
+        for i in range(1, 21):
+            pg.fill(f"input[name=reps_{i}]", "15")
+        with pg.expect_navigation():
+            pg.tap(".pl-save")
+        pg.wait_for_load_state("networkidle")
+        log = db.open_pass(ivan, d.did)
+        check(log is not None and log.done_items.get(d.items[0], {}).get("sets") == [{"reps": 15, "kg": 0.0}] * 20,
+              "the 20 sets were not stored")
         problems += errors
         ctx.close()
         browser.close()

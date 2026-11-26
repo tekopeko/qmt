@@ -323,6 +323,41 @@
       .nav .menu .mi { display: none; }
     }
 
+    /* ===== "Gledaš kao: …" (26.11.2026, staff acting as a member: while a
+       trainer or the owner is in a member's account the app is the
+       member's, app.current_user): a strip across the very top of every
+       page, sticky, above the topbar's pill, whose sticky top moves down by
+       the strip's height so it sits under it; html's scroll-padding-top
+       adds the strip to every anchor's own scroll-margin, so a jump clears
+       both. The karton's amber, --warn on --warn-soft laid over the page's
+       background, solid (no text shows through it; AA in both themes, 4.6:1
+       light, 8.5:1 dark), a hairline under it. One line at every width: the
+       name cut with an ellipsis (the whole name and the email in its
+       title), then "Izađi", a --warn pill with the page's ground for ink
+       (5.5:1 light, 11:1 dark), 32px, 44px on a coarse pointer, never pushed
+       off the screen. Its contents sit on the pill's column (1100px). Its
+       words are staff's own chrome, no copy slot. ===== */
+    :root { --kao-h: 44px; }
+    @media (pointer: coarse) { :root { --kao-h: 52px; } }
+    .kao-bar { position: sticky; top: 0; z-index: 45; height: var(--kao-h); display: flex; align-items: center; gap: 12px;
+               padding: 0 max(16px, calc((100% - 1100px) / 2));
+               background: linear-gradient(var(--warn-soft), var(--warn-soft)) var(--bg); color: var(--warn);
+               border-bottom: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+               font: 500 .88rem/1.25 var(--font-body); }
+    .kao-bar .kao-as { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kao-bar .kao-as strong { font-weight: 700; }
+    .kao-bar form { flex: none; margin: 0; }
+    .kao-exit { min-height: 32px; padding: 0 16px; box-shadow: none;
+                background: var(--warn); color: var(--bg); font: 700 .82rem var(--font-body); }
+    .kao-exit:hover { background: color-mix(in srgb, var(--warn) 82%, var(--text)); transform: none; }
+    @media (pointer: coarse) { .kao-exit { min-height: 44px; padding: 0 18px; } }
+    body[data-kao] .topbar { top: calc(var(--kao-h) + 10px); }
+    html:has(> body[data-kao]) { scroll-padding-top: var(--kao-h); }
+    /* the ☰ drawer under a pill that the strip lowers: its scroll room less the strip */
+    @media (max-width: 900px) {
+      body[data-kao] .nav { max-height: calc(100vh - 96px - var(--kao-h)); max-height: calc(100dvh - 96px - var(--kao-h)); }
+    }
+
     main { max-width: 1100px; margin: 0 auto; padding: clamp(22px, 3.5vw, 40px) clamp(14px, 4vw, 40px) 70px; }
     /* one page header for every app screen: title, then a one-line lead */
     main > h1 { font-size: clamp(1.6rem, 3vw, 2rem); margin-bottom: 4px; overflow-wrap: anywhere; }
@@ -442,7 +477,7 @@
        card buttons). With the pages' own words nothing moves: every word
        of every member page in its place beside the untouched tree,
        360–1280px. */
-    main span.t, dialog span.t, #a2hs span.t { overflow-wrap: anywhere; }
+    main span.t, dialog span.t, #a2hs span.t, #phoneCard span.t { overflow-wrap: anywhere; }
 
     /* ---- in-place copy editor (trainer / owner only; _copy.html wraps each
        editable text in .ed). Off by default: a page is read before it is
@@ -624,16 +659,39 @@
 
     /* ===== "Dodaj na početni zaslon" (patterns.md §3): phones, browser tab,
        logged-in clients, not on the very first page, dismissed once. ===== */
-    .a2hs { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 70;
+    .a2hs, .phone-card { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 70;
             max-width: 420px; margin: 0 auto; padding: 16px 16px 14px;
             /* its words are copy slots (25.11.2026): taller than the screen,
                it scrolls inside itself, its ✕ in reach at the top */
             max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px);
             overflow-y: auto; overscroll-behavior: contain; }
     @media (pointer: fine) { .a2hs { display: none !important; } }   /* belt and braces: never on desktop */
-    .a2hs-x { position: absolute; top: 6px; right: 6px; background: none; box-shadow: none;
+    .a2hs-x, .phone-x { position: absolute; top: 6px; right: 6px; background: none; box-shadow: none;
               color: var(--muted); padding: 10px 11px; border-radius: 8px; font-size: .95rem; line-height: 1; }
-    .a2hs-x:hover { background: var(--surface-2); color: var(--text); transform: none; }
+    .a2hs-x:hover, .phone-x:hover { background: var(--surface-2); color: var(--text); transform: none; }
+    /* ===== "Dodaj broj mobitela" (26.11.2026, the owner: "if a user didnt
+       give it, when he opens the app a popup reminder should appear
+       similarly how a popup appears as a notification to install the app
+       on the phone"; the phone stays optional): the install banner's card,
+       its look and its place (above), for a member whose phone is empty,
+       on every page but a one-task page and /profil; on a fine pointer
+       too, there 360px wide at the bottom right. Its head is the banner's,
+       a 44px tile with a phone's line icon (--surface-2, as the steps'
+       numbers) where the banner has the app's icon; one .btn-sm to the
+       profile's phone field. Its ✕ ("Kasnije") keeps it away for a week
+       (localStorage qmt-phone), until a number is saved; never with the
+       install banner (this one first, that one on a later load).
+       Rendered hidden, shown by the script: no JS, no card. ===== */
+    @media (pointer: fine) { .phone-card { left: auto; width: 360px; max-width: calc(100% - 32px); margin: 0; } }
+    .phone-head { display: flex; align-items: center; gap: 12px; padding-right: 32px; }
+    .phone-ic { width: 44px; height: 44px; border-radius: 10px; flex: none; display: grid; place-items: center;
+                background: var(--surface-2); color: var(--text); }
+    .phone-ic svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7;
+                    stroke-linecap: round; stroke-linejoin: round; }
+    .phone-head strong { display: block; min-width: 0; font-size: 1rem; }
+    .phone-lead { margin-top: 10px; font-size: .88rem; }
+    .phone-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+    .phone-actions .btn { max-width: 100%; white-space: normal; text-align: center; }
     .a2hs-head { display: flex; align-items: center; gap: 12px; padding-right: 32px; }
     .a2hs-head img { width: 44px; height: 44px; border-radius: 10px; flex: none; }
     .a2hs-head strong { display: block; font-size: 1rem; }
@@ -948,7 +1006,68 @@
   </style>
   {% block head %}{% endblock %}
 </head>
-<body>
+<body{% if kao %} data-kao="{{ kao.id }}"{% endif %}>
+{% if kao %}
+{# A staff member in a member's account (26.11.2026, "Gledaj kao člana"):
+   the strip over every page says whose it is and ends it (POST /kao/izlaz).
+   Its words are staff's own chrome, fixed text. The page carries the
+   member's id (body data-kao): every write it sends names him (the script
+   under it), and the server runs none drawn for another identity. #}
+<div class="kao-bar" role="status">
+  <p class="kao-as" title="{% if kao.full_name %}{{ kao.full_name }} · {% endif %}{{ kao.email }}">Gledaš kao: <strong>{{ kao.full_name or kao.email }}</strong></p>
+  <form method="post" action="/kao/izlaz"><button type="submit" class="kao-exit">Izađi</button></form>
+</div>
+<script>
+  // While a staff member acts as a member (the strip above), every write
+  // this page sends names the member it was drawn for: a form that posts
+  // gets ?kao=<his id> on its action as it is sent (a button, requestSubmit
+  // or .submit(), which fires no event: patched), a fetch that is no GET
+  // the header X-QMT-Kao. The server (app.py, _acting_guard) runs a write
+  // only when that names the account the session is in now: a page left
+  // open in another tab after "Izađi", or drawn before the view began,
+  // saves nothing anywhere.
+  (function () {
+    var KAO = document.body.getAttribute("data-kao");
+    if (!KAO) return;
+    function marked(url) {
+      try {
+        var u = new URL(url, location.href);
+        if (u.origin !== location.origin) return null;
+        u.searchParams.set("kao", KAO);
+        return u.href;
+      } catch (e) { return null; }
+    }
+    function mark(form, by) {
+      if (!form || !form.getAttribute) return;
+      var method = ((by && by.getAttribute("formmethod")) || form.getAttribute("method") || "get").toLowerCase();
+      if (method !== "post") return;
+      var url = marked(by && by.hasAttribute("formaction") ? by.formAction : form.action);
+      if (!url) return;
+      if (by && by.hasAttribute("formaction")) by.setAttribute("formaction", url);
+      else form.setAttribute("action", url);
+    }
+    document.addEventListener("submit", function (e) { mark(e.target, e.submitter); }, true);
+    var submit = HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit = function () { mark(this, null); return submit.call(this); };
+    if (window.fetch) {
+      var get = window.fetch;
+      window.fetch = function (input, init) {
+        init = init || {};
+        try {
+          var method = String(init.method || (input && input.method) || "GET").toUpperCase();
+          var url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+          if (method !== "GET" && method !== "HEAD" && new URL(url, location.href).origin === location.origin) {
+            var headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
+            headers.set("X-QMT-Kao", KAO);
+            init = Object.assign({}, init, {headers: headers});
+          }
+        } catch (e) {}
+        return get.call(window, input, init);
+      };
+    }
+  })();
+</script>
+{% endif %}
 {# auth pages keep only the brand — no competing actions while someone is
    typing a password (the Stripe/Notion pattern); the logo is the way out #}
 {% set auth_page = request.url.path in ('/login', '/signup', '/forgot', '/reset', '/verify-sent')
@@ -997,7 +1116,9 @@
       <a href="/moja-clanarina" class="{% if path.startswith('/moja-clanarina') %}on{% endif %}">Moja članarina</a>
       <a href="/prehrana" class="{% if path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
       {% if staff %}
-      {# Admin ▾, the account menu's component (.menu): Termini, Trenutne
+      {# Admin ▾, the account menu's component (.menu): Gledaj kao člana
+         (26.11.2026: a member's account as he has it, /kao; its record,
+         /kao/zapisi, lights it too), Termini, Trenutne
          članarine, Upitnik (in normal mode, as every page opens: the ✎ pill
          puts it in edit mode), Vježbe (the library of exercises, 30.10.2026),
          Tekstovi (every text of the app on one page, 25.11.2026: /tekstovi)
@@ -1005,6 +1126,7 @@
          tab is .on while one of its pages is open, that item aria-current.
          In the ☰ drawer its items are rows under the "Admin" caption, and
          the tab is no row. #}
+      {% set at_kao = path == '/kao' or path.startswith('/kao/') %}
       {% set at_termini = path.startswith('/admin') %}
       {# a client's karton is opened from Trenutne članarine (24.11.2026) #}
       {% set at_clanarine = path.startswith('/clanarine') or path.startswith('/karton/') %}
@@ -1014,9 +1136,14 @@
       {% set at_statistika = is_owner and path.startswith('/statistika') %}
       <div class="menu-wrap nav-admin">
         <p class="nav-cap">Admin</p>
-        <button type="button" id="adminBtn" class="navbtn menu-btn{% if at_termini or at_clanarine or at_upitnik or at_vjezbe or at_tekstovi or at_korisnici or at_statistika %} on{% endif %}"
+        <button type="button" id="adminBtn" class="navbtn menu-btn{% if at_kao or at_termini or at_clanarine or at_upitnik or at_vjezbe or at_tekstovi or at_korisnici or at_statistika %} on{% endif %}"
                 aria-haspopup="true" aria-expanded="false" aria-controls="adminMenu">Admin <span class="caret" aria-hidden="true">▾</span></button>
         <div class="menu admin-menu" id="adminMenu" role="menu" aria-labelledby="adminBtn">
+          <a href="/kao" role="menuitem"{% if at_kao %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>
+            </svg><span>Gledaj kao člana</span>
+          </a>
           <a href="/admin" role="menuitem"{% if at_termini %} aria-current="page"{% endif %}>
             <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
               <rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>
@@ -1672,10 +1799,28 @@
   })();
 </script>
 {% endif %}
-{% if user and not user.is_trainer %}
+{% if user and not user.is_trainer and not is_owner and not user.phone and not solo
+      and not request.url.path.startswith('/profil') %}
+{# the phone reminder (26.11.2026): a member with no phone number, on every
+   page but a one-task page and the profile (whose field it leads to),
+   while acting too (it is about the member). JS decides whether to show
+   it (not dismissed in the last week) and keeps the install banner off the
+   load it shows on. #}
+<div id="phoneCard" class="card phone-card" hidden role="dialog" aria-labelledby="phoneTitle">
+  <button type="button" class="phone-x" aria-label="Kasnije" onclick="qmtPhoneLater()">✕</button>
+  <div class="phone-head">
+    <span class="phone-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg></span>
+    <strong id="phoneTitle">{{ c.t("app.phone.title") }}</strong>
+  </div>
+  {{ c.opt("app.phone.lead", "p", ' class="hint phone-lead"') }}
+  <div class="phone-actions"><a class="btn btn-sm" href="/profil#p-phone">{{ c.t("app.phone.go") }}</a></div>
+</div>
+{% endif %}
+{% if user and not user.is_trainer and not actor %}
 {# the install banner — a PWA nobody installs is a website. JS decides whether
    to show it (phone, browser tab, not the first page, not dismissed in the
-   last week, not installed). #}
+   last week, not installed, not with the phone reminder). Never while a
+   staff member acts as a member (26.11.2026): it is about the device. #}
 <div id="a2hs" class="card a2hs" hidden role="dialog" aria-labelledby="a2hsTitle">
   <button type="button" class="a2hs-x" aria-label="Zatvori" onclick="qmtA2hsDismiss()">✕</button>
   <div class="a2hs-head">
@@ -2138,6 +2283,31 @@
     });
   })();
 
+  // ---- the phone reminder (26.11.2026) ----
+  // A member with no phone number gets the card (rendered hidden, for him
+  // alone, never on a one-task page or /profil): on every load, unless its
+  // ✕ ("Kasnije") was pressed in the last week (qmt-phone holds when), and
+  // until a number is saved (the page renders no card then). It goes
+  // first: on the load it shows, the install banner waits (_phoneShown).
+  var PHONE_AGAIN = 7 * 24 * 3600 * 1000;
+  var _phoneShown = false;
+  function qmtPhoneLater() {
+    var box = document.getElementById("phoneCard");
+    if (box) box.hidden = true;
+    try { localStorage.setItem("qmt-phone", String(Date.now())); } catch (e) {}
+  }
+  (function () {
+    var box = document.getElementById("phoneCard");
+    if (!box) return;
+    var away = false;
+    try {
+      var when = parseInt(localStorage.getItem("qmt-phone"), 10) || 0;
+      away = Date.now() - when < PHONE_AGAIN;
+    } catch (e) {}
+    if (away) return;
+    box.hidden = false; _phoneShown = true;
+  })();
+
   // ---- install banner ----
   // Dismissed (the ✕, "U redu", or the native prompt declined), it stays away
   // for a week and then asks again, on and on until the app is installed: the
@@ -2173,7 +2343,7 @@
       loads = (parseInt(localStorage.getItem("qmt-loads") || "0", 10) || 0) + 1;
       localStorage.setItem("qmt-loads", String(loads));
     } catch (e) {}
-    if (!coarse || standalone || dismissed || loads < 2) return;
+    if (!coarse || standalone || dismissed || loads < 2 || _phoneShown) return;   // the phone reminder first
     var ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
     window.addEventListener("beforeinstallprompt", function (e) {
       e.preventDefault(); _a2hsDeferred = e;              // Chrome/Android: a real install button

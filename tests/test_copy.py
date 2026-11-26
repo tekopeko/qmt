@@ -2107,7 +2107,9 @@ KARTON = [key for key in copy.SLOTS if key.startswith("karton.")]
 # every other karton text is required, its default back when emptied
 KARTON_OPTIONAL = {
     "karton.head.lead", "karton.upitnik.eyebrow", "karton.upitnik.old", "karton.upitnik.none_text",
-    "karton.upitnik.no_plan", "karton.limits.empty", "karton.limits.placeholder", "karton.weight.no_height",
+    "karton.upitnik.no_plan", "karton.limits.empty", "karton.limits.placeholder",
+    # the line with no height (26.11.2026: the height is the karton's, karton.weight.height_*)
+    "karton.weight.height_none",
     "karton.weight.empty", "karton.photos.rule", "karton.photos.empty", "karton.photos.hint", "karton.maxes.hint",
     # the documents' chips, the body form's hint, the history's two empty lines (25.11.2026)
     "karton.limits.chip_pdf", "karton.limits.chip_image", "karton.weight.hint", "karton.history.empty",
@@ -2126,7 +2128,6 @@ KARTON_BEFORE = {
     "karton.upitnik.eyebrow": "Online trening — upitnik",
     "karton.upitnik.old": "Stari upitnik —",
     "karton.limits.placeholder": "npr. bol u koljenu pri čučnju, stara ozljeda ramena",
-    "karton.weight.no_height": "Visina nije upisana —",
     "karton.weight.more": "prikaži sve",
     "karton.photos.replace": "Zamijeni ovomjesečnu",
     "karton.maxes.hint": "Iz najbolje serije svake vježbe, Epleyevom formulom (kg × (1 + ponavljanja / 30)), do 12 "
@@ -2219,9 +2220,11 @@ def spans(page: str, key: str) -> list[str]:
 
 
 def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
-    """Every static text of the karton is a slot (25.11.2026): 126 of them
+    """Every static text of the karton is a slot (25.11.2026): 129 of them
     (110, and the same day's later build's 16: the documents, the body
-    form's hint, "Povijest vježbe", the document's confirm),
+    form's hint, "Povijest vježbe", the document's confirm; since
+    26.11.2026 the height's six, karton.weight.height_*, in place of the
+    three that led to /profil),
     karton.<area>.<name>, registered area by area in the page's order
     (copy.KARTON_AREAS: the panel lists them so, each once), every one a
     text of CAP characters labelled for the editor's bar ("Karton: naslov",
@@ -2232,7 +2235,7 @@ def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
     clean() keeps a text; the weight card's heading is "Tjelesna
     kompozicija" since the later build (Amir: "Tjelesna masa tu bi
     promijenio u tjelesna kompozicija")."""
-    assert len(KARTON) == 126 and KARTON == [k for k in copy.SLOTS if k.startswith("karton.")]
+    assert len(KARTON) == 129 and KARTON == [k for k in copy.SLOTS if k.startswith("karton.")]
     areas = [key.split(".")[1] for key in KARTON]
     assert list(dict.fromkeys(areas)) == list(copy.KARTON_AREAS)                 # area by area, in the page's order
     assert [key for _, keys in copy.KARTON_PANEL for key in keys] == KARTON      # the panel: every one, once, in order
@@ -2415,7 +2418,8 @@ NEW_OPTIONAL = {
     "auth.reset.lead", "auth.verify.sent_to", "auth.verify.click", "auth.verify.hours", "auth.verify.reset_valid",
     "auth.verify.reset_hours",
     "app.install.lead", "app.install.ios_press", "app.install.ios_share", "app.install.ios_where",
-    "app.install.android_menu", "app.install.pick", "app.install.pick_item", "app.feedback.one", "app.feedback.note"}
+    "app.install.android_menu", "app.install.pick", "app.install.pick_item", "app.feedback.one", "app.feedback.note",
+    "app.phone.lead"}
 # texts the pages printed before they were slots (at 72238fa), copied from
 # them character for character: their defaults
 NEW_BEFORE = {
@@ -2469,15 +2473,17 @@ def test_every_new_text_is_a_slot_with_the_words_the_page_printed():
     required, the karton's rule; a lead, a hint, a kicker, a chip, a
     state's word, an empty line or a placeholder not. Their defaults are
     what the pages printed, character for character (spot-checked against
-    their old texts), each as clean() keeps a text."""
-    assert len(NEW) == 268
+    their old texts), each as clean() keeps a text. 270 since 26.11.2026:
+    the profile's "Visina (cm)" left (the karton's since), the phone
+    reminder's three came (app.phone.*, its lead optional)."""
+    assert len(NEW) == 270
     for key in NEW:
         slot = copy.SLOTS[key]
         assert isinstance(slot, copy.Slot) and slot.max == copy.CAP, key
         assert slot.default and copy.clean(slot.default) == slot.default, key
         assert slot.required == (key not in NEW_OPTIONAL), key
         assert slot.label.startswith(NEW_LABELS[key.split(".")[0]]), key
-    assert NEW_OPTIONAL <= set(NEW) and len(NEW_OPTIONAL) == 119
+    assert NEW_OPTIONAL <= set(NEW) and len(NEW_OPTIONAL) == 120
     assert {key: copy.SLOTS[key].default for key in NEW_BEFORE} == NEW_BEFORE
     for key, label in (("raspored.termin.book", "Raspored · termin: gumb Rezerviraj (i u prozoru termina)"),
                        ("player.round.done", "Trening · krug: gumb, iza broja kruga"),
@@ -3753,6 +3759,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                         pg.click("#copyToggle")
                     out += [f"{where}: {p}" for p in pg.evaluate(MEASURE, True)["problems"]]
                     out += [f"{where} on load: {p}" for p in pg.evaluate(GROUPS, ["year", "month"])]
+                    # ivan has no phone number: the phone reminder (26.11.2026),
+                    # measured above, goes with its ✕ before the switches are pressed
+                    if pg.locator("#phoneCard").is_visible():
+                        pg.click("#phoneCard .phone-x")
                     # the gym's Godišnje with the tiers on Godišnje, the tiers'
                     # Mjesečno with the gym on Godišnje: a press that reached
                     # the other group would show; the last leaves both as loaded
@@ -3788,7 +3798,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             for email, paths in (("ivan@test.local", ("/karton",)), ("trener@test.local", ("/karton", f"/karton/{ivan}"))):
                 pg = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
                 pg.on("pageerror", lambda e, w=w: errs.append(f"{w}px: {e}"))
-                pg.goto(server + "/login"); pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+                pg.goto(server + "/login"); pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
                 pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
                 pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
                 for path in paths:
@@ -3837,7 +3847,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 pg = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
                 pg.on("pageerror", lambda e: errs.append(f"{w}px {email}: {e}"))
                 pg.on("dialog", lambda dlg: dlg.accept())                   # the player's beforeunload
-                pg.goto(server + "/login"); pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+                pg.goto(server + "/login"); pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
                 if email:
                     pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
                     pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
@@ -3983,11 +3993,15 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         is one reload, from the second page on: dismissed with its ✕ just
         now, or six days ago, it stays away; eight days ago, or the old "no"
         (one dismissal was for good before 16.10.2026), it is back; and
-        "installed" (the native prompt accepted) keeps it away."""
+        "installed" (the native prompt accepted) keeps it away. ivan has no
+        phone number, so since 26.11.2026 the phone reminder would come
+        first (tests/test_kao.py): dismissed this week, it is out of the
+        way, and the install banner is what this measures."""
         out, ctx = [], pw.chromium.launch().new_context(viewport={"width": 390, "height": 900}, has_touch=True,
                                                          is_mobile=True, user_agent=IPHONE)
         pg = ctx.new_page()
-        pg.goto(server + "/login"); pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
+        pg.goto(server + "/login"); pg.evaluate("localStorage.setItem('qmt-phone', String(Date.now()))")
+        pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
         pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
         pg.goto(server + "/prehrana")                 # the second page with the banner: it asks
         if not pg.locator("#a2hs").is_visible():
@@ -4019,6 +4033,11 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 problems += [f"{where} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
                 if path != "/":
                     continue
+                # a member with no phone number has the phone reminder
+                # (26.11.2026) over the landing, measured above with its long
+                # texts: dismissed with its ✕ before the switches are pressed
+                if pg.locator("#phoneCard").is_visible():
+                    pg.click("#phoneCard .phone-x")
                 if lines:
                     problems += [f"{where} {p}" for p in pg.evaluate(EVENT_TEXT)]
                 problems += [f"{where} {p}" for p in pg.evaluate(LANDING, [w, strict])]
@@ -4202,8 +4221,9 @@ def test_the_karton_is_edited_in_place_on_a_phone(server):
     a space typed into them (the browser "clicks" a button at a space:
     base.html keeps the open text's button still); saved, stored. A tap on a
     <summary>'s words ("prikaži sve") does not open its <details>, nor a
-    space typed; a tap on a link's ("upiši je na profilu") does not follow
-    it. A tap on a row of the panel (the weight row's confirm title, an
+    space typed; nor does a tap on the height's "upiši" (since 26.11.2026
+    the karton's own toggle, where a link to /profil was) open its form,
+    nor a space typed. A tap on a row of the panel (the weight row's confirm title, an
     attribute on the page) opens it; saved, stored. Reloaded (edit mode
     off), each shows: the heading, the button, the confirm's title on his
     weight rows' forms; and ivan, a member, reads the same words on his own
@@ -4239,7 +4259,7 @@ def test_the_karton_is_edited_in_place_on_a_phone(server):
         browser = pw.chromium.launch()
         ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
         pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e)))
-        pg.goto(server + "/login"); pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.goto(server + "/login"); pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
         pg.fill("main input[name=email]", "trener@test.local"); pg.fill("main input[name=password]", "lozinka123")
         pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
         pg.goto(server + "/karton"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
@@ -4257,8 +4277,8 @@ def test_the_karton_is_edited_in_place_on_a_phone(server):
 
         words = pg.locator("#masa .kc-head .act .ed")                     # a button's words
         words.tap()
-        check(bar() == "Karton · masa: gumb Upiši" and not pg.is_visible("#masa form.le-edit"),
-              f"a tap on Upiši's words: the bar {bar()!r}, the form open {pg.is_visible('#masa form.le-edit')}")
+        check(bar() == "Karton · masa: gumb Upiši" and not pg.is_visible("#masa > form.le-edit"),
+              f"a tap on Upiši's words: the bar {bar()!r}, the form open {pg.is_visible('#masa > form.le-edit')}")
         pg.keyboard.type(" sada")
         check(not pg.evaluate("() => document.getElementById('masa').classList.contains('editing')"),
               "a space typed into Upiši's words opened the weight's form")
@@ -4272,10 +4292,14 @@ def test_the_karton_is_edited_in_place_on_a_phone(server):
         pg.tap("#cbCancel")
         check(more.text_content() == "prikaži sve", f"Odustani left {more.text_content()!r}")
 
-        link = pg.locator("#masa .ms-height a .ed")                       # a link's words
-        link.tap(); pg.wait_for_timeout(300)
-        check(pg.url == server + "/karton" and bar() == "Karton · masa: poveznica na profil",
-              f"a tap on the link's words: {pg.url}, the bar {bar()!r}")
+        # the height's toggle (26.11.2026: the karton's own, where a link to
+        # /profil was; a link's words are the raspored's and the player's
+        # test): its words open, its form does not, nor at a space typed
+        toggle = pg.locator("#visina .ms-height .act .ed")
+        toggle.tap(); pg.keyboard.type(" x")
+        check(bar() == "Karton · masa: gumb upiši visinu"
+              and not pg.evaluate("() => document.getElementById('visina').classList.contains('editing')"),
+              f"a tap and a space on upiši's words: the bar {bar()!r}")
         pg.tap("#cbCancel")
 
         row = pg.locator('.k-texts [data-copy="karton.confirm.weight_title"]')   # a row of the panel
@@ -4335,7 +4359,7 @@ def test_the_raspored_and_the_player_are_edited_in_place_on_a_phone(server):
         pg = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True).new_page()
         pg.on("pageerror", lambda e: errs.append(f"{email}: {e}"))
         pg.on("dialog", lambda dlg: dlg.accept())                 # the player's beforeunload, after a tap
-        pg.goto(server + "/login"); pg.evaluate("() => localStorage.setItem('qmt-a2hs', 'installed')")
+        pg.goto(server + "/login"); pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
         pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
         pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
         return pg

@@ -23,7 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .. import auth, config, copy, db, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, ONLINE_TIER_SLOTS, ONLINE_TIERS, PAYMENT_METHODS, PLAN_ABBR,
                       PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, VENUES, WEEKDAYS as DAY_WEEKDAYS, add_month,
-                      duration_text, effort_of, fold, matches, plural, sub_month)
+                      alpha_key, duration_text, effort_of, fold, matches, plural, sub_month)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -48,7 +48,23 @@ async def _lifespan(app: FastAPI):
     task.cancel()
 
 
+class _ActingGuard:
+    """Staff acting as a member (26.11.2026): the check before every route,
+    _acting_guard (the section "staff act as a member" below). Pure ASGI:
+    it reads the session, the query and the headers, never the body."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        await _acting_guard(self.app, scope, receive, send)
+
+
 app = FastAPI(title="QMT", lifespan=_lifespan)
+# The guard is added FIRST: a middleware added later wraps the ones before
+# it, so SessionMiddleware is outside the guard and the session (its
+# scope["session"]) is there when the guard runs.
+app.add_middleware(_ActingGuard)
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, https_only=config.IS_PROD)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["COPY"] = copy.SLOTS      # the editable texts and their limits (_copy.html)
@@ -171,8 +187,44 @@ def _safe_next(nxt: str | None) -> str:
 
 
 def current_user(request: Request):
+    """Who the request is for. While a staff member acts as a member (since
+    26.11.2026, "Gledaj kao člana": the session's as_user_id) it is that
+    MEMBER, so every page and route behaves exactly as for him; the staff
+    member is the actor, kept beside him (request.state.actor, and the pair
+    as request.state.acting: _acting / _actor). Only a staff member acts, only as a member:
+    _acting_guard drops a session that holds anything else before any route
+    runs, and should one change under a request (an account made staff
+    meanwhile) the answer is nobody, never the staff member himself."""
     uid = request.session.get("user_id")
-    return db.get_user(uid) if uid else None
+    user = db.get_user(uid) if uid else None
+    member_id = request.session.get("as_user_id")
+    acting = None
+    if user is not None and member_id is not None:
+        member = db.get_user(member_id) if _can_edit_copy(user) else None
+        if member is None or _can_edit_copy(member):
+            request.state.acting = request.state.actor = None
+            return None
+        acting = (user, member)
+    request.state.acting = acting
+    request.state.actor = acting[0] if acting else None
+    return acting[1] if acting else user
+
+
+def _acting(request: Request):
+    """(the staff member, the member) while the session acts as a member,
+    else None (current_user's, read once a request)."""
+    if "as_user_id" not in request.session:
+        return None
+    if not hasattr(request.state, "acting"):
+        current_user(request)
+    return request.state.acting
+
+
+def _actor(request: Request):
+    """The staff member acting as the member current_user returns, while he
+    does; else None."""
+    acting = _acting(request)
+    return acting[0] if acting else None
 
 
 def _is_owner(user) -> bool:
@@ -215,7 +267,11 @@ def _pop_feedback_prompt(request: Request, user):
 
 
 def _ctx(request: Request, user, copy_texts: dict[str, str] | None = None, **extra):
+    # while a staff member acts as a member: the bar over every page names
+    # the member (kao) and its pages carry his id (base.html: body data-kao)
+    acting = _acting(request)
     return {"request": request, "user": user, "weekdays_short": WEEKDAYS_SHORT,
+            "actor": acting[0] if acting else None, "kao": acting[1] if acting else None,
             "mojimakrosi_url": config.MOJIMAKROSI_URL,
             "show_online": _has_online(user),
             "plan_links": PLAN_LINKS,
@@ -249,6 +305,10 @@ def login(request: Request, email: str = Form(...), password: str = Form(...),
     if not u.email_verified:
         # correct password but unproven inbox: re-issue the link instead of a dead end
         return _send_verification(request, u.email)
+    # a new login is a new identity: whatever view as a member the session
+    # held (26.11.2026) ends with the old one
+    for key in _ACTING_KEYS:
+        request.session.pop(key, None)
     request.session["user_id"] = u.id
     # Owed osvrti are asked for once, on the first page this login renders —
     # the flag only arms the prompt, _pop_feedback_prompt decides if there is
@@ -1069,12 +1129,22 @@ def moja_clanarina(request: Request):
                    and any(p["auto_renew"] or p["cancelling"] for p in plans)))
 
 
+def _card_by_member() -> RedirectResponse:
+    """A card payment started while a staff member acts as the member
+    (26.11.2026): closed, nothing sent to Stripe. The member starts it
+    himself: the card and the contract are his."""
+    from urllib.parse import quote
+    return RedirectResponse("/moja-clanarina?error=" + quote("Plaćanje karticom pokreće član sam."), status_code=303)
+
+
 @app.post("/placanje/portal")
 def placanje_portal(request: Request):
     """Stripe's hosted portal: change card, cancel, download invoices."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
+    if _actor(request):
+        return _card_by_member()
     if not payments.enabled() or not user.stripe_customer_id:
         return RedirectResponse("/moja-clanarina?error=Nemaš+aktivnu+pretplatu+karticom.", status_code=303)
     try:
@@ -1090,6 +1160,8 @@ def placanje_promjena(request: Request, plan: str, sessions: int = Form(...)):
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
+    if _actor(request):
+        return _card_by_member()
     from urllib.parse import quote
     try:
         payments.change_tier(user, plan, sessions)
@@ -1116,6 +1188,8 @@ def placanje(request: Request, plan: str, sessions: int | None = Form(None), tie
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/moja-clanarina')}", status_code=303)
+    if _actor(request):
+        return _card_by_member()
     if plan not in PLAN_TYPES or plan not in payments.sellable_plans():
         return RedirectResponse("/moja-clanarina?error=Ovaj+plan+se+ne+može+platiti+karticom.",
                                 status_code=303)
@@ -1625,6 +1699,216 @@ def _require_owner(request: Request):
     return user, None
 
 
+# ---------- staff act as a member ("Gledaj kao člana", 26.11.2026) ----------
+#
+# The owner: "What if we have a user selection somewhere in the app for the
+# admins much higher in the hierarchy and then Amir can look at the app just
+# like the user sees the app and he can do everything the user does in the
+# same way?" … "so that nothing is lost in the communication or display
+# between him and the user". While a staff member (the trainer, the owner)
+# is "in" a member's account, current_user IS the member: every page and
+# every route behaves as for him (his plans, his gates; a staff route
+# refuses as it refuses any member), the staff member the actor beside him.
+# The session holds it: as_user_id (the member), as_seen (the last request's
+# time, for the idle limit), as_back (where "Izađi" goes). Closed while
+# acting: a card payment (_card_by_member) and sending the upitnik (its
+# consent is the member's). Every write done so is recorded (ActingLog),
+# for the owner alone.
+
+_ACTING_KEYS = ("as_user_id", "as_seen", "as_back")
+# the paths that never depend on who asks (the static files, the
+# announcements' photos, the service worker, the healthcheck): let be
+_ACTING_FREE = ("/static/", "/slika/", "/sw.js", "/healthz")
+# the two writes a page drawn for another identity may always send: the way
+# out of the view and out of the session
+_ACTING_EXITS = ("/kao/izlaz", "/logout")
+ACTING_EXPIRED = "Pregled kao član je istekao — odaberi člana ponovno."
+ACTING_ENDED = "Pregled kao član je završen — ništa nije spremljeno."
+ACTING_STALE = "Stranica je bila otvorena prije ulaska u pregled kao član — ništa nije spremljeno."
+ACTING_REFUSED = "U račun trenera ili vlasnika se ne ulazi."
+
+
+def _clock() -> float:
+    """Now, as the idle limit counts it (epoch seconds)."""
+    import time
+
+    return time.time()
+
+
+def _acting_check(user_id, member_id) -> tuple[str, object, object]:
+    """The session's view as a member, checked against the accounts now:
+    ("ok", the staff member, the member); ("actor", …) when the one logged
+    in is gone or no longer staff; ("member", …) when the member is gone or
+    has become staff."""
+    actor = db.get_user(user_id) if isinstance(user_id, int) else None
+    if actor is None or not _can_edit_copy(actor):
+        return "actor", None, None
+    member = db.get_user(member_id) if isinstance(member_id, int) else None
+    if member is None or _can_edit_copy(member):
+        return "member", actor, None
+    return "ok", actor, member
+
+
+def _record_acting(actor, member, method: str, path: str, status: int | None) -> None:
+    """A row of the record (db.record_acting); a failure to write it is
+    printed, never raised: the request it records stands."""
+    try:
+        db.record_acting(actor, member, method, path, status)
+    except Exception as e:
+        print(f"[kao] the record of {method} {path} failed: {e!r}")
+
+
+async def _acting_guard(app_, scope, receive, send) -> None:
+    """Before every route (_ActingGuard, inside SessionMiddleware).
+
+    Not acting: a write (any method but GET, HEAD, OPTIONS) that names a
+    member (the page it came from was drawn while acting: ?kao= / X-QMT-Kao)
+    executes nothing, back to /kao saying the view has ended. Acting: the
+    session is checked first. An actor who is no longer staff (or gone) is
+    dropped to /, a member who is gone or has become staff, and a view idle
+    for config.ACT_AS_IDLE_MINUTES, drop to /kao saying it expired: the three
+    keys go and NOTHING runs, GET or POST (a form left open on the member's
+    karton must never save into the staff member's own, nor anything else
+    run as him), but a logout, which runs. Then the last request's time is
+    stamped, and a write runs only when its page was drawn for this member
+    (its marker is his id; base.html adds it to every form and fetch of a
+    page drawn while acting): else nothing, back to his karton saying so.
+    "Izađi" and the logout always pass. A write that runs is recorded with
+    its status (None when the app failed), never failing the request."""
+    if scope["type"] != "http" or scope["path"].startswith(_ACTING_FREE):
+        await app_(scope, receive, send)
+        return
+    from urllib.parse import quote
+
+    from starlette.concurrency import run_in_threadpool
+
+    request = Request(scope)
+    session, path, method = request.session, scope["path"], scope["method"]
+    write = method not in ("GET", "HEAD", "OPTIONS")
+    leaving = path in _ACTING_EXITS
+    marker = request.query_params.get("kao") or request.headers.get("x-qmt-kao") or ""
+    member_id = session.get("as_user_id")
+    if member_id is None:
+        if write and marker and not leaving:
+            await RedirectResponse("/kao?error=" + quote(ACTING_ENDED), status_code=303)(scope, receive, send)
+            return
+        await app_(scope, receive, send)
+        return
+    verdict, actor, member = await run_in_threadpool(_acting_check, session.get("user_id"), member_id)
+    seen, now = session.get("as_seen"), _clock()
+    if verdict == "ok" and not (isinstance(seen, (int, float)) and now - seen <= config.ACT_AS_IDLE_MINUTES * 60):
+        verdict = "expired"
+    if verdict != "ok":
+        for key in _ACTING_KEYS:
+            session.pop(key, None)
+        if path == "/logout":
+            await app_(scope, receive, send)
+            return
+        where = "/" if verdict == "actor" else "/kao?error=" + quote(ACTING_EXPIRED)
+        await RedirectResponse(where, status_code=303)(scope, receive, send)
+        return
+    session["as_seen"] = int(now)
+    if write and not leaving and marker != str(member_id):
+        await RedirectResponse("/karton?error=" + quote(ACTING_STALE), status_code=303)(scope, receive, send)
+        return
+    if not write:
+        await app_(scope, receive, send)
+        return
+    status = None
+
+    async def answered(message) -> None:
+        nonlocal status
+        if message["type"] == "http.response.start":
+            status = message["status"]
+        await send(message)
+
+    try:
+        await app_(scope, receive, answered)
+    finally:
+        await run_in_threadpool(_record_acting, actor, member, method, path, status)
+
+
+@app.get("/kao", response_class=HTMLResponse)
+def kao_page(request: Request):
+    """"Gledaj kao člana" (Admin ▾'s first item): every member (an account
+    that is neither a trainer nor the owner) in the alphabet's order (his
+    full name, the email for one with none: models.alpha_key), his running
+    plans by their names (PLAN_LABELS, PLAN_TYPES' order; none: "bez
+    članarine"), and "Otvori →", POST /kao/<id>. A search filters the rows
+    as it is typed (the page's script; the whole list without it). The
+    owner also gets the way to the record (/kao/zapisi)."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    today = config.today()
+    order = {p: i for i, p in enumerate(PLAN_TYPES)}
+    members = []
+    for row in db.memberships_overview():
+        u = row["user"]
+        if _can_edit_copy(u):                        # the owner, listed there when he does not train
+            continue
+        running = sorted((m.plan for m in row["plans"] if m.is_active(today)), key=lambda p: order.get(p, len(order)))
+        members.append({"user": u, "name": u.full_name or u.email,
+                        "plans": " · ".join(PLAN_LABELS.get(p, p) for p in running)})
+    members.sort(key=lambda m: (alpha_key(m["name"]), m["user"].email))
+    return templates.TemplateResponse(request, "kao.html", _ctx(request, user, members=members))
+
+
+@app.get("/kao/zapisi", response_class=HTMLResponse)
+def kao_zapisi(request: Request):
+    """"Radnje u ime članova", the record (the owner's alone: "Only a record
+    for me"): every entry into a member's account and every write done as
+    one, newest first, db.ACTING_LOG_PAGE (100) a page (?str=2, "Novije" /
+    "Starije"): when (Zagreb), who, as whom, what (the method and the
+    path), the status."""
+    user, redirect = _require_owner(request)
+    if redirect:
+        return redirect
+    raw = request.query_params.get("str", "")
+    page = int(raw) if re.fullmatch(r"[1-9][0-9]{0,5}", raw) else 1
+    rows, older = db.acting_log(page)
+    return templates.TemplateResponse(request, "kao_zapisi.html", _ctx(
+        request, user, rows=rows, page=page, older=older, tz=config.TZ))
+
+
+@app.post("/kao/izlaz")
+def kao_izlaz(request: Request):
+    """"Izađi" (the bar's): the view as a member ends, back where it was
+    entered from (as_back; /kao by default). Always passes the guard's
+    check of the page's identity, as the logout does."""
+    back = request.session.get("as_back")
+    for key in _ACTING_KEYS:
+        request.session.pop(key, None)
+    return RedirectResponse(_safe_next(back) if back else "/kao", status_code=303)
+
+
+@app.post("/kao/{user_id}")
+def kao_enter(request: Request, user_id: int, natrag: str = Form(""), kamo: str = Form("")):
+    """Into a member's account: a trainer or the owner (a member, a guest
+    never reaches it; while acting this is the member's, who is refused
+    too), into a member's only ("U račun trenera ili vlasnika se ne
+    ulazi."). `natrag`, where "Izađi" returns (/kao by default), and
+    `kamo`, where to land (his karton by default), each a local path
+    (_safe_next). The entry is the record's first row; the osvrt prompt is
+    not armed by it."""
+    from urllib.parse import quote
+
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    member = db.get_user(user_id)
+    if member is None:
+        raise HTTPException(status_code=404)
+    if _can_edit_copy(member):
+        return RedirectResponse("/kao?error=" + quote(ACTING_REFUSED), status_code=303)
+    request.session["as_user_id"] = member.id
+    request.session["as_seen"] = int(_clock())
+    request.session["as_back"] = _safe_next(natrag) if natrag.strip() else "/kao"
+    request.session.pop("fb_prompt", None)
+    _record_acting(user, member, "POST", request.url.path, 303)
+    return RedirectResponse(_safe_next(kamo) if kamo.strip() else "/karton", status_code=303)
+
+
 @app.get("/tekstovi", response_class=HTMLResponse)
 def tekstovi_page(request: Request):
     """Every plain text of the app on one page (25.11.2026, the owner: "If
@@ -1754,10 +2038,13 @@ def session_roster(request: Request, session_id: int):
         sess = s.get(db.TrainingSession, session_id)
     if sess is None:
         raise HTTPException(status_code=404)
+    people = db.roster(session_id)
     return templates.TemplateResponse(request, "roster.html", _ctx(
         request, user, sess=sess,
         local_time=sess.starts_at.astimezone(config.TZ),
-        people=db.roster(session_id),
+        people=people,
+        # "Kao član →" on a member's row (26.11.2026), never on staff's
+        staff_ids={p.id for p in people if _can_edit_copy(p)},
     ))
 
 
@@ -1807,10 +2094,11 @@ def profil_page(request: Request):
 
 @app.post("/profil")
 def profil_save(request: Request, name: str = Form(...), last_name: str = Form(...),
-                birth_date: str = Form(""), phone: str = Form(""), height: str = Form("")):
-    """The profile's fields, every one as posted. Since 23.11.2026 the
-    height too (Amir's karton: "tjelesna visina"), whole centimetres,
-    100–250 (db.read_height), empty for none: the karton shows it."""
+                birth_date: str = Form(""), phone: str = Form("")):
+    """The profile's fields, every one as posted. The height, a field here
+    from 23.11.2026, is the karton's since 26.11.2026 (the owner's note:
+    "visinu maknut iz profila u karton"; POST /karton/visina): nothing here
+    reads it, and a save keeps the stored one."""
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -1823,12 +2111,8 @@ def profil_save(request: Request, name: str = Form(...), last_name: str = Form(.
             return RedirectResponse("/profil?error=Neispravan+datum+rođenja.", status_code=303)
     if not name.strip() or not last_name.strip():
         return RedirectResponse("/profil?error=Ime+i+prezime+su+obavezni.", status_code=303)
-    try:
-        height_cm = db.read_height(height)
-    except ValueError:
-        return RedirectResponse("/profil?error=Neispravna+visina.", status_code=303)
     entry_pass = not user.profile_complete       # the after-sign-up completion
-    db.update_profile(user.id, name, last_name, born, phone, height_cm=height_cm)
+    db.update_profile(user.id, name, last_name, born, phone)
     if entry_pass and born is not None:
         # done onboarding: drop them on the landing page, not back on the form
         # (still incomplete -> stay here so they can finish)
@@ -2019,6 +2303,8 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         docs=docs, docs_max=db.MAX_LIMITATION_FILES, doc_name_max=db.DOC_NAME_MAX,
         logged=logged, hx=hx, hx_unknown=hx_unknown, hx_rows=hx_rows, hx_shown=HISTORY_SHOWN,
         karton_path="/karton" if own else f"/karton/{subject.id}",
+        # the trainer's view of a member's karton: "Otvori kao člana" (26.11.2026)
+        can_act=not own and not _can_edit_copy(subject),
         today=config.today(), tz=config.TZ,
     ))
 
@@ -2139,6 +2425,11 @@ async def upitnik_submit(request: Request):
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
+    if _actor(request):
+        # staff acting as the member (26.11.2026): his consent is his own
+        from urllib.parse import quote
+        return RedirectResponse(
+            "/upitnik?od=1&error=" + quote("Upitnik ispunjava član sam — privola mora biti njegova."), status_code=303)
     if _can_edit_copy(user):
         return RedirectResponse(
             "/upitnik?od=1&error=Upitnik+ispunjavaju+članovi+—+ovdje+se+uređuju+samo+tekstovi.", status_code=303)
@@ -2511,6 +2802,24 @@ def karton_weight_delete(request: Request, weight_id: int):
     if name:
         storage.delete(name)
     return _karton_back("masa", ok="Unos je obrisan.")
+
+
+@app.post("/karton/visina")
+def karton_height(request: Request, visina: str = Form("")):
+    """The member's height, on his karton's "Tjelesna kompozicija" since
+    26.11.2026 (the owner's note: "visinu maknut iz profila u karton"; on
+    /profil until then): "uredi" / "upiši" opens its one field, whole
+    centimetres 100–250 (db.read_height: "Neispravna visina.", nothing
+    changed), empty to clear it. Back at the card (#masa)."""
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    try:
+        height_cm = db.read_height(visina)
+    except ValueError as e:
+        return _karton_back("masa", error=str(e))
+    db.set_height(user.id, height_cm)
+    return _karton_back("masa", ok="Visina je spremljena.")
 
 
 @app.post("/karton/ogranicenja")
@@ -4099,6 +4408,9 @@ def clanarine_page(request: Request):
     today = config.today()
     rows = db.memberships_overview()
     for row in rows:
+        # "Kao član →" beside "Karton →" (26.11.2026): a member's row, never
+        # the owner's (who is listed here when he does not train)
+        row["can_act"] = not _can_edit_copy(row["user"])
         # what an uplata recorded now buys, said beside its button
         # (db.next_cycle, the rule record_payment follows)
         row["next"] = {m.plan: db.next_cycle(m, today) for m in row["plans"]}

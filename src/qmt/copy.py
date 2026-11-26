@@ -171,9 +171,13 @@ vrijedi do"), the tables' cells and whatever a row or a model prints
 months, "danas" / "sutra" / "jučer"), the routes' flashes and refusals,
 the emails, every aria-label, alt, title attribute and <title>, the
 crumbs, the nav (its room is measured), the editor's own controls, the
-studio's address, phone and email (each the text of the link it opens)
-and the dev server's own lines. tests/test_copy_rule.py holds the rule for
-the pages to come: a literal text on such a page fails it.
+strip over every page while staff act as a member (26.11.2026, "Gledaš
+kao: …", "Izađi": staff's own chrome), the studio's address, phone and
+email (each the text of the link it opens) and the dev server's own lines.
+Since 26.11.2026 also the phone reminder's three texts (app.phone.*, the
+install banner's card for a member with no phone number).
+tests/test_copy_rule.py holds the rule for the pages to come: a literal
+text on such a page fails it.
 
 The price slots (18.10.2026) are plain Slots with one job: every price the
 site shows, whether or not Stripe is configured (app.py, reference_prices
@@ -760,10 +764,19 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # mass, a document, or both
     "karton.weight.title": Slot("Tjelesna kompozicija", CAP, "Karton · masa: naslov", required=True),
     "karton.weight.add": Slot("Upiši", CAP, "Karton · masa: gumb Upiši", required=True),
-    "karton.weight.height_edit": Slot("uredi", CAP, "Karton · masa: poveznica uz visinu", required=True),
-    "karton.weight.no_height": Slot("Visina nije upisana —", CAP, "Karton · masa: bez visine, prije poveznice"),
-    "karton.weight.no_height_link": Slot("upiši je na profilu", CAP, "Karton · masa: poveznica na profil",
-                                         required=True),
+    # the height, here since 26.11.2026 (the owner's note: "visinu maknut iz
+    # profila u karton"; /profil's field until then, whose link "uredi" /
+    # "upiši je na profilu" led there: karton.weight.height_edit, .no_height
+    # and .no_height_link left the registry, new keys for new words, so an
+    # edit of the old ones never prints in a new place): the toggle beside
+    # the height, the line with none and its toggle, the form's field and
+    # its two buttons
+    "karton.weight.height_change": Slot("uredi", CAP, "Karton · masa: gumb uz visinu", required=True),
+    "karton.weight.height_none": Slot("Visina nije upisana", CAP, "Karton · masa: bez visine"),
+    "karton.weight.height_add": Slot("upiši", CAP, "Karton · masa: gumb upiši visinu", required=True),
+    "karton.weight.height_field": Slot("Visina (cm)", CAP, "Karton · masa: polje Visina", required=True),
+    "karton.weight.height_save": Slot("Spremi", CAP, "Karton · masa: gumb Spremi visinu", required=True),
+    "karton.weight.height_cancel": Slot("Odustani", CAP, "Karton · masa: gumb Odustani od visine", required=True),
     "karton.weight.empty": Slot("Još nije upisana.", CAP, "Karton · masa: kad nema unosa"),
     "karton.weight.kg": Slot("Kilogrami", CAP, "Karton · masa: polje Kilogrami", required=True),
     "karton.weight.day": Slot("Datum", CAP, "Karton · masa: polje Datum", required=True),
@@ -1109,7 +1122,7 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "profil.form.born": Slot("Datum rođenja", CAP, "Profil: polje Datum rođenja", required=True),
     "profil.form.phone": Slot("Telefon (neobavezno)", CAP, "Profil: polje Telefon", required=True),
     "profil.form.phone_placeholder": Slot("09x xxx xxxx", CAP, "Profil: primjer u polju Telefon"),
-    "profil.form.height": Slot("Visina (cm)", CAP, "Profil: polje Visina", required=True),
+    # (no height since 26.11.2026: the karton's, karton.weight.height_*)
     "profil.form.save": Slot("Spremi podatke", CAP, "Profil: gumb Spremi podatke", required=True),
     "profil.account.title": Slot("Račun", CAP, "Profil · račun: naslov", required=True),
     "profil.account.since": Slot("Registriran/a od", CAP, "Profil · račun: Registriran/a od, prije datuma"),
@@ -1184,6 +1197,13 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "app.install.pick_item": Slot("„Dodaj na početni zaslon”", CAP, "Aplikacija · instalacija: korak 2, stavka (podebljano)"),
     "app.install.ok": Slot("U redu", CAP, "Aplikacija · instalacija: gumb U redu", required=True),
     "app.install.go": Slot("Instaliraj", CAP, "Aplikacija · instalacija: gumb Instaliraj", required=True),
+    # the phone reminder (26.11.2026, the owner: "if a user didnt give it,
+    # when he opens the app a popup reminder should appear"): the install
+    # banner's card for a member with no phone number
+    "app.phone.title": Slot("Dodaj broj mobitela", CAP, "Aplikacija · broj mobitela: naslov", required=True),
+    "app.phone.lead": Slot("Da ti se trener može javiti ako se termin promijeni.", CAP,
+                           "Aplikacija · broj mobitela: tekst"),
+    "app.phone.go": Slot("Upiši broj", CAP, "Aplikacija · broj mobitela: gumb Upiši broj", required=True),
     "app.confirm.title": Slot("Jesi li siguran/na?", CAP, "Aplikacija · potvrda: naslov kad stranica ne kaže svoj",
                               required=True),
     "app.confirm.cancel": Slot("Odustani", CAP, "Aplikacija · potvrda: gumb Odustani", required=True),
@@ -1290,6 +1310,7 @@ _TEXT_RULES = (
         ("Vrata planova", ("app.door.",)),
         ("Poruka bez članarine", ("app.alert.",)),
         ("Instalacija", ("app.install.",)),
+        ("Broj mobitela", ("app.phone.",)),
         ("Prozor za potvrdu", ("app.confirm.",)),
         ("Osvrt nakon prijave", ("app.feedback.",)),
         ("Stranica greške", ("app.error.",)),

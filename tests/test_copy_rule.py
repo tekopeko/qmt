@@ -84,7 +84,7 @@ MEMBER_TEMPLATES = (
 STAFF_TEMPLATES = (
     "admin.html", "clanarine.html", "korisnici.html", "statistika.html", "roster.html", "template_edit.html",
     "treninzi_admin.html", "trening_edit.html", "trening_day_edit.html", "vjezbe.html", "vjezba.html",
-    "tekstovi.html", "_tagbar.html",
+    "tekstovi.html", "_tagbar.html", "kao.html", "kao_zapisi.html",
 )
 
 # a sentence built around a value: the fixed words whose grammar hangs on a
@@ -95,8 +95,11 @@ ALLOWED: dict[str, set[str]] = {
         # the nav: the tabs, Admin ▾ and its items, the drawer's captions,
         # the account menu (the bar's room is measured: tests/test_nav.py)
         "Kao član", "Početna", "Raspored", "Karton", "Online treninzi", "Moja članarina", "Prehrana", "Admin",
-        "Termini", "Trenutne članarine", "Upitnik", "Vježbe", "Tekstovi", "Korisnici", "Statistika", "Prijava",
-        "Registriraj se", "Kontakt", "Profil", "Tamna tema", "Odjava",
+        "Gledaj kao člana", "Termini", "Trenutne članarine", "Upitnik", "Vježbe", "Tekstovi", "Korisnici",
+        "Statistika", "Prijava", "Registriraj se", "Kontakt", "Profil", "Tamna tema", "Odjava",
+        # the strip over every page while staff act as a member (26.11.2026):
+        # staff's own chrome, which a member never reads
+        "Gledaš kao:", "Izađi",
         # the brand, in the bar and on the install banner
         "Quality Movement Training", "QMT",
         # the copy editor's own bar (staff, edit mode)
@@ -130,6 +133,9 @@ ALLOWED: dict[str, set[str]] = {
         "Svi tekstovi kartona",
         "Ovdje su i tekstovi koje vidi samo član ili su u prozorima za potvrdu. Promjena u prozorima i poljima vidi "
         "se nakon osvježavanja stranice.",
+        # the trainer's view's way into the member's account (26.11.2026):
+        # staff's own chrome, as the strip over a page while acting
+        "Otvori kao člana",
     },
     "trening_view.html": {
         "Treninzi",                          # the crumb
@@ -256,8 +262,10 @@ def test_every_slot_of_this_build_is_printed_by_a_template_or_the_code():
     was not booked (raspored.report.why_<key>: the redirect's reason keys,
     app.SKIP_KEYS) and a plan's chip (clanarina.chip.<kind>: the kinds
     app.py gives it). Every one a plain Slot of every text's cap, its label
-    unique in the editor's bar."""
-    assert len(BUILD) == 268
+    unique in the editor's bar. 270 since 26.11.2026: the profile's
+    "Visina (cm)" left (the karton's since), the phone reminder's three
+    came (app.phone.*)."""
+    assert len(BUILD) == 270
     sources = APP + "".join((TEMPLATES / n).read_text() for n in MEMBER_TEMPLATES)
     why = {k for k in BUILD if k.startswith("raspored.report.why_")}
     chips = {k for k in BUILD if k.startswith("clanarina.chip.")}
