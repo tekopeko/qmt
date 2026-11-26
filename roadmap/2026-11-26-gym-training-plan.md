@@ -129,7 +129,7 @@ ask for a bigger change").
 
 1. **Acting as a member, and the small things**: "Gledaj kao člana" with its bar, its
    record and its shortcuts; seconds in steps of 5; 20 sets; the height on the karton; the
-   phone reminder.
+   phone reminder. (Live 26.11.2026, `65121a6`: STATUS.md.)
 2. **A training's parts**: Glavni dio C, a part's own name, and in a dvoranski programme
    the empty slots (Amir's templates).
 3. **The gym training**: made at the booking, one page that grows as the training goes
