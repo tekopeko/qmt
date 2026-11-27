@@ -14,6 +14,7 @@ The owner, with a screenshot of the field "Član" and its amber "Otvori kao čla
 - **Fable's review**: the diff read; on the dev server as the owner at 390 and 1280px: no button in the form, "iv" finds Ivan Horvat, a tap opens `/karton/2` ("Karton / Ivan", no strip, "Povijest vježbe" there, "Otvori kao član" there), the Karton tab lit and Admin ▾ not, overflow 0, the crumb back with the field empty, Enter with nothing picked, the keyboard's pick, Back, a junk `clan`.
 - **Not verified**: a real back/forward-cache restore (Playwright's Chromium has none: the `persisted` branch ran on a synthetic event); iOS Safari.
 - **Noted**: `/karton/<id>` still renders for a staff account's id (Korisnici's "Karton" on a staff row), as before; the search refuses staff ids.
+- **On prod (27.11.2026)**: the whole suite `672 passed`, the audit `new findings: 0`; commit `e4eff8c`, pushed (the plan of the gym blocks beside it, `732dced`, `roadmap/2026-11-27-dvoranski-treninzi-plan.md`); the database dumped first (`/opt/backups/qmt-pre-find-20261127T140114.sql.gz` on the box, 29 tables, complete); `deploy.sh` healthy; checked without logging in: the deployed `karton_client` asks `_require_trainer`, `karton_find` is there and `kao_pick` is not, the deployed karton.html holds `form.k-find` and base.html no `.btn-kao`, alembic `3d9a6f2c8b51`, 8 accounts, 276 exercises, 59 edited texts, 3 gym trainings, the log clean, `/healthz` 200, a guest's `/karton/clan` to the login, `POST /kao` 405.
 
 ## 27.11.2026 — a member's read-only karton is the owner's alone (Fable, direct)
 
