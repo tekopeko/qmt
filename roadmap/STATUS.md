@@ -11,6 +11,7 @@ The owner, of the read-only view `/karton/<id>` (reached from Korisnici's "Karto
 - **A trainer who is not the owner** has no Korisnici and no link to the view (its address alone): his crumb and lit item stay Trenutne članarine, a page he has (Fable's choice: never a crumb that 403s).
 - **Tests** (672, no new test: three follow the page): `test_nav.py` (the owner's `/karton/<id>` lights Korisnici, the coach's Trenutne članarine), `test_karton.py` (both crumbs), `test_copy_rule.py` (the literal "Korisnici" on karton.html's allowlist, the cap 130).
 - **Checked**: the three files `54 passed`; in the browser on the dev server as the owner at 390 and 1280px: the crumb, where it leads, the lit item, overflow 0; one 390px screenshot looked at.
+- **On prod (27.11.2026)**: the whole suite `672 passed`, the audit `new findings: 0`; commit `3021230`, pushed; the database dumped first (`/opt/backups/qmt-pre-crumb-20261127T113600.sql.gz` on the box, 29 tables, complete); `deploy.sh` healthy; checked without logging in: the deployed templates hold the owner's crumb and `member_karton`, alembic still `3d9a6f2c8b51`, 8 accounts, 276 exercises, 59 edited texts, 3 gym trainings (the first on prod), the log clean, `/healthz` and the landing 200, a guest's `/karton/1` to the login.
 
 ## 27.11.2026 — "Spol" on the profile, and the slash forms ("sam/a", "bio/la") resolved by it (Opus draft, reviewed, live)
 
