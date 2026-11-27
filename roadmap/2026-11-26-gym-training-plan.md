@@ -171,7 +171,7 @@ ask for a bigger change").
    diary, the history and the maxes; the plain form retired. In two parts: **A**, the page,
    its rules, the diary (live 26.11.2026, `e92a6af`: STATUS.md); **B**, a part's own name and
    circuits ticked a round at a time, a dvoranski programme's training as a template, a
-   slot's card.
+   slot's card (live 27.11.2026, `76021fa`: STATUS.md).
 4. **Where staff open a member's app** (the evening's addition above): the Karton tab's
    search and amber button, the two buttons and the obsolete line off Trenutne članarine,
    every such button amber, the trainer-only parts of the upitnik block while acting.
