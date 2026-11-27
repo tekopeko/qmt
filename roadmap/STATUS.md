@@ -10,6 +10,7 @@ The owner, an hour after the crumb below, of Amir, who has had no link to `/kart
 - **The crumb and Admin ▾'s item**: Korisnici, with no other case (the fallback of the entry below, Trenutne članarine for a trainer who is not the owner, went with his access; the literal left karton.html and the allowlist, its cap 129 again).
 - **Tests** (672, none new): seven opened the view as a trainer who is not the owner (`test_karton.py` the history card; `test_kao.py` the shortcuts, the amber buttons, the upitnik while acting; `test_upitnik.py` a kind switch; `test_gym.py` the diary and the way in): each reads it as the owner now, and four of them assert the trainer's 403; `test_nav.py` the coach's 403.
 - **Not changed**: `/media` (staff still open a member's files: acting as him they are his), the view's "Otvori kao član" (the owner's), the name "the trainer's view" in the docs.
+- **On prod (27.11.2026)**: the whole suite `672 passed`, the audit `new findings: 0`; commit `3b715b8`, pushed; the database dumped first (`/opt/backups/qmt-pre-ownerview-20261127T122323.sql.gz` on the box, 29 tables, complete); `deploy.sh` healthy; checked without logging in: the deployed `karton_client` asks `_require_owner`, the deployed crumb is Korisnici's alone, alembic `3d9a6f2c8b51`, 8 accounts (2 trainers), 276 exercises, 59 edited texts, 3 gym trainings, the log clean, `/healthz` and the landing 200, a guest's `/karton/35` to the login.
 
 ## 27.11.2026 — a member's karton in the trainer's view leads back to Korisnici (Fable, direct)
 
