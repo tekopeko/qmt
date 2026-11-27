@@ -13,8 +13,10 @@ Termini (/admin), Trenutne članarine (/clanarine), Upitnik
 Tekstovi (/tekstovi, every text of the app on one page, 25.11.2026)
 and, the owner's only, Korisnici and Statistika. The tab is .on
 while one of its pages is open, that item aria-current="page"; staff's
-Karton at /karton alone, a client's karton (/karton/<id>) lighting Trenutne
-članarine. The account menu is Profil, the theme and Odjava for everyone.
+Karton at /karton and, since 27.11.2026, on a client's karton (/karton/<id>,
+which the Karton tab's search opens), no item of Admin ▾ there (Trenutne
+članarine, then Korisnici, until then). The account menu is Profil, the
+theme and Odjava for everyone.
 In the ☰ drawer (≤900px) a client has the one plain list, staff two
 sections under captions, "Kao član" and "Admin" (the menu's items as rows).
 
@@ -243,15 +245,15 @@ def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
     """On Gledaj kao član (26.11.2026: /kao, and its record, /kao/zapisi),
     Termini (its sub-pages too), Trenutne članarine, Upitnik, Vježbe (an
     exercise's page too: under /treninzi, yet Online treninzi is not .on
-    there), Tekstovi, Korisnici (and since 27.11.2026 a client's karton,
-    /karton/<id>, the owner's alone, which is reached from it; Trenutne
-    članarine from 24.11.2026 until then: a trainer who is not the owner
-    cannot open it) and Statistika the Admin tab is
+    there), Tekstovi, Korisnici and Statistika the Admin tab is
     .on and that item, alone, aria-current; no member tab is (Karton not on
-    a client's karton, nor on /upitnik). Elsewhere the member's tab is .on
-    and Admin is not: Karton on staff's own karton, /karton. The pages carry
-    the items' names. Staff's /upitnik keeps the whole bar: the brand-only
-    pill is a member's (who fills it)."""
+    /upitnik). Elsewhere the member's tab is .on and Admin is not: Karton on
+    staff's own karton, /karton, and since 27.11.2026 on a client's karton,
+    /karton/<id>, the trainer's and the owner's alike (the Karton tab's
+    search opens it; it lit Trenutne članarine from 24.11.2026, then
+    Korisnici, the owner's alone, for some hours of that day). The pages
+    carry the items' names. Staff's /upitnik keeps the whole bar: the
+    brand-only pill is a member's (who fills it)."""
     make_user("trener@test.local", is_trainer=True)
     ivan = make_user("ivan@test.local", plans=("grupni",))
     tid = db.add_template("Grupni trening", 0, 7 * 60, 60, 8, None)
@@ -262,16 +264,20 @@ def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
                        ("/clanarine", "Trenutne članarine"), ("/upitnik", "Upitnik"),
                        ("/treninzi/vjezbe", "Vježbe"), ("/treninzi/vjezbe/nova", "Vježbe"),
                        (f"/treninzi/vjezbe/{eid}", "Vježbe"), ("/tekstovi", "Tekstovi"),
-                       ("/korisnici", "Korisnici"), (f"/karton/{ivan}", "Korisnici"),
-                       ("/statistika", "Statistika")):
+                       ("/korisnici", "Korisnici"), ("/statistika", "Statistika")):
         page = c.get(path).text
         assert admin_tab(page) == ("Admin ▾", True), path
         assert [label for _, label, current in admin_items(page) if current] == [item], path
         assert [label for _, label, on in tabs(page) if on] == [], path
-    make_user("coach@test.local", is_trainer=True)                      # a trainer who is not the owner
-    r = client_for("coach@test.local").get(f"/karton/{ivan}")
-    assert r.status_code == 403 and 'class="crumbs"' not in r.text      # the owner's alone (27.11.2026)
-    assert not any(current for *_, current in admin_items(r.text))
+    # a client's karton is under the Karton tab since 27.11.2026, whose search
+    # opens it: for the owner and for a trainer who is not the owner (refused
+    # it for some hours that day), Karton on, Admin ▾ not, no item current
+    make_user("coach@test.local", is_trainer=True)
+    for who in (c, client_for("coach@test.local")):
+        r = who.get(f"/karton/{ivan}")
+        assert r.status_code == 200 and admin_tab(r.text) == ("Admin ▾", False)
+        assert not any(current for *_, current in admin_items(r.text))
+        assert [label for _, label, on in tabs(r.text) if on] == ["Karton"]
     for path, tab in (("/", "Početna"), ("/raspored", "Raspored"), ("/karton", "Karton"),
                       ("/treninzi", "Online treninzi"), ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")):
         page = c.get(path).text

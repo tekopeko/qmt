@@ -256,28 +256,25 @@
      one .act, tucked under the lead, the cards below it; since build 4 in
      base.html's amber tint (.act-kao), as every way into a member's app */
   .kao-open { margin:-8px 0 22px; }
-  /* The Karton tab of the trainer and the owner (26.11.2026, build 4; the
-     owner: "the 'Otvori kao član' amber button on the Karton tab of the
-     Admin and Trainer with a search bar where a user can be searched"):
-     ONE form under the lead, above the cards, the way into a member's app.
-     "Član" (the page's label look) over a row: the member's field
-     (base.html's combobox over #kp-json; the native select without the
-     script), 420px at most, and "Otvori kao član" beside it (.btn-kao, the
-     strip's solid amber: someone else's account), both 40px, 44px on a
-     coarse pointer, their tops level (the "nothing picked" line under the
-     field lengthens its own column alone). Under 600px one under the
-     other, the button the column's width. The list lies over the cards
-     (.cbx-list, absolute), never pushes them. Staff's own chrome: no slot. */
-  .kao-pick { margin:0 0 26px; }
-  .kao-pick .kp-row { display:flex; flex-direction:column; gap:10px; }
-  .kao-pick .kp-field { min-width:0; }
-  .kao-pick :is(.cbx > input, select) { height:40px; padding:0 13px; }
-  @media (pointer: coarse) { .kao-pick :is(.cbx > input, select) { height:44px; } }
-  @media (min-width: 600px) {
-    .kao-pick .kp-row { flex-direction:row; align-items:flex-start; }
-    .kao-pick .kp-field { flex:1 1 auto; max-width:420px; }
-    .kao-pick .btn-kao { flex:none; }
-  }
+  /* The Karton tab of the trainer and the owner (27.11.2026; the owner:
+     "replace the search bar and the button with just a search bar and when
+     a user is pressed, that user's Karton is opened, not the whole app as
+     his view"; the way into his app, "Otvori kao član" beside the field,
+     from 26.11.2026, build 4): ONE field under the lead, above the cards,
+     the search for a member's karton. "Član" (the page's label look) over
+     the member's field (base.html's combobox over #kf-json, a pick sending
+     the form), 420px at most from 600px, the column's width on a phone;
+     40px, 44px on a coarse pointer. The list lies over the cards
+     (.cbx-list, absolute), never pushes them. Without the script the native
+     select and "Otvori karton" (.act) beside it, which the script takes
+     away. Staff's own chrome: no slot. */
+  .k-find { margin:0 0 26px; }
+  .k-find .kf-row { display:flex; align-items:center; gap:10px; }
+  .k-find .kf-field { flex:1 1 auto; min-width:0; }
+  .k-find .act { flex:none; }
+  .k-find :is(.cbx > input, select) { height:40px; padding:0 13px; }
+  @media (pointer: coarse) { .k-find :is(.cbx > input, select) { height:44px; } }
+  @media (min-width: 600px) { .k-find .kf-field { max-width:420px; } }
   .k-body { display:block; font-variant-numeric:tabular-nums; }
   span.t:not(:empty) + .k-body { margin-top:4px; }     /* under the lead; an emptied lead leaves no gap */
   .kc-head { display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap; }
@@ -550,10 +547,11 @@
 
 {% block content %}
 {% if not own %}
-{# this view is the owner's alone (27.11.2026), reached from Korisnici, his
-   page, since Trenutne članarine's "Karton →" went (26.11.2026): its crumb
-   leads back there (the owner: "change both to Korisnici") #}
-<nav class="crumbs" aria-label="Putanja"><a href="/korisnici">Korisnici</a><span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
+{# the trainer's view, staff's: since 27.11.2026 reached from the Karton tab's
+   search (Korisnici's "Karton" too, the owner's), its crumb leads back
+   there, for the trainer and the owner alike (Korisnici for some hours that
+   day, Trenutne članarine until then) #}
+<nav class="crumbs" aria-label="Putanja"><a href="/karton">Karton</a><span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
 {% endif %}
 <h1>{% if own %}{{ c.t("karton.head.title") }}{% else %}Karton — {{ subject.full_name or subject.email }}{% endif %}</h1>
 {# the head line of the body (23.11.2026): "Visina 178 cm · Masa 82,5 kg
@@ -578,30 +576,31 @@
   <button type="submit" class="act act-kao">Otvori kao član</button>
 </form>
 {% endif %}
-{#- the Karton tab of the trainer and the owner (26.11.2026, build 4): the
-   way into a member's app, every member /kao lists in its order (a native
-   select, which the page's script turns into base.html's combobox over
-   #kp-json: the name over "email · plans", typed into by the name and the
-   email), POST /kao, back here at "Izađi". Never while acting (the page is
-   then the member's own karton), on the trainer's view or a member's; no
-   member at all, no form. Staff's own chrome, no slot. Its tags trim the
-   lines they stand on: every other page is byte for byte as before. #}
-{%- if staff_own and kao_members %}
-<form class="kao-pick" method="post" action="/kao">
-  <input type="hidden" name="natrag" value="/karton">
-  <label for="kp-clan">Član</label>
-  <div class="kp-row">
-    <div class="kp-field">
-      <select id="kp-clan" name="clan" required>
+{#- the Karton tab of the trainer and the owner (27.11.2026; the way into a
+   member's app, POST /kao, from 26.11.2026, build 4): the search for a
+   member's karton, every member /kao lists in its order (a native select
+   and "Otvori karton" without the script; with it base.html's combobox
+   over #kf-json, the name over "email · plans", typed into by the name and
+   the email, a pick sending the form), GET /karton/clan → his karton, the
+   trainer's view. Never while acting (the page is then the member's own
+   karton), on the trainer's view or a member's; no member at all, no form.
+   Staff's own chrome, no slot. Its tags trim the lines they stand on: every
+   other page is byte for byte as before. #}
+{%- if staff_own and find_members %}
+<form class="k-find" method="get" action="/karton/clan">
+  <label for="kf-clan">Član</label>
+  <div class="kf-row">
+    <div class="kf-field">
+      <select id="kf-clan" name="clan" required>
         <option value="" disabled selected>Odaberi člana…</option>
-        {%- for m in kao_members %}
+        {%- for m in find_members %}
         <option value="{{ m.user.id }}">{{ m.name }}{% if m.name != m.user.email %} · {{ m.user.email }}{% endif %}</option>
         {%- endfor %}
       </select>
     </div>
-    <button type="submit" class="btn-kao">Otvori kao član</button>
+    <button type="submit" class="act">Otvori karton</button>
   </div>
-  <script type="application/json" id="kp-json">{{ kao_rows|tojson }}</script>
+  <script type="application/json" id="kf-json">{{ find_rows|tojson }}</script>
 </form>
 {%- endif %}
 
@@ -1295,26 +1294,41 @@
     qmtCombobox({rows: rows, value: value}, {form: value.form});
   })();
 
-  // The Karton tab's way into a member's app (26.11.2026, build 4): the
-  // members as base.html's combobox, typed into (#kp-json: [id, name,
-  // "email · plans", the email], each row its name over that line, matched
-  // by the name and the email alone), in the member's words; a hidden clan
-  // takes the select's place and is what POST /kao gets. "Otvori kao član"
-  // with nothing picked stops at "Odaberi člana s popisa.". Without the
-  // script the select is the picker.
+  // The Karton tab's search for a member's karton (27.11.2026; the way into
+  // his app from build 4 until then): the members as base.html's combobox,
+  // typed into (#kf-json: [id, name, "email · plans", the email], each row
+  // its name over that line, matched by the name and the email alone); a
+  // hidden clan takes the select's place, and a pick (a tap on a row, Enter
+  // on the highlighted one) sends the form at once, GET /karton/clan → his
+  // karton. No button with the script ("Otvori karton", the no-JS one, goes);
+  // Enter with nothing picked says "Odaberi člana s popisa." and sends
+  // nothing. Brought back out of the browser's cache (Back: pageshow,
+  // persisted), the page still holds the name picked: the field is emptied,
+  // ready for the next one. Without the script the select and the button.
   (function () {
-    var sel = document.getElementById("kp-clan"), data = document.getElementById("kp-json");
+    var sel = document.getElementById("kf-clan"), data = document.getElementById("kf-json");
     if (!sel || !data || !window.qmtCombobox) return;
     var rows;
     try {
       rows = JSON.parse(data.textContent).map(function (x) { return {id: String(x[0]), name: x[1], tags: x[2] || "", find: x[3] || ""}; });
     } catch (e) { return; }
+    var form = sel.form, go = form.querySelector('button[type="submit"]');
     var value = document.createElement("input");
     value.type = "hidden"; value.name = sel.name;
     sel.parentNode.replaceChild(value, sel);
     value.id = sel.id;
-    qmtCombobox({rows: rows, value: value}, {form: value.form, placeholder: "Ime ili email člana", listLabel: "Članovi",
-                                              missing: "Odaberi člana s popisa.", noMatch: "Nijedan član ne odgovara traženju."});
+    var cb = qmtCombobox({rows: rows, value: value}, {
+      form: form, placeholder: "Ime ili email člana", listLabel: "Članovi",
+      missing: "Odaberi člana s popisa.", noMatch: "Nijedan član ne odgovara traženju.",
+      onPick: function () { if (form.requestSubmit) form.requestSubmit(); else form.submit(); }});
+    if (!cb) return;
+    if (go) go.remove();
+    window.addEventListener("pageshow", function (e) {
+      if (!e.persisted) return;
+      var err = document.getElementById(value.id + "-err");
+      value.value = ""; cb.input.value = ""; cb.input.removeAttribute("aria-invalid");
+      if (err) err.textContent = "";
+    });
   })();
 
 </script>

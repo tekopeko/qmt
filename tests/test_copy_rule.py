@@ -130,18 +130,20 @@ ALLOWED: dict[str, set[str]] = {
         "@data-confirm: Unos", "@data-confirm: kg", "@data-confirm: od", "@data-confirm: i njegov dokument bit će trajno obrisani.",
         "@data-confirm: kg od", "@data-confirm: bit će trajno obrisan.", "@data-confirm: Dokument „",
         "@data-confirm: ” bit će trajno obrisan.", "@data-confirm: Fotografija za", "@data-confirm: bit će trajno obrisana.",
-        "kg", "Korisnici", "Karton —", "god.", "Bolovi", "bodova", "Razina",
+        "kg", "Karton", "Karton —", "god.", "Bolovi", "bodova", "Razina",
         "od 3 — programi na /treninzi prate ovu razinu.", "Dokument (pdf, jpg, png ili webp, do", "MB)", "Visina", "cm",
         "Fotografija (jpg, png ili webp, do", "Zadnji put:", "Procjena maksimuma:", "napor", "od",
         "Svi tekstovi kartona",
         "Ovdje su i tekstovi koje vidi samo član ili su u prozorima za potvrdu. Promjena u prozorima i poljima vidi "
         "se nakon osvježavanja stranice.",
         # the trainer's view's way into the member's account (26.11.2026):
-        # staff's own chrome, as the strip over a page while acting; since
-        # build 4 the Karton tab's too (staff's own karton: its field's label
-        # and the no-JS select's first option), and the caption over what
-        # only the trainer reads of the upitnik while staff act as a member
-        "Otvori kao član", "Član", "Odaberi člana…", "Vidi samo trener",
+        # staff's own chrome, as the strip over a page while acting; the
+        # Karton tab's search (staff's own karton, its way into a member's
+        # app from build 4 until 27.11.2026: its field's label, the no-JS
+        # select's first option and since 27.11.2026 its no-JS button), and
+        # the caption over what only the trainer reads of the upitnik while
+        # staff act as a member
+        "Otvori kao član", "Član", "Odaberi člana…", "Otvori karton", "Vidi samo trener",
     },
     "trening_view.html": {
         "Treninzi",                          # the crumb
@@ -213,8 +215,11 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     # the caption "Vidi samo trener" while staff act as a member; 129 since
     # build 3's part B, the gym training's round "Krug 2"; on 27.11.2026
     # the crumb of a member's karton, the owner's view, "Korisnici" where
-    # it said "Trenutne članarine"): a long list means texts were left out
-    assert sum(len(v) for v in ALLOWED.values()) <= 129
+    # it said "Trenutne članarine"; 130 since the same day: that crumb
+    # "Karton" (the view staff's again, the Karton tab's search opening
+    # it) and the search's no-JS button "Otvori karton"): a long list means
+    # texts were left out
+    assert sum(len(v) for v in ALLOWED.values()) <= 130
 
 
 def test_the_scan_sees_a_new_literal_and_strips_what_is_code():

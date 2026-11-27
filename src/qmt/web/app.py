@@ -1929,7 +1929,8 @@ def _kao_members() -> list[dict]:
     one with none: models.alpha_key), each {"user", "name" (his full name,
     else his email), "plans" (his running plans by their names, PLAN_LABELS
     in PLAN_TYPES' order, joined by " · "; "" for none)}: /kao's rows and,
-    since 26.11.2026 (build 4), the Karton tab's picker, one list."""
+    since 26.11.2026 (build 4), the Karton tab's picker, one list (since
+    27.11.2026 its search, which opens his karton)."""
     today = config.today()
     order = {p: i for i, p in enumerate(PLAN_TYPES)}
     members = []
@@ -1986,10 +1987,11 @@ def kao_izlaz(request: Request):
 
 
 def _enter_member(request: Request, user, member, natrag: str, kamo: str):
-    """Into `member`'s account as `user` (staff: the routes ask
-    _require_trainer first), the one way in for POST /kao/{id} and POST
-    /kao: into a member's only ("U račun trenera ili vlasnika se ne
-    ulazi.", back to /kao). `natrag`, where "Izađi" returns (/kao by
+    """Into `member`'s account as `user` (staff: the route asks
+    _require_trainer first), POST /kao/{id}'s way in (the Karton tab's POST
+    /kao's too, from build 4 until 27.11.2026, when its field came to open
+    his karton instead): into a member's only ("U račun trenera ili vlasnika
+    se ne ulazi.", back to /kao). `natrag`, where "Izađi" returns (/kao by
     default), and `kamo`, where to land (his karton by default), each a
     local path (_safe_next). The entry is the record's first row (the
     route's own path); the osvrt prompt is not armed by it."""
@@ -2003,34 +2005,6 @@ def _enter_member(request: Request, user, member, natrag: str, kamo: str):
     request.session.pop("fb_prompt", None)
     _record_acting(user, member, "POST", request.url.path, 303)
     return RedirectResponse(_safe_next(kamo) if kamo.strip() else "/karton", status_code=303)
-
-
-KAO_PICK = "Odaberi člana s popisa."
-
-
-@app.post("/kao")
-def kao_pick(request: Request, clan: str = Form(""), natrag: str = Form("")):
-    """The Karton tab's way into a member's app (26.11.2026, build 4; the
-    owner: "the 'Otvori kao član' amber button on the Karton tab of the
-    Admin and Trainer with a search bar where a user can be searched"): a
-    trainer or the owner (a member, a guest never; while acting this is the
-    member's, who is refused too). `clan`, the member's id, naming an
-    account: what POST /kao/{id} does (_enter_member: a staff account
-    refused, the session's keys, the record's first row), landing on his
-    karton. Nothing, junk or an id that names nobody (a member gone since
-    the page was drawn): back to `natrag` (_safe_next; /kao when none was
-    given) saying "Odaberi člana s popisa.", nothing entered."""
-    from urllib.parse import quote
-
-    user, redirect = _require_trainer(request)
-    if redirect:
-        return redirect
-    raw = clan.strip()
-    member = db.get_user(int(raw)) if re.fullmatch(r"[0-9]{1,9}", raw) else None
-    if member is None:
-        back = _safe_next(natrag) if natrag.strip() else "/kao"
-        return RedirectResponse(f"{back}{'&' if '?' in back else '?'}error={quote(KAO_PICK)}", status_code=303)
-    return _enter_member(request, user, member, natrag, "")
 
 
 @app.post("/kao/{user_id}")
@@ -2444,19 +2418,20 @@ def _render_karton(request: Request, viewer, subject, own: bool):
     # as a member's; no upitnik card (staff never fill it: POST /upitnik
     # refuses them) and no termini (they book none)
     staff_own = own and _can_edit_copy(subject)
-    # and since 26.11.2026 (build 4) the way into a member's app at its top:
-    # every member /kao lists, in its order (_kao_members), a native select
-    # without the script, base.html's combobox over kao_rows with it: [id,
-    # the name (the row's first line), "email · plans" (its muted second
-    # line; the plans alone for one named by his email), the email (what
-    # typing matches besides the name: never the plans)]
-    kao_members = _kao_members() if staff_own else []
-    kao_rows = []
-    for m in kao_members:
+    # and since 27.11.2026 the search for a member's karton at its top (the
+    # way into his app from 26.11.2026, build 4, until then): every member
+    # /kao lists, in its order (_kao_members), a native select without the
+    # script, base.html's combobox over find_rows with it: [id, the name
+    # (the row's first line), "email · plans" (its muted second line; the
+    # plans alone for one named by his email), the email (what typing
+    # matches besides the name: never the plans)]
+    find_members = _kao_members() if staff_own else []
+    find_rows = []
+    for m in find_members:
         email = m["user"].email
         named = m["name"] != email
         plans = m["plans"] or "bez članarine"
-        kao_rows.append([m["user"].id, m["name"], f"{email} · {plans}" if named else plans, email if named else ""])
+        find_rows.append([m["user"].id, m["name"], f"{email} · {plans}" if named else plans, email if named else ""])
     # the slash forms read as the member's (27.11.2026): the texts here are
     # about him, the trainer's view of his karton too
     return templates.TemplateResponse(request, "karton.html", _ctx(
@@ -2482,7 +2457,7 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         karton_path="/karton" if own else f"/karton/{subject.id}",
         # the trainer's view of a member's karton: "Otvori kao član" (26.11.2026)
         can_act=not own and not _can_edit_copy(subject),
-        kao_members=kao_members, kao_rows=kao_rows,
+        find_members=find_members, find_rows=find_rows,
         today=config.today(), tz=config.TZ,
     ))
 
@@ -2492,8 +2467,8 @@ def karton_self(request: Request):
     """The viewer's own karton: a member's, and since 24.11.2026 staff's too
     (the owner: "Lets show the Karton tab in the Admin view as well so that
     Amir can check out the changes we made there"; until then a trainer was
-    sent to /clanarine). A client's is /karton/{id}, the owner's alone
-    since 27.11.2026."""
+    sent to /clanarine). A client's is /karton/{id}, staff's: the Karton
+    tab's search opens it (27.11.2026, GET /karton/clan)."""
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
@@ -2501,15 +2476,40 @@ def karton_self(request: Request):
     return _render_karton(request, user, user, own=True)
 
 
+PICK_MEMBER = "Odaberi člana s popisa."
+
+
+@app.get("/karton/clan")
+def karton_find(request: Request, clan: str = ""):
+    """The Karton tab's search (27.11.2026; the owner: "when a user is
+    pressed, that user's Karton is opened, not the whole app as his view,
+    but just his Karton which will be searchable for Amir"): staff's (a
+    member 403, while acting too). `clan`, 1–9 digits naming a member (an
+    account that is neither a trainer nor the owner: _kao_members' rule) →
+    his karton, the trainer's view; nothing, junk, an id naming nobody or a
+    staff account → back to the Karton tab saying "Odaberi člana s
+    popisa.". A GET: it enters nothing, records nothing. Declared before
+    /karton/{user_id}, which would take "clan" for an id."""
+    from urllib.parse import quote
+
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    raw = clan.strip()
+    member = db.get_user(int(raw)) if re.fullmatch(r"[0-9]{1,9}", raw) else None
+    if member is None or _can_edit_copy(member):
+        return RedirectResponse("/karton?error=" + quote(PICK_MEMBER), status_code=303)
+    return RedirectResponse(f"/karton/{member.id}", status_code=303)
+
+
 @app.get("/karton/{user_id}", response_class=HTMLResponse)
 def karton_client(request: Request, user_id: int):
-    """A member's karton, read only: the owner's alone since 27.11.2026 (the
-    owner: "I would then not even allow him to open that"; staff's until
-    then). No page a trainer reaches has linked it since Trenutne članarine's
-    "Karton →" went (26.11.2026, build 4): Korisnici's "Karton", the owner's
-    page, is its one way in. A trainer reads a member's karton as the member
-    ("Otvori kao član"), where the upitnik's trainer-only parts print too."""
-    user, redirect = _require_owner(request)
+    """A member's karton, read only, staff's. For some hours of 27.11.2026
+    it was the owner's alone (the owner: "I would then not even allow him to
+    open that"), then the Karton tab's search (GET /karton/clan) made it the
+    trainer's way to a member's karton (the owner: "that user's Karton is
+    opened, not the whole app as his view")."""
+    user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     with db.session_scope() as s:

@@ -30,7 +30,12 @@ amber button on the Karton tab of the Admin and Trainer with a search bar
 where a user can be searched. The button to open as another user should also
 be in amber.") the Karton tab of the trainer and the owner (POST /kao), not
 /clanarine; every such button amber; and staff acting as a member read on
-his karton what only the trainer's view showed of his upitnik.
+his karton what only the trainer's view showed of his upitnik. Since
+27.11.2026 (the owner: "when a user is pressed, that user's Karton is
+opened, not the whole app as his view, but just his Karton which will be
+searchable for Amir") the Karton tab's field is a search that opens the
+member's karton, the trainer's view (GET /karton/clan), staff's again;
+POST /kao and its solid amber button went.
 
 The phone reminder (the owner: "if a user didnt give it, when he opens the
 app a popup reminder should appear similarly how a popup appears as a
@@ -42,8 +47,8 @@ tests/test_player.py's and tests/test_karton.py's, the height on the karton
 tests/test_karton.py's.
 
 The browser half walks the picker into a member's account at 390 and 360px
-(touch) and back out, the Karton tab's way in at the same widths, and the
-phone reminder at 390 and 1280px."""
+(touch) and back out, the Karton tab's search into a member's karton at the
+same widths, and the phone reminder at 390 and 1280px."""
 
 from __future__ import annotations
 
@@ -324,7 +329,7 @@ def test_acting_the_member_gets_his_pages_and_no_staff_route():
     walked = _staff_routes()
     paths = {path for _, path, _ in walked}
     assert {"/kao", "/kao/zapisi", "/kao/1", "/admin", "/clanarine", "/korisnici", "/statistika", "/tekstovi",
-            "/karton/1", "/treninzi/vjezbe", "/upitnik/pitanje/1"} <= paths and len(walked) > 40
+            "/karton/1", "/karton/clan", "/treninzi/vjezbe", "/upitnik/pitanje/1"} <= paths and len(walked) > 40
     refused = [(method, path) for method, path, form in walked
                if c.request(method, path + f"?kao={ivan}", data=form or None,
                             follow_redirects=False).status_code != 403]
@@ -682,14 +687,15 @@ def test_the_picker_lists_every_member_in_the_alphabets_order():
 
 def test_the_shortcuts_lead_into_the_members_account():
     """"Kao član →" at the end of each booked member's row of a termin's
-    roster (none for staff), "Otvori kao član" on the trainer's view of a
-    member's karton (none on a staff member's), and since build 4 the
-    Karton tab's form (POST /kao, natrag /karton): each into his account,
-    its "Izađi" back where it was pressed. /clanarine has none since build
-    4 (the owner: "I would remove the 'Karton ->' and the 'Kao član ->'
-    buttons here"): no form into an account, no link to a karton, beside
-    no member (the owner, who does not train, is not listed there since
-    26.11.2026: staff by rule, db.memberships_overview)."""
+    roster (none for staff) and "Otvori kao član" on the trainer's view of
+    a member's karton (none on a staff member's; the view the trainer's and
+    the owner's alike, staff's again since 27.11.2026, when the Karton tab's
+    search came to open it): each into his account, its "Izađi" back where
+    it was pressed. /clanarine has none since build 4 (the owner: "I would
+    remove the 'Karton ->' and the 'Kao član ->' buttons here"): no form
+    into an account, no link to a karton, beside no member (the owner, who
+    does not train, is not listed there since 26.11.2026: staff by rule,
+    db.memberships_overview)."""
     coach, owner, ivan, ana, sara = people()
     sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=1), 60, 8, None)
     db.book(ivan, sid)
@@ -706,43 +712,45 @@ def test_the_shortcuts_lead_into_the_members_account():
             f'      <input type="hidden" name="kamo" value="/karton/termin/{sid}/trening">\n'   # his training of it (build 3)
             '      <button type="submit" class="act act-kao">Kao član →</button>') in roster
     assert f'action="/kao/{coach}"' not in roster
-    # a member's karton, /karton/<id>, is the owner's alone since 27.11.2026
-    # (reached from Korisnici): the trainer cannot open it, its "Otvori kao
-    # član" is the owner's
-    assert c.get(f"/karton/{ivan}").status_code == 403 and 'class="kao-open"' not in c.get("/karton").text
+    # a member's karton, /karton/<id>, is staff's again since 27.11.2026: the
+    # Karton tab's search leads the trainer there (it was the owner's alone
+    # for some hours that day), and its "Otvori kao član" is his as the owner's
     o = client_for("trener@test.local")
-    view = o.get(f"/karton/{ivan}").text
-    assert (f'<form class="kao-open" method="post" action="/kao/{ivan}">\n  <input type="hidden" name="natrag" '
-            f'value="/karton/{ivan}">\n  <button type="submit" class="act act-kao">Otvori kao član</button>') in view
-    assert 'class="kao-open"' not in o.get(f"/karton/{coach}").text and 'class="kao-open"' not in o.get("/karton").text
-    for who, back in ((c, f"/admin/session/{sid}"), (o, f"/karton/{ivan}")):
+    form = (f'<form class="kao-open" method="post" action="/kao/{ivan}">\n  <input type="hidden" name="natrag" '
+            f'value="/karton/{ivan}">\n  <button type="submit" class="act act-kao">Otvori kao član</button>')
+    for who in (c, o):
+        r = who.get(f"/karton/{ivan}")
+        assert r.status_code == 200 and form in r.text
+        assert 'class="kao-open"' not in who.get(f"/karton/{coach}").text and 'class="kao-open"' not in who.get("/karton").text
+    for who, back in ((c, f"/admin/session/{sid}"), (c, f"/karton/{ivan}"), (o, f"/karton/{ivan}")):
         assert enter(who, ivan, natrag=back).headers["location"] == "/karton"
         assert who.post("/kao/izlaz", follow_redirects=False).headers["location"] == back
-    r = c.post("/kao", data={"clan": str(ivan), "natrag": "/karton"}, follow_redirects=False)
-    assert r.headers["location"] == "/karton" and session_of(c)["as_user_id"] == ivan
-    assert c.post("/kao/izlaz", follow_redirects=False).headers["location"] == "/karton"
 
 
-# ---------- the Karton tab's way in, amber, the upitnik while acting (build 4) ----------
+# ---------- the Karton tab's search, amber, the upitnik while acting ----------
 
-def kao_pick(page: str) -> str | None:
-    """The Karton tab's form into a member's app, or None."""
-    m = re.search(r'<form class="kao-pick" method="post" action="/kao">.*?</form>', page, re.S)
+def karton_find(page: str) -> str | None:
+    """The Karton tab's search for a member's karton, or None."""
+    m = re.search(r'<form class="k-find" method="get" action="/karton/clan">.*?</form>', page, re.S)
     return m.group(0) if m else None
 
 
-def test_the_karton_tab_of_staff_holds_the_way_into_a_members_app():
+def test_the_karton_tab_of_staff_holds_the_search_for_a_members_karton():
     """On the trainer's and the owner's own karton (the owner who does not
-    train: staff by rule), under the lead and above the cards, ONE form
-    posting /kao (natrag /karton): "Član", a required select of every
-    member /kao lists, in its order ("Ime Prezime · email"; one named by
-    his email, the email alone), no staff account, after its empty first
-    option "Odaberi člana…"; "Otvori kao član"; and the combobox's rows as
-    JSON, [id, name, "email · plans" ("bez članarine" for none; the plans
-    alone for one named by his email), the email typing matches besides
-    the name ("" for one named by it)]. Not on a member's karton, not on the
-    trainer's view of one, not while staff act as a member (the page is his
-    own karton then); no member at all, no form."""
+    train: staff by rule), under the lead and above the cards, ONE form, a
+    GET to /karton/clan (27.11.2026, the owner: "when a user is pressed,
+    that user's Karton is opened, not the whole app as his view"): "Član",
+    a required select of every member /kao lists, in its order ("Ime
+    Prezime · email"; one named by his email, the email alone), no staff
+    account, after its empty first option "Odaberi člana…"; beside it
+    "Otvori karton" (.act), the page's without its script, which takes it
+    away; and the combobox's rows as JSON, [id, name, "email · plans" ("bez
+    članarine" for none; the plans alone for one named by his email), the
+    email typing matches besides the name ("" for one named by it)]. Nothing
+    on the page goes into a member's app: no solid amber button (.btn-kao,
+    from build 4, went with POST /kao), no form to /kao. Not on a member's
+    karton, not on the trainer's view of one, not while staff act as a
+    member (the page is his own karton then); no member at all, no form."""
     coach, owner, ivan, ana, sara = people()
     nameless = db.create_user("bez.imena@test.local", "", auth.hash_password("lozinka123")).id
     db.mark_email_verified("bez.imena@test.local")
@@ -750,81 +758,81 @@ def test_the_karton_tab_of_staff_holds_the_way_into_a_members_app():
     assert [int(i) for i in order] == [ana, nameless, ivan, sara]       # /kao's order: the alphabet's
     for email in ("coach@test.local", "trener@test.local"):
         page = client_for(email).get("/karton").text
-        form = kao_pick(page)
+        form = karton_find(page)
         assert form is not None, email
         head = page.split("<h1>")[1].split('<div class="k-cards">')[0]
         assert form in head and head.index('<p class="hint">') < head.index(form), email   # under the lead, above the cards
-        assert '<input type="hidden" name="natrag" value="/karton">' in form and '<label for="kp-clan">Član</label>' in form
-        assert '<select id="kp-clan" name="clan" required>' in form
+        assert '<label for="kf-clan">Član</label>' in form and '<select id="kf-clan" name="clan" required>' in form
+        assert "<input" not in form                                    # the member alone: nothing hidden beside him
         options = re.findall(r'<option value="(\d*)"( disabled selected)?>([^<]*)</option>', form)
         assert options == [("", " disabled selected", "Odaberi člana…"), (str(ana), "", "Ana Kovač · ana@test.local"),
                            (str(nameless), "", "bez.imena@test.local"), (str(ivan), "", "Ivan Horvat · ivan@test.local"),
                            (str(sara), "", "Sara Jurić · sara@test.local")], email
-        assert '<button type="submit" class="btn-kao">Otvori kao član</button>' in form
-        rows = json.loads(re.search(r'<script type="application/json" id="kp-json">(.*?)</script>', form, re.S).group(1))
+        assert re.findall(r"<button[^>]*>.*?</button>", form) == ['<button type="submit" class="act">Otvori karton</button>']
+        rows = json.loads(re.search(r'<script type="application/json" id="kf-json">(.*?)</script>', form, re.S).group(1))
         assert rows == [[ana, "Ana Kovač", "ana@test.local · Grupni trening", "ana@test.local"],
                         [nameless, "bez.imena@test.local", "bez članarine", ""],
                         [ivan, "Ivan Horvat", "ivan@test.local · Grupni trening · Online trening", "ivan@test.local"],
                         [sara, "Sara Jurić", "sara@test.local · bez članarine", "sara@test.local"]], email
-    assert kao_pick(client_for("ivan@test.local").get("/karton").text) is None         # a member's own
+        assert "btn-kao" not in page and 'action="/kao"' not in page, email
+    assert karton_find(client_for("ivan@test.local").get("/karton").text) is None      # a member's own
     c = client_for("coach@test.local")
-    assert kao_pick(c.get(f"/karton/{ivan}").text) is None                              # the trainer's view
+    view = c.get(f"/karton/{ivan}")                                    # the trainer's view, his since 27.11.2026
+    assert view.status_code == 200 and karton_find(view.text) is None and 'id="kf-clan"' not in view.text
     enter(c, ivan)
     page = c.get("/karton").text
-    assert bar(page) is not None and kao_pick(page) is None and 'id="kp-json"' not in page   # acting: his karton
+    assert bar(page) is not None and karton_find(page) is None and 'id="kf-json"' not in page   # acting: his karton
     c.post("/kao/izlaz")
     with db.engine.begin() as conn:                                    # no member at all
         conn.execute(sa_text("DELETE FROM users WHERE id <> :c AND id <> :o"), {"c": coach, "o": owner})
     page = c.get("/karton").text
-    assert "<h1>" in page and kao_pick(page) is None and 'id="kp-clan"' not in page
+    assert "<h1>" in page and karton_find(page) is None and 'id="kf-clan"' not in page
 
 
-def test_post_kao_enters_the_member_picked_and_refuses_the_rest():
-    """POST /kao, the Karton tab's form: a member's id enters his account as
-    POST /kao/<id> does (app._enter_member: the session's three keys, the
-    record's first row, its path /kao), landing on his karton, "Izađi" back
-    at natrag (/karton). A trainer's or the owner's id: "U račun trenera ili
-    vlasnika se ne ulazi.", back to the picker. Nothing, junk or an id that
-    names nobody: back to natrag saying "Odaberi člana s popisa." (/kao when
-    none is given; a path of another site never, "/" then). None of them
-    enters or makes a row. A member is refused (403, as every staff route
-    refuses him), a guest goes to log in."""
+def test_the_search_opens_the_members_karton_and_refuses_the_rest():
+    """GET /karton/clan, the Karton tab's search (27.11.2026): a member's id
+    (its spaces aside) → his karton, the trainer's view (/karton/<id>), for
+    the trainer and the owner alike, its crumb "Karton" back to the search,
+    no strip over it. A trainer's or the owner's id, an id naming nobody,
+    nothing, junk: back to the Karton tab saying "Odaberi člana s popisa.".
+    A GET: nothing enters (no acting key in the session) and the record
+    holds no row. A member asking is refused (403, as every staff route
+    refuses him; while acting too: the walk above), a guest goes to log in.
+    POST /kao, the Karton tab's way into a member's app from build 4, is
+    gone: 405, /kao being a GET alone."""
     coach, owner, ivan, ana, sara = people()
-    c = client_for("trener@test.local")                                # the owner, who does not train
-    before = time.time()
-    r = c.post("/kao", data={"clan": str(ana), "natrag": "/karton"}, follow_redirects=False)
-    assert (r.status_code, r.headers["location"]) == (303, "/karton")
-    s = session_of(c)
-    assert (s["as_user_id"], s["as_back"]) == (ana, "/karton") and before - 1 <= s["as_seen"] <= time.time()
-    assert record() == [("Tvrtko Vlasnik", "Ana Kovač", "POST", "/kao", 303)]
-    page = c.get("/karton").text
-    assert f'<body data-kao="{ana}">' in page and "Gledaš kao: <strong>Ana Kovač</strong>" in page
-    assert c.post("/kao/izlaz", follow_redirects=False).headers["location"] == "/karton"
-    refused, pick = "/kao?error=U račun trenera ili vlasnika se ne ulazi.", "/karton?error=Odaberi člana s popisa."
-    for clan, where in ((str(coach), refused), (str(owner), refused), ("", pick), ("   ", pick), ("abc", pick),
-                        ("-3", pick), (f"{ana}.0", pick), ("999999", pick), ("1" * 12, pick)):
-        r = c.post("/kao", data={"clan": clan, "natrag": "/karton"}, follow_redirects=False)
-        assert (r.status_code, location(r)) == (303, where), clan
-    assert location(c.post("/kao", data={"natrag": "/karton"}, follow_redirects=False)) == pick    # no field at all
-    assert location(c.post("/kao", data={"clan": "abc"}, follow_redirects=False)) == "/kao?error=Odaberi člana s popisa."
-    r = c.post("/kao", data={"clan": "abc", "natrag": "https://evil.example/"}, follow_redirects=False)
-    assert location(r) == "/?error=Odaberi člana s popisa."
-    assert {k for k in session_of(c) if k.startswith("as_")} == set()
-    assert [row[3] for row in record()] == ["/kao/izlaz", "/kao"]      # the entry and its exit, nothing more
-    assert client_for("ivan@test.local").post("/kao", data={"clan": str(ana)}).status_code == 403
-    r = TestClient(app).post("/kao", data={"clan": str(ana)}, follow_redirects=False)
+    refused = "/karton?error=Odaberi člana s popisa."
+    for email in ("coach@test.local", "trener@test.local"):
+        c = client_for(email)
+        r = c.get(f"/karton/clan?clan={ana}", follow_redirects=False)
+        assert (r.status_code, r.headers["location"]) == (303, f"/karton/{ana}"), email
+        page = c.get(r.headers["location"]).text
+        assert "<h1>Karton — Ana Kovač</h1>" in page and bar(page) is None, email
+        assert '<nav class="crumbs" aria-label="Putanja"><a href="/karton">Karton</a><span class="sep">/</span>' in page
+        assert c.get("/karton/clan", params={"clan": f" {ana} "}, follow_redirects=False).headers["location"] == \
+            f"/karton/{ana}"
+        for clan in (str(coach), str(owner), "999999", "", "   ", "abc", "-3", f"{ana}.0", "1" * 12):
+            r = c.get("/karton/clan", params={"clan": clan}, follow_redirects=False)
+            assert (r.status_code, location(r)) == (303, refused), (email, clan)
+        assert location(c.get("/karton/clan", follow_redirects=False)) == refused        # no field at all
+        assert '<div class="alert" role="alert">\n      <span>Odaberi člana s popisa.</span>' in c.get(refused).text
+        r = c.post("/kao", data={"clan": str(ana), "natrag": "/karton"}, follow_redirects=False)
+        assert r.status_code == 405, email                             # gone: the Karton tab's way into his app
+        assert {k for k in session_of(c) if k.startswith("as_")} == set(), email
+    assert record() == []
+    assert client_for("ivan@test.local").get(f"/karton/clan?clan={ana}").status_code == 403
+    r = TestClient(app).get(f"/karton/clan?clan={ana}", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/login"
-    assert len(record()) == 2
 
 
 def test_every_way_into_a_members_app_is_amber():
     """The owner: "The button to open as another user should also be in
     amber." /kao's "Otvori →", a roster's "Kao član →" and the trainer's
     view's "Otvori kao član" wear base.html's tint (.act.act-kao: --warn on
-    --warn-soft, a deeper tint on hover, its background declared), the
-    Karton tab's "Otvori kao član" the strip's solid pill (.btn-kao: --warn
-    with the page's ground for ink, .kao-exit's hover, 40px, 44px on a
-    coarse pointer, no glow); measured in a browser below. The strip's
+    --warn-soft, a deeper tint on hover, its background declared). The
+    Karton tab's solid amber "Otvori kao član" (.btn-kao, from build 4)
+    went on 27.11.2026 with its way into the app: the tab's field opens a
+    member's karton now, nothing amber (the tests above). The strip's
     "Izađi" stays as it was."""
     coach, owner, ivan, ana, sara = people()
     sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=1), 60, 8, None)
@@ -833,15 +841,12 @@ def test_every_way_into_a_members_app_is_amber():
     kao = c.get("/kao").text
     assert kao.count('<button type="submit" class="act act-kao">Otvori →</button>') == 3 and 'class="act">' not in kao
     assert '<button type="submit" class="act act-kao">Kao član →</button>' in c.get(f"/admin/session/{sid}").text
-    assert ('<button type="submit" class="act act-kao">Otvori kao član</button>'       # the owner's view (27.11.2026)
-            in client_for("trener@test.local").get(f"/karton/{ivan}").text)
+    # the trainer's view: the trainer's again since the Karton tab's search leads there (27.11.2026)
+    assert '<button type="submit" class="act act-kao">Otvori kao član</button>' in c.get(f"/karton/{ivan}").text
     own = c.get("/karton").text
-    assert '<button type="submit" class="btn-kao">Otvori kao član</button>' in own
+    assert "btn-kao" not in own and ">Otvori kao član</button>" not in own
     for rule in (".act-kao { background: var(--warn-soft); color: var(--warn);",
-                 ".act-kao:hover { background: color-mix(in srgb, var(--warn) 26%, transparent); color: var(--warn);",
-                 "font: 600 .92rem var(--font-body); background: var(--warn); color: var(--bg); }",
-                 ".btn-kao:hover { background: color-mix(in srgb, var(--warn) 82%, var(--text)); color: var(--bg); transform: none; }",
-                 "@media (pointer: coarse) { .btn-kao { min-height: 44px; } }"):
+                 ".act-kao:hover { background: color-mix(in srgb, var(--warn) 26%, transparent); color: var(--warn);"):
         assert rule in own, rule
     enter(c, ivan)
     assert '<form method="post" action="/kao/izlaz"><button type="submit" class="kao-exit">Izađi</button></form>' in c.get("/karton").text
@@ -873,20 +878,22 @@ STAFF_ANSWERS = re.compile(r'<p class="hint u-staff u-answers">Vidi samo trener<
 
 
 def test_acting_staff_read_what_only_the_trainers_view_showed_of_the_upitnik():
-    """With "Karton →" gone from /clanarine the trainer's read-only view has
-    no link Amir reaches, and it alone showed the upitnik's "Zahtijeva
-    pregled", the pain flag and every answer. So staff acting as the member
-    read those three on his karton exactly as that view prints them, each
-    group under one small muted caption, "Vidi samo trener" (twice, once
-    each). The member himself reads none of the three nor a caption: his
-    block is the acting one less those two groups, byte for byte. The
-    trainer's view as before (no caption); nothing else of it comes over
-    (its head line of email, age and phone)."""
+    """With "Karton →" gone from /clanarine (build 4) the trainer's
+    read-only view had no link Amir reached (until 27.11.2026, when the
+    Karton tab's search came to open it), and it alone showed the upitnik's
+    "Zahtijeva pregled", the pain flag and every answer. So staff acting as
+    the member read those three on his karton exactly as that view prints
+    them, each group under one small muted caption, "Vidi samo trener"
+    (twice, once each). The member himself reads none of the three nor a
+    caption: his block is the acting one less those two groups, byte for
+    byte. The trainer's view as before (no caption); nothing else of it
+    comes over (its head line of email, age and phone)."""
     coach, owner, ivan, ana, sara = people()
     flagged_upitnik(ivan)
     t = client_for("coach@test.local")
-    assert t.get(f"/karton/{ivan}").status_code == 403               # the view is the owner's alone (27.11.2026)
-    view = upitnik_block(client_for("trener@test.local").get(f"/karton/{ivan}").text)
+    r = t.get(f"/karton/{ivan}")             # the trainer's view, his again: the Karton tab's search leads there (27.11.2026)
+    assert r.status_code == 200
+    view = upitnik_block(r.text)
     assert ('<span class="u-flag review"><span class="ed t" data-copy="karton.staff.review"' in view
             and '<span class="u-flag pain">Bolovi 5/10 · donji dio leđa</span>' in view)
     assert '<details>\n    <summary><span class="ed t" data-copy="karton.staff.answers"' in view
@@ -1102,50 +1109,51 @@ def test_into_a_members_account_and_out_on_a_phone(server):
     assert not problems, f"{len(problems)} problems, listed above"
 
 
-# the Karton tab's form as laid out (build 4): the field's input, the button,
-# the list and the cards under them; the button's colours against a probe of
-# the strip's (--warn with --bg for ink), its shadow and its contrast; the
-# list's rows by name and its note
-PICK = r"""() => {
+# the Karton tab's search as laid out (27.11.2026): the field's input, the
+# form and the cards under it, the buttons in the form, the label, the
+# list's rows by name and its note, the line under the field, what is typed
+# and the value the form sends
+FIND = r"""() => {
   const q = s => document.querySelector(s), r = e => e.getBoundingClientRect();
-  const input = q('#kp-clan-q'), btn = q('.kao-pick .btn-kao'), list = q('#kp-clan-list');
-  const rgb = c => c.match(/[\d.]+/g).map(Number);
-  const lum = ([a, g, b]) => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
-    return .2126 * f(a) + .7152 * f(g) + .0722 * f(b); };
-  const ratio = (a, c) => { const [h, l] = [lum(a), lum(c)].sort((p, s) => s - p); return (h + .05) / (l + .05); };
-  const probe = document.createElement('div'); probe.style.cssText = 'background: var(--warn); color: var(--bg)';
-  document.body.appendChild(probe); const want = getComputedStyle(probe); const strip = [want.backgroundColor, want.color]; probe.remove();
-  const cs = getComputedStyle(btn), i = r(input), b = r(btn), f = r(q('.kao-pick')), l = list.hidden ? null : r(list);
-  return {input: [i.left, i.top, i.width, i.height], button: [b.left, b.top, b.width, b.height], form: [f.left, f.width],
-          list: l && [l.top, l.bottom, l.width], cardsTop: r(q('.k-cards')).top,
-          amber: cs.backgroundColor === strip[0] && cs.color === strip[1], shadow: cs.boxShadow,
-          contrast: ratio(rgb(cs.color), rgb(cs.backgroundColor)),
+  const input = q('#kf-clan-q'), list = q('#kf-clan-list'), label = q('.k-find label');
+  const i = r(input), f = r(q('.k-find')), l = list.hidden ? null : r(list);
+  return {input: [i.left, i.top, i.width, i.height], form: [f.left, f.width], list: l && [l.top, l.bottom, l.width],
+          cardsTop: r(q('.k-cards')).top, buttons: q('.k-find').querySelectorAll('button').length,
+          label: label.textContent, labelFor: label.htmlFor,
           names: [...list.querySelectorAll('[role=option] .cbx-name')].map(o => o.textContent),
           lines: [...list.querySelectorAll('[role=option] .cbx-tags')].map(o => o.textContent),
+          active: [...list.querySelectorAll('[role=option][aria-selected=true] .cbx-name')].map(o => o.textContent),
           note: (list.querySelector('.cbx-note') || {}).textContent || null, placeholder: input.placeholder,
-          label: list.getAttribute('aria-label'), err: q('#kp-clan-err').textContent,
+          listLabel: list.getAttribute('aria-label'), err: q('#kf-clan-err').textContent,
+          invalid: input.getAttribute('aria-invalid'), typed: input.value, value: q('#kf-clan').value,
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth};
 }"""
 
 
-def test_the_karton_tabs_way_in_on_a_phone(server):
-    """At 390px (dark) and 360px (light), touch, the owner's Karton tab:
-    "Član" over the field ("Ime ili email člana") and "Otvori kao član"
-    under it, both 44px, the button the column's width, solid amber (the
-    strip's --warn with --bg for ink, no glow, AA). "Otvori kao član" with
-    nothing picked stops at "Odaberi člana s popisa.". A tap opens the list
-    ("Članovi") of every member, the name over "email · plans", laid over
-    the cards (they do not move); "kov" finds "Kovač" by the name, "mb.tr"
-    Marko by his email's start, "grupni" (a plan) nobody: "Nijedan član ne
-    odgovara traženju.". Marko's row tapped, "Otvori kao član": his karton
-    under the strip; "Izađi" back to the Karton tab. Nothing scrolls
-    sideways at either width; no page errors."""
+def test_the_karton_tabs_search_on_a_phone(server):
+    """At 390px (dark) and 360px (light), touch, the Karton tab of a trainer
+    who is not the owner (the view is staff's again, 27.11.2026): "Član"
+    over the field ("Ime ili email člana"), 44px, the column's width, and no
+    button in the form (the script took the no-JS "Otvori karton" away).
+    Enter with nothing picked says "Odaberi člana s popisa." and goes
+    nowhere. A tap opens the list ("Članovi") of every member, the name over
+    "email · plans", laid over the cards (they do not move); "kov" finds
+    "Kovač" by the name, "mb.tr" Marko by his email's start, "grupni" (a
+    plan) nobody: "Nijedan član ne odgovara traženju.". Ana's row tapped:
+    her karton at once, the trainer's view (/karton/<id>, "Karton — Ana
+    Kovač"), no strip (nobody acts as her). Back: the Karton tab, the field
+    empty, the value too; and so when the page comes back out of the
+    browser's cache with the pick still in it (its pageshow, persisted, sent
+    by hand: Playwright's Chromium keeps no such cache). "mb.tr" highlights
+    Marko, and Enter opens his karton the same way. Nothing scrolls sideways
+    at either width; no page errors."""
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
     make_user("trener@test.local", "Tvrtko Vlasnik")
-    make_user("ana@test.local", "Ana Kovač", plans=("grupni",))
+    make_user("coach@test.local", "Amir Trener", is_trainer=True)
+    ana = make_user("ana@test.local", "Ana Kovač", plans=("grupni",))
     make_user("ivan@test.local", "Ivan Horvat", plans=("grupni", "online"))
-    make_user("mb.trening@test.local", "Marko Babić")
+    marko = make_user("mb.trening@test.local", "Marko Babić")
     problems: list[str] = []
 
     def check(ok: bool, what: str) -> None:
@@ -1156,26 +1164,26 @@ def test_the_karton_tabs_way_in_on_a_phone(server):
         browser = pw.chromium.launch()
         for w, theme in ((390, "dark"), (360, "light")):
             where = f"[{w}px {theme}]"
-            ctx, pg, errors = _login(browser, server, "trener@test.local", w, theme)
+            ctx, pg, errors = _login(browser, server, "coach@test.local", w, theme)
             go(pg, server + "/karton")
-            s = pg.evaluate(PICK)
+            s = pg.evaluate(FIND)
             check(s["overflow"] == 0, f"{where} the Karton tab overflows by {s['overflow']}px")
-            (ix, iy, iw, ih), (bx, by, bw, bh), (fx, fw) = s["input"], s["button"], s["form"]
-            check(abs(ih - 44) < .5 and abs(bh - 44) < .5 and by >= iy + ih
-                  and max(abs(bx - fx), abs(ix - fx), abs(bw - fw), abs(iw - fw)) < .5,
-                  f"{where} stacked, 44px, the column's width: input {s['input']}, button {s['button']}, form {s['form']}")
-            check(s["amber"] and s["shadow"] == "none" and s["contrast"] >= 4.5,
-                  f"{where} the button: amber {s['amber']}, shadow {s['shadow']}, contrast {s['contrast']:.2f}")
-            check(s["placeholder"] == "Ime ili email člana" and s["label"] == "Članovi", f"{where} the words: {s}")
+            (ix, iy, iw, ih), (fx, fw) = s["input"], s["form"]
+            check(abs(ih - 44) < .5 and max(abs(ix - fx), abs(iw - fw)) < .5 and s["buttons"] == 0,
+                  f"{where} 44px, the column's width, no button: input {s['input']}, form {s['form']}, {s['buttons']} buttons")
+            check(s["label"] == "Član" and s["labelFor"] == "kf-clan-q" and s["placeholder"] == "Ime ili email člana"
+                  and s["listLabel"] == "Članovi", f"{where} the words: {s}")
             url = pg.url
-            pg.tap(".kao-pick .btn-kao")                               # nothing picked
+            pg.tap("#kf-clan-q")
+            pg.keyboard.press("Enter")                                  # nothing picked
             pg.wait_for_timeout(300)
-            check(pg.url == url and pg.text_content("#kp-clan-err") == "Odaberi člana s popisa."
-                  and pg.get_attribute("#kp-clan-q", "aria-invalid") == "true", f"{where} nothing picked: {pg.url}")
-            pg.evaluate("() => document.getElementById('kp-clan-q').blur()")
-            top = pg.evaluate(PICK)["cardsTop"]
-            pg.tap("#kp-clan-q")
-            s = pg.evaluate(PICK)
+            s = pg.evaluate(FIND)
+            check(pg.url == url and s["err"] == "Odaberi člana s popisa." and s["invalid"] == "true" and s["list"] is None,
+                  f"{where} Enter with nothing picked: {pg.url}, {s['err']!r}, the list {s['list']}")
+            pg.evaluate("() => document.getElementById('kf-clan-q').blur()")
+            top = pg.evaluate(FIND)["cardsTop"]
+            pg.tap("#kf-clan-q")
+            s = pg.evaluate(FIND)
             check(s["names"] == ["Ana Kovač", "Ivan Horvat", "Marko Babić"]
                   and s["lines"] == ["ana@test.local · Grupni trening", "ivan@test.local · Grupni trening · Online trening",
                                      "mb.trening@test.local · bez članarine"], f"{where} the list: {s['names']} {s['lines']}")
@@ -1183,25 +1191,33 @@ def test_the_karton_tabs_way_in_on_a_phone(server):
                   f"{where} the list lies over the cards: list {s['list']}, cards at {s['cardsTop']} (were {top})")
             for typed, names, note in (("kov", ["Ana Kovač"], None), ("mb.tr", ["Marko Babić"], None),
                                        ("grupni", [], "Nijedan član ne odgovara traženju.")):
-                pg.fill("#kp-clan-q", typed)
-                s = pg.evaluate(PICK)
+                pg.fill("#kf-clan-q", typed)
+                s = pg.evaluate(FIND)
                 check(s["names"] == names and s["note"] == note, f"{where} {typed!r} finds {s['names']}, {s['note']!r}")
-            pg.fill("#kp-clan-q", "mb.tr")
-            pg.locator("#kp-clan-list [role=option]", has_text="Marko Babić").first.tap()
-            check(pg.input_value("#kp-clan-q") == "Marko Babić" and not pg.is_visible("#kp-clan-list")
-                  and pg.text_content("#kp-clan-err") == "", f"{where} the pick: {pg.input_value('#kp-clan-q')!r}")
+            pg.fill("#kf-clan-q", "kov")
             with pg.expect_navigation():
-                pg.tap(".kao-pick .btn-kao")
+                pg.locator("#kf-clan-list [role=option]", has_text="Ana Kovač").first.tap()
             pg.wait_for_load_state("networkidle")
-            check(pg.url == server + "/karton" and pg.is_visible(".kao-bar")
-                  and "Marko Babić" in (pg.text_content(".kao-as") or "") and not pg.locator(".kao-pick").count(),
-                  f"{where} Otvori kao član led to {pg.url}: {pg.text_content('.kao-as') if pg.locator('.kao-bar').count() else 'no strip'}")
-            check(pg.evaluate(OVERFLOW) == 0, f"{where} his karton overflows by {pg.evaluate(OVERFLOW)}px")
+            check(pg.url == f"{server}/karton/{ana}" and pg.text_content("main h1") == "Karton — Ana Kovač"
+                  and not pg.locator(".kao-bar").count(), f"{where} the tap led to {pg.url}: {pg.text_content('main h1')!r}")
+            check(pg.evaluate(OVERFLOW) == 0, f"{where} her karton overflows by {pg.evaluate(OVERFLOW)}px")
+            pg.go_back(); pg.wait_for_load_state("networkidle")
+            s = pg.evaluate(FIND)
+            check(pg.url == server + "/karton" and s["typed"] == "" and s["value"] == "" and s["err"] == "",
+                  f"{where} Back: {pg.url}, the field {s['typed']!r}, the value {s['value']!r}, {s['err']!r}")
+            pg.evaluate("""a => { document.getElementById('kf-clan-q').value = 'Ana Kovač';
+                                  document.getElementById('kf-clan').value = String(a);
+                                  window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true})); }""", ana)
+            s = pg.evaluate(FIND)
+            check(s["typed"] == "" and s["value"] == "", f"{where} out of the cache: {s['typed']!r}, {s['value']!r}")
+            pg.tap("#kf-clan-q")
+            pg.fill("#kf-clan-q", "mb.tr")
+            check(pg.evaluate(FIND)["active"] == ["Marko Babić"], f"{where} 'mb.tr' highlights {pg.evaluate(FIND)['active']}")
             with pg.expect_navigation():
-                pg.tap(".kao-exit")
+                pg.keyboard.press("Enter")
             pg.wait_for_load_state("networkidle")
-            check(pg.url == server + "/karton" and not pg.locator(".kao-bar").count() and pg.locator(".kao-pick").count() == 1,
-                  f"{where} Izađi led to {pg.url}")
+            check(pg.url == f"{server}/karton/{marko}" and pg.text_content("main h1") == "Karton — Marko Babić"
+                  and not pg.locator(".kao-bar").count(), f"{where} Enter led to {pg.url}: {pg.text_content('main h1')!r}")
             problems += [f"{where} {e}" for e in errors]
             ctx.close()
         browser.close()

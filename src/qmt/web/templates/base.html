@@ -415,24 +415,18 @@
     /* ===== amber = someone else's account (26.11.2026, build 4; the owner:
        "The button to open as another user should also be in amber"): every
        control that opens a member's app as he has it wears the strip's
-       amber, so nobody takes it for an action on his own account. Two
-       looks, AA in both themes. .act-kao, on an .act (/kao's "Otvori →", a roster's
+       amber, so nobody takes it for an action on his own account, AA in
+       both themes. .act-kao, on an .act (/kao's "Otvori →", a roster's
        "Kao član →", the trainer's view's "Otvori kao član"): the karton's
        amber tint, --warn on --warn-soft as its .act-absent, the hover a
        deeper tint, never a flood, its background declared so a <button>
-       and an <a> look the same. .btn-kao (the Karton tab's "Otvori kao
-       član"): the strip's solid pill, .kao-exit's colours and hover, at a
-       form button's size, 40px, 44px on a coarse pointer, no glow. ===== */
+       and an <a> look the same. (The Karton tab's solid amber button, from
+       build 4, went on 27.11.2026: its field opens a member's karton, not
+       his app.) ===== */
     .act-kao { background: var(--warn-soft); color: var(--warn);
                border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
     .act-kao:hover { background: color-mix(in srgb, var(--warn) 26%, transparent); color: var(--warn);
                      border-color: var(--warn); }
-    .btn-kao { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-               min-height: 40px; padding: 0 20px; border: 1px solid transparent; border-radius: 999px;
-               box-shadow: none; cursor: pointer; text-decoration: none;
-               font: 600 .92rem var(--font-body); background: var(--warn); color: var(--bg); }
-    .btn-kao:hover { background: color-mix(in srgb, var(--warn) 82%, var(--text)); color: var(--bg); transform: none; }
-    @media (pointer: coarse) { .btn-kao { min-height: 44px; } }
     /* fingers need more than 31px — grow the small controls only where the
        pointer is coarse, so desktop density is untouched. This block must sit
        BELOW .btn-sm/.act: same specificity, so source order decides, and above
@@ -1189,12 +1183,12 @@
          in another). Their member row is a client's, Karton too since
          24.11.2026 (the owner: "Lets show the Karton tab in the Admin view as
          well so that Amir can check out the changes we made there"): staff
-         have a karton of their own, /karton, and their tab is .on there
-         alone; a client's karton (/karton/<id>, the owner's alone, reached
-         from Korisnici, its crumbs say so) lights that item of Admin ▾, and
-         /upitnik its own. Moja članarina is the members' page, which they
-         edit in place: everyone has the tab, nobody an account-menu item
-         for it. #}
+         have a karton of their own, /karton, and their tab is .on there and,
+         since 27.11.2026, on a client's karton (/karton/<id>, which the
+         tab's search opens, its crumb leading back), Admin ▾ not; /upitnik
+         lights its own item of Admin ▾. Moja članarina is the members'
+         page, which they edit in place: everyone has the tab, nobody an
+         account-menu item for it. #}
       {% set staff = can_edit_copy %}{# staff by rule (26.11.2026): the trainer or the owner, app._is_staff #}
       {# the library of exercises is under /treninzi but Admin ▾'s (30.10.2026):
          its pages light Vježbe there, not the Online treninzi tab #}
@@ -1202,9 +1196,11 @@
       {% if staff %}<p class="nav-cap">Kao član</p>{% endif %}
       <a href="/" class="{% if path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if path.startswith('/raspored') %}on{% endif %}">Raspored</a>
-      {# one's own gym training (26.11.2026) is under one's own karton, staff's too #}
-      {% set own_karton = path == '/karton' or path.startswith('/karton/trening') or path.startswith('/karton/termin/') %}
-      {% set at_karton = own_karton if staff else (path.startswith('/karton') or path.startswith('/upitnik')) %}
+      {# one's own gym training (26.11.2026) is under one's own karton, staff's
+         too, and since 27.11.2026 so is a client's karton for staff (the
+         search on their Karton tab opens it): every /karton page; a client's
+         /upitnik too, staff's is Admin ▾'s #}
+      {% set at_karton = path.startswith('/karton') or (not staff and path.startswith('/upitnik')) %}
       <a href="/karton" class="{% if at_karton %}on{% endif %}">Karton</a>
       {# a paid product: without an active online plan the tab doesn't exist #}
       {% if show_online %}<a href="/treninzi" class="{% if path.startswith('/treninzi') and not at_vjezbe %}on{% endif %}">Online treninzi</a>{% endif %}
@@ -1223,16 +1219,13 @@
          the tab is no row. #}
       {% set at_kao = path == '/kao' or path.startswith('/kao/') %}
       {% set at_termini = path.startswith('/admin') %}
-      {# a client's karton, /karton/<id>, is the owner's alone (27.11.2026),
-         opened from Korisnici, his page, since Trenutne članarine's
-         "Karton →" went (26.11.2026): it lights Korisnici (the owner: "change
-         both to Korisnici", the crumb the other; Trenutne članarine from
-         24.11.2026 until then) #}
-      {% set member_karton = path.startswith('/karton/') and not own_karton %}
+      {# a client's karton, /karton/<id>, lights no item since 27.11.2026: it is
+         under the Karton tab, whose search opens it (Trenutne članarine from
+         24.11.2026, Korisnici for some hours that day) #}
       {% set at_clanarine = path.startswith('/clanarine') %}
       {% set at_upitnik = path.startswith('/upitnik') %}
       {% set at_tekstovi = path.startswith('/tekstovi') %}
-      {% set at_korisnici = is_owner and (path.startswith('/korisnici') or member_karton) %}
+      {% set at_korisnici = is_owner and path.startswith('/korisnici') %}
       {% set at_statistika = is_owner and path.startswith('/statistika') %}
       <div class="menu-wrap nav-admin">
         <p class="nav-cap">Admin</p>
@@ -2264,7 +2257,11 @@
   // sentence with nothing picked, opts.noMatch the line when nothing
   // matches. A given row may carry `find`, what it matches by besides its
   // name, in place of its tags (a member's email, not the plans his line
-  // shows).
+  // shows). opts.onPick(row) (27.11.2026, the Karton tab's search, whose
+  // pick opens the member's karton: it sends the form) is called after a
+  // pick; with it, Enter while the list is open, no row highlighted and
+  // nothing picked says the missing sentence (the list shut) instead of
+  // doing nothing, as Enter with the list shut does through the submit.
   function qmtCombobox(src, opts) {
     opts = opts || {};
     var given = !!(src && Array.isArray(src.rows));            // rows given, the value a hidden input's
@@ -2358,6 +2355,7 @@
       sel.value = r.id; input.value = r.name; close(); syncTags();
       err.textContent = ""; input.removeAttribute("aria-invalid");
       picking = true; input.focus(); picking = false;          // the focus stays, the list stays shut
+      if (opts.onPick) opts.onPick(r);
     }
     function fail() { err.textContent = opts.missing || "Odaberi vježbu s popisa."; input.setAttribute("aria-invalid", "true"); }
     input.addEventListener("focus", function () { if (!picking) open(); });
@@ -2376,6 +2374,7 @@
         e.preventDefault();                                    // the list is open: Enter picks, never sends
         var li = options()[active];
         if (li) pick(li);
+        else if (opts.onPick && !sel.value) { close(); fail(); }   // nothing highlighted, nothing picked: say so
       } else if (e.key === "Escape" && !list.hidden) {
         e.preventDefault(); close();
       } else if (e.key === "Tab") close();

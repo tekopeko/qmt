@@ -2,6 +2,19 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
+## 27.11.2026 — the Karton tab's search opens a member's karton (Opus draft, reviewed)
+
+The owner, with a screenshot of the field "Član" and its amber "Otvori kao član": "I would rather replace the search bar and the button with just a search bar and when a user is pressed, that user's Karton is opened, not the whole app as his view, but just his Karton which will be searchable for Amir. … The 'Admin' -> 'Gledaj kao član' option stays." It undoes the two entries below in part: Amir has a way to the view again.
+
+- **The field** (`form.k-find` on staff's own karton, `#kf-clan`, `#kf-json`): the members `/kao` lists, base.html's combobox; a pick (a tap, Enter on the highlighted row) sends the form at once (`qmtCombobox`'s new `onPick`), no button; Enter with nothing picked "Odaberi člana s popisa."; back out of the browser's cache the field is emptied (`pageshow`, `persisted`). Without JS the select and "Otvori karton" (`.act`).
+- **`GET /karton/clan`** (`karton_find`, before `/karton/{user_id}`): staff; a member's id → 303 `/karton/<id>`; nothing, junk, nobody, a staff account → `/karton?error=Odaberi člana s popisa.`. It enters nothing and records nothing.
+- **The view `/karton/{id}` is staff's again** (`_require_trainer`; the owner's alone for some hours, the entry below). Its crumb "Karton / <ime>" → `/karton`, staff's Karton tab lit on it, Admin ▾ not (Korisnici's "Karton" still leads there). Its amber "Otvori kao član" stays: from the karton staff still step into the member's app.
+- **Gone**: the Karton tab's amber button, `POST /kao` (`kao_pick`; 405 now), `.btn-kao`. `_enter_member` stays (`POST /kao/{id}`).
+- **Tests**: `test_kao.py` (the form, where it is and is not, `GET /karton/clan` and its refusals, nothing entered or recorded, the browser walk at 390px as a trainer who is not the owner), the 403s of the entry below flipped to 200 with the reason (`test_karton.py`, `test_nav.py`, `test_gym.py`), the crumb and the nav for both, `test_copy_rule.py` (the cap 130: "Otvori karton").
+- **Fable's review**: the diff read; on the dev server as the owner at 390 and 1280px: no button in the form, "iv" finds Ivan Horvat, a tap opens `/karton/2` ("Karton / Ivan", no strip, "Povijest vježbe" there, "Otvori kao član" there), the Karton tab lit and Admin ▾ not, overflow 0, the crumb back with the field empty, Enter with nothing picked, the keyboard's pick, Back, a junk `clan`.
+- **Not verified**: a real back/forward-cache restore (Playwright's Chromium has none: the `persisted` branch ran on a synthetic event); iOS Safari.
+- **Noted**: `/karton/<id>` still renders for a staff account's id (Korisnici's "Karton" on a staff row), as before; the search refuses staff ids.
+
 ## 27.11.2026 — a member's read-only karton is the owner's alone (Fable, direct)
 
 The owner, an hour after the crumb below, of Amir, who has had no link to `/karton/<id>` since build 4: "Oh because now Amir cant even find the link … through his navigation right? I would then not even allow him to open that".

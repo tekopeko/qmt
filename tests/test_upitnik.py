@@ -1060,7 +1060,7 @@ def test_a_kind_switch_keeps_the_row_its_options_and_its_answers():
     assert t.post("/upitnik/pitanje/12", data={"kind": "multi"}).json()["kind"] == "multi"
     assert question(12).option_items == ["Prvi odgovor", "Drugi odgovor"]
     t.post("/upitnik/pitanje/4", data={"kind": "multi"})
-    make_user("trener@test.local", plans=())                    # the owner: a member's karton, /karton/<id>, is his alone (27.11.2026)
+    make_user("trener@test.local", plans=())                    # the owner, staff: the trainer's view is his too
     block = unescape(upitnik_block(client_for("trener@test.local").get(f"/karton/{uid}").text))
     assert f'>{TEXT["q4"]} — <strong>{CHOICES["q4"][0]}</strong></li>' in block      # a string, as given
     assert f'>{TEXT["q12"]} — <strong>5 / 10</strong></li>' in block                # a scale's, as given

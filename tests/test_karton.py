@@ -196,10 +196,11 @@ def test_staff_have_a_karton_of_their_own():
     training since 26.11.2026), the maxes count what he ticks in it, his
     weight and his limitations save, and his finished
     online pass (staff use the player) is in his diary. A client's karton,
-    /karton/<id>, is the owner's alone since 27.11.2026 (a trainer who is
-    not the owner 403): its crumbs lead to Korisnici, the page he reaches it
-    from, its upitnik block and its termini as they were; and a client's own
-    keeps both."""
+    /karton/<id>, is staff's, the trainer's and the owner's alike (the
+    owner's alone for some hours of 27.11.2026, until the Karton tab's
+    search came to open it): its crumb leads back to the Karton tab, whose
+    tab is on there, its upitnik block and its termini as they were; and a
+    client's own keeps both."""
     ivan = make_user("ivan@test.local")                                       # an online plan, no upitnik yet
     amir = make_user("amir@test.local", is_trainer=True, plans=())
     make_user("trener@test.local", plans=())                                  # the owner (OWNER_EMAIL), not a trainer
@@ -242,13 +243,16 @@ def test_staff_have_a_karton_of_their_own():
     assert '<p class="ms-val">82,5 kg</p>' in page and "Staro koljeno." in page
     assert "Nadolazeći termini" not in karton_only(page) and '<section class="upitnik' not in page
 
-    # a client's, /karton/<id>: the owner's alone since 27.11.2026 (reached
-    # from Korisnici, his page, where its crumb leads back); a trainer who is
-    # not the owner cannot open it, he reads a member's as the member
-    assert ca.get(f"/karton/{ivan}").status_code == 403
-    seen = co.get(f"/karton/{ivan}").text
-    assert '<nav class="crumbs" aria-label="Putanja"><a href="/korisnici">Korisnici</a>' in seen
-    assert 'id="termini-h"' in seen and "Upitnik još nije ispunjen." in seen and 'id="trening-novi"' not in seen
+    # a client's, /karton/<id>: the trainer opens it again (the Karton tab's
+    # search is his way in, 27.11.2026), as the owner does, and its crumb
+    # leads both back to the Karton tab, whose tab is on there
+    for c in (ca, co):
+        r = c.get(f"/karton/{ivan}")
+        assert r.status_code == 200
+        seen = r.text
+        assert '<nav class="crumbs" aria-label="Putanja"><a href="/karton">Karton</a><span class="sep">/</span>' in seen
+        assert '<a href="/karton" class="on">Karton</a>' in seen
+        assert 'id="termini-h"' in seen and "Upitnik još nije ispunjen." in seen and 'id="trening-novi"' not in seen
     own = client_for("ivan@test.local").get("/karton").text                  # and his own
     assert 'id="termini-h"' in own and "Ispuni upitnik" in own and "rezerviraj prvi" in own
 
@@ -1710,7 +1714,7 @@ def test_the_history_card_on_the_three_views():
     member's karton. Each maxes row's name links to its history."""
     ivan, ana, ex = history_world()
     amir = make_user("amir@test.local", is_trainer=True, plans=())
-    make_user("trener@test.local", plans=())                    # the owner: a member's karton, /karton/<id>, is his alone (27.11.2026)
+    make_user("trener@test.local", plans=())                    # the owner, staff: the trainer's view is his too
     ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
     today = config.today()
     ago = lambda n: (today - timedelta(days=n)).strftime("%-d.%-m.%Y.")          # noqa: E731
