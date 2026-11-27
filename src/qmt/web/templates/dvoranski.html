@@ -18,7 +18,8 @@
    title or "Trening izvan termina", the date and time, "3 vježbe · napor 7/10 · Dobro",
    "Otvori trening"), then the way to the karton's diary. Every text a slot, gym.tab.*, and
    the training page's where the tab says the same (gym.state.open, gym.head.outside,
-   gym.head.date_field). #}
+   gym.head.date_field). Since build 3 (27.11.2026) staff get one .act under the lead,
+   "Predlošci treninga →" (/dvoranski/predlosci, Amir's templates): their own words. #}
 {% import "_copy.html" as c with context %}
 {% block title %}Dvoranski treninzi — QMT{% endblock %}
 {% block head %}
@@ -63,6 +64,8 @@
   @media (max-width: 600px) { .dv-open, .dv-new { padding: 14px 16px 16px; } .dv-last { padding: 2px 16px; } }
   /* the gate of a member with no gym plan: /treninzi's card */
   .dv-gate { max-width: 640px; padding: 34px; text-align: center; overflow-wrap: anywhere; }
+  /* staff's way to their templates (27.11.2026, build 3), under the lead */
+  .dv-tpl { margin: 0 0 24px; }
   /* a button's words are a slot the editor retypes: they wrap inside it
      rather than push the page (the training page's rule) */
   main :is(.act, .btn, .btn-sm) { white-space: normal; overflow-wrap: anywhere; max-width: 100%; text-align: center; }
@@ -73,6 +76,11 @@
 {% block content %}
 <h1>{{ c.t("gym.tab.title") }}</h1>
 {{ c.opt("gym.tab.lead", "p", ' class="hint"') }}
+{% if can_edit_copy %}
+{# staff's way to the gym training's templates (27.11.2026, build 3: app.gym_templates_page): staff's own
+   words, no slot; never a member's, nor while staff act as one (the page is then his) #}
+<p class="dv-tpl"><a class="act" href="/dvoranski/predlosci">Predlošci treninga →</a></p>
+{% endif %}
 
 {% if not has_plan %}
 {% if copy_on("gym.tab.no_plan") %}

@@ -125,3 +125,6 @@ or delete).
 
 Later, if asked: one screen for member and exercise; a template's blocks prefilled with
 exercises or numbers; a training outside a termin for online-only members.
+
+**All three builds are live since 27.11.2026** (STATUS.md's entries of that day: build 1
+`f8041e5`, build 2 `f0717bf`, build 3 the commit after them).

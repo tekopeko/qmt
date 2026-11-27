@@ -433,7 +433,36 @@ tabular; `.dv-facts` muted .82rem) and "Otvori trening" (`.act`) at its end, whi
 takes a line of its own when its words are long (`flex-wrap`); under the card
 "Svi tvoji treninzi su u kartonu →" (`.act.act-quiet.dv-all`). A member with no
 gym plan: the gate's `.card.dv-gate`, /treninzi's (34px, centred, its one sentence
-bold). Its buttons' words wrap inside them (the training page's rule).
+bold). Its buttons' words wrap inside them (the training page's rule). Staff's
+page (27.11.2026, build 3) carries one `.act` under the lead, "Predlošci treninga →"
+(`p.dv-tpl`, 24px over the first section; staff's own words), never a member's.
+**Amir's templates** (`dvoranski_predlosci.html`, `dvoranski_predlozak.html`,
+`/dvoranski/predlosci`; 27.11.2026, build 3 of the dvoranski treninzi; staff's, under
+the tab, lit there): the /admin pages' look, a 720px column (`.tp`). **The list**: the
+h1 and its lead, then the programme editor's day rows (`.tp-list`, 10px apart): a
+`.card.it-row#predlozak-<id>` per template, its name `.it-name` (700, a link to its
+editor), its facts `.it-note` (the chooser's words; "prazan — članovi ga ne vide" for
+one with no block), then `.it-end`: "Uredi" (`.btn-quiet.btn-sm`) and `.it-acts` ↑ / ↓
+/ ✕ (`.btn-ghost.btn-sm`, each an inline form; a disabled one at .35; ✕ asks with
+`data-confirm`); a row's word after a move is the page's alert inside the row
+(`.tp-alert`, its width). Under them "+ Novi predložak", `form.card.tp-new#novi`
+(16px 20px 18px, 14px 16px 16px on a phone; 18px over it): Naziv (`.field`, 420px at
+most) over `.btn.btn-sm`, its word first in it; at the cap the sentence alone
+(`.tp-cap#novi`, a muted line). **The editor**: the crumbs (Predlošci treninga / the
+name), the bare h1 with no lead (the column keeps a lead's room: `main > h1 + .tp`,
+`clamp(20px, 3vw, 28px)` over it); Naziv and Spremi in `form.card.tp-card#naziv` (the
+field 480px at most); "Blokovi" (`section.tp-sec#blokovi`, its h2 1.05rem, a word for
+the section first under it), `.tp-rows` of `.card.it-row#blok-<id>`: the block's kind
+where a day row's name stands (`.tp-kind`, `.it-name`'s look with no link: 700, a 32px
+line; "Stanica 2", "Kružni set"), `.it-end` ↑ / ↓ / ✕ (buttons naming forms that stand
+after the list, `form=`: a form holds no form; ✕ asks nothing), a Kružni set's second
+line `form.tp-nums` (the day editor's `.st-form` in small: Vježbi, Krugova, "Pauza
+nakon kruga (s)" three side by side, 40px inputs, 44px on a coarse pointer, each control
+at its field's bottom so a wrapped label keeps the line level, Spremi `.btn.btn-sm`
+across under them; from 600px the four on one line); then `.tp-adds` ("+ Stanica",
+"+ Kružni set": `.act` pills, each its form, the training page's `.gt-adds`; at 40 the
+sentence `p.hint.tp-cap` in their place), the muted `.tp-free` line, and "Obriši
+predložak" (`.ex-delete.tp-drop`, 34px under, asking).
 **The gym training's page** (`karton_trening.html`, `/dvoranski/trening/<id>`;
 26.11.2026, build 3; since 27.11.2026 a row of blocks, Stanica and Kružni set, on
 the online player's layout, build 1 of `roadmap/2026-11-27-dvoranski-treninzi-plan.md`):
@@ -859,11 +888,12 @@ programme's followed by `.venue-chip` "dvoranski", 24.11.2026); its lead:
 "Program ima treninge; svaki trening ima zagrijavanje, glavni dio A, B i C te istezanje, a
 vježbe biraš iz baze vježbi." (A and B since 23.11.2026, C since 26.11.2026) (a `.tlink` to the library), since 24.11.2026 "Svaki
 dio može biti kružni: vježbe idu jedna za drugom, s odmorom između krugova.", and "pogledaj kako
-polaznik vidi →" (`.act.act-quiet`). The programme's form (`.card`, 640px: Tip programa,
-Razina and since 24.11.2026 Vrsta, Online / Dvoranski, three selects in one grid,
-`repeat(auto-fit, minmax(160px, 1fr))`, `gap: 0 12px`: a row where they fit, one under
-the other on a phone, the `.field`s' 14px apart; staff's "Novi program" on /treninzi
-the same three, Online chosen), then
+polaznik vidi →" (`.act.act-quiet`). The programme's form (`.card`, 640px: Tip programa
+and Razina, two selects in one grid, `repeat(auto-fit, minmax(160px, 1fr))`, `gap: 0
+12px`: a row where they fit, one under the other on a phone, the `.field`s' 14px apart;
+staff's "Novi program" on /treninzi the same two; Vrsta, Online / Dvoranski, a third
+from 24.11.2026 until 27.11.2026, build 3 of the dvoranski treninzi: no form asks it),
+then
 **Treninzi** (30.10.2026; a day reads "Trening N" since 2.11.2026): a
 `.card.it-row` per day, `id="dan-<id>"`: its label as `.it-name` (a link to the
 day's editor),

@@ -57,7 +57,9 @@ Since 24.11.2026 an exercise of a day may ask for reps and seconds together
 the CHECK that refused it), its dose "3 × 5 × 30 s"; and a programme is
 online or dvoranski (`Program.venue`, migration 49a70497e58a): a dvoranski
 one is the trainer's own plan for the gym, which no client lists or opens.
-Both migrations run for real on qmt_test, there and back.
+Both migrations run for real on qmt_test, there and back. Since 27.11.2026
+(build 3 of the dvoranski treninzi) neither programme form asks "Vrsta":
+every new programme is online, an edited one keeps the stored kind.
 
 Since 25.11.2026 (the owner, for Amir's circuits: "we need to allow Amir to
 add exercises which go into one circle of exercises. And for each of those
@@ -442,16 +444,18 @@ def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
     """The lead says what is automatic (the matching, by razina since
     23.11.2026, every type of it) and what is his (the programmes, their
     days and exercises), what a razina with no programme tells its client,
-    and since 24.11.2026 that a dvoranski programme is his alone; the form
-    is "Novi program", its button "Kreiraj i dodaj treninge", which opens
-    the new programme's editor, the programme with no day."""
+    and since 24.11.2026 that a dvoranski programme is his alone: since
+    27.11.2026 (build 3 of the dvoranski treninzi, no form makes a new one)
+    only while one exists. The form is "Novi program", its button "Kreiraj
+    i dodaj treninge", which opens the new programme's editor, the
+    programme with no day."""
     ct, *_ = trainer_with_clients()
     page = ct.get("/treninzi").text
     lead = ("Sve je automatski: upitnik svrsta polaznika u razinu, a on odmah vidi sve programe te razine, po tipu "
             "treninga — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku razinu napravi programe po tipu "
-            "pa im dodaj treninge i vježbe. Razina bez programa polazniku kaže da se programi još pripremaju. "
-            "Dvoranski programi su samo tvoji: polaznici ih ne vide.")
-    assert f'<p class="hint"> {lead} </p>' in " ".join(page.split())
+            "pa im dodaj treninge i vježbe. Razina bez programa polazniku kaže da se programi još pripremaju.")
+    gym = " Dvoranski programi su samo tvoji: polaznici ih ne vide."
+    assert f'<p class="hint"> {lead} </p>' in " ".join(page.split()) and gym.strip() not in page
     assert '<h2 style="font-size:1.05rem; margin-bottom:12px;">Novi program</h2>' in page
     assert '<button type="submit">Kreiraj i dodaj treninge</button>' in page
     assert 'placeholder="npr. Gornji dio tijela — tjedan 2"' in page
@@ -460,6 +464,11 @@ def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
     r = ct.post("/treninzi", data={"title": "Tjedan 1", "level": "srednja", "goal": "donji"}, follow_redirects=False)
     pid = db.all_programs()[0][0].id
     assert r.headers["location"] == f"/treninzi/{pid}/uredi" and stored_counts() == (1, 0, 0, 0)
+    assert gym.strip() not in ct.get("/treninzi").text                      # an online one: still not
+    gid = db.create_program("Snaga u dvorani", None, "pocetna", "cijelo", "dvorana")
+    assert f'<p class="hint"> {lead}{gym} </p>' in " ".join(ct.get("/treninzi").text.split())
+    db.delete_program(gid)
+    assert gym.strip() not in ct.get("/treninzi").text
 
 
 def test_a_programme_is_one_of_four_types_core_last():
@@ -504,58 +513,56 @@ def test_a_programme_is_one_of_four_types_core_last():
 
 # ---------- a programme is online or dvoranski (24.11.2026) ----------
 
+# the forms' grid of selects (Tip programa, Razina; Vrsta too until 27.11.2026)
 VENUE_GRID = 'style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0 12px;"'
-OPTION = re.compile(r'<option value="(\w+)"( selected)?>([^<]*)</option>')
 
 
-def test_a_programme_is_online_or_dvoranski_on_both_forms():
-    """A programme's "Vrsta" (24.11.2026, the owner: "'dvoranski' or
-    'online'"; models.VENUES): a select after Tip programa and Razina, the
-    three in one auto-fit grid (a row where they fit, stacked on a phone),
-    on "Novi program" (Online, Dvoranski; Online chosen) and on "Uredi
-    program" (the programme's chosen). Created dvoranski, it is one; a form
-    that posts none makes it online; the editor moves it either way, and
-    one that posts none keeps it. A value that is none is refused on both
-    routes, "Odaberi vrstu programa.", nothing stored or changed."""
+def test_neither_programme_form_asks_vrsta():
+    """A programme's "Vrsta" (models.VENUES: online or dvoranski, 24.11.2026)
+    is asked by neither form since 27.11.2026 (build 3 of the dvoranski
+    treninzi; the owner: "I dont like the fact that I need to go to 'Online
+    treninzi' and create a new programme there which is not applicable to
+    gym trainings": a gym training starts from Amir's templates). "Novi
+    program" holds Tip programa and Razina in their auto-fit grid, no Vrsta,
+    and makes every programme online, whatever is posted (a `venue` of
+    dvorana, of nothing, of junk: ignored, never refused). "Uredi program"
+    holds none either and keeps the stored one: a dvoranski programme
+    edited stays dvoranski (its title saved, its chip beside the h1), an
+    online one online, whatever is posted. The CHECK still holds."""
     ct, *_ = trainer_with_clients()
     assert VENUES == {"online": "Online", "dvorana": "Dvoranski"}
     page = ct.get("/treninzi").text
     form = page.split('<form method="post" action="/treninzi" class="card"')[1].split("</form>")[0]
-    assert '<div class="field"><label for="np-venue">Vrsta</label>' in form and VENUE_GRID in form
-    assert form.index('id="np-goal"') < form.index('id="np-level"') < form.index('id="np-venue"')
-    assert OPTION.findall(form.split('id="np-venue"')[1].split("</select>")[0]) == [
-        ("online", " selected", "Online"), ("dvorana", "", "Dvoranski")]
+    assert VENUE_GRID in form and form.index('id="np-goal"') < form.index('id="np-level"')
+    assert "Vrsta" not in form and 'name="venue"' not in form and "Dvoranski" not in form
+    assert re.findall(r'<label for="np-(\w+)">', form) == ["title", "goal", "level", "intro"]
 
     def new(title: str, **venue) -> int:
         r = ct.post("/treninzi", data={"title": title, "level": "pocetna", "goal": "cijelo", **venue},
                     follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"].endswith("/uredi"), venue
         return int(r.headers["location"].split("/")[2])
 
-    gym, online, plain = new("Dvorana A", venue="dvorana"), new("Online A", venue="online"), new("Bez vrste")
-    assert [db.get_program(p).venue for p in (gym, online, plain)] == ["dvorana", "online", "online"]
-    edit = ct.get(f"/treninzi/{gym}/uredi").text
-    assert '<div class="field"><label for="pe-venue">Vrsta</label>' in edit and VENUE_GRID in edit
-    assert OPTION.findall(edit.split('id="pe-venue"')[1].split("</select>")[0]) == [
-        ("online", "", "Online"), ("dvorana", " selected", "Dvoranski")]
-    assert OPTION.findall(ct.get(f"/treninzi/{online}/uredi").text.split('id="pe-venue"')[1].split("</select>")[0]) == [
-        ("online", " selected", "Online"), ("dvorana", "", "Dvoranski")]
+    made = [new("Dvorana A", venue="dvorana"), new("Online A", venue="online"), new("Bez vrste"), new("Krivo", venue="x")]
+    assert [db.get_program(p).venue for p in made] == ["online"] * 4
+    gym = db.create_program("Dvorana B", None, "pocetna", "cijelo", "dvorana")    # one there from before
+    for pid in (gym, made[0]):
+        edit = ct.get(f"/treninzi/{pid}/uredi").text
+        pe = edit.split(f'<form method="post" action="/treninzi/{pid}/edit"')[1].split("</form>")[0]
+        assert VENUE_GRID in pe and "Vrsta" not in pe and 'name="venue"' not in pe and "Dvoranski" not in pe, pid
+        assert re.findall(r'<label for="([\w-]+)">', pe) == ["pe-goal", "pe-level", "pt", "pi"], pid
 
     def edit_to(pid: int, title: str, **venue):
         return ct.post(f"/treninzi/{pid}/edit", data={"title": title, "level": "pocetna", "goal": "cijelo", **venue},
                        follow_redirects=False)
 
-    assert location(edit_to(gym, "Dvorana A", venue="online")) == f"/treninzi/{gym}/uredi?ok=Spremljeno."
-    assert db.get_program(gym).venue == "online"
-    edit_to(gym, "Dvorana A", venue="dvorana")
-    assert db.get_program(gym).venue == "dvorana"
-    edit_to(gym, "Dvorana B")                                                # none posted: kept
-    assert (db.get_program(gym).title, db.get_program(gym).venue) == ("Dvorana B", "dvorana")
-    for bad in ("x", "Dvoranski", "online ", "DVORANA"):
-        r = ct.post("/treninzi", data={"title": "X", "level": "pocetna", "goal": "cijelo", "venue": bad},
-                    follow_redirects=False)
-        assert location(r) == "/treninzi?error=Odaberi vrstu programa.", bad
-        assert location(edit_to(gym, "X", venue=bad)) == f"/treninzi/{gym}/uredi?error=Odaberi vrstu programa.", bad
-    assert stored_counts()[0] == 3 and (db.get_program(gym).title, db.get_program(gym).venue) == ("Dvorana B", "dvorana")
+    for venue in ({"venue": "online"}, {}, {"venue": "x"}):
+        assert location(edit_to(gym, "Dvorana C", **venue)) == f"/treninzi/{gym}/uredi?ok=Spremljeno.", venue
+        assert (db.get_program(gym).title, db.get_program(gym).venue) == ("Dvorana C", "dvorana"), venue
+    assert '<h1>Uredi program <span class="venue-chip">dvoranski</span></h1>' in ct.get(f"/treninzi/{gym}/uredi").text
+    assert location(edit_to(made[1], "Online B", venue="dvorana")) == f"/treninzi/{made[1]}/uredi?ok=Spremljeno."
+    assert (db.get_program(made[1]).title, db.get_program(made[1]).venue) == ("Online B", "online")
+    assert stored_counts()[0] == 5
     with pytest.raises(IntegrityError):                                     # the CHECK: nothing else is stored
         db.create_program("Y", None, "pocetna", "cijelo", "kardio")
 
@@ -570,7 +577,9 @@ def test_a_dvoranski_programme_is_staffs_only():
     "dvoranski" after its title in the /treninzi table and beside the h1 on
     its page and in its editor (an online one carries none), watch its
     clips and run its player: Kreni, a save, the osvrt, a finished pass of
-    their own. Moved to online, it is the client's at once."""
+    their own. Made online (db.update_program: no form does since
+    27.11.2026, build 3 of the dvoranski treninzi), it is the client's at
+    once."""
     ct, ivan, _ = trainer_with_clients()
     trainer = db.get_user_by_email("trener@test.local").id
     gym = db.create_program("Snaga u dvorani", None, "pocetna", "cijelo", "dvorana")
@@ -613,7 +622,7 @@ def test_a_dvoranski_programme_is_staffs_only():
     [done] = db.passes(trainer)
     assert (done.program_title, done.effort, done.done_items[iid]["sets"]) == ("Snaga u dvorani", 7, [{"reps": 5, "kg": 100.0}])
 
-    ct.post(f"/treninzi/{gym}/edit", data={"title": "Snaga u dvorani", "level": "pocetna", "goal": "cijelo", "venue": "online"})
+    db.update_program(gym, "Snaga u dvorani", None, "pocetna", "cijelo", "online")
     assert ci.get(f"/treninzi/{gym}").status_code == 200 and ci.get(f"/media/{clip}").status_code == 200
     assert [title for _, titles in client_groups(ci.get("/treninzi").text) for title in titles] == [
         "Snaga online", "Snaga u dvorani"]
@@ -2945,9 +2954,10 @@ def test_a_programme_holding_a_slot_is_not_made_online():
     """db.update_program: a dvoranski programme a day of which holds a slot
     is not made online ("Program ima prazna mjesta — popuni ih ili obriši
     prije nego postane online.", nothing saved, its title neither: a client
-    must never meet a slot); through the programme's form the same, back at
-    its editor. Its other saves pass; once no slot is left it is made
-    online."""
+    must never meet a slot). The programme's form asks no Vrsta since
+    27.11.2026 (build 3 of the dvoranski treninzi): one that posts online
+    saves the title and keeps the programme dvoranski, its slot as it was.
+    Its other saves pass; once no slot is left it is made online."""
     ct, *_ = trainer_with_clients()
     pid, did, *_ = gym_day("Predložak")
     slot = db.add_day_slot(did, "trening", "čučanj")
@@ -2957,8 +2967,9 @@ def test_a_programme_holding_a_slot_is_not_made_online():
     assert (db.get_program(pid).title, db.get_program(pid).venue) == ("Predložak", "dvorana")
     r = ct.post(f"/treninzi/{pid}/edit", data={"title": "Novi", "level": "pocetna", "goal": "cijelo", "venue": "online"},
                 follow_redirects=False)
-    assert location(r) == f"/treninzi/{pid}/uredi?error={refused}"
-    assert (db.get_program(pid).title, db.get_program(pid).venue) == ("Predložak", "dvorana")
+    assert location(r) == f"/treninzi/{pid}/uredi?ok=Spremljeno."
+    assert (db.get_program(pid).title, db.get_program(pid).venue) == ("Novi", "dvorana")
+    assert [it.id for it in db.get_day(did).items if it.is_slot] == [slot]
     db.update_program(pid, "Predložak 2", None, "srednja", "core", None)    # kept dvoranski: saved
     db.update_program(pid, "Predložak 3", None, "srednja", "core", "dvorana")
     assert (db.get_program(pid).title, db.get_program(pid).level) == ("Predložak 3", "srednja")

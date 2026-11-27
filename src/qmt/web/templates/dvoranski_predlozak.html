@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{# A template's editor (27.11.2026, build 3 of roadmap/2026-11-27-dvoranski-treninzi-plan.md;
+   app.gym_template_page): staff's, under the tab Dvoranski treninzi, lit there. A crumb back to the
+   list, the template's name the h1; Naziv and Spremi in a card; then "Blokovi", a row per block in its
+   order (base.html's .it-row, the day editor's look): a Stanica, numbered among the stations as a
+   member's overview numbers them, nothing to set; a Kružni set with its three numbers in ONE small form
+   on the row's second line, Vježbi (its rows, 1–12), Krugova (1–20) and "Pauza nakon kruga (s)" (0–3600,
+   empty for none), Spremi; each row ↑ / ↓ and ✕ (one tap: nothing a member wrote is in a template),
+   whose forms stand after the list (form=: a form holds no form). "+ Stanica" and "+ Kružni set" after
+   the last (a Kružni set starts with 4 rows and 4 Krug; not at 40, the training's cap: its sentence in
+   their place), the muted line on the member's freedom, "Obriši predložak" at the bottom (asks). A
+   save or a move comes back at its row (?blok=<id>), the name's at its card (?naziv=1), a block
+   removed or an add refused in the blocks' section (?blokovi=1): the word there, never at the page's
+   top. A template is its blocks alone: no exercise, no Stanica's numbers (the owner: "The template's
+   stations are empty"). Staff's own words. #}
+{% block title %}Predložak: {{ tpl.title }} — QMT{% endblock %}
+{% block head %}
+<style>
+  /* the list's column; the name's card, then the blocks' section. The h1
+     has no lead under it here: the column keeps the room a lead leaves
+     (main > h1 + .hint's margin) */
+  .tp { max-width: 720px; }
+  main > h1 + .tp { margin-top: clamp(20px, 3vw, 28px); }
+  .tp-card { padding: 16px 20px 18px; margin-bottom: 26px; scroll-margin-top: 90px; }
+  .tp-card > .alert { margin: 0 0 12px; }
+  .tp-card .field { max-width: 480px; margin-bottom: 12px; }
+  .tp-sec > h2 { font-size: 1.05rem; margin-bottom: 12px; scroll-margin-top: 90px; }
+  .tp-sec > .alert { margin: 0 0 12px; }
+  .tp-rows { display: flex; flex-direction: column; gap: 10px; }
+  .tp-rows > .hint { margin: 0; }
+  /* a block's kind where a day row's name stands (.it-name's look: 700, a
+     32px line), no link: nothing of it opens elsewhere */
+  .tp-kind { min-width: 0; min-height: 32px; display: flex; align-items: center; font-weight: 700;
+             overflow-wrap: anywhere; }
+  /* a row's word after its save or move: the page's alert inside the row,
+     its width, above the form */
+  .it-row > .tp-alert { flex: 1 0 100%; margin: 4px 0 2px; }
+  .tp-alert > span { min-width: 0; overflow-wrap: anywhere; }
+  /* a Kružni set's three numbers and Spremi, the row's second line: the
+     day editor's row form (.st-form) in small, three fields side by side
+     and Spremi across under them on a phone, the four on one line from
+     600px; a label its column cannot hold on one line wraps, each control
+     at its field's bottom, so the controls of a line stay level */
+  .tp-nums { flex: 1 0 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px;
+             margin: 2px 0 4px; }
+  .tp-nums > div { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+  .tp-nums label { margin-bottom: 3px; }
+  .tp-nums input { height: 40px; padding: 0 10px; min-width: 0; }
+  .tp-nums .tp-go { grid-column: 1 / -1; }
+  .tp-nums .tp-go .btn { width: 100%; height: 40px; }
+  @media (pointer: coarse) { .tp-nums input, .tp-nums .tp-go .btn { height: 44px; } }
+  @media (min-width: 600px) {
+    .tp-nums { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .tp-nums .tp-go { grid-column: auto; }
+  }
+  /* "+ Stanica" / "+ Kružni set" (the training page's .gt-adds), the
+     member's freedom in a muted line, "Obriši predložak" well under them */
+  .tp-adds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .tp-adds form { margin: 0; }
+  .tp-cap { margin: 14px 0 0; }
+  .tp-free { margin-top: 12px; overflow-wrap: anywhere; }
+  .tp-drop { margin-top: 34px; }
+</style>
+{% endblock %}
+{# a row's word in its row, the name's in its card, a block removed or an
+   add refused in the blocks' section; anything else (a block gone since)
+   the top's #}
+{% set q = request.query_params %}
+{% set focus = q.get("blok") %}
+{% set in_row = focus in tpl.blocks|map(attribute="id")|map("string")|list %}
+{% set in_blocks = not in_row and q.get("blokovi") == "1" %}
+{% set in_name = not in_row and not in_blocks and q.get("naziv") == "1" %}
+{% block error_alert %}{% if not (in_row or in_blocks or in_name) %}{{ super() }}{% endif %}{% endblock %}
+{% block ok_alert %}{% if not (in_row or in_blocks or in_name) %}{{ super() }}{% endif %}{% endblock %}
+{% macro said() -%}
+  {%- if request.query_params.get("error") %}<div class="alert tp-alert" role="alert"><span>{{ request.query_params.get("error") | gendered }}</span></div>
+  {%- elif request.query_params.get("ok") %}<div class="alert ok tp-alert" role="status">{{ request.query_params.get("ok") | gendered }}</div>{% endif -%}
+{%- endmacro %}
+{% block content %}
+<nav class="crumbs" aria-label="Putanja"><a href="/dvoranski/predlosci">Predlošci treninga</a><span class="sep">/</span><span class="here">{{ tpl.title }}</span></nav>
+<h1>{{ tpl.title }}</h1>
+<div class="tp">
+  <form method="post" action="/dvoranski/predlosci/{{ tpl.id }}/naziv" class="card tp-card" id="naziv">
+    {% if in_name %}{{ said() }}{% endif %}
+    <div class="field"><label for="tp-title">Naziv</label>
+      <input id="tp-title" type="text" name="title" value="{{ tpl.title }}" maxlength="{{ title_max }}" required></div>
+    <button type="submit" class="btn btn-sm">Spremi</button>
+  </form>
+
+  <section class="tp-sec" id="blokovi" aria-labelledby="tp-blocks-h">
+    <h2 id="tp-blocks-h">Blokovi</h2>
+    {% if in_blocks %}{{ said() }}{% endif %}
+    <div class="tp-rows">
+      {% for b, label in tpl.labelled %}
+      <div class="card it-row" id="blok-{{ b.id }}">
+        <span class="tp-kind">{{ label }}</span>
+        <span class="it-end">
+          <span class="it-acts">
+            <button type="submit" form="tb-gore-{{ b.id }}" class="btn-ghost btn-sm"
+                    {% if loop.first %}disabled style="opacity:.35;"{% endif %} aria-label="Pomakni gore: {{ label }}">↑</button>
+            <button type="submit" form="tb-dolje-{{ b.id }}" class="btn-ghost btn-sm"
+                    {% if loop.last %}disabled style="opacity:.35;"{% endif %} aria-label="Pomakni dolje: {{ label }}">↓</button>
+            <button type="submit" form="tb-x-{{ b.id }}" class="btn-ghost btn-sm" aria-label="Ukloni: {{ label }}">✕</button>
+          </span>
+        </span>
+        {% if in_row and focus == b.id|string %}{{ said() }}{% endif %}
+        {% if b.kind == "kruzni" %}
+        <form class="tp-nums" method="post" action="/dvoranski/predlosci/{{ tpl.id }}/blok/{{ b.id }}">
+          <div><label for="tb-{{ b.id }}-slots">Vježbi</label>
+            <input id="tb-{{ b.id }}-slots" type="number" name="slots" inputmode="numeric" min="1" max="{{ max_rows }}"
+                   value="{{ b.slots if b.slots is not none else '' }}" required></div>
+          <div><label for="tb-{{ b.id }}-rounds">Krugova</label>
+            <input id="tb-{{ b.id }}-rounds" type="number" name="rounds" inputmode="numeric" min="{{ rounds[0] }}" max="{{ rounds[1] }}"
+                   value="{{ b.rounds if b.rounds is not none else '' }}" required></div>
+          <div><label for="tb-{{ b.id }}-rest">Pauza nakon kruga (s)</label>
+            <input id="tb-{{ b.id }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600"
+                   value="{{ b.rest_seconds if b.rest_seconds is not none else '' }}"></div>
+          <div class="tp-go"><button type="submit" class="btn btn-sm">Spremi</button></div>
+        </form>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="hint">Prazan — članovi ga ne vide.</p>
+      {% endfor %}
+    </div>
+    {% if can_add %}
+    <div class="tp-adds">
+      <form method="post" action="/dvoranski/predlosci/{{ tpl.id }}/blok"><input type="hidden" name="vrsta" value="stanica">
+        <button type="submit" class="act">+ Stanica</button></form>
+      <form method="post" action="/dvoranski/predlosci/{{ tpl.id }}/blok"><input type="hidden" name="vrsta" value="kruzni">
+        <button type="submit" class="act">+ Kružni set</button></form>
+    </div>
+    {% else %}
+    <p class="hint tp-cap">{{ too_many }}</p>
+    {% endif %}
+    <p class="hint tp-free">Član blokove vidi ovim redom; svaki može preskočiti, ukloniti ili dodati svoj.</p>
+  </section>
+  {# the rows' ↑ / ↓ / ✕, named by their buttons (form=): a form holds no form #}
+  {% for b in tpl.blocks %}
+  <form id="tb-gore-{{ b.id }}" method="post" action="/dvoranski/predlosci/{{ tpl.id }}/blok/{{ b.id }}/pomak"><input type="hidden" name="smjer" value="gore"></form>
+  <form id="tb-dolje-{{ b.id }}" method="post" action="/dvoranski/predlosci/{{ tpl.id }}/blok/{{ b.id }}/pomak"><input type="hidden" name="smjer" value="dolje"></form>
+  <form id="tb-x-{{ b.id }}" method="post" action="/dvoranski/predlosci/{{ tpl.id }}/blok/{{ b.id }}/obrisi"></form>
+  {% endfor %}
+
+  <form method="post" action="/dvoranski/predlosci/{{ tpl.id }}/obrisi" class="ex-delete tp-drop"
+        data-confirm-title="Obrisati predložak?"
+        data-confirm="Treninzi koji su već krenuli od njega ostaju kakvi jesu."
+        data-confirm-cta="Obriši">
+    <button class="btn-ghost">Obriši predložak</button>
+  </form>
+</div>
+{% endblock %}

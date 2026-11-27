@@ -2065,8 +2065,12 @@ class GymTemplate(Base):
     them): its `title` (80 characters) and its place among the templates
     (`position`, unique, deferred), its blocks (GymTemplateBlock) in order.
     No exercise in it: a member picks each at its block (db.
-    apply_gym_template copies the blocks, empty, into his training). Amir's
-    own templates are build 3's."""
+    apply_gym_template copies the blocks, empty, into his training). Since
+    build 3 (27.11.2026; the owner: "Amir will create the third template
+    later and give it a name") they are staff's rows, made, renamed, moved
+    and deleted on /dvoranski/predlosci (db.add_gym_template and the rest),
+    at most db.GYM_MAX_TEMPLATES; one with no block is in no member's
+    chooser."""
 
     __tablename__ = "gym_templates"
 
@@ -2098,6 +2102,18 @@ class GymTemplate(Base):
         if run:
             words.append(f"{run} {plural(run, 'stanica', 'stanice', 'stanica')}")
         return " · ".join(words)
+
+    @property
+    def labelled(self) -> list[tuple["GymTemplateBlock", str]]:
+        """Each block with its name on the template's editor (27.11.2026,
+        build 3): a Stanica its number among the stations, "Stanica 2" (as
+        a member's overview names it), a Kružni set "Kružni set"."""
+        out, n = [], 0
+        for b in self.blocks:
+            if b.kind == "stanica":
+                n += 1
+            out.append((b, f"Stanica {n}" if b.kind == "stanica" else GYM_BLOCK_KINDS[b.kind]))
+        return out
 
 
 class GymTemplateBlock(Base):

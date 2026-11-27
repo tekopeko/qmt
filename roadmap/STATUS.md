@@ -2,9 +2,23 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
+## 27.11.2026 — Dvoranski treninzi, build 3: Amir's templates, "Vrsta" off the programme forms (Opus draft, reviewed)
+
+Build 3 of `roadmap/2026-11-27-dvoranski-treninzi-plan.md`, the last. The owner: "Amir will create the third template later and give it a name"; "I dont like the fact that I need to go to 'Online treninzi' and create a new programme there which is not applicable to gym trainings." No migration (build 1's `gym_templates` / `gym_template_blocks`).
+
+- **The list**, `GET /dvoranski/predlosci` (staff's; the way in "Predlošci treninga →" on staff's `/dvoranski`): a row per template in the chooser's order, its facts, Uredi, ↑ / ↓, ✕ (asks); "+ Novi predložak" (a name, 80 at most; 12 at most); one with no block "prazan — članovi ga ne vide" and in no member's chooser.
+- **The editor**, `GET /dvoranski/predlosci/{id}`: Naziv; Blokovi, each "Stanica n" or "Kružni set" with Vježbi (1–12), Krugova (1–20), "Pauza nakon kruga (s)"; ↑ / ↓ / ✕ (one tap); "+ Stanica", "+ Kružni set" (40 at most); "Obriši predložak". The writes `POST …/naziv|pomak|obrisi|blok`, `…/blok/{bid}`, `…/blok/{bid}/pomak|obrisi`.
+- **Rules** (db.py): every write under `LOCK TABLE gym_templates IN SHARE ROW EXCLUSIVE MODE` (two adds at once at eleven make twelve; two "+ Stanica" at once take two places: tested); positions dense after a delete; `gym_templates()` for the chooser the ones with a block, `all=True` staff's; `apply_gym_template` refuses one with no block. A training made from a template keeps its blocks when the template changes or goes.
+- **"Vrsta"**: neither programme form asks it; a new programme is online; an edited one keeps its venue; the staff table's dvoranski sentence only while one exists. `db.create_program` / `update_program` keep their `venue` (the seed and the tests make dvoranski programmes through it).
+- **Tests**: `tests/test_predlosci.py` (new, 11), `test_programs.py` (the forms, the lead), `test_copy_rule.py` (the two staff templates; "Predlošci treninga →" on the allowlist, the cap 130).
+- **Fable's review (27.11.2026)**: db.py's diff read whole. In the browser, dev server, 390px: the owner's way in on `/dvoranski`; a template made ("Fable proba"), a Stanica, a Kružni set and a Stanica added, the set's Krug 3 and pause 60 saved ("Spremljeno." in its row), a Krug of 30 refused ("Neispravan broj."), overflow 0 at 360 and 390px; "Novi program" with no Vrsta (its selects: tip, razina); as ivan the chooser offers the three in order ("Fable proba · 1 stanica · kružni set · 3 kruga · 1 stanica"), a training made from it holds its three blocks in order; a member's `/dvoranski/predlosci` 403 and no way in for him; the template deleted, the member's training still its three blocks. With it ship two small things waiting for the batch: "Ispuni upitnik" filled again (the entry below), and a stale sentence of CLAUDE.md about the old templates.
+- **Timing**: the implementer 46 min in all, of which 11 runs of tests, audit and seed 16 min (pytest 551 s over 7 runs, `test_copy.py` 436 s of it; the audit twice, 410 s) and no waiting; Fable's review about a minute by the clock (the walk above); the audit 204 s. The whole suite 1018 s (`703 passed`).
+- **Not verified**: the light theme and a desktop by eye (the audit measured them); Safari; a real phone.
+- **Noted**: the "✎ Uredi tekstove" pill shows on the two new pages, which hold no editable text (it shows on every staff page); the dvoranski programmes there (one on prod, made on 27.11.) are staff's to edit or delete, offered to nobody as templates.
+
 ## 27.11.2026 — "Ispuni upitnik" is a filled button again (Fable, direct; waiting for the batch)
 
-Noticed by the worker of build 2 and confirmed in a browser: `<a class="btn-sm btn-signal">` had no fill (`.btn-signal` is an empty alias in base.html, which a `<button>` survives because every button is filled and a link does not): the karton's and /treninzi's "Ispuni upitnik" were text in a pill's shape. Both are `btn btn-sm` now (`.btn-signal` stays on the buttons that wear it). Small, so it ships with build 3 (the owner's batching, [[qmt-batch-small-changes]]).
+Noticed by the worker of build 2 and confirmed in a browser: `<a class="btn-sm btn-signal">` had no fill (`.btn-signal` is an empty alias in base.html, which a `<button>` survives because every button is filled and a link does not): the karton's and /treninzi's "Ispuni upitnik" were text in a pill's shape. Both are `btn btn-sm` now (`.btn-signal` stays on the buttons that wear it). Small, so it ships with build 3 (the owner's batching of that day: small changes go out together, one whole-suite run and one deploy).
 
 ## 27.11.2026 — Dvoranski treninzi, build 2: the tab (Opus draft, reviewed)
 

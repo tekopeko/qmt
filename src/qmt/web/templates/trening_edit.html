@@ -19,8 +19,10 @@
 </p>
 
 <form method="post" action="/treninzi/{{ p.id }}/edit" class="card" style="max-width:640px; padding:18px 20px; margin-bottom:30px;">
-  {# three selects in a row where they fit, one under the other on a phone;
-     Vrsta (24.11.2026): Online or Dvoranski, a gym programme no client sees #}
+  {# the two selects in a row where they fit, one under the other on a phone.
+     No Vrsta since 27.11.2026 (build 3 of the dvoranski treninzi): the
+     programme keeps the stored one (a dvoranski one stays staff's, its "dvoranski"
+     chip beside the h1); Online / Dvoranski from 24.11.2026 until then #}
   <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0 12px;">
     <div class="field"><label for="pe-goal">Tip programa</label>
       <select id="pe-goal" name="goal" required>
@@ -29,10 +31,6 @@
     <div class="field"><label for="pe-level">Razina</label>
       <select id="pe-level" name="level" required>
         {% for k, l in levels.items() %}<option value="{{ k }}" {% if k == p.level %}selected{% endif %}>{{ l }}</option>{% endfor %}
-      </select></div>
-    <div class="field"><label for="pe-venue">Vrsta</label>
-      <select id="pe-venue" name="venue" required>
-        {% for k, l in VENUES.items() %}<option value="{{ k }}"{% if k == p.venue %} selected{% endif %}>{{ l }}</option>{% endfor %}
       </select></div>
   </div>
   <div class="field"><label for="pt">Naziv</label>

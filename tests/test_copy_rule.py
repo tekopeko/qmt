@@ -86,10 +86,12 @@ MEMBER_TEMPLATES = (
     "karton_trening.html", "karton_trening_osvrt.html", "_rest_bar.html", "_tagbar.html", "dvoranski.html",
 )
 # The templates only staff reach: they stay as they are (the owner was told so).
+# Since 27.11.2026 (build 3 of the dvoranski treninzi) Amir's templates' list
+# and editor.
 STAFF_TEMPLATES = (
     "admin.html", "clanarine.html", "korisnici.html", "statistika.html", "roster.html", "template_edit.html",
     "treninzi_admin.html", "trening_edit.html", "trening_day_edit.html", "vjezbe.html", "vjezba.html",
-    "tekstovi.html", "kao.html", "kao_zapisi.html",
+    "tekstovi.html", "kao.html", "kao_zapisi.html", "dvoranski_predlosci.html", "dvoranski_predlozak.html",
 )
 
 # a sentence built around a value: the fixed words whose grammar hangs on a
@@ -166,6 +168,12 @@ ALLOWED: dict[str, set[str]] = {
     "karton_trening.html": {
         "Krug",                              # "Krug 2", a Kružni set's Krug's number, as the player's round's
     },
+    "dvoranski.html": {
+        # staff's way to their templates on their own tab (27.11.2026, build 3
+        # of the dvoranski treninzi): staff's own chrome, which a member never
+        # reads, as the trainer's "Otvori kao član"
+        "Predlošci treninga →",
+    },
     "_tagbar.html": {"još"},                 # "još 5": a count (the tag chips past the first twelve)
     "trening_kraj.html": {
         "od",                                # "6 od 8 vježbi"
@@ -223,9 +231,10 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     # it) and the search's no-JS button "Otvori karton"; 128 since build 1 of
     # the dvoranski treninzi, 27.11.2026: the gym training's page took the
     # player's layout, its crumbs gone, "← Natrag" the player's slot; 129
-    # since build 2 the same day: the nav's tab "Dvoranski treninzi"): a long
+    # since build 2 the same day: the nav's tab "Dvoranski treninzi"; 130
+    # since build 3: staff's "Predlošci treninga →" on their own tab): a long
     # list means texts were left out
-    assert sum(len(v) for v in ALLOWED.values()) <= 129
+    assert sum(len(v) for v in ALLOWED.values()) <= 130
 
 
 def test_the_scan_sees_a_new_literal_and_strips_what_is_code():

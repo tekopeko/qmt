@@ -23,7 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .. import auth, config, copy, db, grammar, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, ONLINE_TIER_SLOTS, ONLINE_TIERS, PAYMENT_METHODS, PLAN_ABBR,
-                      PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, SEXES, VENUES, WEEKDAYS as DAY_WEEKDAYS,
+                      PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, SEXES, WEEKDAYS as DAY_WEEKDAYS,
                       add_month, alpha_key, duration_text, effort_of, fold, matches, plural, sub_month)
 
 @asynccontextmanager
@@ -89,9 +89,6 @@ templates.env.globals["ONLINE_TIER_SLOTS"] = ONLINE_TIER_SLOTS
 templates.env.globals["SECTIONS"] = SECTIONS
 templates.env.globals["WEEKDAYS"] = DAY_WEEKDAYS
 templates.env.globals["plural"] = plural
-# what a programme is (24.11.2026): online, or dvoranski, the trainer's own
-# plan for the gym (the programme forms' "Vrsta", staff's "dvoranski" chip)
-templates.env.globals["VENUES"] = VENUES
 # a programme as the library's pages name it, "Booty build (napredna razina)"
 # (vjezba.html: the programmes that hold an exercise)
 templates.env.filters["program_name"] = db.program_name
@@ -3463,6 +3460,206 @@ def gym_outside(request: Request, day: str = Form("")):
     return RedirectResponse(f"/dvoranski/trening/{db.add_gym_outside(user.id, when)}", status_code=303)
 
 
+# ---------- Amir's templates (27.11.2026, build 3 of the dvoranski treninzi) ----------
+#
+# roadmap/2026-11-27-dvoranski-treninzi-plan.md, build 3; the owner: "In the
+# start, there would be two templates. […]"; "Amir will create the third
+# template later and give it a name"; "I dont like the fact that I need to go
+# to 'Online treninzi' and create a new programme there which is not
+# applicable to gym trainings." Staff's two pages under the tab (lit there:
+# base.html's every /dvoranski page), the way in staff's own /dvoranski's
+# "Predlošci treninga →": the list (dvoranski_predlosci.html) and a
+# template's editor, its name and its blocks (dvoranski_predlozak.html). A
+# template is its blocks alone, a Stanica's exercise and numbers the
+# member's (the owner: "The template's stations are empty"). Every route is
+# _require_trainer's: a member 403, a guest to the login, and while staff act
+# as a member refused as every staff page. A save or a move comes back at its
+# row (?predlozak=<id> on the list, ?blok=<id> on the editor), the name's at
+# its card (?naziv=1), an add refused or a block removed in its section
+# (?novi=1, ?blokovi=1): the word there ("Spremljeno."), never at the page's
+# top; a template deleted, the list's top. Staff's own words (literals).
+
+GYM_TEMPLATES_URL = "/dvoranski/predlosci"
+
+
+def _tpl_url(template_id: int | None = None, anchor: str = "", **query) -> str:
+    """An address of the templates' pages: the list (no id) or a template's
+    editor, with its query (a value that is None or empty left out) and its
+    anchor."""
+    from urllib.parse import urlencode
+
+    path = GYM_TEMPLATES_URL if template_id is None else f"{GYM_TEMPLATES_URL}/{template_id}"
+    q = urlencode({k: v for k, v in query.items() if v not in (None, "")})
+    return path + (f"?{q}" if q else "") + (f"#{anchor}" if anchor else "")
+
+
+@app.get("/dvoranski/predlosci", response_class=HTMLResponse)
+def gym_templates_page(request: Request):
+    """"Predlošci treninga": every template in its order (the member's
+    chooser's), its name in 700 a link to its editor, its facts (the
+    chooser's words; one with no block "prazan — članovi ga ne vide"),
+    Uredi, ↑ / ↓ and ✕ (asks); under them "+ Novi predložak" (not at the
+    cap: its sentence in its place); none, "Još nema predložaka."."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    tpls = db.gym_templates(all=True)
+    return templates.TemplateResponse(request, "dvoranski_predlosci.html", _ctx(
+        request, user, tpls=tpls, can_add=len(tpls) < db.GYM_MAX_TEMPLATES, too_many=db.TOO_MANY_TEMPLATES,
+        title_max=db.GYM_TEMPLATE_TITLE_MAX))
+
+
+@app.post("/dvoranski/predlosci")
+def gym_template_new(request: Request, title: str = Form("")):
+    """"+ Novi predložak": a template of that name after the last, with no
+    block (db.add_gym_template), then its editor. Refused ("Upiši naziv
+    predloška.", "Najviše 80 znakova.", "Najviše 12 predložaka."): the
+    sentence in the add card (?novi=1#novi), nothing made."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    try:
+        template_id = db.add_gym_template(title)
+    except ValueError as e:
+        return RedirectResponse(_tpl_url(anchor="novi", novi=1, error=str(e)), status_code=303)
+    return RedirectResponse(_tpl_url(template_id), status_code=303)
+
+
+@app.get("/dvoranski/predlosci/{template_id}", response_class=HTMLResponse)
+def gym_template_page(request: Request, template_id: int):
+    """A template's editor: a crumb back to the list, its name the h1;
+    Naziv and Spremi; then "Blokovi", a row per block in its order (a
+    Stanica, numbered among the stations as a member's overview numbers
+    them, nothing to set; a Kružni set with its three numbers in one small
+    form), each with ↑ / ↓ and ✕ (one tap); "+ Stanica" and "+ Kružni set"
+    after the last (not at 40: its sentence in their place), the muted line
+    on the member's freedom, and "Obriši predložak" at the bottom (asks).
+    None such: 404."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    tpl = db.gym_template(template_id)
+    if tpl is None:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(request, "dvoranski_predlozak.html", _ctx(
+        request, user, tpl=tpl, can_add=len(tpl.blocks) < db.GYM_MAX_BLOCKS, too_many=db.TOO_MANY_BLOCKS,
+        title_max=db.GYM_TEMPLATE_TITLE_MAX, max_rows=db.GYM_MAX_ROWS, rounds=db.GYM_ROUNDS))
+
+
+@app.post("/dvoranski/predlosci/{template_id}/naziv")
+def gym_template_rename(request: Request, template_id: int, title: str = Form("")):
+    """The editor's Naziv (db.rename_gym_template): back at its card
+    (?naziv=1#naziv), "Spremljeno." or the refusal's sentence there."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    try:
+        saved = db.rename_gym_template(template_id, title)
+    except ValueError as e:
+        return RedirectResponse(_tpl_url(template_id, "naziv", naziv=1, error=str(e)), status_code=303)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(_tpl_url(template_id, "naziv", naziv=1, ok="Spremljeno."), status_code=303)
+
+
+@app.post("/dvoranski/predlosci/{template_id}/pomak")
+def gym_template_move(request: Request, template_id: int, smjer: str = Form("")):
+    """↑ / ↓ on the list (`smjer` gore / dolje, db.move_gym_template): back
+    at its row (#predlozak-<id>), "Spremljeno." there when it moved; at
+    either end, for a template gone or a direction that is neither, nothing
+    moves and no word."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    moved = db.move_gym_template(template_id, smjer)
+    return RedirectResponse(_tpl_url(anchor=f"predlozak-{template_id}", predlozak=template_id,
+                                     ok="Spremljeno." if moved else None), status_code=303)
+
+
+@app.post("/dvoranski/predlosci/{template_id}/obrisi")
+def gym_template_delete(request: Request, template_id: int):
+    """The list's ✕ and the editor's "Obriši predložak" (each asks first):
+    the template and its blocks go (db.delete_gym_template); the trainings
+    made from it keep theirs. Back at the list, "Predložak je obrisan." at
+    its top (one already gone: the list, no word)."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    if not db.delete_gym_template(template_id):
+        return RedirectResponse(_tpl_url(), status_code=303)
+    return RedirectResponse(_tpl_url(ok="Predložak je obrisan."), status_code=303)
+
+
+@app.post("/dvoranski/predlosci/{template_id}/blok")
+def gym_template_block_add(request: Request, template_id: int, vrsta: str = Form("")):
+    """"+ Stanica" (`vrsta` stanica) and "+ Kružni set" (kruzni: 4 rows, 4
+    Krug), after the last block (db.add_gym_template_block): back at the
+    new row, "Spremljeno." there. Refused at 40 ("Najviše 40 stanica i
+    kružnih setova."): in the blocks' section (?blokovi=1#blokovi), nothing
+    added. A template gone, or a kind that is none: 404."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    try:
+        block_id = db.add_gym_template_block(template_id, vrsta)
+    except ValueError as e:
+        return RedirectResponse(_tpl_url(template_id, "blokovi", blokovi=1, error=str(e)), status_code=303)
+    if block_id is None:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(_tpl_url(template_id, f"blok-{block_id}", blok=block_id, ok="Spremljeno."),
+                            status_code=303)
+
+
+@app.post("/dvoranski/predlosci/{template_id}/blok/{block_id}")
+def gym_template_block_save(request: Request, template_id: int, block_id: int, slots: str = Form(""),
+                            rounds: str = Form(""), rest: str = Form("")):
+    """A Kružni set's three numbers: Vježbi (`slots`, 1–12), Krugova
+    (`rounds`, 1–20), "Pauza nakon kruga (s)" (`rest`, 0–3600, empty for
+    none): db.set_gym_template_block. Back at its row (?blok=<id>), its word
+    there: "Spremljeno." or "Neispravan broj." (nothing changed). Not this
+    template's block, or a Stanica: 404."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    try:
+        saved = db.set_gym_template_block(template_id, block_id, _count(slots), _count(rounds), _count(rest))
+    except ValueError as e:
+        return RedirectResponse(_tpl_url(template_id, f"blok-{block_id}", blok=block_id, error=str(e)),
+                                status_code=303)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(_tpl_url(template_id, f"blok-{block_id}", blok=block_id, ok="Spremljeno."),
+                            status_code=303)
+
+
+@app.post("/dvoranski/predlosci/{template_id}/blok/{block_id}/pomak")
+def gym_template_block_move(request: Request, template_id: int, block_id: int, smjer: str = Form("")):
+    """↑ / ↓ on the editor (`smjer` gore / dolje,
+    db.move_gym_template_block): back at its row, "Spremljeno." there when
+    it moved; at either end, for a block gone or a direction that is
+    neither, nothing moves and no word."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    moved = db.move_gym_template_block(template_id, block_id, smjer)
+    return RedirectResponse(_tpl_url(template_id, f"blok-{block_id}", blok=block_id,
+                                     ok="Spremljeno." if moved else None), status_code=303)
+
+
+@app.post("/dvoranski/predlosci/{template_id}/blok/{block_id}/obrisi")
+def gym_template_block_delete(request: Request, template_id: int, block_id: int):
+    """✕ on the editor, one tap (nothing a member wrote is in a template):
+    the block goes (db.delete_gym_template_block). Back in the blocks'
+    section, its word there ("Stanica je uklonjena." / "Kružni set je
+    uklonjen.", the training page's); a block already gone, no word."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    kind = db.delete_gym_template_block(template_id, block_id)
+    word = {"stanica": "Stanica je uklonjena.", "kruzni": "Kružni set je uklonjen."}.get(kind)
+    return RedirectResponse(_tpl_url(template_id, "blokovi", blokovi=1 if word else None, ok=word), status_code=303)
+
+
 @app.get("/dvoranski/termin/{session_id}")
 def gym_from_termin(request: Request, session_id: int):
     """A termin's training (rule 2): the member's, made the first time it
@@ -4016,9 +4213,12 @@ def treninzi(request: Request):
         # (26.11.2026): "0 · 7 praznih mjesta", not "0 prazno!"
         slots = {pid: f"{n} {plural(n, 'prazno mjesto', 'prazna mjesta', 'praznih mjesta')}"
                  for pid, n in db.program_slot_counts().items()}
+        # the lead's sentence on dvoranski programmes prints only while one
+        # exists (27.11.2026, build 3: no form makes a new one)
         return templates.TemplateResponse(request, "treninzi_admin.html", _ctx(
             request, user, groups=groups, untagged=untagged, slots=slots,
-            levels=upitnik.LEVELS, goals=upitnik.GOALS))
+            levels=upitnik.LEVELS, goals=upitnik.GOALS,
+            has_gym_programs=any(p.venue == "dvorana" for p, *_ in rows)))
     has_plan = _has_online(user)
     onboarding = db.get_onboarding(user.id) if has_plan else None
     # gates stack: no `online` plan -> only the gate card; with a plan but no
@@ -4039,18 +4239,17 @@ def treninzi(request: Request):
         has_plan=has_plan, levels=upitnik.LEVELS))
 
 
-# a programme's Vrsta (models.VENUES) that is none of its options
-BAD_VENUE = "Odaberi vrstu programa."
-
-
 @app.post("/treninzi")
 def create_program(request: Request, title: str = Form(...), intro: str = Form(""),
-                   level: str = Form(...), goal: str = Form(...), venue: str = Form("online")):
-    """"Novi program": its title, type, razina, Vrsta (24.11.2026: online,
-    the select's first, or dvoranski; a form that posts none, online) and
-    intro; then its editor, the programme with no day."""
-    from urllib.parse import quote
-
+                   level: str = Form(...), goal: str = Form(...)):
+    """"Novi program": its title, type, razina and intro; then its editor,
+    the programme with no day. Every new programme is online since
+    27.11.2026 (build 3 of the dvoranski treninzi; the owner: "I dont like
+    the fact that I need to go to 'Online treninzi' and create a new
+    programme there which is not applicable to gym trainings": a gym
+    training starts from Amir's templates, /dvoranski/predlosci): the form
+    asks no Vrsta, and a posted `venue` is ignored (Online or Dvoranski from
+    24.11.2026 until then)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -4059,9 +4258,7 @@ def create_program(request: Request, title: str = Form(...), intro: str = Form("
         return RedirectResponse("/treninzi?error=Naziv+je+obavezan.", status_code=303)
     if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
         return RedirectResponse("/treninzi?error=Odaberi+razinu+i+tip+programa.", status_code=303)
-    if venue not in VENUES:
-        return RedirectResponse(f"/treninzi?error={quote(BAD_VENUE)}", status_code=303)
-    pid = db.create_program(title, intro.strip() or None, level, goal, venue)
+    pid = db.create_program(title, intro.strip() or None, level, goal)
     return RedirectResponse(f"/treninzi/{pid}/uredi", status_code=303)
 
 
@@ -4988,12 +5185,12 @@ def program_edit_page(request: Request, program_id: int):
 
 @app.post("/treninzi/{program_id}/edit")
 def program_edit(request: Request, program_id: int, title: str = Form(...),
-                 intro: str = Form(""), level: str = Form(...), goal: str = Form(...),
-                 venue: str | None = Form(None)):
-    """"Uredi program"'s form: its type, razina, Vrsta (24.11.2026; one not
-    posted keeps the programme's), title and intro. A dvoranski programme
-    that holds a slot is not made online (26.11.2026: db.SLOTS_NOT_ONLINE,
-    nothing saved)."""
+                 intro: str = Form(""), level: str = Form(...), goal: str = Form(...)):
+    """"Uredi program"'s form: its type, razina, title and intro. Its Vrsta
+    is the stored one since 27.11.2026 (build 3 of the dvoranski treninzi:
+    the form asks none, and a posted `venue` is ignored): a dvoranski
+    programme stays one, its days' empty slots as they were (db.
+    update_program, venue None)."""
     from urllib.parse import quote
 
     user, redirect = _require_trainer(request)
@@ -5002,11 +5199,9 @@ def program_edit(request: Request, program_id: int, title: str = Form(...),
     if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
         return RedirectResponse(f"/treninzi/{program_id}/uredi?error=Odaberi+razinu+i+tip+programa.",
                                 status_code=303)
-    if venue is not None and venue not in VENUES:
-        return RedirectResponse(f"/treninzi/{program_id}/uredi?error={quote(BAD_VENUE)}", status_code=303)
     try:
         db.update_program(program_id, title.strip() or "Program", intro.strip() or None,
-                          level, goal, venue)
+                          level, goal)
     except ValueError as err:
         return RedirectResponse(f"/treninzi/{program_id}/uredi?error={quote(str(err))}", status_code=303)
     return RedirectResponse(f"/treninzi/{program_id}/uredi?ok=Spremljeno.", status_code=303)

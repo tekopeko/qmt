@@ -3956,19 +3956,27 @@ def _new_block(s: Session, training_id: int, position: int, kind: str, rounds: i
     return b
 
 
-def gym_templates() -> list[GymTemplate]:
-    """The templates a training starts from ("Odaberi predložak"), in their
-    order, each with its blocks."""
+def gym_templates(all: bool = False) -> list[GymTemplate]:
+    """The templates in their order, each with its blocks: the ones a
+    training starts from ("Odaberi predložak", a member's chooser), which
+    since build 3 (27.11.2026) are those that hold a block (one with none is
+    offered to nobody), or with all=True every one (staff's list,
+    /dvoranski/predlosci)."""
     with session_scope() as s:
-        return list(s.scalars(select(GymTemplate).options(selectinload(GymTemplate.blocks))
-                              .order_by(GymTemplate.position, GymTemplate.id)))
+        q = (select(GymTemplate).options(selectinload(GymTemplate.blocks))
+             .order_by(GymTemplate.position, GymTemplate.id))
+        if not all:
+            q = q.where(select(GymTemplateBlock.id).where(GymTemplateBlock.template_id == GymTemplate.id).exists())
+        return list(s.scalars(q))
 
 
 def reset_gym_templates() -> None:
     """Every template goes and copy.GYM_TEMPLATES' come, in their order (the
     two migration 9b4e2d7f1c58 inserts: the dev seed's, the tests'). A
-    training made from one keeps its blocks: they are its own."""
+    training made from one keeps its blocks: they are its own. Under the
+    templates' table lock, as every write to them (_TEMPLATES_LOCK)."""
     with session_scope() as s:
+        s.execute(sa_text(_TEMPLATES_LOCK))
         s.execute(sa_delete(GymTemplate))
         for n, (title, blocks) in enumerate(copy.GYM_TEMPLATES, start=1):
             tpl = GymTemplate(title=title, position=n)
@@ -3988,16 +3996,17 @@ def apply_gym_template(training_id: int, user_id: int, template_id: int | None, 
     ticked set in a replaced block left behind, never a template over a
     tick). False for a training that is no member's. ValueError with the
     sentence to show: NO_TEMPLATE ("Odaberi predložak s popisa.") for a
-    template that is none, GYM_STARTED ("Trening je već započet — predložak
-    se više ne može zamijeniti.") once a set is ticked; BookingError
-    GYM_CLOSED. A refusal changes nothing."""
+    template that is none or, since build 3 (27.11.2026), holds no block (no
+    chooser offers one: a page drawn before its blocks went), GYM_STARTED
+    ("Trening je već započet — predložak se više ne može zamijeniti.") once
+    a set is ticked; BookingError GYM_CLOSED. A refusal changes nothing."""
     with session_scope() as s:
         t = _gym_locked(s, training_id, user_id, staff)
         if t is None:
             return False
         tpl = None if template_id is None else s.scalar(
             select(GymTemplate).where(GymTemplate.id == template_id).options(selectinload(GymTemplate.blocks)))
-        if tpl is None:
+        if tpl is None or not tpl.blocks:
             raise ValueError(NO_TEMPLATE)
         if s.scalar(select(func.count()).select_from(GymTrainingItem)
                     .where(GymTrainingItem.training_id == training_id, GymTrainingItem.done != "[]")):
@@ -4010,6 +4019,216 @@ def apply_gym_template(training_id: int, user_id: int, template_id: int | None, 
                        rows=(tb.slots or GYM_FIRST_ROWS) if circuit else 1)
         t.updated_at = func.now()
         return True
+
+
+# ---------- Amir's templates (27.11.2026, build 3 of the dvoranski treninzi) ----------
+# roadmap/2026-11-27-dvoranski-treninzi-plan.md, build 3; the owner: "In the
+# start, there would be two templates. […]"; "Amir will create the third
+# template later and give it a name"; "I dont like the fact that I need to go
+# to 'Online treninzi' and create a new programme there which is not
+# applicable to gym trainings." A template is its blocks alone (the owner:
+# "The template's stations are empty"): a name, and a row of Stanica and
+# Kružni set, a Kružni set's rows, Krug and pause; staff make them on
+# /dvoranski/predlosci. Every write takes the gym_templates table's lock
+# first (the announcements' way: SHARE ROW EXCLUSIVE, which excludes itself
+# and lets plain reads through), so two adds at once take two places and the
+# cap holds, and a move never reads an order half changed; a member's
+# chooser (gym_templates) and apply_gym_template read without waiting. The
+# places stay dense (1 … n) after a delete; a move swaps two in one commit
+# (both unique constraints are deferred). A training made from a template
+# keeps its blocks whatever happens to the template after: they are copies.
+
+_TEMPLATES_LOCK = "LOCK TABLE gym_templates IN SHARE ROW EXCLUSIVE MODE"
+GYM_MAX_TEMPLATES = 12                 # the owner's two, Amir's third, and room
+TOO_MANY_TEMPLATES = f"Najviše {GYM_MAX_TEMPLATES} predložaka."
+GYM_TEMPLATE_TITLE_MAX = 80            # the column's length
+TEMPLATE_NO_TITLE = "Upiši naziv predloška."
+TEMPLATE_TITLE_TOO_LONG = f"Najviše {GYM_TEMPLATE_TITLE_MAX} znakova."
+
+
+def gym_template(template_id: int) -> GymTemplate | None:
+    """A template with its blocks (its editor); None for none."""
+    with session_scope() as s:
+        return s.scalar(select(GymTemplate).where(GymTemplate.id == template_id)
+                        .options(selectinload(GymTemplate.blocks)))
+
+
+def _template_title(title: str) -> str:
+    """A template's name as stored: one line, its spaces single
+    (clean_name). ValueError TEMPLATE_NO_TITLE ("Upiši naziv predloška.")
+    for none, TEMPLATE_TITLE_TOO_LONG ("Najviše 80 znakova.") past 80."""
+    title = clean_name(title)
+    if not title:
+        raise ValueError(TEMPLATE_NO_TITLE)
+    if len(title) > GYM_TEMPLATE_TITLE_MAX:
+        raise ValueError(TEMPLATE_TITLE_TOO_LONG)
+    return title
+
+
+def _dense(rows) -> None:
+    """Rows of a position, in their order, numbered 1 … n again (after a
+    delete: the places close up; the unique constraints are deferred)."""
+    for n, row in enumerate(rows, start=1):
+        row.position = n
+
+
+def _swap(rows: list, row_id: int, direction: str) -> bool:
+    """A row trades places with the one before it ("gore") or after it
+    ("dolje") in `rows`, its order; False at either end or for a row or a
+    direction that is none."""
+    i = next((k for k, r in enumerate(rows) if r.id == row_id), None)
+    if i is None or direction not in ("gore", "dolje"):
+        return False
+    j = i - 1 if direction == "gore" else i + 1
+    if not 0 <= j < len(rows):
+        return False
+    rows[i].position, rows[j].position = rows[j].position, rows[i].position
+    return True
+
+
+def add_gym_template(title: str) -> int:
+    """"+ Novi predložak": a template of that name after the last, with no
+    block (offered to no member until it holds one); its id. ValueError with
+    the sentence to show: TEMPLATE_NO_TITLE, TEMPLATE_TITLE_TOO_LONG, and
+    TOO_MANY_TEMPLATES ("Najviše 12 predložaka.") at the cap, under the
+    table lock: two adds at once at eleven make twelve, the other refused.
+    A refusal makes nothing."""
+    title = _template_title(title)
+    with session_scope() as s:
+        s.execute(sa_text(_TEMPLATES_LOCK))
+        n, last = s.execute(select(func.count(), func.coalesce(func.max(GymTemplate.position), 0))
+                            .select_from(GymTemplate)).one()
+        if n >= GYM_MAX_TEMPLATES:
+            raise ValueError(TOO_MANY_TEMPLATES)
+        tpl = GymTemplate(title=title, position=last + 1)
+        s.add(tpl)
+        s.flush()
+        return tpl.id
+
+
+def rename_gym_template(template_id: int, title: str) -> bool:
+    """A template's name (its editor's Naziv): add_gym_template's rules and
+    sentences. False for a template that is gone."""
+    title = _template_title(title)
+    with session_scope() as s:
+        s.execute(sa_text(_TEMPLATES_LOCK))
+        tpl = s.get(GymTemplate, template_id)
+        if tpl is None:
+            return False
+        tpl.title = title
+        return True
+
+
+def move_gym_template(template_id: int, direction: str) -> bool:
+    """↑ / ↓ on the list: the template trades places with the one before it
+    ("gore") or after it ("dolje"), the order of the member's chooser too.
+    False: no such template, a direction that is neither, none beyond it
+    that way; nothing moves."""
+    with session_scope() as s:
+        s.execute(sa_text(_TEMPLATES_LOCK))
+        rows = list(s.scalars(select(GymTemplate).order_by(GymTemplate.position, GymTemplate.id)))
+        return _swap(rows, template_id, direction)
+
+
+def delete_gym_template(template_id: int) -> bool:
+    """A template out (the list's ✕, its editor's "Obriši predložak"), its
+    blocks with it (the key's CASCADE), the places after it closing up. The
+    trainings made from it keep their blocks. False for one already gone."""
+    with session_scope() as s:
+        s.execute(sa_text(_TEMPLATES_LOCK))
+        tpl = s.get(GymTemplate, template_id)
+        if tpl is None:
+            return False
+        s.delete(tpl)
+        s.flush()
+        _dense(s.scalars(select(GymTemplate).order_by(GymTemplate.position, GymTemplate.id)))
+        return True
+
+
+def _template_blocks(s: Session, template_id: int) -> list[GymTemplateBlock]:
+    """A template's blocks in their order, read fresh (under the lock)."""
+    return list(s.scalars(select(GymTemplateBlock).where(GymTemplateBlock.template_id == template_id)
+                          .order_by(GymTemplateBlock.position, GymTemplateBlock.id)
+                          .execution_options(populate_existing=True)))
+
+
+def add_gym_template_block(template_id: int, kind: str) -> int | None:
+    """"+ Stanica" (`kind` 'stanica') or "+ Kružni set" ('kruzni': its
+    GYM_FIRST_ROWS rows and GYM_FIRST_ROUNDS Krug, no pause, as a training's
+    own "+ Kružni set") after the template's last block; its id. At most
+    GYM_MAX_BLOCKS, a training's own cap and its sentence (TOO_MANY_BLOCKS,
+    "Najviše 40 stanica i kružnih setova.": a template copies whole into a
+    training). Under the table lock: two adds at once on one template take
+    two places. None for a template that is gone or a kind that is none."""
+    if kind not in GYM_BLOCK_KINDS:
+        return None
+    with session_scope() as s:
+        s.execute(sa_text(_TEMPLATES_LOCK))
+        if s.get(GymTemplate, template_id) is None:
+            return None
+        n, last = s.execute(select(func.count(), func.coalesce(func.max(GymTemplateBlock.position), 0))
+                            .where(GymTemplateBlock.template_id == template_id)).one()
+        if n >= GYM_MAX_BLOCKS:
+            raise ValueError(TOO_MANY_BLOCKS)
+        circuit = kind == "kruzni"
+        b = GymTemplateBlock(template_id=template_id, position=last + 1, kind=kind,
+                             slots=GYM_FIRST_ROWS if circuit else None,
+                             rounds=GYM_FIRST_ROUNDS if circuit else None, rest_seconds=None)
+        s.add(b)
+        s.flush()
+        return b.id
+
+
+def set_gym_template_block(template_id: int, block_id: int, slots: int | None, rounds: int | None,
+                           rest_seconds: int | None) -> bool:
+    """A Kružni set's three numbers on a template's editor: Vježbi (its
+    rows, 1–GYM_MAX_ROWS), Krugova (GYM_ROUNDS, 1–20), "Pauza nakon kruga
+    (s)" (0–3600, None for none). ValueError BAD_NUMBER ("Neispravan broj.")
+    for one outside them, or none where one is needed; nothing changed.
+    False for a block that is not this template's, or a Stanica (nothing to
+    set)."""
+    (least, most), (rest_least, rest_most) = GYM_ROUNDS, ITEM_LIMITS["rest_seconds"]
+    if type(slots) is not int or not 1 <= slots <= GYM_MAX_ROWS:
+        raise ValueError(BAD_NUMBER)
+    if type(rounds) is not int or not least <= rounds <= most:
+        raise ValueError(BAD_NUMBER)
+    if rest_seconds is not None and (type(rest_seconds) is not int or not rest_least <= rest_seconds <= rest_most):
+        raise ValueError(BAD_NUMBER)
+    with session_scope() as s:
+        s.execute(sa_text(_TEMPLATES_LOCK))
+        b = s.get(GymTemplateBlock, block_id)
+        if b is None or b.template_id != template_id or b.kind != "kruzni":
+            return False
+        b.slots, b.rounds, b.rest_seconds = slots, rounds, rest_seconds
+        return True
+
+
+def move_gym_template_block(template_id: int, block_id: int, direction: str) -> bool:
+    """↑ / ↓ on a template's editor: the block trades places with the one
+    before it ("gore") or after it ("dolje"), the order a member's training
+    takes. False: not this template's block, a direction that is neither,
+    none beyond it that way; nothing moves."""
+    with session_scope() as s:
+        s.execute(sa_text(_TEMPLATES_LOCK))
+        return _swap(_template_blocks(s, template_id), block_id, direction)
+
+
+def delete_gym_template_block(template_id: int, block_id: int) -> str | None:
+    """✕ on a template's editor (one tap: nothing a member wrote is in a
+    template): the block goes, the places after it close up. Its kind
+    ('stanica' / 'kruzni', the word to say), None for a block that is not
+    this template's or gone already."""
+    with session_scope() as s:
+        s.execute(sa_text(_TEMPLATES_LOCK))
+        blocks = _template_blocks(s, template_id)
+        b = next((x for x in blocks if x.id == block_id), None)
+        if b is None:
+            return None
+        kind = b.kind
+        s.delete(b)
+        s.flush()
+        _dense(x for x in blocks if x.id != block_id)
+        return kind
 
 
 def add_gym_block(training_id: int, user_id: int, kind: str, staff: bool = False) -> int | None:

@@ -6,7 +6,7 @@
   Sve je automatski: upitnik svrsta polaznika u razinu, a on odmah vidi sve programe te razine,
   po tipu treninga — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku razinu napravi
   programe po tipu pa im dodaj treninge i vježbe. Razina bez programa polazniku kaže da se
-  programi još pripremaju. Dvoranski programi su samo tvoji: polaznici ih ne vide.
+  programi još pripremaju.{% if has_gym_programs %} Dvoranski programi su samo tvoji: polaznici ih ne vide.{% endif %}
 </p>
 
 <h2 style="font-size:1.05rem; margin-bottom:12px;">Programi po razinama</h2>
@@ -68,9 +68,10 @@
 <form method="post" action="/treninzi" class="card" style="max-width:560px; padding:20px 22px;">
   <div class="field"><label for="np-title">Naziv</label>
     <input id="np-title" type="text" name="title" placeholder="npr. Gornji dio tijela — tjedan 2" required></div>
-  {# three selects in a row where they fit, one under the other on a phone;
-     Vrsta (24.11.2026): Online first and chosen, or Dvoranski, a gym
-     programme no client sees #}
+  {# the two selects in a row where they fit, one under the other on a phone.
+     No Vrsta since 27.11.2026 (build 3 of the dvoranski treninzi): every new
+     programme is online; a gym training starts from Amir's templates
+     (/dvoranski/predlosci). Online / Dvoranski from 24.11.2026 until then #}
   <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0 12px;">
     <div class="field"><label for="np-goal">Tip programa</label>
       <select id="np-goal" name="goal" required>
@@ -79,10 +80,6 @@
     <div class="field"><label for="np-level">Razina</label>
       <select id="np-level" name="level" required>
         {% for k, l in levels.items() %}<option value="{{ k }}">{{ l }}</option>{% endfor %}
-      </select></div>
-    <div class="field"><label for="np-venue">Vrsta</label>
-      <select id="np-venue" name="venue" required>
-        {% for k, l in VENUES.items() %}<option value="{{ k }}"{% if loop.first %} selected{% endif %}>{{ l }}</option>{% endfor %}
       </select></div>
   </div>
   <div class="field"><label for="np-intro">Uvod (neobavezno)</label>

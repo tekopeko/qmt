@@ -96,13 +96,21 @@ CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?vie
 # circuit): "predlozak:uredi" its Trening 1's editor, "predlozak:dan" that
 # day's page, found from staff's /treninzi table by its title (no client
 # reaches a dvoranski programme).
-OWNER = ["/", "/raspored", "/dvoranski", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi",
-         "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi", "predlozak:uredi", "predlozak:dan", "/profil",
-         "/tekstovi", "/kao", "/kao/zapisi"]
+# Amir's templates of a gym training (27.11.2026, build 3 of the dvoranski
+# treninzi): their list, "/dvoranski/predlosci", and one template's editor,
+# "gymtpl:<name>", found on the list by its name (the seed's "Kružni
+# trening", copy.GYM_TEMPLATES: a Stanica and a Kružni set; a reseed gives
+# the templates new ids).
+OWNER = ["/", "/raspored", "/dvoranski", "/dvoranski/predlosci", "gymtpl:Kružni trening", "/admin", "/clanarine",
+         "/korisnici", "/statistika", "/treninzi", "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi",
+         "predlozak:uredi", "predlozak:dan", "/profil", "/tekstovi", "/kao", "/kao/zapisi"]
 TEMPLATE_TITLE = "Predložak — kružni trening"          # scripts/seed_demo.py's TEMPLATE
 
 FIND_EXERCISE = """n => { const row = [...document.querySelectorAll('a.ex-row')]
   .find(a => (a.querySelector('.ex-name') || {}).textContent === n); return row ? row.getAttribute('href') : null; }"""
+# a gym training's template on its list (/dvoranski/predlosci), by its name: its editor's path
+FIND_GYM_TEMPLATE = """n => { const a = [...document.querySelectorAll('main a.it-name[href^="/dvoranski/predlosci/"]')]
+  .find(a => a.textContent.trim() === n); return a ? a.getAttribute('href') : null; }"""
 # the n-th link of a kind on a page: a programme's card on /treninzi, a day's on its programme's page
 NTH_LINK = """([sel, n]) => { const a = document.querySelectorAll(sel)[n - 1]; return a ? a.getAttribute('href') : null; }"""
 # the player's list (#popis): the first row of a circuit part, whose link is its first round not saved
@@ -357,6 +365,13 @@ def run(pg, routes, who, theme, width, findings):
             path = pg.evaluate(FIND_EXERCISE, r.split(":", 1)[1])
             if not path:
                 findings["head"].append((key, f"no exercise {r.split(':', 1)[1]!r} on /treninzi/vjezbe (the demo seed?)"))
+                continue
+        elif r.startswith("gymtpl:"):                  # a gym training's template's editor, by its name on the list
+            pg.goto(BASE + "/dvoranski/predlosci")
+            pg.wait_for_load_state("networkidle")
+            path = pg.evaluate(FIND_GYM_TEMPLATE, r.split(":", 1)[1])
+            if not path:
+                findings["head"].append((key, f"no template {r.split(':', 1)[1]!r} on /dvoranski/predlosci (the demo seed?)"))
                 continue
         elif r.startswith(("trening:", "dan:")):       # a programme or a day of ivan's, by its link
             path = resolve(pg, r)

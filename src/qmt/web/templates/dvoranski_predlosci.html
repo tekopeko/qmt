@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{# "Predlošci treninga" (27.11.2026, build 3 of roadmap/2026-11-27-dvoranski-treninzi-plan.md; the
+   owner: "Amir will create the third template later and give it a name"; "I dont like the fact that I
+   need to go to 'Online treninzi' and create a new programme there which is not applicable to gym
+   trainings."): staff's list of the gym training's templates, /dvoranski/predlosci (app.
+   gym_templates_page), under the tab Dvoranski treninzi, lit there; its way in, staff's own /dvoranski's
+   "Predlošci treninga →". The /admin pages' look, a 720px column: the h1 and the lead, then a row per
+   template in its order, the member's chooser's (the programme editor's day rows, base.html's .it-row):
+   its name in 700, a link to its editor; its facts muted, the chooser's words ("6 stanica"), one with no
+   block "prazan — članovi ga ne vide"; Uredi, ↑ / ↓ (one tap; the first's ↑ and the last's ↓ disabled)
+   and ✕ (asks). Under them "+ Novi predložak" (Naziv, needed, 80 characters at most), at the cap its
+   sentence in its place. A move's word comes back at its row (?predlozak=<id>), the add's in its card
+   (?novi=1), never at the page's top; a template deleted says so at the top. Staff's own words. #}
+{% block title %}Predlošci treninga — QMT{% endblock %}
+{% block head %}
+<style>
+  /* the /admin pages' column; the rows the programme editor's days' look */
+  .tp { max-width: 720px; }
+  .tp-list { display: flex; flex-direction: column; gap: 10px; }
+  .tp-list > .hint { margin: 0; }
+  /* a row's word after a move: the page's alert inside the row, its width */
+  .it-row > .tp-alert { flex: 1 0 100%; margin: 4px 0 2px; }
+  .tp-alert > span { min-width: 0; overflow-wrap: anywhere; }
+  /* "+ Novi predložak": one card under the rows, its word first in it */
+  .tp-new { margin-top: 18px; padding: 16px 20px 18px; scroll-margin-top: 90px; }
+  .tp-new > .alert { margin: 0 0 12px; }
+  .tp-new .field { max-width: 420px; margin-bottom: 12px; }
+  .tp-cap { margin-top: 18px; scroll-margin-top: 90px; }
+  .tp-cap > .alert { margin: 0 0 10px; }
+  @media (max-width: 600px) { .tp-new { padding: 14px 16px 16px; } }
+</style>
+{% endblock %}
+{# a move's word in its row, the add's in its card; anything else the top's #}
+{% set q = request.query_params %}
+{% set focus = q.get("predlozak") %}
+{% set in_row = focus in tpls|map(attribute="id")|map("string")|list %}
+{% set in_new = not in_row and q.get("novi") == "1" %}
+{% block error_alert %}{% if not in_row and not in_new %}{{ super() }}{% endif %}{% endblock %}
+{% block ok_alert %}{% if not in_row and not in_new %}{{ super() }}{% endif %}{% endblock %}
+{% macro said() -%}
+  {%- if request.query_params.get("error") %}<div class="alert tp-alert" role="alert"><span>{{ request.query_params.get("error") | gendered }}</span></div>
+  {%- elif request.query_params.get("ok") %}<div class="alert ok tp-alert" role="status">{{ request.query_params.get("ok") | gendered }}</div>{% endif -%}
+{%- endmacro %}
+{% block content %}
+<h1>Predlošci treninga</h1>
+<p class="hint">Od predloška član kreće kad otvori prazan trening: stanice i kružni setovi redom, bez vježbi. Vježbe i brojke upisuje sam.</p>
+<div class="tp">
+  <div class="tp-list">
+    {% for p in tpls %}
+    <div class="card it-row" id="predlozak-{{ p.id }}">
+      <a class="it-name" href="/dvoranski/predlosci/{{ p.id }}">{{ p.title }}</a>
+      <span class="it-note">{{ p.facts or "prazan — članovi ga ne vide" }}</span>
+      <span class="it-end">
+        <a class="btn btn-quiet btn-sm" href="/dvoranski/predlosci/{{ p.id }}">Uredi</a>
+        <span class="it-acts">
+          <form method="post" action="/dvoranski/predlosci/{{ p.id }}/pomak" style="margin:0; display:inline;">
+            <input type="hidden" name="smjer" value="gore">
+            <button class="btn-ghost btn-sm" {% if loop.first %}disabled style="opacity:.35;"{% endif %}
+                    aria-label="Pomakni gore: {{ p.title }}">↑</button>
+          </form>
+          <form method="post" action="/dvoranski/predlosci/{{ p.id }}/pomak" style="margin:0; display:inline;">
+            <input type="hidden" name="smjer" value="dolje">
+            <button class="btn-ghost btn-sm" {% if loop.last %}disabled style="opacity:.35;"{% endif %}
+                    aria-label="Pomakni dolje: {{ p.title }}">↓</button>
+          </form>
+          <form method="post" action="/dvoranski/predlosci/{{ p.id }}/obrisi" style="margin:0; display:inline;"
+                data-confirm-title="Obrisati predložak?"
+                data-confirm="Treninzi koji su već krenuli od njega ostaju kakvi jesu."
+                data-confirm-cta="Obriši">
+            <button class="btn-ghost btn-sm" aria-label="Obriši predložak: {{ p.title }}">✕</button>
+          </form>
+        </span>
+      </span>
+      {% if in_row and focus == p.id|string %}{{ said() }}{% endif %}
+    </div>
+    {% else %}
+    <p class="hint">Još nema predložaka.</p>
+    {% endfor %}
+  </div>
+
+  {% if can_add %}
+  <form method="post" action="/dvoranski/predlosci" class="card tp-new" id="novi">
+    {% if in_new %}{{ said() }}{% endif %}
+    <div class="field"><label for="tp-title">Naziv</label>
+      <input id="tp-title" type="text" name="title" maxlength="{{ title_max }}" required></div>
+    <button type="submit" class="btn btn-sm">+ Novi predložak</button>
+  </form>
+  {% else %}
+  <div class="tp-cap" id="novi">
+    {% if in_new %}{{ said() }}{% endif %}
+    <p class="hint">{{ too_many }}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
