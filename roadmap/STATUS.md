@@ -2,6 +2,24 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
+## 27.11.2026 — the day's timing: where a build's time goes (measured, for the owner)
+
+The owner: "can we measure how long the code implementation takes and how long the testing takes. I would like to understand if we can make things simpler and faster." Measured from the afternoon on: the implementers' own timing logs (`dv1/2/3-timing.log`, their totals in the entries below), the harness's durations, `date` around Fable's steps, pytest's `--durations`.
+
+| step | implementer: code | implementer: its tests, audit | Fable: review | audit | whole suite | backup, deploy |
+|---|---|---|---|---|---|---|
+| build 1 (blocks, the page) | 72 min | 23 min | 7 min | 3 min | 24 min | 1 min |
+| build 2 (the tab) | 48 min | 17 min | 6 min | 3 min | 17 min | 1 min |
+| build 3 (the template editor) | 30 min | 16 min | 1 min | 3 min | 17 min | 1 min |
+
+- **The three builds together**: code 150 min (about half), tests and audits 124 min (about 43%: the implementers' 56, the audits 10, the whole suites 58), review and deploy 17 min. From build 1's launch (15:05) to build 3 live (20:14): 5 h 9 min, the password change and its measuring run inside it; Fable's estimate that afternoon had been about 9 hours for the three.
+- **The whole suite**: 1423 s in the morning's shape, 978–1018 s since the suite's passwords are hashed cheaply (the entry below). One test is 370–390 s of it, `test_copy.py::test_layout_holds_with_long_texts_and_line_breaks`; `test_upitnik_ui.py` about 210 s; the 640 tests under a second about 2 minutes together.
+- **That one test ran six times for the three builds** (each implementer ran `test_copy.py` once, 436–494 s, and each whole suite holds it): about 40 minutes of the day. Each implementer's run of it passed the first time.
+- **The audit** ran seven times for the three builds (190–206 s each: the implementer once or twice, Fable once): about 23 minutes.
+- **Waiting for other sessions' pytest**: 70 s in all. The one-at-a-time rule cost nothing that day.
+- **Small changes before batching**: the two-line "Korisnici" crumb, the owner-only view and the Karton's search each paid for a whole suite (about 23 min each then) and a deploy. Batched since (the owner agreed): the password change, build 2 and "Ispuni upitnik" went out on two suites, not four.
+- **Proposals put to the owner, none started**: make the long layout test faster (it opens a browser many times, logs in through the login page each time and waits for the network to go quiet after every load); let the whole suite be `test_copy.py`'s one run of a step (the implementer skipping it: 8 min a step); the implementer's audit the phone pass alone, Fable's the whole one (3 min a step); CLAUDE.md slimmed (241 KB, read by every session and updated by every build).
+
 ## 27.11.2026 — Dvoranski treninzi, build 3: Amir's templates, "Vrsta" off the programme forms (Opus draft, reviewed)
 
 Build 3 of `roadmap/2026-11-27-dvoranski-treninzi-plan.md`, the last. The owner: "Amir will create the third template later and give it a name"; "I dont like the fact that I need to go to 'Online treninzi' and create a new programme there which is not applicable to gym trainings." No migration (build 1's `gym_templates` / `gym_template_blocks`).
@@ -14,6 +32,7 @@ Build 3 of `roadmap/2026-11-27-dvoranski-treninzi-plan.md`, the last. The owner:
 - **Fable's review (27.11.2026)**: db.py's diff read whole. In the browser, dev server, 390px: the owner's way in on `/dvoranski`; a template made ("Fable proba"), a Stanica, a Kružni set and a Stanica added, the set's Krug 3 and pause 60 saved ("Spremljeno." in its row), a Krug of 30 refused ("Neispravan broj."), overflow 0 at 360 and 390px; "Novi program" with no Vrsta (its selects: tip, razina); as ivan the chooser offers the three in order ("Fable proba · 1 stanica · kružni set · 3 kruga · 1 stanica"), a training made from it holds its three blocks in order; a member's `/dvoranski/predlosci` 403 and no way in for him; the template deleted, the member's training still its three blocks. With it ship two small things waiting for the batch: "Ispuni upitnik" filled again (the entry below), and a stale sentence of CLAUDE.md about the old templates.
 - **Timing**: the implementer 46 min in all, of which 11 runs of tests, audit and seed 16 min (pytest 551 s over 7 runs, `test_copy.py` 436 s of it; the audit twice, 410 s) and no waiting; Fable's review about a minute by the clock (the walk above); the audit 204 s. The whole suite 1018 s (`703 passed`).
 - **Not verified**: the light theme and a desktop by eye (the audit measured them); Safari; a real phone.
+- **On prod (27.11.2026)**: the whole suite `703 passed`, the audit `new findings: 0`; commit `b34bf7b` (with `0647ced`, "Ispuni upitnik" filled), pushed; the database dumped first (`/opt/backups/qmt-pre-dv3-20261127T191316.sql.gz` on the box, 31 tables, complete); `deploy.sh` healthy (backup and deploy 57 s); checked without logging in: the editor's routes deployed, the chooser's templates the two (6 and 2 blocks), no `name="venue"` in either deployed programme form, both "Ispuni upitnik" links `btn btn-sm`, alembic `9b4e2d7f1c58`, 8 accounts, 276 exercises, 59 edited texts, 4 gym trainings, one dvoranski programme (staff's, made that day), the log clean, `/healthz` and the landing 200, a guest's `/dvoranski/predlosci` to the login. The plan of 27.11. is all live.
 - **Noted**: the "✎ Uredi tekstove" pill shows on the two new pages, which hold no editable text (it shows on every staff page); the dvoranski programmes there (one on prod, made on 27.11.) are staff's to edit or delete, offered to nobody as templates.
 
 ## 27.11.2026 — "Ispuni upitnik" is a filled button again (Fable, direct; waiting for the batch)
