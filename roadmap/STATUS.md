@@ -2,6 +2,10 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
+## 27.11.2026 — "Ispuni upitnik" is a filled button again (Fable, direct; waiting for the batch)
+
+Noticed by the worker of build 2 and confirmed in a browser: `<a class="btn-sm btn-signal">` had no fill (`.btn-signal` is an empty alias in base.html, which a `<button>` survives because every button is filled and a link does not): the karton's and /treninzi's "Ispuni upitnik" were text in a pill's shape. Both are `btn btn-sm` now (`.btn-signal` stays on the buttons that wear it). Small, so it ships with build 3 (the owner's batching, [[qmt-batch-small-changes]]).
+
 ## 27.11.2026 — Dvoranski treninzi, build 2: the tab (Opus draft, reviewed)
 
 Build 2 of `roadmap/2026-11-27-dvoranski-treninzi-plan.md`. The owner: "I would show the tab only to members with a gym plan. Similarly how a online training tab shows only to members with an online plan."; "for now the online users will only do trainings from their online training plan". Build 3 (Amir's template editor, "Vrsta" off the programme forms) is not built. No migration.
