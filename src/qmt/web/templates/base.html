@@ -92,6 +92,10 @@
        [hidden] — without this, hidden="" still renders anything with a display rule */
     [hidden] { display: none !important; }
     html { scroll-behavior: smooth; }
+    /* not for a visitor who asked for less motion (27.11.2026: found while
+       the layout test was timed: a load to /#kontakt glided a second there
+       too; the carousels and the rest bar already keep still for him) */
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
     body {
       font-family: var(--font-body); color: var(--text); background: var(--bg);
       line-height: 1.55; min-height: 100vh;
