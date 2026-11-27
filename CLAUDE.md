@@ -1332,7 +1332,15 @@ into every session. The owner's word in the conversation beats the flag:
     the exact files, what done looks like, what to leave alone. Start from a
     clean tree (commit what is pending first) so its work is exactly
     `git diff`. One suite run at a time: `qmt_test` is shared, so a worker and
-    Fable must not both run `pytest`.
+    Fable must not both run `pytest`. **Who runs what** (27.11.2026, the owner
+    accepted it after that day's timing, STATUS.md's entry "the day's timing"):
+    the worker runs the test files it touched, but not `tests/test_copy.py`
+    unless the brief says so (one test of it is six minutes, and it passed
+    first time in every build measured: the whole suite's run is its one run
+    of a step) and the audit's phone pass alone (`audit.py --phone`); the
+    whole audit and the whole suite are Fable's, once, after the diff is
+    read. A brief asks for the worker's timing log (what ran, seconds
+    waited, seconds it ran).
   - **Review** means reading that diff, not the worker's summary, then
     re-running the checks yourself (`pytest -q`; the audit; a 390px
     screenshot for UI). Fix small things directly, send bigger ones back with
