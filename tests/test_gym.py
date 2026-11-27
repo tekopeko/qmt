@@ -1178,7 +1178,9 @@ def test_the_diary_lists_each_training_in_its_state():
     lg = row(diary, f"log-{old_id}")
     assert "<p>Staro.</p>" in lg and f'action="/karton/log/{old_id}/edit"' in lg and "Plank:" in shown_(lg)
     cs = client_for("coach@test.local")
-    view = cs.get(f"/karton/{ivan}").text.split('<h2 id="osvrti">')[1]
+    make_user("trener@test.local", plans=())                    # the owner: a member's karton, /karton/<id>, is his alone (27.11.2026)
+    assert cs.get(f"/karton/{ivan}").status_code == 403
+    view = client_for("trener@test.local").get(f"/karton/{ivan}").text.split('<h2 id="osvrti">')[1]
     assert re.findall(r'<div class="log-entry[^"]*" id="([a-z]+-\d+)"', view) == order
     assert "/karton/trening/" not in view and "/karton/termin/" not in view and "/karton/absent/" not in view
     assert "Trening još nije upisan." in view and "Trening nije upisan." in view
@@ -1215,7 +1217,8 @@ def test_the_way_in_is_on_the_termini_and_the_raspored_while_the_window_is_open(
     ca = client_for("ana@test.local")
     assert "/karton/termin/" not in termini(ca.get("/karton").text)
     assert "nt-gym" not in ca.get("/raspored").text.split('<section class="card next-termin"')[1].split("</section>")[0]
-    assert "/karton/termin/" not in termini(client_for("coach@test.local").get(f"/karton/{ivan}").text)
+    make_user("trener@test.local", plans=())                    # the owner: a member's karton, /karton/<id>, is his alone (27.11.2026)
+    assert "/karton/termin/" not in termini(client_for("trener@test.local").get(f"/karton/{ivan}").text)
     db.set_session_canceled(soon, True)
     assert "/karton/termin/" not in termini(ci.get("/karton").text)
     assert "nt-gym" not in ci.get("/raspored").text.split('<section class="card next-termin"')[1].split("</section>")[0]

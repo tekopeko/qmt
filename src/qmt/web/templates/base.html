@@ -1190,9 +1190,8 @@
          24.11.2026 (the owner: "Lets show the Karton tab in the Admin view as
          well so that Amir can check out the changes we made there"): staff
          have a karton of their own, /karton, and their tab is .on there
-         alone; a client's karton (/karton/<id>, reached from Korisnici, the
-         owner's, its crumbs say so) lights that item of Admin ▾ (a trainer's
-         who is not the owner: Trenutne članarine), and
+         alone; a client's karton (/karton/<id>, the owner's alone, reached
+         from Korisnici, its crumbs say so) lights that item of Admin ▾, and
          /upitnik its own. Moja članarina is the members' page, which they
          edit in place: everyone has the tab, nobody an account-menu item
          for it. #}
@@ -1224,13 +1223,13 @@
          the tab is no row. #}
       {% set at_kao = path == '/kao' or path.startswith('/kao/') %}
       {% set at_termini = path.startswith('/admin') %}
-      {# a client's karton, /karton/<id>, is opened from Korisnici, the owner's
-         page, alone since Trenutne članarine's "Karton →" went (26.11.2026):
-         it lights Korisnici for him (27.11.2026, the owner: "change both to
-         Korisnici", the crumb the other). A trainer who is not the owner has
-         no Korisnici: for him it lights Trenutne članarine, as from 24.11.2026 #}
+      {# a client's karton, /karton/<id>, is the owner's alone (27.11.2026),
+         opened from Korisnici, his page, since Trenutne članarine's
+         "Karton →" went (26.11.2026): it lights Korisnici (the owner: "change
+         both to Korisnici", the crumb the other; Trenutne članarine from
+         24.11.2026 until then) #}
       {% set member_karton = path.startswith('/karton/') and not own_karton %}
-      {% set at_clanarine = path.startswith('/clanarine') or (member_karton and not is_owner) %}
+      {% set at_clanarine = path.startswith('/clanarine') %}
       {% set at_upitnik = path.startswith('/upitnik') %}
       {% set at_tekstovi = path.startswith('/tekstovi') %}
       {% set at_korisnici = is_owner and (path.startswith('/korisnici') or member_karton) %}

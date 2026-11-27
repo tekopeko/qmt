@@ -130,7 +130,7 @@ ALLOWED: dict[str, set[str]] = {
         "@data-confirm: Unos", "@data-confirm: kg", "@data-confirm: od", "@data-confirm: i njegov dokument bit će trajno obrisani.",
         "@data-confirm: kg od", "@data-confirm: bit će trajno obrisan.", "@data-confirm: Dokument „",
         "@data-confirm: ” bit će trajno obrisan.", "@data-confirm: Fotografija za", "@data-confirm: bit će trajno obrisana.",
-        "kg", "Trenutne članarine", "Korisnici", "Karton —", "god.", "Bolovi", "bodova", "Razina",
+        "kg", "Korisnici", "Karton —", "god.", "Bolovi", "bodova", "Razina",
         "od 3 — programi na /treninzi prate ovu razinu.", "Dokument (pdf, jpg, png ili webp, do", "MB)", "Visina", "cm",
         "Fotografija (jpg, png ili webp, do", "Zadnji put:", "Procjena maksimuma:", "napor", "od",
         "Svi tekstovi kartona",
@@ -211,10 +211,10 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     # the tag chips' count; 128 since build 4 the same day: the Karton tab's
     # way into a member's app, its label and its select's first option, and
     # the caption "Vidi samo trener" while staff act as a member; 129 since
-    # build 3's part B, the gym training's round "Krug 2"; 130 since
-    # 27.11.2026, the owner's crumb on a member's karton, "Korisnici"): a
-    # long list means texts were left out
-    assert sum(len(v) for v in ALLOWED.values()) <= 130
+    # build 3's part B, the gym training's round "Krug 2"; on 27.11.2026
+    # the crumb of a member's karton, the owner's view, "Korisnici" where
+    # it said "Trenutne članarine"): a long list means texts were left out
+    assert sum(len(v) for v in ALLOWED.values()) <= 129
 
 
 def test_the_scan_sees_a_new_literal_and_strips_what_is_code():

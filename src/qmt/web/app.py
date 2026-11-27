@@ -2492,7 +2492,8 @@ def karton_self(request: Request):
     """The viewer's own karton: a member's, and since 24.11.2026 staff's too
     (the owner: "Lets show the Karton tab in the Admin view as well so that
     Amir can check out the changes we made there"; until then a trainer was
-    sent to /clanarine). Their clients' are /karton/{id}."""
+    sent to /clanarine). A client's is /karton/{id}, the owner's alone
+    since 27.11.2026."""
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
@@ -2502,7 +2503,13 @@ def karton_self(request: Request):
 
 @app.get("/karton/{user_id}", response_class=HTMLResponse)
 def karton_client(request: Request, user_id: int):
-    user, redirect = _require_trainer(request)
+    """A member's karton, read only: the owner's alone since 27.11.2026 (the
+    owner: "I would then not even allow him to open that"; staff's until
+    then). No page a trainer reaches has linked it since Trenutne članarine's
+    "Karton →" went (26.11.2026, build 4): Korisnici's "Karton", the owner's
+    page, is its one way in. A trainer reads a member's karton as the member
+    ("Otvori kao član"), where the upitnik's trainer-only parts print too."""
+    user, redirect = _require_owner(request)
     if redirect:
         return redirect
     with db.session_scope() as s:

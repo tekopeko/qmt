@@ -706,13 +706,18 @@ def test_the_shortcuts_lead_into_the_members_account():
             f'      <input type="hidden" name="kamo" value="/karton/termin/{sid}/trening">\n'   # his training of it (build 3)
             '      <button type="submit" class="act act-kao">Kao član →</button>') in roster
     assert f'action="/kao/{coach}"' not in roster
-    view = c.get(f"/karton/{ivan}").text
+    # a member's karton, /karton/<id>, is the owner's alone since 27.11.2026
+    # (reached from Korisnici): the trainer cannot open it, its "Otvori kao
+    # član" is the owner's
+    assert c.get(f"/karton/{ivan}").status_code == 403 and 'class="kao-open"' not in c.get("/karton").text
+    o = client_for("trener@test.local")
+    view = o.get(f"/karton/{ivan}").text
     assert (f'<form class="kao-open" method="post" action="/kao/{ivan}">\n  <input type="hidden" name="natrag" '
             f'value="/karton/{ivan}">\n  <button type="submit" class="act act-kao">Otvori kao član</button>') in view
-    assert 'class="kao-open"' not in c.get(f"/karton/{owner}").text and 'class="kao-open"' not in c.get("/karton").text
-    for back in (f"/admin/session/{sid}", f"/karton/{ivan}"):
-        assert enter(c, ivan, natrag=back).headers["location"] == "/karton"
-        assert c.post("/kao/izlaz", follow_redirects=False).headers["location"] == back
+    assert 'class="kao-open"' not in o.get(f"/karton/{coach}").text and 'class="kao-open"' not in o.get("/karton").text
+    for who, back in ((c, f"/admin/session/{sid}"), (o, f"/karton/{ivan}")):
+        assert enter(who, ivan, natrag=back).headers["location"] == "/karton"
+        assert who.post("/kao/izlaz", follow_redirects=False).headers["location"] == back
     r = c.post("/kao", data={"clan": str(ivan), "natrag": "/karton"}, follow_redirects=False)
     assert r.headers["location"] == "/karton" and session_of(c)["as_user_id"] == ivan
     assert c.post("/kao/izlaz", follow_redirects=False).headers["location"] == "/karton"
@@ -828,7 +833,8 @@ def test_every_way_into_a_members_app_is_amber():
     kao = c.get("/kao").text
     assert kao.count('<button type="submit" class="act act-kao">Otvori →</button>') == 3 and 'class="act">' not in kao
     assert '<button type="submit" class="act act-kao">Kao član →</button>' in c.get(f"/admin/session/{sid}").text
-    assert '<button type="submit" class="act act-kao">Otvori kao član</button>' in c.get(f"/karton/{ivan}").text
+    assert ('<button type="submit" class="act act-kao">Otvori kao član</button>'       # the owner's view (27.11.2026)
+            in client_for("trener@test.local").get(f"/karton/{ivan}").text)
     own = c.get("/karton").text
     assert '<button type="submit" class="btn-kao">Otvori kao član</button>' in own
     for rule in (".act-kao { background: var(--warn-soft); color: var(--warn);",
@@ -879,7 +885,8 @@ def test_acting_staff_read_what_only_the_trainers_view_showed_of_the_upitnik():
     coach, owner, ivan, ana, sara = people()
     flagged_upitnik(ivan)
     t = client_for("coach@test.local")
-    view = upitnik_block(t.get(f"/karton/{ivan}").text)
+    assert t.get(f"/karton/{ivan}").status_code == 403               # the view is the owner's alone (27.11.2026)
+    view = upitnik_block(client_for("trener@test.local").get(f"/karton/{ivan}").text)
     assert ('<span class="u-flag review"><span class="ed t" data-copy="karton.staff.review"' in view
             and '<span class="u-flag pain">Bolovi 5/10 · donji dio leđa</span>' in view)
     assert '<details>\n    <summary><span class="ed t" data-copy="karton.staff.answers"' in view

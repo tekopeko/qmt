@@ -244,9 +244,9 @@ def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
     Termini (its sub-pages too), Trenutne članarine, Upitnik, Vježbe (an
     exercise's page too: under /treninzi, yet Online treninzi is not .on
     there), Tekstovi, Korisnici (and since 27.11.2026 a client's karton,
-    /karton/<id>, which is reached from it alone; a trainer who is not the
-    owner has no Korisnici: for him it lights Trenutne članarine, as from
-    24.11.2026) and Statistika the Admin tab is
+    /karton/<id>, the owner's alone, which is reached from it; Trenutne
+    članarine from 24.11.2026 until then: a trainer who is not the owner
+    cannot open it) and Statistika the Admin tab is
     .on and that item, alone, aria-current; no member tab is (Karton not on
     a client's karton, nor on /upitnik). Elsewhere the member's tab is .on
     and Admin is not: Karton on staff's own karton, /karton. The pages carry
@@ -269,10 +269,9 @@ def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
         assert [label for _, label, current in admin_items(page) if current] == [item], path
         assert [label for _, label, on in tabs(page) if on] == [], path
     make_user("coach@test.local", is_trainer=True)                      # a trainer who is not the owner
-    page = client_for("coach@test.local").get(f"/karton/{ivan}").text
-    assert admin_tab(page) == ("Admin ▾", True)
-    assert [label for _, label, current in admin_items(page) if current] == ["Trenutne članarine"]
-    assert [label for _, label, on in tabs(page) if on] == []
+    r = client_for("coach@test.local").get(f"/karton/{ivan}")
+    assert r.status_code == 403 and 'class="crumbs"' not in r.text      # the owner's alone (27.11.2026)
+    assert not any(current for *_, current in admin_items(r.text))
     for path, tab in (("/", "Početna"), ("/raspored", "Raspored"), ("/karton", "Karton"),
                       ("/treninzi", "Online treninzi"), ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")):
         page = c.get(path).text

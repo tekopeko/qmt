@@ -2,6 +2,15 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
+## 27.11.2026 — a member's read-only karton is the owner's alone (Fable, direct)
+
+The owner, an hour after the crumb below, of Amir, who has had no link to `/karton/<id>` since build 4: "Oh because now Amir cant even find the link … through his navigation right? I would then not even allow him to open that".
+
+- **The route**: `karton_client` asks `_require_owner` (staff until then): a trainer who is not the owner 403 ("Samo vlasnik aplikacije"), as on Korisnici. He reads a member's karton as the member ("Otvori kao član"), where the upitnik's trainer-only parts print since build 4.
+- **The crumb and Admin ▾'s item**: Korisnici, with no other case (the fallback of the entry below, Trenutne članarine for a trainer who is not the owner, went with his access; the literal left karton.html and the allowlist, its cap 129 again).
+- **Tests** (672, none new): seven opened the view as a trainer who is not the owner (`test_karton.py` the history card; `test_kao.py` the shortcuts, the amber buttons, the upitnik while acting; `test_upitnik.py` a kind switch; `test_gym.py` the diary and the way in): each reads it as the owner now, and four of them assert the trainer's 403; `test_nav.py` the coach's 403.
+- **Not changed**: `/media` (staff still open a member's files: acting as him they are his), the view's "Otvori kao član" (the owner's), the name "the trainer's view" in the docs.
+
 ## 27.11.2026 — a member's karton in the trainer's view leads back to Korisnici (Fable, direct)
 
 The owner, of the read-only view `/karton/<id>` (reached from Korisnici's "Karton" alone since Trenutne članarine's "Karton →" went in build 4): "yes, change both to Korisnici". Both are on that one page:
