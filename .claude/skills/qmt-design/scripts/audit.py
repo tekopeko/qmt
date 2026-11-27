@@ -63,19 +63,22 @@ ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana",
 # (25.11.2026) is the first round's screen of that day's circuit part (the
 # seed's DEMO_CIRCUIT: Glavni dio A), found by the list's first row under a
 # caption that says "kružno".
-# The gym training (26.11.2026, build 3): "gym:filled" is ivan's training of
-# yesterday's termin (the seed's: three exercises, sets ticked, one rated, its
-# osvrt), found on his karton by its diary row's "Otvori trening" (a termin's
-# row: its time after a "·"); "gym:osvrt" that training's osvrt; "gym:open"
-# the termin of today inside its window with nothing written yet, by its
-# row's "Upiši trening" (which makes the training the first time it is
-# opened: the seed leaves none; since part B its page lists the seed's
-# template); "gym:krug" (part B) ivan's training outside a termin made from
-# the seed's template (its circuit's slots filled, round 1 saved, round 2
-# open, the warm-up's slots empty), by its row's "Otvori trening" (no time).
+# The gym training (26.11.2026, build 3; since 27.11.2026 blocks, at
+# /dvoranski/trening/<id>): "gym:filled" is ivan's training of yesterday's
+# termin (the seed's: three Stanica, every set ticked, one rated, its osvrt:
+# the "what next" card), found on his karton by its diary row's "Otvori
+# trening" (a termin's row: its time after a "·"); "gym:osvrt" that
+# training's osvrt; "gym:open" the termin of today inside its window with
+# nothing written yet, by its row's "Upiši trening" (which makes the
+# training the first time it is opened: the seed leaves none; its page the
+# template chooser); "gym:krug" ivan's training outside a termin made from
+# "Kružni trening" (its Stanica done, its Kružni set's Krug 1 saved, Krug 2
+# open), by its row's "Otvori trening" (no time); "gym:stanica" and
+# "gym:setup" that training's empty Stanica (its form) and empty Kružni set
+# (being set up), by its overview's rows.
 CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "gym:filled",
-          "gym:osvrt", "gym:open", "gym:krug", "/moja-clanarina", "/prehrana", "/profil", "/treninzi",
-          "trening:1", "dan:1", "kreni:1", "krug:1", "kraj:1", "/upitnik", "/upitnik?od=1", "/vodic"]
+          "gym:osvrt", "gym:open", "gym:krug", "gym:stanica", "gym:setup", "/moja-clanarina", "/prehrana", "/profil",
+          "/treninzi", "trening:1", "dan:1", "kreni:1", "krug:1", "kraj:1", "/upitnik", "/upitnik?od=1", "/vodic"]
 # the library of exercises (30.10.2026): its list, and one exercise's page,
 # "vjezba:<name>", found on the list by the seed's name (scripts/seed_demo.py:
 # a reseed gives the exercises new ids). Goblet čučanj has tags, similar
@@ -285,22 +288,35 @@ def player(pg, r: str) -> str | None:
 FIRST_HREF = """sel => { const a = document.querySelector(sel); return a ? a.getAttribute('href') : null; }"""
 GYM_ROW = """outside => { const row = [...document.querySelectorAll('.log-entry.gym')].find(r =>
   ((r.querySelector('.when') || {}).textContent || '').includes('·') !== outside);
-  const a = row && row.querySelector('a[href^="/karton/trening/"]'); return a ? a.getAttribute('href') : null; }"""
+  const a = row && row.querySelector('a[href^="/dvoranski/trening/"]'); return a ? a.getAttribute('href') : null; }"""
 
 
 def gym(pg, r: str) -> str | None:
     """The client's gym trainings (26.11.2026): "gym:open" by its termin's
-    "Upiši trening", "gym:filled" and "gym:krug" (part B) by their rows'
-    "Otvori trening" (GYM_ROW: a termin's, one outside a termin),
-    "gym:osvrt" the filled one's osvrt. Each kept in FOUND."""
+    "Upiši trening", "gym:filled" and "gym:krug" by their rows' "Otvori
+    trening" (GYM_ROW: a termin's, one outside a termin), "gym:osvrt" the
+    filled one's osvrt; "gym:stanica" and "gym:setup" (27.11.2026) the
+    empty Stanica and the empty Kružni set of "gym:krug", by its overview's
+    rows (.is-empty, their kind). Each kept in FOUND."""
     kind = r.split(":")[1]
     if kind == "osvrt":
         filled = FOUND.get("gym:filled") or gym(pg, "gym:filled")
         return filled + "/osvrt" if filled else None
+    if kind in ("stanica", "setup"):
+        krug = FOUND.get("gym:krug") or gym(pg, "gym:krug")
+        if not krug:
+            return None
+        pg.goto(BASE + krug)
+        pg.wait_for_load_state("networkidle")
+        block = "stanica" if kind == "stanica" else "kruzni"
+        path = pg.evaluate(FIRST_HREF, f'#pregled a.pl-row.is-empty[data-kind="{block}"]')
+        if path:
+            FOUND[r] = path
+        return path
     pg.goto(BASE + "/karton")
     pg.wait_for_load_state("networkidle")
     if kind == "open":
-        path = pg.evaluate(FIRST_HREF, '.log-entry a[href^="/karton/termin/"]')
+        path = pg.evaluate(FIRST_HREF, '.log-entry a[href^="/dvoranski/termin/"]')
     else:
         path = pg.evaluate(GYM_ROW, kind == "krug")
     if path:

@@ -251,6 +251,8 @@ FORMS = (
      "Tvoji online treninzi i treninzi koje upišeš sama.", "Tvoji online treninzi i treninzi koje upišeš sam."),
     ("dan.state.open", "U tijeku — nastavi gdje si stao/la.", "U tijeku — nastavi gdje si stala.",
      "U tijeku — nastavi gdje si stao."),
+    # the gym training's template chooser (27.11.2026, the dvoranski treninzi's build 1)
+    ("gym.chooser.own", "ili složi sam/a:", "ili složi sama:", "ili složi sam:"),
     ("profil.welcome", None, "Dobrodošla! Dopuni osnovne podatke", "Dobrodošao! Dopuni osnovne podatke"),
     ("profil.form.sex_hint", "Da ti se aplikacija obraća u pravom rodu: „bio” ili „bila”, ne „bio/la”.",
      "Da ti se aplikacija obraća u pravom rodu: „bio” ili „bila”, ne „bio/la”.",
@@ -646,12 +648,13 @@ def test_a_sentence_a_script_says_is_resolved_in_its_route(monkeypatch):
         Base.metadata.drop_all(db.engine); Base.metadata.create_all(db.engine)
         ana = make_user("ana@test.local", plans=("grupni",), sex=sex)
         tid = db.add_gym_outside(ana, config.today())
-        db.add_gym_item(tid, ana, db.create_exercise("Goblet čučanj"), "trening", 3, 10, None, 20, 60)
-        item = db.gym_training(tid, ana).items[0]
+        bid = db.add_gym_block(tid, ana, "stanica")                          # a Stanica (27.11.2026, the blocks)
+        db.set_gym_station(bid, ana, db.create_exercise("Goblet čučanj"), 3, 10, None, 20, 60)
+        item = db.gym_training(tid, ana).blocks[0].item
         r = client_for("ana@test.local").post(
-            f"/karton/trening/{tid}/stavke/{item.id}/odradeno", headers={"Accept": "application/json"},
-            data={"polja": ",".join(db.set_fields(item)), "rows": "1"})
-        assert r.status_code == 400 and r.json() == {"ok": False, "error": said, "mark": ""}, sex
+            f"/dvoranski/trening/{tid}/blok/{bid}/odradeno", headers={"Accept": "application/json"},
+            data={"polja": ",".join(db.set_fields(item)), "rows": "1", "reps_1": "", "kg_1": ""})
+        assert r.status_code == 400 and r.json() == {"ok": False, "error": said, "mark": "", "done": False}, sex
 
 
 def test_the_karton_reads_its_members_form_for_staff_too():

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from datetime import date as SADate, datetime, timedelta
 from decimal import Decimal
+from typing import NamedTuple
 
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, SmallInteger, String,
@@ -1591,14 +1592,16 @@ class GymTraining(Base):
     the training with its title already after a user booked it and he can
     already edit it 4 hours before the training up until the next day. Amir
     can also edit it later." … "The training should have a date and time
-    written on it so that there is no confusion which training they edit.";
-    his note to Amir: "Kolko je zadano a kolko je napravio i onda
-    kvačica."). ONE page that grows as the training goes
-    (karton_trening.html): its exercises (GymTrainingItem) added one after
-    another, each with what was given (zadano) and its sets as done, ticked;
-    "Završi trening" is the osvrt. Not the online days and passes: a record
-    of its own, Kreni / Nastavi, the walk and the load next time are
-    online's alone.
+    written on it so that there is no confusion which training they edit.").
+    Since 27.11.2026 (build 1 of roadmap/2026-11-27-dvoranski-treninzi-plan.md;
+    the owner: "A gym training consists of 'Stanica' and 'Kružni set' where the
+    'Kružni set' consists of 4 of 'Krug' at default which can be changed";
+    migration 9b4e2d7f1c58) it is a row of BLOCKS (GymTrainingBlock), each a
+    Stanica (one exercise, its sets ticked one by one) or a Kružni set (its
+    rows, done a Krug at a time), on one page in the online player's layout
+    (karton_trening.html, at /dvoranski/trening/<id>). Not the online days and
+    passes: a record of its own; the walk's Kreni / Nastavi and the load next
+    time are online's alone.
 
     A termin's training (`session_id`) exists for every live booking of it,
     its row made the first time it is opened (db.gym_training_for: INSERT …
@@ -1616,12 +1619,12 @@ class GymTraining(Base):
     db.gym_can_write (the member's window; staff acting as him at any
     time).
 
-    `parts` (part B, 26.11.2026: GymTrainingPart) are its parts with a name
-    of their own or done as a circuit, a row per such part, loaded with the
-    training wherever its items are (db._gym_query): part_label names a
-    part, circuit(section) says whether it is one, and a circuit's
-    exercises are ticked a round at a time (db.save_gym_round), each
-    exercise's mark its rounds (mark_of)."""
+    `blocks` are its blocks in their order, each with its items (rows of
+    GymTrainingItem, which keep `training_id` too: the history, the maxes and
+    /media read them by it), loaded with the training wherever it is
+    (db._gym_query). A block that holds no exercise is in no record (the
+    diary's lines, the count, the read-only page, the history); it is never
+    deleted for that: on the page it stays, to be filled."""
 
     __tablename__ = "gym_trainings"
 
@@ -1646,11 +1649,10 @@ class GymTraining(Base):
               postgresql_where=sql_text("session_id IS NOT NULL")),
     )
 
-    items: Mapped[list["GymTrainingItem"]] = relationship(
+    # its blocks in their order; the CASCADE deletes them (and their items) with it
+    blocks: Mapped[list["GymTrainingBlock"]] = relationship(
         back_populates="training", cascade="all, delete-orphan", passive_deletes=True,
-        order_by="GymTrainingItem.position")
-    # its parts with a name of their own or done as a circuit (part B); the CASCADE deletes them with it
-    parts: Mapped[list["GymTrainingPart"]] = relationship(cascade="all, delete-orphan", passive_deletes=True)
+        order_by="GymTrainingBlock.position")
 
     @property
     def outside(self) -> bool:
@@ -1659,68 +1661,33 @@ class GymTraining(Base):
         termin's title and start, and is no termin's now (session_id)."""
         return self.starts_at is None
 
-    def part(self, section: str) -> "GymTrainingPart | None":
-        """The part `section`'s row (its own name, its circuit), None for a
-        part with neither."""
-        return next((p for p in self.parts if p.section == section), None)
-
-    def part_title(self, section: str) -> str:
-        """The name of its own the training gives the part `section`
-        ("Krug 1"), "" for none ("Uredi dio"'s field)."""
-        p = self.part(section)
-        return p.title if p is not None else ""
-
-    def part_label(self, section: str) -> str:
-        """A part of the training as the page names it: its own name when
-        it has one (part B: "Uredi dio", or a template's), else its default
-        (SECTIONS: "Glavni dio A"). Every place that names a part of a gym
-        training asks this."""
-        return self.part_title(section) or SECTIONS.get(section, "")
-
-    def circuit(self, section: str) -> "GymTrainingPart | None":
-        """The part `section` as a circuit (its rounds, its rest after a
-        round), None for a normal part (part B)."""
-        p = self.part(section)
-        return p if p is not None and p.rounds is not None else None
-
-    def round_items(self, section: str) -> list["GymTrainingItem"]:
-        """A circuit part's exercises that a round takes inputs for, in the
-        page's order: the rows that hold a library exercise (a slot is in
-        no round; an exercise gone from the library is read only)."""
-        return [it for it in self.by_section.get(section, []) if it.exercise_id is not None]
-
-    def rounds_saved(self, section: str) -> set[int]:
-        """The rounds of the part `section` that are saved: a round is when
-        any exercise of the part holds a set of that round (the player's
-        rule, app._saved), within the circuit's rounds."""
-        c = self.circuit(section)
-        if c is None:
-            return set()
-        rows = [it for it in self.by_section.get(section, []) if not it.is_slot]
-        return {n for n in range(1, c.rounds + 1) if any(it.round_set(n) is not None for it in rows)}
-
-    def mark_of(self, it: "GymTrainingItem") -> str:
-        """An exercise's mark as its part reads it: a normal part's the
-        card's (GymTrainingItem.mark: its sets against its Serije), a
-        circuit's its rounds ("✓" every round, "2/3" some, "" none)."""
-        c = self.circuit(it.section)
-        return it.mark if c is None else it.round_mark(c.rounds)
-
     @property
-    def by_section(self) -> dict[str, list["GymTrainingItem"]]:
-        """The rows per part, in SECTIONS' order, each part's in position
-        order: the page's order. A part with none holds an empty list."""
-        out: dict[str, list[GymTrainingItem]] = {key: [] for key in SECTIONS}
-        for it in self.items:                          # in position order
-            if it.section in out:
-                out[it.section].append(it)
-        return out
+    def items(self) -> list["GymTrainingItem"]:
+        """Every block's items, block by block, each block's in its place:
+        the page's order."""
+        return [it for b in self.blocks for it in b.items]
 
     @property
     def exercise_items(self) -> list["GymTrainingItem"]:
-        """The rows that are an exercise (one gone from the library too,
-        under its name), in the page's order; a slot is none."""
-        return [it for rows in self.by_section.values() for it in rows if not it.is_slot]
+        """The items that hold an exercise (one gone from the library too,
+        under its name), in the page's order; an empty one is none."""
+        return [it for it in self.items if not it.is_slot]
+
+    @property
+    def record_blocks(self) -> list["GymTrainingBlock"]:
+        """The blocks that hold an exercise, in their order: the record (the
+        diary, the read-only page). An empty block is in none."""
+        return [b for b in self.blocks if b.holds_exercise]
+
+    def station_number(self, block: "GymTrainingBlock") -> int:
+        """A Stanica's number among the training's stations ("Stanica 2 od
+        6"), 1-based; 0 for a block that is none of them."""
+        stations = [b.id for b in self.blocks if not b.circuit]
+        return stations.index(block.id) + 1 if block.id in stations else 0
+
+    @property
+    def stations_count(self) -> int:
+        return sum(1 for b in self.blocks if not b.circuit)
 
     @property
     def count_text(self) -> str:
@@ -1730,15 +1697,30 @@ class GymTraining(Base):
 
     @property
     def holds_anything(self) -> bool:
-        """A row in it, or its osvrt: what the diary lists as a training."""
-        return bool(self.items) or self.finished_at is not None
+        """An exercise in it, or its osvrt: what the diary lists as a
+        training. Blocks alone hold nothing (a template applied and left)."""
+        return bool(self.exercise_items) or self.finished_at is not None
 
     @property
     def has_record(self) -> bool:
         """Something was done in it: a set saved, or its osvrt. A cancelled
         booking keeps such a training (let go of its termin) and takes one
         with none along."""
-        return self.finished_at is not None or self.effort is not None or any(it.done_sets for it in self.items)
+        return self.finished_at is not None or self.effort is not None or self.ticked
+
+    @property
+    def ticked(self) -> bool:
+        """A set saved in it, any block's: a template may replace its blocks
+        only before (db.apply_gym_template)."""
+        return any(it.done_sets for it in self.items)
+
+    @property
+    def first_tick(self) -> datetime | None:
+        """When its first set was saved (the page's clock runs from it): the
+        earliest `done_at` of an item that holds a set (an item's is its
+        first save's, kept while a set stays saved), None before any."""
+        ticks = [it.done_at for it in self.items if it.done_at is not None and it.done_sets]
+        return min(ticks) if ticks else None
 
     @property
     def osvrt_text(self) -> str:
@@ -1748,51 +1730,233 @@ class GymTraining(Base):
             return ""
         return " · ".join(w for w in (f"napor {self.effort}/10", FEELING_LABELS.get(self.feeling or "", "")) if w)
 
-    def lines(self) -> list[tuple[str, str, list[str]]]:
-        """Each exercise as the diary's "Serije" says it, in the page's
-        order: (its name, what was given and the word after it, the sets as
-        done): ("Goblet čučanj", "zadano 3 × 10 · 20 kg — odrađeno", ["10 ×
-        20 kg", "10 × 20 kg", "8 × 20 kg", "težina 8/10"]); "zadano …" only
-        when anything was given, "odrađeno —" when nothing was ticked; in a
-        circuit part (part B) what one round asks (its round_dose: its sets
-        do not apply there) and a set per round, in their order. A slot is
-        no exercise: no line."""
-        return [it.line(self.circuit(it.section)) for it in self.exercise_items]
+    def lines(self) -> list["GymLine"]:
+        """The record as the diary's "Serije" says it, block by block (a
+        block with no exercise none): a Stanica one line, its exercise, what
+        was given and what was done, its rating; a Kružni set a line of its
+        own ("Kružni set · 4 kruga", its rating) and then its exercises, each
+        what one round asks and what each round did (GymTrainingBlock.lines)."""
+        return [ln for b in self.blocks for ln in b.lines()]
+
+
+class GymLine(NamedTuple):
+    """A line of a gym training's record (GymTraining.lines): `kind` "" for
+    an exercise of a Stanica ((its name, "zadano 3 × 10 · 20 kg —
+    odrađeno", ["10 × 20 kg", …, "težina 8/10"])), "set" for a Kružni set's
+    own line (("Kružni set · 4 kruga", "", ["težina 7/10"])), "in" for an
+    exercise of a Kružni set ((its name, "zadano 10 ponavljanja —
+    odrađeno", its sets round by round)). The words the model's."""
+    name: str
+    head: str
+    sets: list
+    kind: str = ""
+
+
+# A gym training's two kinds of block (27.11.2026, build 1 of
+# roadmap/2026-11-27-dvoranski-treninzi-plan.md; GymTrainingBlock.kind, a
+# CHECK), in the words the page names them
+GYM_BLOCK_KINDS = {"stanica": "Stanica", "kruzni": "Kružni set"}
+
+
+class GymTrainingBlock(Base):
+    """A block of a gym training (27.11.2026, build 1 of
+    roadmap/2026-11-27-dvoranski-treninzi-plan.md; migration 9b4e2d7f1c58),
+    in its place (`position`, unique in the training, DEFERRABLE INITIALLY
+    DEFERRED): a STANICA (`kind` 'stanica'), exactly one item, its exercise
+    with what was asked (sets, reps, kg, the pause after a set, seconds, a
+    comment) and its sets ticked one by one, the item empty (no exercise)
+    while the station is; or a KRUŽNI SET ('kruzni'), its rows (items, each
+    an exercise with reps, kg and seconds; a row with no exercise an empty
+    one, in no round and no record), done a Krug at a time: `rounds` Krug
+    (1–20, a CHECK; NULL for a Stanica), `rest_seconds` the pause after a
+    Krug (0–3600 or NULL, a CHECK), NO pause between the exercises of a
+    Krug. `effort` is the block's rating (1–10 or NULL, a CHECK: a
+    Stanica's and a Kružni set's alike; none per Krug). Written by db.py
+    only, under the training's row lock."""
+
+    __tablename__ = "gym_training_blocks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    training_id: Mapped[int] = mapped_column(ForeignKey("gym_trainings.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(8))
+    rounds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    effort: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("training_id", "position", name="uq_gym_training_blocks_position",
+                         deferrable=True, initially="DEFERRED"),
+        CheckConstraint("kind IN ('stanica', 'kruzni')", name="ck_gym_training_blocks_kind"),
+        CheckConstraint("rounds BETWEEN 1 AND 20", name="ck_gym_training_blocks_rounds"),
+        CheckConstraint("rest_seconds BETWEEN 0 AND 3600", name="ck_gym_training_blocks_rest_seconds"),
+        CheckConstraint("effort BETWEEN 1 AND 10", name="ck_gym_training_blocks_effort"),
+    )
+
+    training: Mapped[GymTraining] = relationship(back_populates="blocks")
+    items: Mapped[list["GymTrainingItem"]] = relationship(
+        back_populates="block", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="GymTrainingItem.position")
+
+    @property
+    def circuit(self) -> bool:
+        """A Kružni set (else a Stanica)."""
+        return self.kind == "kruzni"
+
+    @property
+    def item(self) -> "GymTrainingItem | None":
+        """A Stanica's one item (None for none)."""
+        return self.items[0] if self.items else None
+
+    @property
+    def exercise_rows(self) -> list["GymTrainingItem"]:
+        """Its items that hold an exercise (one gone from the library too):
+        the record's."""
+        return [it for it in self.items if not it.is_slot]
+
+    @property
+    def round_rows(self) -> list["GymTrainingItem"]:
+        """A Kružni set's rows a Krug takes inputs for: the ones that hold a
+        library exercise (an empty row is in no round; one gone from the
+        library is read only)."""
+        return [it for it in self.items if it.exercise_id is not None]
+
+    @property
+    def holds_exercise(self) -> bool:
+        return bool(self.exercise_rows)
+
+    @property
+    def rounds_saved(self) -> set[int]:
+        """The Krug of a Kružni set that are saved: one is when any row holds
+        a set of it, within its rounds."""
+        if not self.circuit or not self.rounds:
+            return set()
+        rows = self.exercise_rows
+        return {n for n in range(1, self.rounds + 1) if any(it.round_set(n) is not None for it in rows)}
+
+    @property
+    def current_round(self) -> int | None:
+        """A Kružni set's Krug on screen: the first not saved, None when
+        every one is."""
+        saved = self.rounds_saved
+        return next((n for n in range(1, (self.rounds or 0) + 1) if n not in saved), None)
+
+    @property
+    def started(self) -> bool:
+        """A Stanica with its exercise chosen; a Kružni set with a Krug
+        saved."""
+        if self.circuit:
+            return bool(self.rounds_saved)
+        it = self.item
+        return it is not None and not it.is_slot
+
+    @property
+    def done(self) -> bool:
+        """A Stanica: every planned set ticked (with no Serije given, any);
+        a Kružni set: every Krug saved."""
+        if self.circuit:
+            return self.holds_exercise and bool(self.rounds) and len(self.rounds_saved) == self.rounds
+        it = self.item
+        return it is not None and not it.is_slot and it.mark == "✓"
+
+    @property
+    def mark(self) -> str:
+        """Its mark in the overview: a Stanica's sets ("✓", "2/6", "" for
+        none), a Kružni set "✓" once every Krug is saved (its progress is
+        its facts' "krug 2/4")."""
+        if self.circuit:
+            return "✓" if self.done else ""
+        it = self.item
+        return it.mark if it is not None and not it.is_slot else ""
+
+    @property
+    def rounds_text(self) -> str:
+        """"4 kruga", "1 krug", "5 krugova"."""
+        n = self.rounds or 0
+        return f"{n} {plural(n, 'krug', 'kruga', 'krugova')}"
+
+    @property
+    def rest_text(self) -> str:
+        """The pause after a Krug, "90 s" ("0 s" for a 0), "" for none."""
+        return "" if self.rest_seconds is None else f"{self.rest_seconds} s"
+
+    @property
+    def rating_text(self) -> str:
+        """"težina 8/10", "" for none."""
+        return f"težina {self.effort}/10" if self.effort is not None else ""
+
+    @property
+    def facts(self) -> str:
+        """The overview's line under its label: a Stanica's what was asked
+        (GymTrainingItem.asked); a Kružni set "4 vježbe · krug 2/4" (its
+        exercises, the Krug on screen) or, every Krug saved, "4 vježbe · 4
+        kruga"; "" for an empty one."""
+        if not self.circuit:
+            it = self.item
+            return it.asked if it is not None and not it.is_slot else ""
+        n = len(self.exercise_rows)
+        if not n:
+            return ""
+        current = self.current_round
+        where = f"krug {current}/{self.rounds}" if current is not None else self.rounds_text
+        return f"{n} {plural(n, 'vježba', 'vježbe', 'vježbi')} · {where}"
+
+    @property
+    def done_text(self) -> str:
+        """A Stanica's sets and its rating as one line: "10 × 20 kg · 10 ×
+        20 kg · težina 8/10"; "" for nothing."""
+        it = self.item
+        words = [set_text(s) for s in it.done_sets] if it is not None else []
+        return " · ".join(words + ([self.rating_text] if self.rating_text else []))
+
+    def round_line(self, n: int) -> str:
+        """A saved Krug folded to a line, its rows' sets in their order:
+        "10 × 16 kg · 10 · 30 s" ("—" for a row not done in it)."""
+        out = []
+        for it in self.round_rows:
+            st = it.round_set(n)
+            out.append(set_text(st) if st is not None else "—")
+        return " · ".join(out)
+
+    def lines(self) -> list[GymLine]:
+        """This block in the record (GymTraining.lines): none while it holds
+        no exercise."""
+        if not self.holds_exercise:
+            return []
+        if not self.circuit:
+            name, head, sets = self.item.line()
+            return [GymLine(name, head, sets + ([self.rating_text] if self.rating_text else []), "")]
+        own = GymLine(f"Kružni set · {self.rounds_text}", "", [self.rating_text] if self.rating_text else [], "set")
+        return [own] + [GymLine(*it.line(circuit=True), "in") for it in self.exercise_rows]
 
 
 class GymTrainingItem(Base):
-    """An exercise of a gym training (26.11.2026, build 3; the owner's note
-    to Amir: "Šoša im da vježbu, on si zapiše kaj mu je dao u aplikaciji i
-    kolko je čega odradio na taj dan"), a card on the page: what was given
-    (zadano: `sets`, `reps`, `seconds`, `kg`, `rest_seconds`, the pause
-    after a set the rest bar counts down, and `note`; each NULL / '' for
-    none, within db.ITEM_LIMITS) and what was done (`done`, a JSON list of
-    the ticked sets as a pass's entry holds them: {"reps", "kg"} /
-    {"seconds"} / {"reps", "seconds"}, db.set_fields' shape of its zadano,
-    a circuit's set with its "round" (part B); db._checked_sets' rules, at
-    most db.MAX_SETS), its rating (`effort`, 1–10 or NULL: "Koliko je bilo
-    teško?", stored and printed only: the load next time is online's) and
-    when it was saved (`done_at`). `section` is one of SECTIONS (a CHECK),
-    `position` unique in the training, deferred to the commit (↑ / ↓ swap
-    two), the page reading the rows part by part in position order.
+    """An exercise of a gym training's block (26.11.2026, build 3; since
+    27.11.2026 a block's, GymTrainingBlock: a Stanica's one item, a Kružni
+    set's rows): what was asked (`sets`, `reps`, `seconds`, `kg`,
+    `rest_seconds`, a Stanica's pause after a set the rest bar counts down,
+    and `note`, its comment; each NULL / '' for none, within db.ITEM_LIMITS;
+    a Kružni set's row asks reps, kg and seconds alone) and what was done
+    (`done`, a JSON list of the saved sets as a pass's entry holds them:
+    {"reps", "kg"} / {"seconds"} / {"reps", "seconds"}, db.set_fields' shape
+    of what was asked, a Kružni set's each carrying its "round"; db.
+    _checked_sets' rules, at most db.MAX_SETS) and `done_at` (its first
+    save's time, kept while a set stays saved: the page's clock runs from
+    the training's earliest). `position` is its place in its block (unique
+    per block, deferred to the commit). The rating is the block's.
 
     `exercise_id` is the library's row (SET NULL) and `exercise_name` its
-    name when added: a gym training is a record, so an exercise deleted from
-    the library stays in it by name (`gone`). A row with neither is a SLOT
-    (part B: a template's empty place, `hint` what goes there, filled from
-    the library: db.fill_gym_slot). No cap on the rows.
-
-    In a circuit part (part B, GymTraining.circuit) each set of `done`
-    carries its round ({"reps": 10, "kg": 16.0, "round": 2}: round_set),
-    sorted by round, and the mark counts rounds (round_mark); sets ticked
-    while the part was a normal one carry none and stay as they were (the
-    round blocks read only the sets that carry a round)."""
+    name when chosen: a gym training is a record, so an exercise deleted from
+    the library stays in it by name (`gone`). A row with neither is EMPTY
+    (is_slot: an empty Stanica, a Kružni set's empty row; `hint`, a
+    converted slot's word, starts its picker). `training_id` is kept beside
+    `block_id`: the history, the maxes and /media read the items by it."""
 
     __tablename__ = "gym_training_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     training_id: Mapped[int] = mapped_column(ForeignKey("gym_trainings.id", ondelete="CASCADE"), index=True)
-    section: Mapped[str] = mapped_column(String(12), server_default=text("'trening'"), default="trening")
+    block_id: Mapped[int] = mapped_column(ForeignKey("gym_training_blocks.id", ondelete="CASCADE"), index=True)
     position: Mapped[int] = mapped_column(Integer)
     exercise_id: Mapped[int | None] = mapped_column(ForeignKey("exercises.id", ondelete="SET NULL"), nullable=True,
                                                     index=True)
@@ -1805,22 +1969,19 @@ class GymTrainingItem(Base):
     rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     done: Mapped[str] = mapped_column(Text, server_default=text("'[]'"), default="[]")
-    effort: Mapped[int | None] = mapped_column(Integer, nullable=True)
     done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        # deferred: ↑ / ↓ swap two positions, checked when the swap commits
-        UniqueConstraint("training_id", "position", name="uq_gym_training_items_position",
+        # deferred: a block's places are checked when its write commits
+        UniqueConstraint("block_id", "position", name="uq_gym_training_items_block_position",
                          deferrable=True, initially="DEFERRED"),
-        CheckConstraint("section IN ('zagrijavanje', 'trening', 'trening_b', 'trening_c', 'istezanje')",
-                        name="ck_gym_training_items_section"),
     )
 
-    training: Mapped[GymTraining] = relationship(back_populates="items")
-    # the page shows each card's exercise (its clip, what one rep is): loaded with it
+    block: Mapped[GymTrainingBlock] = relationship(back_populates="items")
+    # the page shows each exercise (its clip, what one rep is): loaded with it
     exercise: Mapped[Exercise | None] = relationship(lazy="joined")
 
-    # What was given, in a day item's words, one rule for both: "3 × 10 · 20
+    # What was asked, in a day item's words, one rule for both: "3 × 10 · 20
     # kg", "3 × 30 s", "5 × 30 s" (ProgramDayItem's properties, which read the
     # same columns: sets, reps, seconds, kg, rest_seconds)
     dose = ProgramDayItem.dose
@@ -1829,20 +1990,27 @@ class GymTrainingItem(Base):
     rest_text = ProgramDayItem.rest_text
 
     @property
+    def asked(self) -> str:
+        """A Stanica's whole ask on one line, its dose and its pause: "6 × 10
+        · 40 kg · pauza 90 s" ("" for nothing)."""
+        return " · ".join(w for w in (self.dose, self.rest_text and f"pauza {self.rest_text}") if w)
+
+    @property
     def is_slot(self) -> bool:
-        """No exercise and no name (part B: a template's empty place)."""
+        """No exercise and no name: an empty Stanica, a Kružni set's empty
+        row (a converted slot keeps its hint)."""
         return self.exercise_id is None and self.exercise is None and not self.exercise_name
 
     @property
     def gone(self) -> bool:
-        """An exercise deleted from the library since it was added: its
+        """An exercise deleted from the library since it was chosen: its
         name kept, its sets as they were, nothing more to do with it but
         take it out."""
         return self.exercise_id is None and self.exercise is None and bool(self.exercise_name)
 
     @property
     def name(self) -> str:
-        """The library's name now, else the name when added."""
+        """The library's name now, else the name when chosen."""
         return self.exercise.name if self.exercise is not None else self.exercise_name
 
     @staticmethod
@@ -1862,7 +2030,7 @@ class GymTrainingItem(Base):
 
     @property
     def mark(self) -> str:
-        """The card's mark: "✓" when every planned set is ticked (with no
+        """A Stanica's mark: "✓" when every planned set is ticked (with no
         Serije given: when any is), "2/3" for some, "" for none."""
         n = len(self.done_sets)
         if not n:
@@ -1870,68 +2038,89 @@ class GymTrainingItem(Base):
         return "✓" if self.sets is None or n >= self.sets else f"{n}/{self.sets}"
 
     def round_set(self, n: int) -> dict | None:
-        """The set this exercise holds of round n of its circuit part (part
-        B: a set saved by a round carries its round), None for none."""
+        """The set this row holds of Krug n of its Kružni set (a set saved
+        by a Krug carries its round), None for none."""
         return next((s for s in self.done_sets if type(s.get("round")) is int and s["round"] == n), None)
 
-    def round_mark(self, rounds: int) -> str:
-        """Its mark in a circuit part of `rounds` rounds (part B): "✓" when
-        it holds a set of every round, "2/3" of some, "" of none."""
-        n = sum(1 for k in range(1, rounds + 1) if self.round_set(k) is not None)
-        return "" if not n else "✓" if n >= rounds else f"{n}/{rounds}"
-
-    @property
-    def done_text(self) -> str:
-        """The sets done and the rating as one line: "10 × 20 kg · 10 × 20
-        kg · težina 8/10"; "" for nothing."""
-        words = [set_text(s) for s in self.done_sets]
-        if self.effort is not None:
-            words.append(f"težina {self.effort}/10")
-        return " · ".join(words)
-
-    def line(self, circuit=None) -> tuple[str, str, list[str]]:
-        """(its name, "zadano 3 × 10 · 20 kg — odrađeno", its sets and its
-        rating): GymTraining.lines'. In a circuit part (`circuit`, its
-        GymTrainingPart: part B) what was given is what one round asks,
-        "zadano 10 ponavljanja · 16 kg" (round_dose)."""
-        planned = self.round_dose if circuit is not None else self.dose
+    def line(self, circuit: bool = False) -> tuple[str, str, list[str]]:
+        """(its name, "zadano 3 × 10 · 20 kg — odrađeno", its sets as done):
+        the record's words ("zadano …" only when anything was asked,
+        "odrađeno —" when nothing was saved). In a Kružni set (`circuit`)
+        what one round asks, "zadano 10 ponavljanja · 16 kg" (round_dose),
+        and its sets round by round."""
+        planned = self.round_dose if circuit else self.dose
         done = [set_text(s) for s in self.done_sets]
         head = (f"zadano {planned} — " if planned else "") + ("odrađeno" if done else "odrađeno —")
-        return self.name, head, done + ([f"težina {self.effort}/10"] if self.effort is not None else [])
+        return self.name, head, done
 
 
-class GymTrainingPart(Base):
-    """A part of a gym training with a name of its own or done as a circuit
-    (26.11.2026, build 3 of roadmap/2026-11-26-gym-training-plan.md, part B;
-    Amir: "tu ne mogu staviti kružni dio … nema nigdje da stavi kvačicu...
-    Pauza itd..."; migration 36d6e2c97de7). A row means: that part
-    (`section`, a SECTIONS key, which db.py checks) of that training is
-    called `title` ("Krug 1", 60 characters at most; "" for none: its
-    default name) and / or is a circuit, `rounds` rounds (2–20, a CHECK;
-    NULL: a normal part), its exercises each done once per round with no
-    pause between them, and `rest_seconds` (0–3600, a CHECK; NULL for none)
-    the rest after a round, which the rest bar counts down after a round's
-    save. In a circuit an exercise's Serije and Pauza do not apply; they
-    stay stored and apply again once it is a normal part. One row per part
-    (the primary key); a training deleted takes its rows (CASCADE). Written
-    by db.set_gym_part ("Uredi dio": a row with neither a name nor a circuit
-    goes) and db.gym_from_template (a dvoranski programme's training's part
-    names and circuits, ProgramDayPart and ProgramDayCircuit, copied)."""
+class GymTemplate(Base):
+    """A template of a gym training (27.11.2026, build 1 of
+    roadmap/2026-11-27-dvoranski-treninzi-plan.md; the owner: "In the start,
+    there would be two templates. One is 'Stanični' with 6 'Stanica' in a row
+    […] The second template is a training plan with Stanica first and then
+    Kružni part and the Kružni part has 4 'Krug' parts by default"; migration
+    9b4e2d7f1c58 inserts the two, copy.GYM_TEMPLATES the code's table of
+    them): its `title` (80 characters) and its place among the templates
+    (`position`, unique, deferred), its blocks (GymTemplateBlock) in order.
+    No exercise in it: a member picks each at its block (db.
+    apply_gym_template copies the blocks, empty, into his training). Amir's
+    own templates are build 3's."""
 
-    __tablename__ = "gym_training_parts"
+    __tablename__ = "gym_templates"
 
-    training_id: Mapped[int] = mapped_column(ForeignKey("gym_trainings.id", ondelete="CASCADE"), primary_key=True,
-                                             autoincrement=False)
-    section: Mapped[str] = mapped_column(String(12), primary_key=True)
-    title: Mapped[str] = mapped_column(String(60), server_default=text("''"), default="")
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(80))
+    position: Mapped[int] = mapped_column(Integer)
+
+    __table_args__ = (
+        UniqueConstraint("position", name="uq_gym_templates_position", deferrable=True, initially="DEFERRED"),
+    )
+
+    blocks: Mapped[list["GymTemplateBlock"]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True, order_by="GymTemplateBlock.position")
+
+    @property
+    def facts(self) -> str:
+        """The chooser's muted line: its stations counted, each Kružni set
+        with its Krug ("6 stanica", "1 stanica · kružni set · 4 kruga")."""
+        words, run = [], 0
+        for b in self.blocks:
+            if b.kind == "stanica":
+                run += 1
+                continue
+            if run:
+                words.append(f"{run} {plural(run, 'stanica', 'stanice', 'stanica')}")
+                run = 0
+            n = b.rounds or 0
+            words.append(f"kružni set · {n} {plural(n, 'krug', 'kruga', 'krugova')}")
+        if run:
+            words.append(f"{run} {plural(run, 'stanica', 'stanice', 'stanica')}")
+        return " · ".join(words)
+
+
+class GymTemplateBlock(Base):
+    """A block of a template (GymTemplate), in its place (`position`, unique
+    per template, deferred): a Stanica ('stanica'), or a Kružni set
+    ('kruzni') of `slots` empty rows (1–12), `rounds` Krug (1–20) and
+    `rest_seconds` after a Krug (0–3600 or NULL); each a CHECK, NULL for a
+    Stanica."""
+
+    __tablename__ = "gym_template_blocks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("gym_templates.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(8))
+    slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rounds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
-        CheckConstraint("rounds BETWEEN 2 AND 20", name="ck_gym_training_parts_rounds"),
-        CheckConstraint("rest_seconds BETWEEN 0 AND 3600", name="ck_gym_training_parts_rest_seconds"),
+        UniqueConstraint("template_id", "position", name="uq_gym_template_blocks_position",
+                         deferrable=True, initially="DEFERRED"),
+        CheckConstraint("kind IN ('stanica', 'kruzni')", name="ck_gym_template_blocks_kind"),
+        CheckConstraint("slots BETWEEN 1 AND 12", name="ck_gym_template_blocks_slots"),
+        CheckConstraint("rounds BETWEEN 1 AND 20", name="ck_gym_template_blocks_rounds"),
+        CheckConstraint("rest_seconds BETWEEN 0 AND 3600", name="ck_gym_template_blocks_rest_seconds"),
     )
-
-    # "3 kruga", "120 s": a day's circuit's words, one rule for both
-    rounds_text = ProgramDayCircuit.rounds_text
-    rest_text = ProgramDayCircuit.rest_text

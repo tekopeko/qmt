@@ -160,8 +160,7 @@ ALLOWED: dict[str, set[str]] = {
         "Odrađena serija",                   # a screen reader's words, as an aria-label
     },
     "karton_trening.html": {
-        "Karton", "Trening",                 # the crumbs (26.11.2026, the gym training)
-        "Krug",                              # "Krug 2", a circuit's round's number (part B), as the player's
+        "Krug",                              # "Krug 2", a Kružni set's Krug's number, as the player's round's
     },
     "_tagbar.html": {"još"},                 # "još 5": a count (the tag chips past the first twelve)
     "trening_kraj.html": {
@@ -217,9 +216,11 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     # the crumb of a member's karton, the owner's view, "Korisnici" where
     # it said "Trenutne članarine"; 130 since the same day: that crumb
     # "Karton" (the view staff's again, the Karton tab's search opening
-    # it) and the search's no-JS button "Otvori karton"): a long list means
-    # texts were left out
-    assert sum(len(v) for v in ALLOWED.values()) <= 130
+    # it) and the search's no-JS button "Otvori karton"; 128 since build 1 of
+    # the dvoranski treninzi, 27.11.2026: the gym training's page took the
+    # player's layout, its crumbs gone, "← Natrag" the player's slot): a long
+    # list means texts were left out
+    assert sum(len(v) for v in ALLOWED.values()) <= 128
 
 
 def test_the_scan_sees_a_new_literal_and_strips_what_is_code():

@@ -1198,9 +1198,10 @@
       <a href="/raspored" class="{% if path.startswith('/raspored') %}on{% endif %}">Raspored</a>
       {# one's own gym training (26.11.2026) is under one's own karton, staff's
          too, and since 27.11.2026 so is a client's karton for staff (the
-         search on their Karton tab opens it): every /karton page; a client's
-         /upitnik too, staff's is Admin ▾'s #}
-      {% set at_karton = path.startswith('/karton') or (not staff and path.startswith('/upitnik')) %}
+         search on their Karton tab opens it): every /karton page, and the
+         training's pages at /dvoranski (27.11.2026, until build 2 gives them
+         a tab of their own); a client's /upitnik too, staff's is Admin ▾'s #}
+      {% set at_karton = path.startswith(('/karton', '/dvoranski')) or (not staff and path.startswith('/upitnik')) %}
       <a href="/karton" class="{% if at_karton %}on{% endif %}">Karton</a>
       {# a paid product: without an active online plan the tab doesn't exist #}
       {% if show_online %}<a href="/treninzi" class="{% if path.startswith('/treninzi') and not at_vjezbe %}on{% endif %}">Online treninzi</a>{% endif %}
@@ -2002,7 +2003,7 @@
          action, not to the ✕ in the corner. Since 26.11.2026 (build 3) it
          leads to the newest owed termin's training, whose "Završi trening"
          is the osvrt #}
-      <a class="btn btn-sm" href="/karton/termin/{{ feedback_prompt.session_id }}/trening" autofocus>{{ c.t("app.feedback.fill") }}</a>
+      <a class="btn btn-sm" href="/dvoranski/termin/{{ feedback_prompt.session_id }}" autofocus>{{ c.t("app.feedback.fill") }}</a>
     </div>
   </div>
 </dialog>

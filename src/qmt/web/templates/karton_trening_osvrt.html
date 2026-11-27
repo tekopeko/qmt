@@ -42,7 +42,7 @@
   <p class="kr-when">{{ when }}</p>
   {% if error %}<div class="alert" role="alert"><span>{{ error | gendered }}</span></div>{% endif %}
 
-  <form class="kr-form" method="post" action="/karton/trening/{{ t.id }}/osvrt">
+  <form class="kr-form" method="post" action="/dvoranski/trening/{{ t.id }}/osvrt">
     <section class="kr-field" aria-labelledby="kr-napor">
       <h2 class="dx-cap" id="kr-napor">{{ c.t("kraj.effort") }}</h2>
       <div class="scale-box">
@@ -73,7 +73,7 @@
   </form>
 
   <div class="kr-more">
-    <a class="act act-quiet" href="/karton/trening/{{ t.id }}">{{ c.t("gym.osvrt.back") }}</a>
+    <a class="act act-quiet" href="/dvoranski/trening/{{ t.id }}">{{ c.t("gym.osvrt.back") }}</a>
   </div>
 </div>
 {% endblock %}

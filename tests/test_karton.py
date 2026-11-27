@@ -217,14 +217,16 @@ def test_staff_have_a_karton_of_their_own():
 
     today = config.today()
     # his training outside a termin (since 26.11.2026 a gym training, its date
-    # alone, then its page): an exercise added there and a set ticked
+    # alone, then its page; since 27.11.2026 at /dvoranski, its blocks): a
+    # Stanica added there, its exercise chosen and a set ticked
     r = ca.post("/karton/trening", data={"day": today.isoformat()}, follow_redirects=False)
     [log] = db.gym_trainings(amir)
-    assert location(r) == f"/karton/trening/{log.id}" and ca.get(location(r)).status_code == 200
-    ca.post(f"/karton/trening/{log.id}/stavke", data={"exercise_id": str(ex["Potisak s klupe"]), "section": "trening"})
-    [item] = db.gym_training(log.id, amir).items
-    ca.post(f"/karton/trening/{log.id}/stavke/{item.id}/odradeno", data={"polja": "reps,kg", "rows": "1",
-                                                                         "reps_1": "6", "kg_1": "90"})
+    assert location(r) == f"/dvoranski/trening/{log.id}" and ca.get(location(r)).status_code == 200
+    ca.post(f"/dvoranski/trening/{log.id}/blok", data={"vrsta": "stanica"})
+    [block] = db.gym_training(log.id, amir).blocks
+    ca.post(f"/dvoranski/trening/{log.id}/blok/{block.id}/stanica", data={"exercise_id": str(ex["Potisak s klupe"])})
+    ca.post(f"/dvoranski/trening/{log.id}/blok/{block.id}/odradeno", data={"polja": "reps,kg", "rows": "1",
+                                                                           "reps_1": "6", "kg_1": "90"})
     assert location(ca.post("/karton/masa", data={"kg": "82,5", "day": today.isoformat()}, follow_redirects=False)) == \
         "/karton?ok=Masa je spremljena.#masa"
     ca.post("/karton/ogranicenja", data={"text": "Staro koljeno."})
@@ -392,7 +394,7 @@ def finish(uid: int, sid: int) -> int:
 def test_a_finished_termin_is_owed_its_training():
     """A booked termin that ended, inside its training's window, is owed
     (db.pending_feedback): its diary row says "Trening još nije upisan."
-    with "Upiši trening" (→ /karton/termin/<id>/trening, which makes the
+    with "Upiši trening" (→ /dvoranski/termin/<id> since 27.11.2026, which makes the
     training and opens it) and "Nisam bio/la"; no osvrt form of its own any
     more ("Ispuni osvrt" went with the plain form). Its training's osvrt
     saved, it is owed no more and its row is the training's."""
@@ -401,12 +403,12 @@ def test_a_finished_termin_is_owed_its_training():
     ci = client_for("ivan@test.local")
     assert [s.id for s in db.pending_feedback(ivan)] == [sid]
     row = bare(ci.get("/karton").text).split(f'id="s-{sid}"')[1].split('<div class="log-entry')[0]
-    assert f'<a class="act" href="/karton/termin/{sid}/trening">Upiši trening</a>' in row
+    assert f'<a class="act" href="/dvoranski/termin/{sid}">Upiši trening</a>' in row
     assert f'action="/karton/absent/{sid}"' in row and '<div class="hint le-state">Trening još nije upisan.</div>' in row
     assert "/karton/feedback/" not in row and "Ispuni osvrt" not in row and 'class="le-edit"' not in row
-    r = ci.get(f"/karton/termin/{sid}/trening", follow_redirects=False)
+    r = ci.get(f"/dvoranski/termin/{sid}", follow_redirects=False)
     [t] = db.gym_trainings(ivan)
-    assert location(r) == f"/karton/trening/{t.id}" and t.session_id == sid
+    assert location(r) == f"/dvoranski/trening/{t.id}" and t.session_id == sid
     assert [s.id for s in db.pending_feedback(ivan)] == [sid]               # opened, not finished: still owed
     finish(ivan, sid)
     assert db.pending_feedback(ivan) == []
@@ -417,7 +419,7 @@ def test_a_finished_termin_is_owed_its_training():
 def test_login_prompts_for_an_owed_training_once():
     """The login's prompt (base.html's #fbPrompt) asks once, on the page
     the login lands on, names the termin, and its way leads to the
-    termin's training (26.11.2026: /karton/termin/<id>/trening, where
+    termin's training (26.11.2026; since 27.11.2026 /dvoranski/termin/<id>, where
     "Završi trening" is the osvrt); nothing owed, the next login says
     nothing."""
     ivan = make_user("ivan@test.local")
@@ -427,7 +429,7 @@ def test_login_prompts_for_an_owed_training_once():
     first = ci.get("/").text
     assert 'id="fbPrompt"' in first              # asked on the page the login landed on
     assert "Grupni trening" in first             # and it names the termin
-    assert f'href="/karton/termin/{sid}/trening" autofocus' in first and "/karton#osvrti" not in first
+    assert f'href="/dvoranski/termin/{sid}" autofocus' in first and "/karton#osvrti" not in first
     assert 'id="fbPrompt"' not in ci.get("/").text   # exactly once per login
 
     finish(ivan, sid)                            # nothing owed -> the next login says nothing
@@ -632,7 +634,7 @@ def test_a_training_outside_a_termin_asks_its_date_alone():
     """"+ Dodaj trening izvan termina" (since 26.11.2026 its date alone,
     today by default, never after it, not before 2020): POST /karton/trening
     makes a gym training outside a termin on that date (no session, no
-    title, no start) and opens its page; a date in the future, before
+    title, no start) and opens its page (since 27.11.2026 at /dvoranski); a date in the future, before
     2020-01-01, empty or no date makes nothing ("Neispravan datum.", back at
     the form). The diary lists it as a training of its own ("Trening izvan
     termina", "Otvori trening"), staff's own karton too."""
@@ -655,15 +657,15 @@ def test_a_training_outside_a_termin_asks_its_date_alone():
     assert db.gym_trainings(ivan) == []
     r = ci.post("/karton/trening", data={"day": "2020-01-01"}, follow_redirects=False)
     [t] = db.gym_trainings(ivan)
-    assert location(r) == f"/karton/trening/{t.id}"
+    assert location(r) == f"/dvoranski/trening/{t.id}"
     assert (t.session_id, t.title, t.starts_at, t.held_on) == (None, "", None, date(2020, 1, 1))
     row = bare(ci.get("/karton").text).split(f'id="gt-{t.id}"')[1].split('<div class="log-entry')[0]
     assert '<div class="le-kicker">Trening izvan termina</div>' in row and '<span class="when">sri 1.1.2020.</span>' in row
-    assert f'<a class="act" href="/karton/trening/{t.id}">Otvori trening</a>' in row
+    assert f'<a class="act" href="/dvoranski/trening/{t.id}">Otvori trening</a>' in row
     ct = client_for("trener@test.local")                                    # staff's own karton: theirs too
     r = ct.post("/karton/trening", data={"day": today.isoformat()}, follow_redirects=False)
     [mine] = db.gym_trainings(db.get_user_by_email("trener@test.local").id)
-    assert location(r) == f"/karton/trening/{mine.id}" and ct.get(location(r)).status_code == 200
+    assert location(r) == f"/dvoranski/trening/{mine.id}" and ct.get(location(r)).status_code == 200
 
 
 # ---------- the estimated maxes (23.11.2026) ----------

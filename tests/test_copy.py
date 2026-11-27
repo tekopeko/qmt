@@ -2176,12 +2176,15 @@ def legacy_log(uid: int, day: date, effort: int | None, note: str, feeling: str 
 
 
 def gym_rows(uid: int, sid: int, exercise: int) -> int:
-    """The member's gym training of a termin (26.11.2026, build 3), made as
-    opening it makes it, an exercise in it with what was given and a set
-    ticked and rated, its osvrt: its id."""
+    """The member's gym training of a termin (26.11.2026, build 3; since
+    27.11.2026 its blocks), made as opening it makes it, a Stanica of an
+    exercise with what was asked, a set ticked and the station rated, its
+    osvrt: its id."""
     tid = db.gym_training_for(uid, sid, staff=True)
-    iid = db.add_gym_item(tid, uid, exercise, "trening", 3, 10, None, 20, 60, staff=True)
-    db.save_gym_done(iid, uid, [{"reps": 10, "kg": 20.0}], 8, staff=True)
+    bid = db.add_gym_block(tid, uid, "stanica", staff=True)
+    db.set_gym_station(bid, uid, exercise, 3, 10, None, 20, 60, "", staff=True)
+    db.save_gym_done(bid, uid, [{"reps": 10, "kg": 20.0}], staff=True)
+    db.rate_gym_block(bid, uid, 8, staff=True)
     db.finish_gym_training(tid, uid, 7, "dobro", "Dvorana.", staff=True)
     return tid
 
@@ -2426,13 +2429,16 @@ NEW_PREFIXES = ("raspored.", "treninzi.", "program.", "dan.", "player.", "kraj."
                 "clanarina.lapsed.", "clanarina.add.", "clanarina.addon.", "clanarina.bills.portal",
                 "clanarina.bills.col_", "prehrana.kicker", "prehrana.text_", "prehrana.hint_", "prehrana.open")
 NEW = [key for key in copy.SLOTS if key.startswith(NEW_PREFIXES)]
-# the gym training's page (26.11.2026, build 3): gym.<area>.* (the landing's gym.kicker and gym.h2 are the landing's;
-# part B's template, part and slot areas too)
-GYM_PREFIXES = ("gym.head.", "gym.state.", "gym.empty", "gym.card.", "gym.form.", "gym.add.", "gym.done.", "gym.foot.",
-                "gym.osvrt.", "gym.confirm.", "gym.template.", "gym.part.", "gym.slot.")
+# the gym training's page (26.11.2026, build 3; since 27.11.2026 its blocks, Stanica and Kružni set):
+# gym.<area>.* (the landing's gym.kicker and gym.h2 are the landing's)
+GYM_PREFIXES = ("gym.head.", "gym.state.", "gym.chooser.", "gym.add.", "gym.next", "gym.block.", "gym.whatnext",
+                "gym.form.", "gym.station.", "gym.card.", "gym.circuit.", "gym.overview.", "gym.done.", "gym.foot.",
+                "gym.osvrt.", "gym.confirm.")
 # of them, the ones that are no control's words (a kicker, a state's whole
-# sentence, the empty line): emptied, they stay empty (tests/test_gym.py's too)
-GYM_OPTIONAL = {"gym.head.kicker", "gym.state.closed", "gym.state.staff", "gym.empty", "gym.osvrt.kicker"}
+# sentence, a lead line, an empty block's word): emptied, they stay empty
+# (tests/test_gym.py's too)
+GYM_OPTIONAL = {"gym.head.kicker", "gym.state.closed", "gym.state.staff", "gym.osvrt.kicker", "gym.chooser.own",
+                "gym.block.circuit", "gym.whatnext", "gym.overview.empty_station", "gym.overview.empty_circuit"}
 # the ones that are no control's words (a lead, a hint, a kicker, a chip, a
 # state's word, an empty line, a placeholder): emptied, they stay empty
 NEW_OPTIONAL = {
@@ -3214,27 +3220,26 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     db.mark_email_verified("petra@test.local")
     member_day = online_day()
     owed = attended(ana, 3)                           # inside its training's window: the prompt asks (26.11.2026)
-    # her gym training of it (26.11.2026, build 3): an exercise with what was
-    # given, a set ticked; another she has not ticked yet
+    # her gym training of it (26.11.2026, build 3; since 27.11.2026 blocks):
+    # a Stanica started, a set ticked, rated; an empty Stanica; a Kružni set
+    # with its first Krug saved and rated; one of hers made from "Kružni
+    # trening" (its Kružni set being set up); and an empty one (the chooser)
+    db.reset_gym_templates()
     ana_gym = db.gym_training_for(ana, owed)
     goblet = db.create_exercise("Goblet čučanj u dvorani", "Pete na podu.", "Spust do paralele.", "noge, bučice")
-    for planned in ((3, 10, None, 20, 60), (2, None, 30, None, 30)):
-        db.add_gym_item(ana_gym, ana, goblet, "trening", *planned)
-    db.save_gym_done(db.gym_training(ana_gym, ana).items[0].id, ana, [{"reps": 10, "kg": 20.0}], 8)
-    # part B (26.11.2026): a dvoranski template (a part named and a circuit
-    # of two rounds, a slot in it and one in the warm-up), a training of
-    # hers made from it with its first round saved; and an empty one of
-    # hers, whose page lists the template
-    tpl = db.add_day(db.create_program("Predložak — kružni", None, "srednja", "cijelo", "dvorana"))
-    db.set_part_name(tpl, "trening_b", "Krug 1")
-    db.set_circuit(tpl, "trening_b", 2, 60)
-    db.add_day_slot(tpl, "zagrijavanje", "mobilnost", reps=10)
-    db.add_day_slot(tpl, "trening_b", "čučanj", reps=10, kg=16)
-    db.add_day_item(tpl, goblet, "trening_b", reps=8, kg=20)
+    ana_s1 = db.add_gym_block(ana_gym, ana, "stanica")
+    db.set_gym_station(ana_s1, ana, goblet, 3, 10, None, 20, 60, "Polako dolje.")
+    db.save_gym_done(ana_s1, ana, [{"reps": 10, "kg": 20.0}])
+    db.rate_gym_block(ana_s1, ana, 8)
+    ana_s2 = db.add_gym_block(ana_gym, ana, "stanica")
+    ana_k = db.add_gym_block(ana_gym, ana, "kruzni")
+    rows = [it.id for it in db.gym_training(ana_gym, ana).blocks[2].items]
+    db.save_gym_circuit(ana_k, ana, {r: {"exercise_id": goblet if n < 2 else None, "reps": 8, "kg": 20, "seconds": None}
+                                     for n, r in enumerate(rows)}, 2, 60)
+    db.save_gym_round(ana_k, ana, 1, {r: {"reps": 8, "kg": 20.0} for r in rows[:2]})
     ana_tpl, ana_empty = db.add_gym_outside(ana, config.today()), db.add_gym_outside(ana, config.today())
-    db.gym_from_template(ana_tpl, ana, tpl)
-    db.save_gym_round(ana_tpl, ana, "trening_b", 1, {it.id: {"reps": 8, "kg": 20.0} for it in
-                                                     db.gym_training(ana_tpl, ana).round_items("trening_b")}, 7)
+    db.apply_gym_template(ana_tpl, ana, db.gym_templates()[1].id)
+    ana_setup = db.gym_training(ana_tpl, ana).blocks[1].id
     soon = datetime.now(config.TZ).replace(hour=18, minute=0, second=0, microsecond=0) + timedelta(days=2)
     for hours, cap, kind, hers, off in ((0, 8, "grupni", True, False), (1, 8, "grupni", False, False),
                                         (2, 1, "individualni", False, False), (3, 1, "individualni", True, False),
@@ -3898,10 +3903,11 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         phone: never on a desktop), the online list, the programme, the day
         (each exercise open, as a tap opens it), the player (a step with its
         rest bar, the dock, the leave dialog, both rounds, the finish screen
-        and its leave dialog), her gym training (26.11.2026: every card open,
-        a ✓ and its rest bar, its osvrt's page; part B, one made from a
-        template, every part's "Uredi dio", a slot and a circuit's rounds
-        open, and an empty one's list of templates), her profile and the error
+        and its leave dialog), her gym training (26.11.2026; since
+        27.11.2026 its blocks: a station started, every <details> open, a ✓
+        and its pause bar, an empty station's form, a Kružni set started and
+        one being set up, its osvrt's page, an empty one's template
+        chooser), her profile and the error
         page; sara's gates
         (no plan: the raspored's line, the online list's card); a new
         member's profile with its welcome; the trainer's programme, day (each
@@ -3993,18 +3999,18 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             tap(a, "header a.brand")
             measure(a, "the finish screen's leave dialog", "#leaveDlg"); a.keyboard.press("Escape")
             a.request.post(server + base + "/odustani")
-            gym = f"/karton/trening/{ana_gym}"                              # her gym training (26.11.2026)
-            go(a, gym, "the gym training", unfold=True)
-            # a set more and its ✓ (it saves; each width's walk its own row): the rest bar
-            a.evaluate("() => document.querySelector('main details.gt-card:last-of-type .gt-add-set').click()")
-            tap(a, "main details.gt-card:last-of-type tbody tr:last-child .pl-done")
-            measure(a, "the gym training, its rest bar", "#plRest")
+            gym = f"/dvoranski/trening/{ana_gym}"                           # her gym training (26.11.2026)
+            go(a, f"{gym}?blok={ana_s1}", "a gym training's station", unfold=True)
+            # a set more and its ✓ (it saves; each width's walk its own row): the pause bar
+            a.evaluate("() => document.querySelector('#gt-log .gt-add-set').click()")
+            tap(a, "#gt-log tbody tr:last-child .pl-done")
+            measure(a, "the gym training, its pause bar", "#plRest")
             a.evaluate("() => { const b = document.querySelector('#plRest .pl-rest-skip'); if (b) b.click(); }")
+            go(a, f"{gym}?blok={ana_s2}", "a gym training's empty station")
+            go(a, f"{gym}?blok={ana_k}", "a gym training's Kružni set started", unfold=True)
             go(a, gym + "/osvrt", "the gym training's osvrt")
-            # part B: a training from a template (every part's "Uredi dio", a
-            # slot's card and picker, a circuit's rounds open), an empty one's templates
-            go(a, f"/karton/trening/{ana_tpl}", "a gym training from a template", unfold=True)
-            go(a, f"/karton/trening/{ana_empty}", "an empty gym training's templates", unfold=True)
+            go(a, f"/dvoranski/trening/{ana_tpl}?blok={ana_setup}", "a Kružni set being set up", unfold=True)
+            go(a, f"/dvoranski/trening/{ana_empty}", "an empty gym training's template chooser")
 
             s = opened("sara@test.local")                                   # sara: no plan
             for path in ("/raspored", "/treninzi"):

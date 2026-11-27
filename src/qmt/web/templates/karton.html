@@ -419,6 +419,9 @@
      then base.html's details.sets "Serije"; both give way to the edit form
      while it is open, as the comment does */
   .log-entry.editing .le-read :is(.le-ex, details.sets) { display:none; }
+  /* a gym training's Kružni set (27.11.2026): its exercises under its own
+     line, a step in */
+  .log-entry details.sets li.kin { padding-left:14px; }
   /* a termin's row with no gym training yet (26.11.2026): its state under
      the head, muted, the online pass's .le-sub size */
   .log-entry .le-state { font-size:.8rem; margin-top:2px; overflow-wrap:anywhere; }
@@ -497,15 +500,18 @@
 {%- endmacro %}
 
 {# A gym training's exercises under "Serije" (26.11.2026, build 3;
-   models.GymTraining.lines): a line per exercise, its name, what was
+   models.GymTraining.lines; since 27.11.2026 block by block, a block with
+   no exercise in no line): a Stanica's line its exercise's name, what was
    given and "odrađeno", then its sets as done and its rating ("Goblet
    čučanj: zadano 3 × 10 · 20 kg — odrađeno 10 × 20 kg · 10 × 20 kg · 8 ×
-   20 kg · težina 8/10"; "odrađeno —" when nothing was ticked), the words
-   the model's #}
+   20 kg · težina 8/10"; "odrađeno —" when nothing was ticked); a Kružni
+   set a line of its own ("Kružni set · 4 kruga · težina 7/10"), then its
+   exercises under it, indented (.kin), each what one round asks and its
+   rounds; the words the model's #}
 {% macro gym_serije(lines) -%}
 <details class="sets">
   <summary>{{ c.t("karton.diary.sets") }}</summary>
-  <ul>{% for name, head, sets in lines %}<li><strong>{{ name }}:</strong> {{ head }}{% if sets %} {% for s in sets %}<span class="set">{{ s }}</span>{% if not loop.last %} · {% endif %}{% endfor %}{% endif %}</li>{% endfor %}</ul>
+  <ul>{% for ln in lines %}<li{% if ln.kind == "in" %} class="kin"{% endif %}><strong>{{ ln.name }}{% if ln.kind != "set" %}:{% endif %}</strong>{% if ln.kind == "set" %}{% for s in ln.sets %} · <span class="set">{{ s }}</span>{% endfor %}{% else %} {{ ln.head }}{% if ln.sets %} {% for s in ln.sets %}<span class="set">{{ s }}</span>{% if not loop.last %} · {% endif %}{% endfor %}{% endif %}{% endif %}</li>{% endfor %}</ul>
 </details>
 {%- endmacro %}
 
@@ -991,7 +997,7 @@
     <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
     <span class="what"{% if s.canceled %} style="text-decoration:line-through;"{% endif %}>{{ s.title }}</span>
     {% if s.canceled and (can_edit_copy or copy_text("karton.termini.canceled", copy_texts)) %}<strong style="margin-left:auto; color:var(--danger); font-size:.72rem;">{{ c.t("karton.termini.canceled") }}</strong>
-    {% elif s.id in gym_open_ids %}<a class="act cal-go" href="/karton/termin/{{ s.id }}/trening">{{ c.t("karton.termini.gym_link") }}</a>{% endif %}
+    {% elif s.id in gym_open_ids %}<a class="act cal-go" href="/dvoranski/termin/{{ s.id }}">{{ c.t("karton.termini.gym_link") }}</a>{% endif %}
   </div>
   {% else %}{% if can_edit_copy or copy_text("karton.termini.empty", copy_texts) %}<p class="empty">{{ c.t("karton.termini.empty") }}</p>{% endif %}{% endfor %}
   {% if own and (copy_on("karton.termini.gym_before") or copy_on("karton.termini.gym_after")) %}
@@ -1079,7 +1085,7 @@
         {% if g.effort %}<span class="rpe">napor {{ g.effort }}/10</span>{% endif %}
         {% if g.feeling %}<span class="rpe feel {% if g.feeling == 'slabo' %}low{% endif %}">{{ feelings.get(g.feeling, g.feeling) }}</span>{% endif %}
         {% if own and (row.open or actor) %}
-        <span class="le-actions"><a class="act" href="/karton/trening/{{ g.id }}">{{ c.t("karton.diary.gym_open") }}</a></span>
+        <span class="le-actions"><a class="act" href="/dvoranski/trening/{{ g.id }}">{{ c.t("karton.diary.gym_open") }}</a></span>
         {% endif %}
       </div>
       {% if g.note %}<p>{{ g.note }}</p>{% endif %}
@@ -1208,7 +1214,7 @@
         <span class="what">{{ s.title }} · {{ s.starts_at.astimezone(tz).strftime("%H:%M") }}</span>
         {% if own %}
         <span class="le-actions">
-          {% if row.open or actor %}<a class="act" href="/karton/termin/{{ s.id }}/trening">{{ c.t("karton.diary.gym_fill") }}</a>{% endif %}
+          {% if row.open or actor %}<a class="act" href="/dvoranski/termin/{{ s.id }}">{{ c.t("karton.diary.gym_fill") }}</a>{% endif %}
           <form method="post" action="/karton/absent/{{ s.id }}"
                 data-confirm-title="{{ copy_text('karton.confirm.absent_title', copy_texts) }}"
                 data-confirm="{{ copy_text('karton.confirm.absent_text', copy_texts) }}"

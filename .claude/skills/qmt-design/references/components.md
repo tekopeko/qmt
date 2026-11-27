@@ -401,8 +401,11 @@ in shape, its title the `.le-kicker` (outside a termin "Trening izvan
 termina"), the day, date and time in `.when`, napor and osjećaj as `.rpe`
 chips, "Otvori trening" (`.act`, `.le-actions`) while the member may write it,
 its comment, then `.le-sub.le-ex` ("3 vježbe") and `details.sets` whose lines
-say "Goblet čučanj: zadano 3 × 10 · 20 kg — odrađeno 10 × 20 kg · … · težina
-8/10" (the name in 600, each set a `span.set`). A booked termin with none: its
+say, block by block since 27.11.2026, a Stanica's "Goblet čučanj: zadano 3 × 10 ·
+20 kg — odrađeno 10 × 20 kg · … · težina 8/10" (the name in 600, each set a
+`span.set`), a Kružni set's own line "Kružni set · 4 kruga · težina 7/10" and
+then its exercises a step in (`li.kin`, 14px), each what one round asks and
+what each Krug did. A booked termin with none: its
 row's `.le-actions` "Upiši trening" (`.act`, inside the window) beside "Nisam
 bio/la", and under the head its state, `.le-state` (muted .8rem, the online
 pass's `.le-sub` size): "Trening još nije upisan." / "Trening nije upisan.".
@@ -415,85 +418,97 @@ ends its `.cal-row` with "Upiši trening →" (`.act.cal-go`, pushed right), and
 under the list, once, a muted `.hint.gym-when` (.82rem, 8px over it) says when
 a training opens. The raspored's "Tvoj sljedeći termin" carries the same link
 (`.act.nt-gym`, 8px under the card's lines, wrapping inside the card).
-**The gym training's page** (`karton_trening.html`, 26.11.2026, build 3): the
-normal layout and nav, one page that grows as the training goes, a 640px column
-(`.gt`). The head: `.gt-kicker` (700 .74rem, .16em, uppercase, muted) over the
-bare h1 (the termin's title), right under it `.gt-when`, the date and time in 700
-tabular `--text` (never muted: the owner's "so that there is no confusion which
-training they edit"), outside a termin a quiet "promijeni datum" (`.act.act-quiet`
-summary of `details.gt-date`, its form wrapping under the line); then
-`.gt-state` (muted .92rem), one line. The parts: `section.gt-part`, each its
-`h2.dx-cap` (the day page's caption, 26px between parts) over `.gt-cards` (a grid
-10px apart). **A card** (`details.card.gt-card`, `--r-lg`): its summary the row,
-56px at least, 12px 14px 12px 18px, the whole row the tap target (hover a 4%
-`--text` tint): `.gt-main` (`.gt-name` 700 over `.gt-planned`, muted .85rem
-tabular "Zadano: 3 × 10 · 20 kg"), `.gt-mark` (700 tabular, muted "2/3", `--good`
-"✓" as `.ok`, `role="img"` with its words), `.gt-go` (the day page's 32px round
-▷ on `--surface-2`, turned 90° open). Open, `.gt-body` (0 16px 16px, 18px from
-600px): `.gt-sub` (muted .85rem: the pause, the note), the set log (`.pl-sets`
-with its ✓ column; `.gt-err` under it, 600 .85rem `--accent`, `role="status"`),
-then `.gt-foot-row` (a column, 12px apart, left-aligned): "+ serija" (`.act`),
-the rating (`.pl-rate`), the no-JS "Spremi" (`.btn.btn-sm.gt-save`, which the
-script hides); read only, `.gt-done` ("Odrađeno:" muted 600, then the sets,
-tabular); `details.gt-how` ("Kako se izvodi", the player's `›` that turns);
-`.gt-tools`, the quiet row (12px over it, wrapping, 6px 8px): "Uredi zadano"
-(`.act.act-quiet` summary of `details.gt-edit`, whose open form takes the row's
-width under it: `.gt-form`, the day editor's row grid, two columns, four from
-600px, 40px controls, 44px on a coarse pointer; a closed one's form has no box),
-↑ / ↓ (`.act.act-quiet`, `disabled` at 35% at a part's end) and "Ukloni vježbu"
-(`.act.act-quiet`). **"Dodaj vježbu"** (`form#dodaj.card.gt-addcard`, 18px 20px,
-16px under 600px): h2 1.05rem, the `.tagbar`, `.gt-add-fields` (the combobox
-over the library and Dio, side by side from 600px, `minmax(0, 1fr) 180px`, 44px
-on a coarse pointer), `details.gt-zadano` ("Zadano (neobavezno)", muted 600
-.85rem with a turning `›`; open, `.gt-nums`, the same grid), "Dodaj"
-(`.btn.btn-sm`). The end: "Završi trening" (`.gt-finish .btn`, the page's one
-glowing button, the column's width under 600px) or, saved, `section.card.gt-osvrt`
+**The gym training's page** (`karton_trening.html`, `/dvoranski/trening/<id>`;
+26.11.2026, build 3; since 27.11.2026 a row of blocks, Stanica and Kružni set, on
+the online player's layout, build 1 of `roadmap/2026-11-27-dvoranski-treninzi-plan.md`):
+the normal layout and nav, the player's own rules copied into the page's head
+under the player's classes (not promoted to base.html: a second page that needs
+them moves them there): `.pl` (640px; 1044px from 1000px), `.pl-segs` /
+`.pl-track` (a 4px piece per block: done `--accent`, the one on screen `--text`
+at 60%, the rest `--surface-2`; past 40 one track), `.pl-line` ("← Natrag", the
+`.pl-timer` clock chip, "Završi trening" `.act.pl-end` pushed right), the main
+card `.card.pl-card#glavno` (18px 16px 16px, 22px 24px 20px from 600px) with
+`.pl-eyebrow` ("Stanica 2 od 6" / "Kružni set", 700 .74rem .16em uppercase
+muted), `.pl-name` (the exercise's name, an h2 at the player's
+clamp(1.35rem, 5vw, 1.9rem)), `.pl-dose` (700 tabular, "6 × 10 · 40 kg · pauza
+90 s"), `.pl-sub` (the comment), `.pl-how` ("Kako se izvodi") and `.pl-round`
+("Krug 2 od 4", `--accent-dim` with `--accent-tint-ink`); the overview
+`aside.pl-side#pregled` ("Pregled", h2 1.05rem), its `.pl-row` links (56px, the
+day page's `.dx-n` / `.dx-name` / `.dx-dose` / `.dx-sub` inside: "STANICA 1" /
+"KRUŽNI SET" over the exercise and its mark, `.gt-mark`, `.ok` in `--good`, what
+was asked under it; an empty block's word `.gt-empty`, muted 600; the one on
+screen `.is-cur`, a 2px accent ring), "+ Stanica" / "+ Kružni set" at its end;
+and `.pl-dock` (the phone's dark pill, "Pregled · 2/6 ✓" → `#pregled`, gone from
+1000px). From 1000px `.gt-grid`: the main card and the foot in
+`minmax(0, 640px)`, the overview in 380px beside them (`grid-template-areas:
+"main side" "foot side"`); read only `.gt-grid.solo`, one column. The head
+(`.gt-head`): `.gt-kicker` over the bare h1, `.gt-when` (700 tabular `--text`,
+never muted: the owner's "so that there is no confusion which training they
+edit"), outside a termin "promijeni datum" (`.act.act-quiet` summary of
+`details.gt-date`, its form wrapping under the line), `.gt-state` (muted .92rem).
+**The chooser** (`.gt-chooser`, the main card's while the training holds no
+block, and the foot's "Promijeni predložak", `details.gt-change`): `.gt-ch-h`
+(h2 1.05rem), `.gt-tpl-list` (a grid 8px apart) of `button.gt-tpl-row`, each a
+form of its own: a hairline row 56px at least (`--surface`, `--r-md`, 10px 14px
+10px 16px), `.gt-tpl-name` 700 over `.gt-tpl-facts` (muted 500 .82rem, "6
+stanica"), a muted → (`.gt-tpl-go`), the whole row the target, its hover
+`--surface-2`; then `.gt-own` (16px under a hairline): `.gt-own-t` ("ili složi
+sam/a:", muted .92rem) over `.gt-adds`, two `.act` pills each a form, "+ Stanica"
+and "+ Kružni set". **The "what next" card** (`.gt-nextcard`): `.gt-next-t` (600),
+`.gt-adds`, "Završi trening" (`.btn`, the column's width under 600px). **A
+Stanica's form** (`form.gt-sform`, "Kreni"'s and "Uredi"'s): the `.tagbar`, Vježba
+(the combobox over the page's one `#library-json`, 44px on a coarse pointer;
+once a set is ticked its name as text, `.gt-fixed` under `.gt-flabel`, 700 .72rem
+.12em uppercase muted), `.gt-nums` (Serije, Ponavljanja, Opterećenje (kg), Pauza
+(s), Vrijeme (s): the day editor's grid, two columns, three from 600px, 40px
+inputs, 44px on a coarse pointer, each field's control at its bottom), Komentar
+across (`.gt-scomment`), then its button (`.btn`, the column's width under
+600px). **A Stanica started**: `.gt-log` (base.html's `.pl-sets` with its ✓
+column, the script's; `.gt-err` under it, 600 .85rem `--accent`,
+`role="status"`), `.gt-foot-row` ("+ serija" `.act`; the no-JS "Spremi"
+`.btn.btn-sm.gt-save`, which the script hides), `.gt-rate` (the player's
+`.pl-rate`, 18px over it; its own no-JS "Spremi"); read only `.gt-done`; then
+`.gt-go` ("Nastavi trening" `.btn` and "Završi trening" `.btn.btn-ghost`, side by
+side while they fit, `flex: 1 1 180px`, 22px over them) and `.gt-tools` (the
+quiet row, 16px over it, wrapping 6px 8px: "Uredi", the `.act.act-quiet` summary
+of `details.gt-edit`, whose open form takes the row's width in a hairline box,
+`--surface`, `--r-md`, 14px, a closed one's form no box; "Ukloni stanicu"
+`.act.act-quiet`). **A Kružni set being set up** (`form.gt-plan`): `.gt-prows`
+(a grid 10px apart) of `.gt-prow` (a hairline box, `--surface`, `--r-md`, 10px
+14px 12px: Vježba across, 44px kept at its right for its quiet ✕, `.gt-px`, at
+the box's corner; `.gt-pnums`, Ponavljanja, Opterećenje (kg) and Vrijeme (s) side
+by side), "+ vježba" (`.gt-padd`, an `.act`), `.gt-pplan` (Krugova and "Pauza
+nakon kruga (s)" side by side, 14px over, 12px under), "Kreni". **A Kružni set
+started**: `.gt-kctl` ("− krug" / "+ krug", `.act.act-quiet`, disabled at 35%),
+`.gt-krugs` (a grid 10px apart, 14px under) of `details.gt-kr#krug-<bid>-<n>` (a
+hairline `--r-lg` box on `--surface`; its summary 52px, 10px 14px 10px 16px:
+`.gt-kr-n` "Krug 1" 700, `.gt-kr-ok` its ✓ in `--good`, `.gt-kr-line` the saved
+line, muted .88rem tabular, `.gt-kr-go`, a 28px round ▷ on `--surface-2` turned
+90° open); open, `.gt-rform` (0 14px 14px): `.gt-rrows` of `.gt-rrow` (a hairline
+box, `--r-md`, 10px 14px 12px; the player's round screen's `.cr-row`):
+`.gt-rname` 600 over `.gt-rdose` (muted .85rem tabular), its "Kako se izvodi",
+`.gt-rin` (two to a row: the set log's header words, 700 .72rem .12em, over 44px
+centred tabular inputs); then `.gt-rfoot` ("Krug 2 odrađen" `.btn.btn-sm`, the
+column's width under 600px; a saved Krug's "Spremi izmjene" `.btn-ghost.btn-sm`),
+a Krug's word (`.alert`) at the top of its form. **Read only**: the overview's
+`.gt-rec` rows (no min-height), each block's record as `ul` lines (.88rem
+tabular, a Kružni set's exercises `li.kin`, 14px in). **The foot**
+(`.gt-foot-col`, 22px over it, 18px between its pieces): `section.card.gt-osvrt`
 (16px 18px; h2 1.05rem, `.gt-facts` 600 tabular "napor 7/10 · Dobro",
-`.gt-comment` muted pre-line, "Uredi osvrt" `.act`); then `.gt-foot` (26px over
-it): "Isprazni trening" / "Obriši trening" (`.act.act-quiet.gt-drop`, in
-`--accent`, `--accent-strong` on hover; it asks first). While the rest bar shows,
-`body.has-rest main` keeps 100px under the column (150px with the ✎ pill). A
-form's word comes back inside its card or the add card (`.alert`, its text
-wrapping anywhere), never at the page's top. Every control's words wrap inside
-their pill (`main :is(.act, .btn, .btn-sm)`). **Its osvrt**
+`.gt-comment` muted pre-line, "Uredi osvrt" `.act`), `details.gt-change`
+("Promijeni predložak", an `.act.act-quiet` summary; open, the chooser 10px
+under it), `.gt-foot` ("Isprazni trening" / "Obriši trening",
+`.act.act-quiet.gt-drop` in `--accent`, `--accent-strong` on hover; it asks
+first). While the rest bar shows, `body.has-rest .pl` keeps 92px under the
+column (150px with the ✎ pill) and the dock hides; a pause outlives a reload
+(`qmtRest.keep`). A form's word comes back inside the main card or the chooser
+(`.alert`, its text wrapping anywhere), never at the page's top. Every control's
+words wrap inside their pill (`main :is(.act, .btn, .btn-sm, .btn-ghost)`).
+**Its osvrt**
 (`karton_trening_osvrt.html`): the finish screen's `.kr` (below) with
 `.kr-eyebrow` "Osvrt na trening", the title as the h1, `.kr-when` (700 tabular),
 Napor, Osjećaj, Komentar, "Spremi trening" and `.kr-more`'s "Natrag na trening"
 (`.act.act-quiet`).
-**The gym training, part B** (26.11.2026): **a part's head** (`.gt-part-head`, a
-wrapping flex row, 6px 10px, 10px over its cards; parts 26px apart): its `h2.dx-cap`
-(no margin of its own there; a circuit's "KRUG 1 · KRUŽNO · 3 KRUGA · ODMOR 90 S")
-and, while writable, **"Uredi dio"** beside it (`.act.act-quiet` summary of
-`details.gt-part-edit`; open, it takes the head's width and its ONE form,
-`.gt-part-form`, lies under it in the day editor's "Kružno" box: hairline,
-`--surface`, `--r-md`, 12px 14px; "Naziv dijela" across, "Kružni dio" a whole-row
-checkbox label (`.gt-check`, 44px, 500 .92rem in the text's case), Krugova and
-"Odmor nakon kruga (s)" side by side and Spremi across both on a phone, the two and
-Spremi on one line from 600px; 40px controls, 44px on a coarse pointer; a closed
-one's form has no box). Its word (`.alert`) under the head. **A circuit's
-exercise** (`details.card.gt-card.gt-crow`): the card with a 48px summary (8px 12px
-8px 16px), what one round asks under the name, its mark the rounds ("1/3", "✓");
-open, the note, "Kako se izvodi", the quiet row (its "Uredi zadano" two fields fewer:
-from 600px Dio and the three numbers on its first line, the note and Spremi on its
-second, as a normal card's). **A round** (`details.card.gt-round#krug-<key>-<n>`, the cards'
-summary: "Krug 2" in 700, a saved round's ✓ in `--good`, the ▷), the rounds a grid
-10px apart, 14px under the exercises (`.gt-rounds`); open, `.gt-rform`: an exercise a
-hairline box each (`.gt-rrow`: `--r-md`, 10px 14px 12px; the player's round screen's
-`.cr-row`), its name (600) over what one round asks (`.gt-rdose`, muted .85rem
-tabular), its inputs two to a row (`.gt-rin`: the set log's header words over 44px
-centred tabular inputs), then `.gt-rfoot` (a column, 12px): the round's rating
-(`.pl-rate`) and "Krug 2 odrađen" (`.btn.btn-sm`, one span). **A slot**
-(`details.card.gt-card.gt-slot`): dashed, no fill, no shadow (the day page's
-`.dx-slot`), "Prazno mjesto · čučanj" muted 600; open, `.gt-fill` (the combobox's
-field and "Odaberi", its words' width; side by side from 600px, the field 12rem at
-least, so a long retyped button wraps rather than squeezing the picker; rendered
-hidden, the script's) and "Ukloni" (`.act.act-quiet`). **"Odaberi gotov trening"**
-(`details.gt-tpl`, 18px over what follows, while the training holds no row): an
-`.act` summary; open, `.gt-tpl-list` (a grid 8px apart, 10px under it) of
-`button.gt-tpl-row`, each a hairline row 56px at least (`--surface`, `--r-md`, 10px
-14px 10px 16px): `.gt-tpl-name` 700 over `.gt-tpl-facts` (muted 500 .82rem), a muted
-→ at the right (`.gt-tpl-go`), the whole row the target, its hover `--surface-2`.
-After a round's save the page starts the rest bar at load (`.gt[data-odmor]`).
 **"Procijenjeni maksimumi"** (`section.card.maxes`, 23.11.2026): between the
 upitnik block and the diary grid, 720px at most like the upitnik block, 18px
 20px (16px under 600px); its h2 1.05rem, `.mx-hint` .82rem, then a compact
@@ -1112,8 +1127,12 @@ circuit's rows the dose of a round and the note alone).
 keeps 56px under it. **`.pl-rest`, the rest bar** (30.10.2026; the rest between
 sets after a ✓, the rest between exercises on the next screen; since 26.11.2026
 `_rest_bar.html`, its look base.html's and its script `window.qmtRest`, `begin` /
-`stop` / `unlock`, shared with the gym training's page, where a ✓ starts it with
-the exercise's Pauza): `role="timer"`,
+`stop` / `unlock`, shared with the gym training's page, where a Stanica's ✓
+starts it with its Pauza and a Kružni set's first save of a Krug with its pause
+after a Krug; since 27.11.2026 `keep(key)` too, the gym page's: a pause begun
+there keeps its end in `sessionStorage` and a reload of the same training's
+page picks it up while it lies ahead, "Preskoči odmor" and its end forgetting
+it): `role="timer"`,
 rendered `hidden`, shown by the script for a rest; fixed at the bottom at every
 width in the dock's place and glass (theme-free: `rgba(22, 22, 24, .86)`, the
 hairline, the shadow, the 14px blur; 12px over `env(safe-area-inset-bottom)`,
@@ -1127,7 +1146,7 @@ under Spremi skips the exercise: a white pill, `rgb(22, 22,
 24)` text, 700 .88rem, 40px, 44px on a coarse pointer; hover white at 86%). While
 it shows the dock is hidden and `body.has-rest` gives each page's column room
 under it: the player's `.pl` 92px (150px with the ✎ pill), the gym training's
-`main` 100px (150px). **The finish screen** `.kr` (640px, centred):
+too since 27.11.2026 (its `main` 100px, 150px, until then). **The finish screen** `.kr` (640px, centred):
 `.kr-eyebrow` "TRENING ODRAĐEN", the day's label as the h1, `.kr-sum` (muted 600
 tabular "6 od 8 vježbi · 38 min"), the alert, then the osvrt: three `.kr-field`s
 26px apart, each under an `h2.dx-cap` (Napor: the upitnik's `.scale-box` /

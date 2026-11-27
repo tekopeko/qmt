@@ -8,7 +8,13 @@
    the tone possible on iOS, stop() ends it. Its words are the player's
    slots (player.rest.*), one slot on both pages. While it shows, a page's
    dock (.pl-dock, the player's) is hidden and body.has-rest gives the
-   page's column room under it (each page's own rule). #}
+   page's column room under it (each page's own rule). Since 27.11.2026 a
+   page may keep its pause across a reload, keep(key) (the gym training's,
+   a key per training: a plain form that reloads the page during a pause
+   must not lose it): the pause's end and length in sessionStorage under
+   the key, picked up at the call while the end lies ahead; "Preskoči
+   odmor" and the end forget it. The player never calls it: its pause ends
+   with its page, as it always did. #}
 {% import "_copy.html" as c with context %}
 <div class="pl-rest" id="plRest" role="timer" hidden>
   <span class="pl-rest-n"><span class="pl-rest-h">{{ c.t("player.rest.head") }}</span><span class="pl-rest-t">0:00</span></span>
@@ -21,7 +27,7 @@
   // really left; "Preskoči odmor" ends it at once, silently. At zero the bar
   // says "Kreni" for about 1.5 s, then goes; the phone vibrates and two short
   // beeps play where the browser allows it. Leaving the page ends it; nothing
-  // is kept.
+  // is kept, unless the page asked for it (keep: the gym training's).
   (function () {
     var rest = document.getElementById("plRest");
     if (!rest) return;
@@ -30,7 +36,15 @@
         GO = {{ copy_text("player.rest.go", copy_texts) | tojson }};
     var restH = rest.querySelector(".pl-rest-h"), restT = rest.querySelector(".pl-rest-t");
     var fill = rest.querySelector(".pl-rest-fill");
-    var end = 0, span = 1, every = null, after = null, audio = null;
+    var end = 0, span = 1, every = null, after = null, audio = null, kept = null;
+    var remember = function () {
+      if (!kept) return;
+      try { sessionStorage.setItem(kept, JSON.stringify({end: end, span: span})); } catch (e) {}
+    };
+    var forget = function () {
+      if (!kept) return;
+      try { sessionStorage.removeItem(kept); } catch (e) {}
+    };
     var pad = function (n) { return (n < 10 ? "0" : "") + n; };
     var clockOf = function (s) {
       var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
@@ -94,19 +108,32 @@
         return;
       }
       clearInterval(every); every = null;
+      forget();
       restH.textContent = GO; restT.textContent = "0:00"; fill.style.transform = "scaleX(0)";
       buzz(); beep();
       after = setTimeout(stop, 1500);
     };
-    var begin = function (s) {
+    var run = function (until, length) {
       clearInterval(every); clearTimeout(after); after = null;
-      span = s * 1000; end = Date.now() + span;
+      span = length; end = until;
       restH.textContent = REST;
       show(true); draw();
       every = setInterval(draw, 250);
     };
-    rest.querySelector(".pl-rest-skip").addEventListener("click", stop);
-    window.addEventListener("pagehide", stop);
-    window.qmtRest = {begin: begin, stop: stop, unlock: unlock};
+    var begin = function (s) {
+      run(Date.now() + s * 1000, s * 1000);
+      remember();
+    };
+    // a pause kept under `key` (the page's), resumed while it lies ahead
+    var keep = function (key) {
+      kept = key;
+      var saved = null;
+      try { saved = JSON.parse(sessionStorage.getItem(key) || "null"); } catch (e) { saved = null; }
+      if (saved && saved.end > Date.now() && saved.span > 0) run(saved.end, saved.span);
+      else forget();
+    };
+    rest.querySelector(".pl-rest-skip").addEventListener("click", function () { forget(); stop(); });
+    window.addEventListener("pagehide", stop);                 // the page goes: the bar, not what is kept
+    window.qmtRest = {begin: begin, stop: stop, unlock: unlock, keep: keep};
   })();
 </script>

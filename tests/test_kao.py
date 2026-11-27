@@ -709,7 +709,7 @@ def test_the_shortcuts_lead_into_the_members_account():
     assert f'action="/clanarine/{owner}/' not in clanarine              # the owner: not listed at all
     roster = c.get(f"/admin/session/{sid}").text
     assert (f'<form method="post" action="/kao/{ivan}">\n      <input type="hidden" name="natrag" value="/admin/session/{sid}">\n'
-            f'      <input type="hidden" name="kamo" value="/karton/termin/{sid}/trening">\n'   # his training of it (build 3)
+            f'      <input type="hidden" name="kamo" value="/dvoranski/termin/{sid}">\n'   # his training of it (build 3; /dvoranski since 27.11.2026)
             '      <button type="submit" class="act act-kao">Kao član →</button>') in roster
     assert f'action="/kao/{coach}"' not in roster
     # a member's karton, /karton/<id>, is staff's again since 27.11.2026: the

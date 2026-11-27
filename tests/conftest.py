@@ -15,13 +15,16 @@ def _no_table_the_models_dropped():
     """The test database outlives a checkout, and a table a migration
     dropped stays in it with its foreign keys to tables the models keep,
     which stops every module's Base.metadata.drop_all. program_items went
-    on 30.10.2026 (migration 7c3bf996c983, the programmes' days): dropped
-    once, before the first test, from the database the suite uses (every
-    module points qmt at qmt_test before it imports it)."""
+    on 30.10.2026 (migration 7c3bf996c983, the programmes' days), and
+    gym_training_parts on 27.11.2026 (migration 9b4e2d7f1c58, a gym
+    training's blocks; its key points at gym_trainings): dropped once,
+    before the first test, from the database the suite uses (every module
+    points qmt at qmt_test before it imports it)."""
     from sqlalchemy import text
 
     from qmt import db
 
     with db.engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS program_items CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS gym_training_parts CASCADE"))
     yield

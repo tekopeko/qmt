@@ -417,7 +417,7 @@
     {% if not nb.can_cancel %}<div class="nt-late">{{ c.t("raspored.next.cutoff") }} {{ cutoff_hours }} h prije termina</div>{% endif %}
     {# its gym training's way in while the training is open (26.11.2026,
        build 3), the karton's slot: the same words doing the same job #}
-    {% if nb.gym_open %}<a class="act nt-gym" href="/karton/termin/{{ nb.id }}/trening">{{ c.t("karton.termini.gym_link") }}</a>{% endif %}
+    {% if nb.gym_open %}<a class="act nt-gym" href="/dvoranski/termin/{{ nb.id }}">{{ c.t("karton.termini.gym_link") }}</a>{% endif %}
   </div>
   {% if nb.can_cancel %}{{ unbook(nb) }}{% endif %}
 </section>
