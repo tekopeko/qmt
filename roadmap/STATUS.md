@@ -2,6 +2,16 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
+## 27.11.2026 — a member's karton in the trainer's view leads back to Korisnici (Fable, direct)
+
+The owner, of the read-only view `/karton/<id>` (reached from Korisnici's "Karton" alone since Trenutne članarine's "Karton →" went in build 4): "yes, change both to Korisnici". Both are on that one page:
+
+- **The crumb** (karton.html): the owner's reads "Korisnici / <ime>" and leads to `/korisnici`.
+- **Admin ▾'s current item** (base.html, `member_karton`): Korisnici for the owner.
+- **A trainer who is not the owner** has no Korisnici and no link to the view (its address alone): his crumb and lit item stay Trenutne članarine, a page he has (Fable's choice: never a crumb that 403s).
+- **Tests** (672, no new test: three follow the page): `test_nav.py` (the owner's `/karton/<id>` lights Korisnici, the coach's Trenutne članarine), `test_karton.py` (both crumbs), `test_copy_rule.py` (the literal "Korisnici" on karton.html's allowlist, the cap 130).
+- **Checked**: the three files `54 passed`; in the browser on the dev server as the owner at 390 and 1280px: the crumb, where it leads, the lit item, overflow 0; one 390px screenshot looked at.
+
 ## 27.11.2026 — "Spol" on the profile, and the slash forms ("sam/a", "bio/la") resolved by it (Opus draft, reviewed, live)
 
 Build 5 of `roadmap/2026-11-26-gym-training-plan.md` (its section "Added in the evening"). The owner, of his own karton's "Tvoji online treninzi i treninzi koje upišeš sam/a.": "on login do we know the sex of the user and then to use the correct grammar instead of" that. We did not; Fable proposed an optional field and the app resolving the forms; the owner: "yes".

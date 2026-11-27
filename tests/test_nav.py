@@ -241,10 +241,12 @@ def test_the_owner_is_staff_by_rule_whatever_his_trainer_flag():
 
 def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
     """On Gledaj kao član (26.11.2026: /kao, and its record, /kao/zapisi),
-    Termini (its sub-pages too), Trenutne članarine (and since
-    24.11.2026 a client's karton, /karton/<id>, which is reached from it),
-    Upitnik, Vježbe (an exercise's page too: under /treninzi, yet Online
-    treninzi is not .on there), Tekstovi, Korisnici and Statistika the Admin tab is
+    Termini (its sub-pages too), Trenutne članarine, Upitnik, Vježbe (an
+    exercise's page too: under /treninzi, yet Online treninzi is not .on
+    there), Tekstovi, Korisnici (and since 27.11.2026 a client's karton,
+    /karton/<id>, which is reached from it alone; a trainer who is not the
+    owner has no Korisnici: for him it lights Trenutne članarine, as from
+    24.11.2026) and Statistika the Admin tab is
     .on and that item, alone, aria-current; no member tab is (Karton not on
     a client's karton, nor on /upitnik). Elsewhere the member's tab is .on
     and Admin is not: Karton on staff's own karton, /karton. The pages carry
@@ -257,15 +259,20 @@ def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
     c = client_for("trener@test.local")
     for path, item in (("/kao", "Gledaj kao član"), ("/kao/zapisi", "Gledaj kao član"),
                        ("/admin", "Termini"), (f"/admin/templates/{tid}", "Termini"),
-                       ("/clanarine", "Trenutne članarine"), (f"/karton/{ivan}", "Trenutne članarine"),
-                       ("/upitnik", "Upitnik"),
+                       ("/clanarine", "Trenutne članarine"), ("/upitnik", "Upitnik"),
                        ("/treninzi/vjezbe", "Vježbe"), ("/treninzi/vjezbe/nova", "Vježbe"),
                        (f"/treninzi/vjezbe/{eid}", "Vježbe"), ("/tekstovi", "Tekstovi"),
-                       ("/korisnici", "Korisnici"), ("/statistika", "Statistika")):
+                       ("/korisnici", "Korisnici"), (f"/karton/{ivan}", "Korisnici"),
+                       ("/statistika", "Statistika")):
         page = c.get(path).text
         assert admin_tab(page) == ("Admin ▾", True), path
         assert [label for _, label, current in admin_items(page) if current] == [item], path
         assert [label for _, label, on in tabs(page) if on] == [], path
+    make_user("coach@test.local", is_trainer=True)                      # a trainer who is not the owner
+    page = client_for("coach@test.local").get(f"/karton/{ivan}").text
+    assert admin_tab(page) == ("Admin ▾", True)
+    assert [label for _, label, current in admin_items(page) if current] == ["Trenutne članarine"]
+    assert [label for _, label, on in tabs(page) if on] == []
     for path, tab in (("/", "Početna"), ("/raspored", "Raspored"), ("/karton", "Karton"),
                       ("/treninzi", "Online treninzi"), ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")):
         page = c.get(path).text

@@ -550,7 +550,12 @@
 
 {% block content %}
 {% if not own %}
-<nav class="crumbs" aria-label="Putanja"><a href="/clanarine">Trenutne članarine</a><span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
+{# the trainer's view is reached from Korisnici, the owner's page, alone since
+   Trenutne članarine's "Karton →" went (26.11.2026), so its crumb leads back
+   there (27.11.2026, the owner: "change both to Korisnici"). A trainer who is
+   not the owner has no Korisnici (and no link here, only the address): his
+   crumb stays Trenutne članarine, a page he has #}
+<nav class="crumbs" aria-label="Putanja">{% if is_owner %}<a href="/korisnici">Korisnici</a>{% else %}<a href="/clanarine">Trenutne članarine</a>{% endif %}<span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
 {% endif %}
 <h1>{% if own %}{{ c.t("karton.head.title") }}{% else %}Karton — {{ subject.full_name or subject.email }}{% endif %}</h1>
 {# the head line of the body (23.11.2026): "Visina 178 cm · Masa 82,5 kg

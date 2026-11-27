@@ -196,8 +196,9 @@ def test_staff_have_a_karton_of_their_own():
     training since 26.11.2026), the maxes count what he ticks in it, his
     weight and his limitations save, and his finished
     online pass (staff use the player) is in his diary. A client's karton,
-    /karton/<id>, is as it was for him: its crumbs, its upitnik block and
-    its termini; and a client's own keeps both."""
+    /karton/<id>, is as it was for him: its crumbs (the owner's lead to
+    Korisnici since 27.11.2026, the page he reaches it from), its upitnik
+    block and its termini; and a client's own keeps both."""
     ivan = make_user("ivan@test.local")                                       # an online plan, no upitnik yet
     amir = make_user("amir@test.local", is_trainer=True, plans=())
     make_user("trener@test.local", plans=())                                  # the owner (OWNER_EMAIL), not a trainer
@@ -242,6 +243,10 @@ def test_staff_have_a_karton_of_their_own():
 
     seen = ca.get(f"/karton/{ivan}").text                                     # a client's: as before
     assert '<nav class="crumbs" aria-label="Putanja"><a href="/clanarine">Trenutne članarine</a>' in seen
+    # the owner reaches it from Korisnici, his page, and its crumb leads back
+    # there (27.11.2026); the trainer, who has no Korisnici, keeps his
+    assert '<nav class="crumbs" aria-label="Putanja"><a href="/korisnici">Korisnici</a>' in co.get(f"/karton/{ivan}").text
+    assert 'href="/korisnici"' not in karton_only(seen)
     assert 'id="termini-h"' in seen and "Upitnik još nije ispunjen." in seen and 'id="trening-novi"' not in seen
     own = client_for("ivan@test.local").get("/karton").text                  # and his own
     assert 'id="termini-h"' in own and "Ispuni upitnik" in own and "rezerviraj prvi" in own

@@ -700,9 +700,12 @@ no exercise: no round, no count, no diary line, no history.
   owner: "Lets show the Karton tab in the Admin view as well so that Amir can
   check out the changes we made there"; their Karton is `.on` at `/karton` and, since 26.11.2026, their own gym trainings' pages
   (`/karton/trening/…`, `/karton/termin/…`) alone, a
-  client's karton, `/karton/<id>`, lighting Admin ▾ → Trenutne članarine, its
-  crumb's page (where it was reached from until 26.11.2026, build 4, when the cards'
-  "Karton →" went: since then only Korisnici's "Karton", the owner's, links it), and
+  client's karton, `/karton/<id>`, lighting Admin ▾ → Korisnici, its
+  crumb's page, since 27.11.2026 (the owner: "change both to Korisnici"; Trenutne
+  članarine until then, where it was reached from until 26.11.2026, build 4, when the cards'
+  "Karton →" went: since then only Korisnici's "Karton", the owner's, links it; a
+  trainer who is not the owner has no Korisnici and no link to the view, only its
+  address: for him the crumb and the lit item stay Trenutne članarine), and
   `/upitnik` Admin ▾ → Upitnik), then **"Admin ▾"**, a
   dropdown in the account menu's component (`.menu`, one script for both: a click
   opens it, another shuts it, so do a click outside and Escape, one menu open at a
