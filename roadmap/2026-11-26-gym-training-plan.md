@@ -176,4 +176,6 @@ ask for a bigger change").
    search and amber button, the two buttons and the obsolete line off Trenutne članarine,
    every such button amber, the trainer-only parts of the upitnik block while acting.
    (Live 26.11.2026, `adff20f`: STATUS.md.)
-5. **"Spol"** and the slash forms resolved by it.
+5. **"Spol"** and the slash forms resolved by it. (Live 27.11.2026, `9aaad8a`: STATUS.md.)
+
+Everything on this plan is live.
