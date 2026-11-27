@@ -1038,12 +1038,18 @@ def cycle_usage(user_id: int, plan: str, on: date | None = None) -> dict | None:
                 "quota": m.sessions_per_cycle, "start": start, "end": end}
 
 
-def cancel_deadline(sess: TrainingSession) -> datetime:
-    """When cancelling `sess` closes for a client (tz-aware, like starts_at):
-    CANCEL_CUTOFF_HOURS before it starts. cancel_booking() refuses from that
-    moment on and the calendar offers its Otkaži / ✕ only before it, so the
-    button and the refusal can never disagree."""
-    return sess.starts_at - timedelta(hours=config.CANCEL_CUTOFF_HOURS)
+def cancel_deadline(sess: TrainingSession | datetime) -> datetime:
+    """When cancelling `sess` (a termin, or its start) closes for a client
+    (tz-aware, like starts_at): CANCEL_CUTOFF_HOURS before it starts.
+    cancel_booking() refuses from that moment on and the calendar offers its
+    Otkaži / ✕ only before it, so the button and the refusal can never
+    disagree. Since 27.11.2026 it is also the moment the termin's gym
+    training opens for its member (gym_window: the booking confirmed, the
+    training his; the owner: "connect this 4 hours with the same paremeter
+    which decides when the training slot is confirmed and cant be cancelled
+    anymore"), one rule asked by both."""
+    starts_at = sess if isinstance(sess, datetime) else sess.starts_at
+    return starts_at - timedelta(hours=config.CANCEL_CUTOFF_HOURS)
 
 
 def cancel_booking(user_id: int, session_id: int) -> None:
@@ -3766,10 +3772,12 @@ def exercises_by_id(ids) -> dict[int, Exercise]:
 # by its id AND its member. Every write takes the training's row FOR UPDATE
 # first (its blocks and items are read and written under it, so two saves at
 # once keep both) and asks gym_can_write: a termin's training is its member's
-# from GYM_OPENS_HOURS before the termin until the end of the day after it, a
-# training outside a termin always; staff acting as the member (`staff`:
-# app._actor) at any time. A refused write changes nothing. No load next time
-# and no "Prošli put": next_load reads the online passes alone.
+# from its booking's cancel deadline (cancel_deadline, CANCEL_CUTOFF_HOURS
+# before the termin; a knob of its own from 26.11.2026 until 27.11.2026)
+# until the end of the day after it, a training outside a termin
+# always; staff acting as the member (`staff`: app._actor) at any time. A
+# refused write changes nothing. No load next time and no "Prošli put":
+# next_load reads the online passes alone.
 
 NO_BOOKING = "Nemaš rezervaciju za ovaj termin."
 TERMIN_CANCELED = "Termin je otkazan."
@@ -3793,16 +3801,19 @@ COMMENT_TOO_LONG = f"Komentar može imati najviše {ITEM_NOTE_MAX} znakova."
 
 def gym_opens_text() -> str:
     """Rule 2's sentence for a member before the window, the hours from
-    config: "Trening se otvara 4 h prije termina."."""
-    return f"Trening se otvara {config.GYM_OPENS_HOURS} h prije termina."
+    config (the cancel cutoff's, gym_window): "Trening se otvara 4 h prije
+    termina."."""
+    return f"Trening se otvara {config.CANCEL_CUTOFF_HOURS} h prije termina."
 
 
 def gym_window(starts_at: datetime) -> tuple[datetime, datetime]:
-    """When a termin's training is its member's to write: (from
-    GYM_OPENS_HOURS before its start, until the midnight two days after its
-    Zagreb date: the end of the day after the termin), [from, until)."""
+    """When a termin's training is its member's to write: (from its
+    booking's cancel deadline, cancel_deadline: CANCEL_CUTOFF_HOURS before
+    its start, the moment the booking can no longer be cancelled; until the
+    midnight two days after its Zagreb date: the end of the day after the
+    termin), [from, until)."""
     day = starts_at.astimezone(config.TZ).date()
-    return (starts_at - timedelta(hours=config.GYM_OPENS_HOURS),
+    return (cancel_deadline(starts_at),
             datetime.combine(day + timedelta(days=2), datetime.min.time(), tzinfo=config.TZ))
 
 
@@ -3899,19 +3910,35 @@ def gym_open_termini(user_id: int, now: datetime | None = None) -> list[Training
     """A member's booked termini whose training is his to write now (the
     tab's "Otvoreni treninzi", 27.11.2026, build 2 of
     roadmap/2026-11-27-dvoranski-treninzi-plan.md): gym_window_open, the
-    termin not canceled, the soonest first. A window runs from
-    GYM_OPENS_HOURS before a termin to the end of the day after it, so the
-    termini from three days back to GYM_OPENS_HOURS ahead are read and the
-    window says which of them are open."""
+    termin not canceled, the soonest first. A window runs from the cancel
+    deadline, CANCEL_CUTOFF_HOURS before a termin, to the end of the day
+    after it, so the termini from three days back to CANCEL_CUTOFF_HOURS
+    ahead are read and the window says which of them are open."""
     now = now or datetime.now(config.TZ)
     with session_scope() as s:
         rows = list(s.scalars(
             select(TrainingSession).join(Booking, Booking.session_id == TrainingSession.id)
             .where(Booking.user_id == user_id, TrainingSession.canceled.is_(False),
-                   TrainingSession.starts_at <= now + timedelta(hours=config.GYM_OPENS_HOURS),
+                   TrainingSession.starts_at <= now + timedelta(hours=config.CANCEL_CUTOFF_HOURS),
                    TrainingSession.starts_at >= now - timedelta(days=3))
             .order_by(TrainingSession.starts_at, TrainingSession.id)))
     return [x for x in rows if gym_window_open(x.starts_at, now)]
+
+
+def gym_later_termini(user_id: int, now: datetime | None = None) -> list[TrainingSession]:
+    """A member's booked termini whose training is not his to write yet
+    (its window opens later: gym_window, the cancel deadline), however far
+    ahead, the termin not canceled, the soonest first: what staff acting as
+    him see after the open ones on the tab (27.11.2026; the owner: "He can
+    see all booked slots by the users, no matter how far ahead they are"),
+    each one theirs to prepare (rule 1: staff write at any time)."""
+    now = now or datetime.now(config.TZ)
+    with session_scope() as s:
+        rows = list(s.scalars(
+            select(TrainingSession).join(Booking, Booking.session_id == TrainingSession.id)
+            .where(Booking.user_id == user_id, TrainingSession.canceled.is_(False), TrainingSession.starts_at > now)
+            .order_by(TrainingSession.starts_at, TrainingSession.id)))
+    return [x for x in rows if now < gym_window(x.starts_at)[0]]
 
 
 def _gym_locked(s: Session, training_id: int, user_id: int, staff: bool) -> GymTraining | None:

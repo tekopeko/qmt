@@ -87,11 +87,14 @@ MEMBER_TEMPLATES = (
 )
 # The templates only staff reach: they stay as they are (the owner was told so).
 # Since 27.11.2026 (build 3 of the dvoranski treninzi) Amir's templates' list
-# and editor.
+# and editor; since the evening of that day the search for a member
+# (_member_find.html), a partial karton.html and dvoranski.html print on
+# staff's own pages alone (never a member's, never while staff act as one).
 STAFF_TEMPLATES = (
     "admin.html", "clanarine.html", "korisnici.html", "statistika.html", "roster.html", "template_edit.html",
     "treninzi_admin.html", "trening_edit.html", "trening_day_edit.html", "vjezbe.html", "vjezba.html",
     "tekstovi.html", "kao.html", "kao_zapisi.html", "dvoranski_predlosci.html", "dvoranski_predlozak.html",
+    "_member_find.html",
 )
 
 # a sentence built around a value: the fixed words whose grammar hangs on a
@@ -143,13 +146,12 @@ ALLOWED: dict[str, set[str]] = {
         "Ovdje su i tekstovi koje vidi samo član ili su u prozorima za potvrdu. Promjena u prozorima i poljima vidi "
         "se nakon osvježavanja stranice.",
         # the trainer's view's way into the member's account (26.11.2026):
-        # staff's own chrome, as the strip over a page while acting; the
-        # Karton tab's search (staff's own karton, its way into a member's
-        # app from build 4 until 27.11.2026: its field's label, the no-JS
-        # select's first option and since 27.11.2026 its no-JS button), and
-        # the caption over what only the trainer reads of the upitnik while
-        # staff act as a member
-        "Otvori kao član", "Član", "Odaberi člana…", "Otvori karton", "Vidi samo trener",
+        # staff's own chrome, as the strip over a page while acting, and the
+        # caption over what only the trainer reads of the upitnik while
+        # staff act as a member (the Karton tab's search, its label, its
+        # select's first option and its no-JS button, is _member_find.html's
+        # since the evening of 27.11.2026: staff's alone)
+        "Otvori kao član", "Vidi samo trener",
     },
     "trening_view.html": {
         "Treninzi",                          # the crumb
@@ -171,8 +173,10 @@ ALLOWED: dict[str, set[str]] = {
     "dvoranski.html": {
         # staff's way to their templates on their own tab (27.11.2026, build 3
         # of the dvoranski treninzi): staff's own chrome, which a member never
-        # reads, as the trainer's "Otvori kao član"
-        "Predlošci treninga →",
+        # reads, as the trainer's "Otvori kao član"; and since the evening of
+        # that day a later termin's button for staff acting as the member,
+        # "Pripremi trening" (its line of when it opens for him is code)
+        "Predlošci treninga →", "Pripremi trening",
     },
     "_tagbar.html": {"još"},                 # "još 5": a count (the tag chips past the first twelve)
     "trening_kraj.html": {
@@ -232,8 +236,10 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     # the dvoranski treninzi, 27.11.2026: the gym training's page took the
     # player's layout, its crumbs gone, "← Natrag" the player's slot; 129
     # since build 2 the same day: the nav's tab "Dvoranski treninzi"; 130
-    # since build 3: staff's "Predlošci treninga →" on their own tab): a long
-    # list means texts were left out
+    # since build 3: staff's "Predlošci treninga →" on their own tab; 128
+    # since the evening: the Karton tab's search's three went with it to
+    # _member_find.html, staff's, and staff's "Pripremi trening" came): a
+    # long list means texts were left out
     assert sum(len(v) for v in ALLOWED.values()) <= 130
 
 

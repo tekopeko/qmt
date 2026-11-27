@@ -189,7 +189,12 @@ def stripe_enabled() -> bool:
 # starts, so a booked termin inside the cutoff is still on the calendar, its
 # booking no longer cancellable. Termini can be booked in the running week and
 # BOOKING_WEEKS - 1 more (db.booking_window: this week and three more, the
-# owner's "four weeks in total"), never past the plan's dospijeće.
+# owner's "four weeks in total"), never past the plan's dospijeće. Since
+# 27.11.2026 the cutoff is also when a termin's gym training opens for its
+# member (the owner: "Lets also connect this 4 hours with the same paremeter
+# which decides when the training slot is confirmed and cant be cancelled
+# anymore"; db.gym_window asks db.cancel_deadline): one number for both, its
+# own knob until then (26.11.2026, build 3 of the gym training) gone.
 CANCEL_CUTOFF_HOURS = int(os.environ.get("CANCEL_CUTOFF_HOURS", "4"))
 CLOSE_EMPTY_HOURS = int(os.environ.get("CLOSE_EMPTY_HOURS", "4"))
 BOOKING_WEEKS = int(os.environ.get("BOOKING_WEEKS", "4"))
@@ -199,13 +204,6 @@ BOOKING_WEEKS = int(os.environ.get("BOOKING_WEEKS", "4"))
 # longer be continued, only finished with its osvrt or discarded, and its
 # length runs to its last save, not to the osvrt a day later.
 PASS_STALE_HOURS = int(os.environ.get("PASS_STALE_HOURS", "2"))
-# A termin's gym training (26.11.2026, build 3 of
-# roadmap/2026-11-26-gym-training-plan.md; the owner: "he can already edit it
-# 4 hours before the training up until the next day"): open to its member
-# from GYM_OPENS_HOURS (4) before the termin's start until the end of the day
-# after the termin (Zagreb: the midnight two days after its date); staff
-# acting as the member write at any time (db.gym_can_write).
-GYM_OPENS_HOURS = int(os.environ.get("GYM_OPENS_HOURS", "4"))
 # Staff acting as a member ("Gledaj kao član", 26.11.2026, the owner: "Amir
 # can look at the app just like the user sees the app and he can do
 # everything the user does in the same way"): after ACT_AS_IDLE_MINUTES (30)

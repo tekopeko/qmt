@@ -860,17 +860,28 @@ def test_the_finish_takes_the_osvrt_and_the_servers_clock():
     r = ci.post(f"{d.base}/kraj", data={"effort": "3"}, follow_redirects=False)
     assert r.headers["location"] == d.base and db.get_pass(log_id, ivan).effort == 7
     page = ci.get(r.headers["location"] + "?ok=x").text
-    assert state_line(page) == "Odrađen 1× · zadnji put danas" and '<span class="t">Kreni</span></button>' in page
+
+    def when() -> str:
+        """The day the pass began, in the page's words ("danas", "jučer",
+        its date; another year's with its year). It began 38 minutes ago,
+        which in the first half hour after midnight was yesterday (the
+        suite ran at 00:10 on 28.11.2026 and three literal days were a day
+        off): the words are read off the pass's own start."""
+        day, today = db.get_pass(log_id, ivan).started_at.astimezone(config.TZ).date(), config.today()
+        if day >= today - timedelta(days=1):
+            return "danas" if day == today else "jučer"
+        return f"{day.day}.{day.month}." + (f"{day.year}." if day.year != today.year else "")
+
+    assert when() in ("danas", "jučer")
+    assert state_line(page) == f"Odrađen 1× · zadnji put {when()}" and '<span class="t">Kreni</span></button>' in page
     assert db.finish_pass(987654, ivan, 5, None, "") is False
     with pytest.raises(ValueError, match="Neispravan osvrt."):
         db.finish_pass(log_id, ivan, None, None, "")
 
     shift(log_id, days=1)
-    assert state_line(ci.get(d.base).text) == "Odrađen 1× · zadnji put jučer"
+    assert when() != "danas" and state_line(ci.get(d.base).text) == f"Odrađen 1× · zadnji put {when()}"
     shift(log_id, days=6)
-    last = (datetime.now(config.TZ) - timedelta(days=7)).date()
-    assert state_line(ci.get(d.base).text) == (f"Odrađen 1× · zadnji put {last.day}.{last.month}."
-                                               + (f"{last.year}." if last.year != config.today().year else ""))
+    assert when()[0].isdigit() and state_line(ci.get(d.base).text) == f"Odrađen 1× · zadnji put {when()}"   # a date
     finished(ivan, d)
     assert state_line(ci.get(d.base).text) == "Odrađen 2× · zadnji put danas"
 
@@ -914,7 +925,9 @@ def test_the_day_page_lists_the_last_five_passes_with_their_sets():
                       effort=7, feeling="odlicno", note="Lakše nego prošli put.", days_ago=2, minutes=38)
     finished(ana, build_day("Gornji", "srednja", "gornji"), {1: [{"reps": 1, "kg": 0.0}]})
     page = ci.get(d.base).text
-    day = (datetime.now(config.TZ) - timedelta(days=2)).date()
+    # the day the newest pass began: 2 days and its 38 minutes ago (in the
+    # first half hour after midnight that is a day earlier than "2 days ago")
+    day = db.get_pass(newest, ivan).started_at.astimezone(config.TZ).date()
     lines = hist_lines(page)
     assert len(lines) == 5 and lines[0] == f"{day.day}.{day.month}. · 3/4 vježbe · 38 min · napor 7 · odlično"
     assert lines[1].endswith("· 1/4 vježbe · 35 min · napor 6") and lines[4].endswith("· 1/4 vježbe · 32 min · napor 3")

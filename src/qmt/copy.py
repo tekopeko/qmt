@@ -1150,12 +1150,16 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # caption and the words around the hours, when its training opens, or
     # the empty line and its link), "Trening izvan termina" (its heading and
     # button; its Datum is the training page's date field, gym.head.date_field),
-    # "Zadnji treninzi" (its heading, a row's button, the empty line, the link
-    # to the karton). The training page's slots print where the tab says the
-    # same: an open termin's state line (gym.state.open) and a training
-    # outside a termin's name (gym.head.outside). Not slots: a termin's
-    # title, the dates and times, the window's end, the hours, "3 vježbe",
-    # the osvrt's facts ("napor 7/10 · Dobro") ----
+    # the link to the karton at the page's foot ("Zadnji treninzi", its
+    # heading, a row's button and its empty line, went on the evening of
+    # 27.11.2026: the tab lists what is active, the karton keeps the record;
+    # the link's key stays last_all). The training page's slots print where
+    # the tab says the same: an open termin's state line (gym.state.open)
+    # and a training outside a termin's name (gym.head.outside). Not slots:
+    # a termin's title, the dates and times, the window's end, the hours, "3
+    # vježbe", the osvrt's facts ("napor 7/10 · Dobro"), and what only staff
+    # acting as the member read (a later termin's "Članu se otvara …" and
+    # "Pripremi trening": staff's own chrome) ----
     "gym.tab.title": Slot("Dvoranski treninzi", CAP, "Dvoranski treninzi: naslov", required=True),
     "gym.tab.lead": Slot("Ovdje upisuješ svoje treninge u dvorani. Sve što upišeš ostaje u tvom kartonu.", CAP,
                          "Dvoranski treninzi: uvodna rečenica"),
@@ -1177,11 +1181,7 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
                                   required=True),
     "gym.tab.outside_create": Slot("Dodaj trening", CAP, "Dvoranski treninzi · izvan termina: gumb Dodaj trening",
                                    required=True),
-    "gym.tab.last_title": Slot("Zadnji treninzi", CAP, "Dvoranski treninzi · zadnji: naslov", required=True),
-    "gym.tab.last_open": Slot("Otvori trening", CAP, "Dvoranski treninzi · zadnji: gumb Otvori trening",
-                              required=True),
-    "gym.tab.last_empty": Slot("Još nema upisanih treninga.", CAP, "Dvoranski treninzi · zadnji: kad nema treninga"),
-    "gym.tab.last_all": Slot("Svi tvoji treninzi su u kartonu →", CAP, "Dvoranski treninzi · zadnji: poveznica na karton",
+    "gym.tab.last_all": Slot("Svi tvoji treninzi su u kartonu →", CAP, "Dvoranski treninzi: poveznica na karton",
                              required=True),
     # ---- the gym training (karton_trening.html and its osvrt,
     # karton_trening_osvrt.html; 26.11.2026, build 3 of

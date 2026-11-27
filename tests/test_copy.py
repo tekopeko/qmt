@@ -2448,12 +2448,12 @@ GYM_PREFIXES = ("gym.head.", "gym.state.", "gym.chooser.", "gym.add.", "gym.next
                 "gym.osvrt.", "gym.confirm.", "gym.tab.")
 # of them, the ones that are no control's words (a kicker, a state's whole
 # sentence, a lead line, an empty block's word; the tab's lead, its gate's
-# sentence, the words around the hours, its two empty lines): emptied,
-# they stay empty (tests/test_gym.py's too, the training page's)
+# sentence, the words around the hours, its empty line; its second, under
+# "Zadnji treninzi", went with the section on the evening of 27.11.2026):
+# emptied, they stay empty (tests/test_gym.py's too, the training page's)
 GYM_OPTIONAL = {"gym.head.kicker", "gym.state.closed", "gym.state.staff", "gym.osvrt.kicker", "gym.chooser.own",
                 "gym.block.circuit", "gym.whatnext", "gym.overview.empty_station", "gym.overview.empty_circuit",
-                "gym.tab.lead", "gym.tab.no_plan", "gym.tab.next_opens", "gym.tab.next_hours", "gym.tab.none",
-                "gym.tab.last_empty"}
+                "gym.tab.lead", "gym.tab.no_plan", "gym.tab.next_opens", "gym.tab.next_hours", "gym.tab.none"}
 # the ones that are no control's words (a lead, a hint, a kicker, a chip, a
 # state's word, an empty line, a placeholder): emptied, they stay empty
 NEW_OPTIONAL = {
@@ -2632,8 +2632,13 @@ def test_an_edited_member_text_shows_where_it_is_printed():
     trener = make_user("trener@test.local", is_trainer=True)
     ivan = online_member("ivan@test.local")
     d = online_day()
-    sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=2), 60, 8, None)
+    start = datetime.now(config.TZ) + timedelta(days=2)
+    sid = db.add_oneoff_session("Grupni trening", start, 60, 8, None)
     db.book(ivan, sid)
+    # the termin's week: on a Saturday and a Sunday that is the next one, and
+    # the calendar opens on the running week (the suite ran on Saturday
+    # 28.11.2026 and missed the termin's row)
+    week = {"week": (start.date() - timedelta(days=start.weekday())).isoformat()}
     new = {"raspored.head.title": "Termini tjedna", "raspored.termin.cancel": "Ne dolazim",
            "raspored.trainer.roster": "Popis", "raspored.confirm.cancel_title": "Otkazati termin?",
            "raspored.sheet.booked": "Tvoj termin", "auth.email": "E-pošta", "auth.login.submit": "Uđi",
@@ -2651,11 +2656,11 @@ def test_an_edited_member_text_shows_where_it_is_printed():
     assert window.count('placeholder="npr. Ana"') == 1                             # and the page's, beside its window's
     assert signup.count('placeholder="npr. Ana"') == 2
     assert "Po mjesecu" in reader(landing)                                             # the Mjesečno / Godišnje switch
-    mine = ci.get("/raspored").text
+    mine = ci.get("/raspored", params=week).text
     assert "Termini tjedna" in reader(mine) and "Ne dolazim" in reader(mine) and "Popis" not in reader(mine)
     assert 'data-confirm-title="Otkazati termin?"' in mine and 'BOOKED = "Tvoj termin"' in mine
     assert '|| "Da, sigurno"' in mine and 'data-copy="' not in mine                   # base.html's confirm: its default
-    theirs = t.get("/raspored").text                                                  # the trainer's variant
+    theirs = t.get("/raspored", params=week).text                                     # the trainer's variant
     assert spans(theirs, "raspored.head.title") == ["Termini tjedna"] and "Popis" in spans(theirs, "raspored.trainer.roster")
     assert "Ne dolazim" not in theirs
     step = ci.get(ci.post(f"{d['base']}/kreni", follow_redirects=False).headers["location"]).text
@@ -3949,8 +3954,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         and its pause bar, an empty station's form, a Kružni set started and
         one being set up, its osvrt's page, an empty one's template
         chooser), since 27.11.2026 the tab Dvoranski treninzi (her open
-        termin, her last trainings, a refused date's sentence in its
-        form), her profile and the error
+        termin and her trainings outside a termin still open, a refused
+        date's sentence in its form), her profile and the error
         page; sara's gates
         (no plan: the raspored's line, the online list's card, the tab's); a new
         member's profile with its welcome; the trainer's programme, day (each
@@ -4062,7 +4067,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             go(a, gym + "/osvrt", "the gym training's osvrt")
             go(a, f"/dvoranski/trening/{ana_tpl}?blok={ana_setup}", "a Kružni set being set up", unfold=True)
             go(a, f"/dvoranski/trening/{ana_empty}", "an empty gym training's template chooser")
-            go(a, "/dvoranski", "the tab Dvoranski treninzi")                # 27.11.2026: her open termin, her last
+            go(a, "/dvoranski", "the tab Dvoranski treninzi")                # 27.11.2026: what of hers is open
             go(a, "/dvoranski?error=Neispravan datum.", "the tab, a refused date")
 
             s = opened("sara@test.local")                                   # sara: no plan

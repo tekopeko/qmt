@@ -12,8 +12,9 @@ each 'Krug' during the pause."
 
 A member's training (models.GymTraining, GymTrainingBlock, GymTrainingItem;
 migration 9b4e2d7f1c58, run for real on qmt_test there and back over a
-training of the old shape) is his alone. A termin's is open to him from
-GYM_OPENS_HOURS before the termin until the end of the day after it, a
+training of the old shape) is his alone. A termin's is open to him from its
+booking's cancel deadline (CANCEL_CUTOFF_HOURS before the termin: since
+27.11.2026 one number for both) until the end of the day after it, a
 training outside a termin always, staff acting as him at any time (rule 1,
 db.gym_can_write); it is made the first time it is opened (rule 2); a
 cancelled booking takes it along, or lets it go of its termin when it holds a
@@ -417,19 +418,28 @@ def test_the_two_templates_are_the_codes_the_migrations_and_the_seeds():
 
 # ---------- rule 1: whose and when ----------
 
-def test_the_window_opens_four_hours_before_and_closes_at_the_end_of_the_next_day(monkeypatch):
-    """gym_window: from GYM_OPENS_HOURS (4, env) before the termin's start
-    until the midnight two days after its Zagreb date; gym_can_write at
-    each edge (the first moment in, the last moment in, the first out); a
-    training outside a termin (or let go of its termin) always; staff acting
-    as the member before the window and after it. The knob through the env:
-    6 moves the opening, the closing stays."""
-    import subprocess
-    import sys
+def test_the_window_opens_at_the_cancel_deadline_and_closes_at_the_end_of_the_next_day(monkeypatch):
+    """gym_window: from the booking's cancel deadline (db.cancel_deadline,
+    CANCEL_CUTOFF_HOURS, 4, before the termin's start: the moment the
+    booking can no longer be cancelled; since 27.11.2026 one number for
+    both, the owner: "connect this 4 hours with the same paremeter which
+    decides when the training slot is confirmed and cant be cancelled
+    anymore") until the midnight two days after its Zagreb date;
+    gym_can_write at each edge (the first moment in, the last moment in,
+    the first out); a training outside a termin (or let go of its termin)
+    always; staff acting as the member before the window and after it.
+    Moving CANCEL_CUTOFF_HOURS moves both, the window's opening and the
+    cancellation (a booking 5 h ahead is no longer cancelled at 6, and its
+    training is its member's to make; one 7 h ahead still cancels and its
+    training is not his yet), and the sentences that say the hours; the
+    closing stays. The gym's own knob of 26.11.2026 is nowhere: not in
+    config, nor anywhere in the code, the scripts, the tests or DEPLOY.md."""
     start = datetime(2026, 11, 25, 18, 0, tzinfo=config.TZ)                 # a Wednesday
     opens, closes = db.gym_window(start)
     assert (opens, closes) == (datetime(2026, 11, 25, 14, 0, tzinfo=config.TZ),
                                datetime(2026, 11, 27, 0, 0, tzinfo=config.TZ))
+    sess = db.TrainingSession(title="Snaga", starts_at=start)
+    assert opens == db.cancel_deadline(start) == db.cancel_deadline(sess)   # one rule, a termin's or its start's
     t = GymTraining(session_id=1, starts_at=start, held_on=start.date())
     tick_ = timedelta(microseconds=1)
     assert [db.gym_can_write(t, at) for at in (opens - tick_, opens, closes - tick_, closes)] == [False, True, True, False]
@@ -440,16 +450,26 @@ def test_the_window_opens_four_hours_before_and_closes_at_the_end_of_the_next_da
     assert db.gym_can_write(let_go, closes + timedelta(days=400))
     late = datetime(2026, 11, 25, 23, 30, tzinfo=config.TZ)                 # a late termin: the same midnight
     assert db.gym_window(late)[1] == closes
-    monkeypatch.setattr(config, "GYM_OPENS_HOURS", 6)
+    assert db.gym_opens_text() == "Trening se otvara 4 h prije termina."
+    monkeypatch.setattr(config, "CANCEL_CUTOFF_HOURS", 6)                   # the one knob moves both
     assert db.gym_window(start) == (datetime(2026, 11, 25, 12, 0, tzinfo=config.TZ), closes)
+    assert db.cancel_deadline(sess) == datetime(2026, 11, 25, 12, 0, tzinfo=config.TZ)
     assert db.gym_opens_text() == "Trening se otvara 6 h prije termina."
+    ivan = make_user("ivan@test.local")
+    inside, outside_ = termin(ivan, now() + timedelta(hours=5)), termin(ivan, now() + timedelta(hours=7))
+    with pytest.raises(db.BookingError, match="najkasnije 6 h prije termina"):
+        db.cancel_booking(ivan, inside)
+    assert db.gym_training_for(ivan, inside) > 0                            # confirmed: his training opens
+    with pytest.raises(db.BookingError, match="Trening se otvara 6 h prije termina."):
+        db.gym_training_for(ivan, outside_)
+    db.cancel_booking(ivan, outside_)                                        # not confirmed yet: it cancels
+    assert db.roster(outside_) == []
     monkeypatch.undo()
-    knob = "from qmt import config; print(config.GYM_OPENS_HOURS)"
-    env = {k: v for k, v in os.environ.items() if k != "GYM_OPENS_HOURS"}
-    assert subprocess.run([sys.executable, "-c", knob], env=env, capture_output=True, text=True,
-                          check=True).stdout.split() == ["4"]
-    assert subprocess.run([sys.executable, "-c", knob], env=env | {"GYM_OPENS_HOURS": "6"}, capture_output=True,
-                          text=True, check=True).stdout.split() == ["6"]
+    name = "GYM_" + "OPENS_HOURS"                                            # written so, this file says it nowhere
+    assert not hasattr(config, name)
+    files = [*(ROOT / "src").rglob("*.py"), *(ROOT / "src").rglob("*.html"), *(ROOT / "scripts").rglob("*.py"),
+             *(ROOT / "tests").rglob("*.py"), ROOT / "DEPLOY.md"]
+    assert [str(f.relative_to(ROOT)) for f in files if name in f.read_text()] == []
 
 
 def test_a_member_writes_inside_his_window_and_staff_acting_as_him_at_any_time():
@@ -2330,11 +2350,14 @@ def test_stanicni_trening_on_a_phone(server):
         with pg.expect_navigation():
             pg.locator(".kr-go .btn").tap()
         pg.wait_for_load_state("networkidle")
-        # back at the tab, his (27.11.2026): the training among its last ones;
-        # the record is in the karton's diary
+        # back at the tab, his (27.11.2026): since the evening the tab lists
+        # what is still being written, the termin's training open there until
+        # its window closes, its card saying its napor; the record is in the
+        # karton's diary
         check(pg.url.split("?")[0].endswith("/dvoranski") and pg.locator(".alert.ok").inner_text() == "Trening je spremljen.",
               f"the osvrt led to {pg.url}")
-        check(pg.locator(f'a[href="/dvoranski/trening/{t.id}"]').count() == 1, "the saved training is not among the last ones")
+        check("napor 7/10" in pg.locator(f"#dv-s-{sid} .dv-holds").inner_text(),
+              "the saved training's card does not say its napor")
         pg.goto(server + f"/karton#gt-{t.id}")
         row = pg.locator(f"#gt-{t.id}")
         row.locator("details.sets > summary").tap()

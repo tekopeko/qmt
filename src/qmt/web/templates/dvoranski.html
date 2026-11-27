@@ -5,22 +5,30 @@
    only input in the 'Dvoranski treninzi' tab but Amir and I can always check the user's
    Karton?"): the tab's page, /dvoranski (app.dvoranski_page), the /treninzi list's twin: the
    normal layout, its 640px column, the title and the lead. A member with no gym plan gets the
-   gate's one sentence, as /treninzi's for one with no online plan. Everyone else (staff for
-   their own trainings) three sections, each its h2 over what it holds. "Otvoreni treninzi": a
-   card per booked termin whose training is his to write now, the training page's head in
-   small (the termin's title, its date and time in 700, the state line), what it holds ("3
-   vježbe"), ONE button, "Upiši trening" while it holds no block, else "Nastavi trening"; none,
-   one muted line: the next termin and when its training opens, or "Nemaš otvorenih
-   treninga." and its link to the raspored. "Trening izvan termina": the Karton's form of
-   26.11.2026, moved (Datum, today by default, never after it, not before 2020; "Dodaj
-   trening"), a refused date's sentence in it, not at the page's top (the form asked).
-   "Zadnji treninzi": the newest ten that hold anything, the karton diary's row in small (its
-   title or "Trening izvan termina", the date and time, "3 vježbe · napor 7/10 · Dobro",
-   "Otvori trening"), then the way to the karton's diary. Every text a slot, gym.tab.*, and
-   the training page's where the tab says the same (gym.state.open, gym.head.outside,
-   gym.head.date_field). Since build 3 (27.11.2026) staff get one .act under the lead,
-   "Predlošci treninga →" (/dvoranski/predlosci, Amir's templates): their own words. #}
+   gate's one sentence, as /treninzi's for one with no online plan (staff acting as him get the
+   page: the actor decides). Everyone else (staff for their own trainings) two sections, each
+   its h2 over what it holds. "Otvoreni treninzi", since the evening of 27.11.2026 everything
+   still being written (the owner, of "Zadnji treninzi", which went: "remove it, only list the
+   active trainings"): a card per booked termin whose training is his to write now, the
+   training page's head in small (the termin's title, its date and time in 700, the state
+   line), what it holds ("3 vježbe", its napor once the osvrt is saved), ONE button, "Upiši
+   trening" while it holds no block, else "Nastavi trening"; then a card per training outside
+   a termin still open (no osvrt, held today or yesterday: "Trening izvan termina" where it
+   has no title of its own); and for staff acting as him a card per later booked termin,
+   however far ahead (when it opens for him in its state line's place, "Pripremi trening"
+   while it holds no block: staff's own words). None, one muted line: the next termin and when
+   its training opens, or "Nemaš otvorenih treninga." and its link to the raspored. "Trening
+   izvan termina": the Karton's form of 26.11.2026, moved (Datum, today by default, never after
+   it, not before 2020; "Dodaj trening"), a refused date's sentence in it, not at the page's
+   top (the form asked). At the foot the way to the karton's diary. Every text a slot,
+   gym.tab.*, and the training page's where the tab says the same (gym.state.open,
+   gym.head.outside, gym.head.date_field). While staff act as the member the title names him
+   ("Dvoranski treninzi — Ivan Horvat": the name code). Staff's own page carries, under the
+   lead, the search for a member (_member_find.html, the Karton tab's: a pick enters a tab's
+   view of him, POST /dvoranski/clan) and since build 3 (27.11.2026) one .act, "Predlošci
+   treninga →" (/dvoranski/predlosci, Amir's templates): their own words. #}
 {% import "_copy.html" as c with context %}
+{% import "_member_find.html" as mf %}
 {% block title %}Dvoranski treninzi — QMT{% endblock %}
 {% block head %}
 <style>
@@ -30,10 +38,11 @@
   .dv-sec + .dv-sec { margin-top: 30px; }
   .dv-sec > h2 { font-size: 1.05rem; margin-bottom: 12px; overflow-wrap: anywhere; scroll-margin-top: 84px; }
   .dv-none { overflow-wrap: anywhere; }
-  /* "Otvoreni treninzi": a card per termin, the training page's head in
-     small: the termin's title (an h3 at a card title's size), its date and
-     time in 700 (never muted: which training it is), the state line and
-     what it holds muted, then ONE button, the card's primary action */
+  /* "Otvoreni treninzi": a card per training still being written, the
+     training page's head in small: its title (an h3 at a card title's
+     size), its date and time in 700 (never muted: which training it is),
+     the state line and what it holds muted, then ONE button, the card's
+     primary action */
   .dv-list { display: flex; flex-direction: column; gap: 12px; }
   .dv-open { padding: 16px 20px 18px; }
   .dv-open h3 { font-size: 1.02rem; overflow-wrap: anywhere; }
@@ -47,21 +56,9 @@
   .dv-new .alert > span { min-width: 0; overflow-wrap: anywhere; }
   .dv-form .field { max-width: 260px; margin-bottom: 12px; }
   .dv-form input[type="date"] { min-width: 0; }
-  /* "Zadnji treninzi": one card, a row per training, hairlines between
-     (the karton diary's row in small: its title a kicker, the date and
-     time in 700, the facts muted), "Otvori trening" at its end; with a
-     long text the button takes a line of its own */
-  .dv-last { padding: 4px 20px; }
-  .dv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 0; }
-  .dv-row + .dv-row { border-top: 1px solid var(--line); }
-  .dv-main { flex: 1 1 0; min-width: 0; }
-  .dv-kicker { font: 700 .7rem var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
-               overflow-wrap: anywhere; }
-  .dv-at { margin-top: 2px; font-weight: 700; font-size: .92rem; font-variant-numeric: tabular-nums; }
-  .dv-facts { margin-top: 2px; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
-  .dv-row > .act { flex: 0 0 auto; }
-  .dv-all { margin-top: 12px; }
-  @media (max-width: 600px) { .dv-open, .dv-new { padding: 14px 16px 16px; } .dv-last { padding: 2px 16px; } }
+  /* the way to the karton's diary, quiet, at the page's foot */
+  .dv-all { margin-top: 26px; }
+  @media (max-width: 600px) { .dv-open, .dv-new { padding: 14px 16px 16px; } }
   /* the gate of a member with no gym plan: /treninzi's card */
   .dv-gate { max-width: 640px; padding: 34px; text-align: center; overflow-wrap: anywhere; }
   /* staff's way to their templates (27.11.2026, build 3), under the lead */
@@ -70,12 +67,19 @@
      rather than push the page (the training page's rule) */
   main :is(.act, .btn, .btn-sm) { white-space: normal; overflow-wrap: anywhere; max-width: 100%; text-align: center; }
 </style>
+{%- if find_members %}
+{{ mf.style() }}
+{%- endif %}
 {% endblock %}
-{# a refused date's sentence is the form's: printed in its section #}
-{% block error_alert %}{% endblock %}
+{# a refused date's sentence is the form's: printed in its section; the
+   search's refusal (?trazi=1) at the page's top, as on the Karton tab #}
+{% block error_alert %}{% if find_error %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
-<h1>{{ c.t("gym.tab.title") }}</h1>
+<h1>{{ c.t("gym.tab.title") }}{% if kao %} — {{ kao.full_name or kao.email }}{% endif %}</h1>
 {{ c.opt("gym.tab.lead", "p", ' class="hint"') }}
+{%- if find_members %}
+{{ mf.form("/dvoranski/clan", find_members, find_rows, "Otvori treninge") }}
+{%- endif %}
 {% if can_edit_copy %}
 {# staff's way to the gym training's templates (27.11.2026, build 3: app.gym_templates_page): staff's own
    words, no slot; never a member's, nor while staff act as one (the page is then his) #}
@@ -90,21 +94,36 @@
 <div class="dv">
   <section class="dv-sec" aria-labelledby="dv-open-h">
     <h2 id="dv-open-h">{{ c.t("gym.tab.open_title") }}</h2>
-    {% if open_rows %}
+    {% if cards %}
     <div class="dv-list">
-      {% for row in open_rows %}
+      {% for row in cards %}
+      {% if row.kind == "outside" %}
+      {# a training outside a termin still open: no osvrt, held today or yesterday #}
+      <article class="card dv-open" id="dv-gt-{{ row.id }}">
+        <h3>{% if row.title %}{{ row.title }}{% else %}{{ c.t("gym.head.outside") }}{% endif %}</h3>
+        <p class="dv-when">{{ row.when }}</p>
+        {% if row.holds %}<p class="dv-holds">{{ row.holds }}</p>{% endif %}
+        <a class="btn btn-sm dv-go" href="/dvoranski/trening/{{ row.id }}">{{ c.t("gym.tab.resume" if row.started else "gym.tab.fill") }}</a>
+      </article>
+      {% else %}
+      {# a termin's training: open to him now, or (staff acting as him) later,
+         when it opens for him said in the state line's place, staff's own
+         "Pripremi trening" while it holds no block #}
       <article class="card dv-open" id="dv-s-{{ row.id }}">
         <h3>{{ row.title }}</h3>
         <p class="dv-when">{{ row.when }}</p>
-        <p class="dv-state">{{ c.t("gym.state.open") }} {{ row.until }}.</p>
+        {% if row.kind == "open" %}<p class="dv-state">{{ c.t("gym.state.open") }} {{ row.until }}.</p>
+        {% else %}<p class="dv-state">{{ row.opens }}</p>{% endif %}
         {% if row.holds %}<p class="dv-holds">{{ row.holds }}</p>{% endif %}
-        <a class="btn btn-sm dv-go" href="/dvoranski/termin/{{ row.id }}">{{ c.t("gym.tab.resume" if row.started else "gym.tab.fill") }}</a>
+        <a class="btn btn-sm dv-go" href="/dvoranski/termin/{{ row.id }}">{% if row.started %}{{ c.t("gym.tab.resume") }}{% elif row.kind == "open" %}{{ c.t("gym.tab.fill") }}{% else %}Pripremi trening{% endif %}</a>
       </article>
+      {% endif %}
       {% endfor %}
     </div>
     {% elif next_text %}
     {# the next termin and when its training opens: its title, day and time
-       code, the hours config's (GYM_OPENS_HOURS) between two optional slots #}
+       code, the hours config's (CANCEL_CUTOFF_HOURS, the window opening at
+       the booking's cancel deadline) between two optional slots #}
     <p class="hint dv-none">{{ c.t("gym.tab.next") }} {{ next_text }}
       {%- if copy_on("gym.tab.next_opens") or copy_on("gym.tab.next_hours") %} {{ c.t("gym.tab.next_opens") }} {{ gym_hours }} {{ c.t("gym.tab.next_hours") }}{% endif %}</p>
     {% else %}
@@ -125,26 +144,12 @@
     </div>
   </section>
 
-  <section class="dv-sec" aria-labelledby="dv-last-h">
-    <h2 id="dv-last-h">{{ c.t("gym.tab.last_title") }}</h2>
-    {% if last %}
-    <div class="card dv-last">
-      {% for row in last %}{% set g = row.t %}
-      <div class="dv-row" id="dv-gt-{{ g.id }}">
-        <div class="dv-main">
-          <p class="dv-kicker">{% if g.title %}{{ g.title }}{% else %}{{ c.t("gym.head.outside") }}{% endif %}</p>
-          <p class="dv-at">{{ row.when }}</p>
-          {% if row.facts %}<p class="dv-facts">{{ row.facts }}</p>{% endif %}
-        </div>
-        <a class="act" href="/dvoranski/trening/{{ g.id }}">{{ c.t("gym.tab.last_open") }}</a>
-      </div>
-      {% endfor %}
-    </div>
-    <a class="act act-quiet dv-all" href="/karton#osvrti">{{ c.t("gym.tab.last_all") }}</a>
-    {% else %}
-    {{ c.opt("gym.tab.last_empty", "p", ' class="hint dv-none"') }}
-    {% endif %}
-  </section>
+  <a class="act act-quiet dv-all" href="/karton#osvrti">{{ c.t("gym.tab.last_all") }}</a>
 </div>
 {% endif %}
+{% endblock %}
+{% block scripts %}
+{%- if find_members %}
+{{ mf.script() }}
+{%- endif %}
 {% endblock %}
