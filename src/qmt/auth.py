@@ -46,8 +46,17 @@ def email_ok(email: str) -> bool:
     return bool(email) and len(email) <= 320 and bool(_EMAIL_RE.match(email))
 
 
+# The cost of a password's hash: 2**12 rounds, bcrypt's own default, about a
+# quarter of a second for each hash and each check. A constant, not a setting:
+# no variable on the server can lower it. Only the test suite does, in its own
+# process (tests/conftest.py, 27.11.2026): it makes and logs in a member a few
+# thousand times a run, which was minutes of nothing but hashing. A check costs
+# what the stored hash says, so a hash made here is always checked at full cost.
+BCRYPT_ROUNDS = 12
+
+
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(_pw_bytes(password), bcrypt.gensalt()).decode("utf-8")
+    return bcrypt.hashpw(_pw_bytes(password), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode("utf-8")
 
 
 def verify_password(password: str, password_hash: str | None) -> bool:

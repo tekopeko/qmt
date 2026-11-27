@@ -2,6 +2,16 @@
 
 Read `CLAUDE.md` first; this file only carries what isn't obvious from the code.
 
+## 27.11.2026 — the suite's passwords are hashed cheaply: 23.7 → 16.3 minutes (Fable, direct; not deployed on its own)
+
+The owner asked that day how long the code takes and how long the testing, and agreed to a test-only setting for the password hashing ("I agree with both of the decisions"; the other: small changes are batched, one whole-suite run and one deploy for several).
+
+- **Measured first**: a hash 243 ms, a check 243 ms (bcrypt's default cost, 12); every test member is made (`auth.hash_password`) and logged in.
+- **The change**: `auth.BCRYPT_ROUNDS = 12`, a constant `hash_password` passes to `gensalt` (the live site as before: 12 is bcrypt's default); `tests/conftest.py`'s session fixture `_cheap_password_hashes` sets the module's value to 4 in the suite's own process (the browser tests' server is a thread of it; a check costs what the hash says). No env var, nothing in config.py: nothing on the server can lower it. `test_a_password_is_hashed_at_full_cost_outside_the_suite` reads the constant from the file, refuses an `environ` in auth.py and a mention in config.py, and checks a cost-12 hash verifies.
+- **Measured after**, the same suite on the same tree but for this change: `682 passed in 1422.46s` → `683 passed in 978.42s`, 7.4 minutes less (31%). The 638 tests under a second are about 2 minutes together now (about 6 before).
+- **What is left** (`--durations`): `test_copy.py::test_layout_holds_with_long_texts_and_line_breaks` 369 s, 38% of the run alone; `test_upitnik_ui.py` about 210 s; 45 tests over a second make 857 s of the 978.
+- **Ships with build 2** (auth.py's behaviour is unchanged; nothing to see on the live site).
+
 ## 27.11.2026 — Dvoranski treninzi, build 1: a gym training is blocks, on the player's layout (Opus draft, reviewed)
 
 Build 1 of `roadmap/2026-11-27-dvoranski-treninzi-plan.md` (Amir's voice note and sketches of that morning; the owner: "A gym training consists of 'Stanica' and 'Kružni set' where the 'Kružni set' consists of 4 of 'Krug' at default which can be changed."). Builds 2 (the nav tab) and 3 (Amir's template editor, "Vrsta" off the programme forms) are not built.

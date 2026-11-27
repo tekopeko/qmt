@@ -136,3 +136,32 @@ def test_notice_failure_never_blocks_verification(monkeypatch):
     r = c.get(f"/auth/verify?token={token}", follow_redirects=False)
     from urllib.parse import unquote
     assert "potvrđen" in unquote(r.headers["location"])   # verified regardless
+
+
+# ---------- the cost of a password's hash ----------
+
+def test_a_password_is_hashed_at_full_cost_outside_the_suite():
+    """The live site hashes a password at bcrypt's 2**12 rounds: the
+    constant auth.BCRYPT_ROUNDS as the FILE says it, which hash_password
+    passes to gensalt, and which no setting reaches (config.py knows nothing
+    of it, auth.py reads no environment). The suite lowers the module's
+    value in its own process (tests/conftest.py, 27.11.2026: making and
+    logging in a test member cost half a second), so a hash made here says
+    cost 4; one made at full cost says 12 and is checked as any."""
+    import re
+    from pathlib import Path
+
+    import bcrypt
+
+    from qmt import config
+
+    source = Path(auth.__file__).read_text()
+    assert re.findall(r"^BCRYPT_ROUNDS = (\d+)$", source, re.M) == ["12"]
+    assert "bcrypt.gensalt(rounds=BCRYPT_ROUNDS)" in source and "bcrypt.gensalt()" not in source
+    assert "environ" not in source and "BCRYPT" not in Path(config.__file__).read_text()
+    assert auth.BCRYPT_ROUNDS == 4                                      # the suite's own
+    cheap = auth.hash_password("lozinka123")
+    assert cheap.startswith("$2b$04$") and auth.verify_password("lozinka123", cheap)
+    full = bcrypt.hashpw(b"lozinka123", bcrypt.gensalt(rounds=12)).decode("utf-8")
+    assert full.startswith("$2b$12$") and auth.verify_password("lozinka123", full)
+    assert not auth.verify_password("lozinka124", full)

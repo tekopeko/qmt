@@ -11,6 +11,23 @@ os.environ.setdefault("SIGNUP_MODE", "invite")
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _cheap_password_hashes():
+    """The suite's passwords are hashed at bcrypt's lowest cost (27.11.2026;
+    the owner agreed: measured that day, a test member cost 0.24 s to make
+    and 0.24 s to log in, minutes of every run). The live site's cost is the
+    constant in auth.py, which no setting reaches: this fixture changes the
+    module's value in the suite's own process alone (the browser tests'
+    server is a thread of it). A check costs what the hash says, so logging
+    in a member made here is cheap too.
+    test_a_password_is_hashed_at_full_cost_outside_the_suite holds the
+    constant."""
+    from qmt import auth
+
+    auth.BCRYPT_ROUNDS = 4
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _no_table_the_models_dropped():
     """The test database outlives a checkout, and a table a migration
     dropped stays in it with its foreign keys to tables the models keep,
