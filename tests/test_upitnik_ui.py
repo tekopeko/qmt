@@ -42,6 +42,7 @@ import json
 import os
 import threading
 import time
+import weakref
 from datetime import date
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg:///qmt_test"
@@ -104,22 +105,51 @@ def server():
     srv.should_exit = True; th.join(timeout=5)
 
 
+_LOGINS: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()   # a test's browser -> its logins (logged_in)
+
+
+def logged_in(browser, server: str, email: str, phone: bool, errors: list[str]) -> dict:
+    """`email`'s storage state (the session cookie, localStorage) after a
+    login through /login, the install banner and the phone reminder set out
+    of the way first: made once per device kind (a phone, a desktop) for the
+    browser the test launched, each test its own (its accounts are made
+    afresh), and given to every context of that account (27.11.2026: until
+    then every context logged in through the page). The login's page and
+    console errors land in `errors`, the first page's that asks for it."""
+    logins = _LOGINS.setdefault(browser, {})
+    if (email, phone) not in logins:
+        w = 390 if phone else 1280
+        ctx = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
+        pg = ctx.new_page()
+        pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
+        pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
+        pg.goto(server + "/login")
+        pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")      # the install banner and the phone reminder stay out of the way
+        pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
+        with pg.expect_navigation():
+            pg.click("main button[type=submit]")
+        logins[(email, phone)] = ctx.storage_state()
+        ctx.close()
+    return logins[(email, phone)]
+
+
 def open_page(browser, server: str, email: str, width: int, still: bool = False, path: str = "/upitnik"):
     """A logged-in page at `width` (a phone below 600px: touch), and the
     list its page errors and console errors land in. `still`: under reduced
     motion, so no step slides in (base.html), for a walk that measures.
-    `path`: /upitnik opens on the guide, /upitnik?od=1 on question 1."""
+    `path`: /upitnik opens on the guide, /upitnik?od=1 on question 1. A new
+    context each time, in the account's stored login (logged_in); the page
+    measured after its load and its fonts (networkidle until 27.11.2026:
+    nothing on it draws after the load)."""
     phone = width < 600
+    errors: list[str] = []
     ctx = browser.new_context(viewport={"width": width, "height": 900}, has_touch=phone, is_mobile=phone,
-                              reduced_motion="reduce" if still else "no-preference")
-    pg = ctx.new_page(); errors: list[str] = []
+                              reduced_motion="reduce" if still else "no-preference",
+                              storage_state=logged_in(browser, server, email, phone, errors))
+    pg = ctx.new_page()
     pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
     pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
-    pg.goto(server + "/login")
-    pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")      # the install banner and the phone reminder stay out of the way
-    pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
-    pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
-    pg.goto(server + path); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+    pg.goto(server + path); pg.evaluate("document.fonts.ready")
     return ctx, pg, errors
 
 
@@ -238,7 +268,7 @@ def test_a_client_goes_through_the_questionnaire_one_screen_at_a_time(server):
             press(pg, phone, "#step-end .q-consent")
             with pg.expect_navigation():
                 press(pg, phone, "#step-end .q-submit")
-            pg.wait_for_load_state("networkidle")
+            pg.evaluate("document.fonts.ready")
             check(pg.url.split("?")[0].endswith("/treninzi") and "Upitnik je spremljen — Srednja razina." in pg.text_content(".alert.ok"),
                   f"after Spremi: {pg.url}")
             stored = json.loads(db.get_onboarding(uid).answers)
@@ -464,7 +494,11 @@ def reloads(pg, act) -> None:
     """Do what reloads the page (a form, a setting, the switch), and wait
     for the page that comes back: its load, not any navigation (a setting
     first tidies the URL in place, history.replaceState, which Playwright
-    counts as one)."""
+    counts as one). networkidle stays here (27.11.2026, where open_page's
+    went): the page comes back at its fragment, which the browser glides to
+    after the load, for most of a second (html's scroll-behavior: smooth,
+    under reduced motion too), and the checks after it read where the step
+    landed."""
     with pg.expect_event("load"):
         act()
     pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
@@ -629,7 +663,7 @@ def test_a_client_ticks_several_options_and_goes_on_with_dalje(server):
             press(pg, phone, "#step-end .q-consent")
             with pg.expect_navigation():
                 press(pg, phone, "#step-end .q-submit")
-            pg.wait_for_load_state("networkidle")
+            pg.evaluate("document.fonts.ready")
             check(pg.url.split("?")[0].endswith("/treninzi"), f"after Spremi: {pg.url}")
             stored = json.loads(db.get_onboarding(uid).answers)
             check(stored.get(f"q{new}") == ["bučice", "TRX"], f"stored {stored.get(f'q{new}')}")
@@ -779,7 +813,7 @@ def test_the_trainer_chains_three_questions_and_a_client_walks_them(server):
             press(pg, phone, "#step-end .q-consent")
             with pg.expect_navigation():
                 press(pg, phone, "#step-end .q-submit")
-            pg.wait_for_load_state("networkidle")
+            pg.evaluate("document.fonts.ready")
             stored = json.loads(db.get_onboarding(uid).answers)
             chain = {k: stored[k] for k in (f"q{porod}", f"q{godina}", f"q{rez}") if k in stored}
             expected = ({f"q{porod}": True, f"q{godina}": True, f"q{rez}": "Carski rez"} if w == 390

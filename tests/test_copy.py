@@ -3266,6 +3266,58 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         if off:
             db.set_session_canceled(sid, True)
 
+    # One browser for the whole walk (27.11.2026, the owner: "simpler and
+    # faster"): every
+    # viewer a context of his own for each width, as before, a phone's with
+    # touch and a mobile viewport (never a desktop's resized), and each
+    # account logged in through /login once per device kind, its storage
+    # state (the session cookie, localStorage) given to the contexts that are
+    # that account. A page is measured after its load and its fonts
+    # (document.fonts.ready), as it always was after networkidle, whose half
+    # second of quiet nothing on a page waits for: every page draws what is
+    # measured while it loads (its scripts run as it is parsed, no fetch is
+    # in flight after it), and the one picture whose size counts, the
+    # announcement's photo, loads eagerly, as part of the load. networkidle
+    # stays where the browser moves the page after the load: after a load of
+    # an address with a fragment (/#dvorana, /#kontakt, /#aktualno), which
+    # it glides to for most of a second (html's scroll-behavior: smooth),
+    # after a reload, which settles where it put the page, and on the login
+    # pages that focus a field (autofocus) and scroll to it; the walks have
+    # always measured those pages that half second later, and what some
+    # checks print (the gym prices' tops) is read in the window.
+    READY = "() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }"
+    logins, login_errs = {}, []
+
+    def logged_in(email, phone, ready=False):
+        """email's storage state after a login through /login, made the first
+        time a context of that device kind asks for it. ready: the install
+        banner and the phone reminder set out of the way on /login first
+        (READY), as karton() and members() log in. The login's page and
+        console errors are the test's problems too."""
+        key = (email, phone, ready)
+        if key not in logins:
+            w = 390 if phone else 1280
+            ctx = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
+            pg = ctx.new_page()
+            pg.on("pageerror", lambda e: login_errs.append(f"{email} {w}px: {e}"))
+            pg.on("console", lambda m: m.type == "error" and login_errs.append(f"{email} {w}px console: {m.text}"))
+            pg.goto(server + "/login")
+            if ready:
+                pg.evaluate(READY)
+            pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
+            with pg.expect_navigation():
+                pg.click("main button[type=submit]")
+            logins[key] = ctx.storage_state()
+            ctx.close()
+        return logins[key]
+
+    def context(w, email=None, ready=False, **kw):
+        """A new context at width w (a phone below 600px: touch, a mobile
+        viewport), logged in as email when one is given (logged_in)."""
+        phone = w < 600
+        return browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone,
+                                   storage_state=logged_in(email, phone, ready) if email else None, **kw)
+
     def fill(make):
         for key, slot in copy.SLOTS.items():
             if isinstance(slot, (copy.FlagSlot, copy.ImageSlot)):   # a switch and a photo, not texts
@@ -3465,7 +3517,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         pg.click("#copyToggle")                                        # Gotovo
         return out
 
-    def gym_rows(pw):
+    def gym_rows():
         """The gym's cards as rows in a browser, the editor's way, with the
         default texts. At 1280px the two cards are two columns. In edit mode
         "+ Dodaj karticu" adds a third: the page comes back on #dvorana,
@@ -3484,12 +3536,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         out, errs = [], []
 
         def opened(w, email):
-            phone = w < 600
-            ctx = pw.chromium.launch().new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
-            pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(f"{w}px: {e}"))
-            if email:
-                pg.goto(server + "/login"); pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
-                pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+            pg = context(w, email).new_page(); pg.on("pageerror", lambda e: errs.append(f"{w}px: {e}"))
             pg.goto(server + "/#dvorana"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
             return pg
 
@@ -3555,10 +3602,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             out.append("after Obriši karticu the page is not in edit mode any more")
         wide.click("#copyToggle")                                      # Gotovo
         for pg in (wide, phone, guest):
-            pg.context.browser.close()
+            pg.context.close()
         return [f"[gym rows] {p}" for p in out + [f"js: {e}" for e in errs]]
 
-    def hours_rows(pw):
+    def hours_rows():
         """The opening hours as rows in a browser, the editor's way, with the
         default rows, at 390px on a touch screen and at 1280px. In edit mode
         every row carries its ✕ and the table its "+ Dodaj red". The ✕ on
@@ -3578,12 +3625,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
           .concat([tr.querySelector('.ed-x').getAttribute('aria-label')]))"""
         rows = "(n) => document.querySelectorAll('#kontakt table[data-rows] tr').length === n"
         for w in (390, 1280):
-            phone = w < 600
-            ctx = pw.chromium.launch().new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
+            ctx = context(w, "trener@test.local")
             pg = ctx.new_page(); pg.on("pageerror", lambda e, w=w: errs.append(f"{w}px: {e}"))
-            pg.goto(server + "/login"); pg.fill("main input[name=email]", "trener@test.local")
-            pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
-            pg.wait_for_load_state("networkidle")
             pg.goto(server + "/#kontakt"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
             pg.click("#copyToggle")
             table = pg.locator("#kontakt table[data-rows]")
@@ -3638,10 +3681,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             if f'<tr><td class="d"><span class="t">{d[0][0]}</span></td><td></td></tr>' not in visitor or visitor.count("<tr>") != 3:
                 out.append(f"{w}px: a visitor's table is not the edited one with its empty cell")
             db.reset_copy(HOURS)
-            ctx.browser.close()
+            ctx.close()
         return [f"[hours rows] {p}" for p in out + [f"js: {e}" for e in errs]]
 
-    def emptied(pw):
+    def emptied():
         """An emptied text in a browser, the editor's way (20.10.2026: it
         stays empty, a number gets its default back), with the default
         texts, at 390px on a touch screen and at 1280px. In edit mode the
@@ -3670,12 +3713,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         db.set_announcement_field(two, "cta", "", None)
         for w in (390, 1280):
             phone = w < 600
-            browser = pw.chromium.launch()
-            ctx = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
+            ctx = context(w, "trener@test.local")
             pg = ctx.new_page(); pg.on("pageerror", lambda e, w=w: errs.append(f"{w}px: {e}"))
-            pg.goto(server + "/login"); pg.fill("main input[name=email]", "trener@test.local")
-            pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
-            pg.wait_for_load_state("networkidle")
             pg.goto(server + "/#dvorana"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
             pg.click("#copyToggle")
             box = pg.locator(unit)
@@ -3710,7 +3749,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             if not link or link["width"] < 20 or link["height"] < 8:
                 out.append(f"{w}px: the emptied link's box in edit mode is {link}")
             pg.click("#copyToggle"); pg.reload(); pg.wait_for_load_state("networkidle")   # Gotovo, reloaded
-            guest = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+            guest = context(w).new_page()
             guest.goto(server + "/#dvorana"); guest.wait_for_load_state("networkidle"); guest.evaluate("document.fonts.ready")
             for who, page in (("the trainer", pg), ("a guest", guest)):
                 seen = page.evaluate(line)
@@ -3728,11 +3767,11 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             if key in db.copy_texts():
                 out.append(f"{w}px: after Zadano the unit still has a row")
             pg.click("#copyToggle")
-            browser.close()
+            ctx.close(); guest.context.close()
         db.set_announcement_field(two, "cta", copy.ANNOUNCEMENT_EXAMPLES[1]["cta"], None)
         return [f"[emptied] {p}" for p in out + [f"js: {e}" for e in errs]]
 
-    def extra_lines(pw):
+    def extra_lines():
         """The extra lines in a browser, the editor's way (20.10.2026), with
         the default texts, at 1280px and at 390px on a touch screen. With
         none yet the trainer's page out of edit mode has no box for them,
@@ -3756,17 +3795,12 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
           document.querySelectorAll('ul.lines').length,
           document.querySelector('#aktualno .event').getBoundingClientRect().top - document.querySelector('.hero h1').getBoundingClientRect().bottom]"""
         for w in (1280, 390):
-            phone, browser = w < 600, pw.chromium.launch()
 
-            def opened(email, w=w, phone=phone):
-                pg = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+            def opened(email, w=w):
+                pg = context(w, email).new_page()
                 pg.on("pageerror", lambda e: errs.append(f"{w}px: {e}"))
                 pg.on("console", lambda m: m.type == "error" and errs.append(f"{w}px console: {m.text}"))
-                if email:
-                    pg.goto(server + "/login"); pg.fill("main input[name=email]", email)
-                    pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
-                    pg.wait_for_load_state("networkidle")
-                pg.goto(server + "/"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+                pg.goto(server + "/"); pg.evaluate("document.fonts.ready")
                 return pg
 
             pg, guest = opened("trener@test.local"), opened(None)
@@ -3817,10 +3851,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 out.append(f"{w}px: after the ✕ the list is stored {stored(pro)}, (its boxes, + Dodaj tekst shown) {seen}")
             pg.click("#copyToggle")
             db.reset_copy(pro); db.reset_copy(hero)
-            browser.close()
+            pg.context.close(); guest.context.close()
         return [f"[extra lines] {p}" for p in out + [f"js: {e}" for e in errs]]
 
-    def clanarina(pw):
+    def clanarina():
         """/moja-clanarina's "Dodaj plan" in a browser (21.10.2026), with
         the long texts (fill()) and each card's one text 300 characters in
         four lines: the trainer's every card, out of edit mode and in it,
@@ -3837,14 +3871,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 db.set_copy(key, four, None)
         for email, modes in (("trener@test.local", (False, True)), ("ivan@test.local", (False,))):
             for w in (360, 390, 900, 1280):
-                phone, browser = w < 600, pw.chromium.launch()
-                pg = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+                pg = context(w, email).new_page()
                 pg.on("pageerror", lambda e, w=w: errs.append(f"{w}px: {e}"))
                 pg.on("console", lambda m, w=w: m.type == "error" and errs.append(f"{w}px console: {m.text}"))
-                pg.goto(server + "/login"); pg.fill("main input[name=email]", email)
-                pg.fill("main input[name=password]", "lozinka123"); pg.click("main button[type=submit]")
-                pg.wait_for_load_state("networkidle")
-                pg.goto(server + "/moja-clanarina"); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+                pg.goto(server + "/moja-clanarina"); pg.evaluate("document.fonts.ready")
                 for editing in modes:
                     where = f"{email} {w}px{' edit mode' if editing else ''}"
                     if editing:
@@ -3866,10 +3896,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                         out += [f"{did} {p}" for p in pg.evaluate(MEASURE, True)["problems"]]
                     if editing:
                         pg.click("#copyToggle")
-                browser.close()
+                pg.context.close()
         return [f"[moja-clanarina] {p}" for p in out + [f"js: {e}" for e in errs]]
 
-    def karton(pw, widths, strict=True):
+    def karton(widths, strict=True):
         """The karton's three views with the long texts (fill(): every karton
         text 300 characters in three lines, or one word of 300), on the
         karton_rows() the test began with: ivan's own (a member's: every
@@ -3885,15 +3915,11 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
           for (const d of document.querySelectorAll('main details')) d.open = true;
           if (document.activeElement) document.activeElement.blur(); }"""
         for w in widths:
-            phone, browser = w < 600, pw.chromium.launch()
             for email, paths in (("ivan@test.local", ("/karton",)), ("trener@test.local", ("/karton", f"/karton/{ivan}"))):
-                pg = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+                pg = context(w, email, ready=True).new_page()
                 pg.on("pageerror", lambda e, w=w: errs.append(f"{w}px: {e}"))
-                pg.goto(server + "/login"); pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
-                pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
-                pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
                 for path in paths:
-                    pg.goto(server + path); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+                    pg.goto(server + path); pg.evaluate("document.fonts.ready")
                     pg.evaluate(OPEN)
                     where = f"[karton {email} {w}px {path}]"
                     out += [f"{where} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
@@ -3904,10 +3930,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                             out.append(f"{where} edit mode: no panel")
                         out += [f"{where} edit mode: {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
                         pg.evaluate(toggle)
-            browser.close()
+                pg.context.close()
         return out + [f"[karton] js: {e}" for e in errs]
 
-    def members(pw, widths, strict=True):
+    def members(widths, strict=True):
         """The member pages with the long texts (25.11.2026: every text of
         them a slot, fill() gives each 300 characters in three lines, or one
         word): a guest's login pages, the reset and the sent-link pages, and
@@ -3939,16 +3965,23 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                                                     "razdoblje"))
         token = auth.make_reset_token("sara@test.local", db.get_user_by_email("sara@test.local").password_hash)
         for w in widths:
-            phone, browser = w < 600, pw.chromium.launch()
+            phone, pages = w < 600, []
 
-            def opened(email, w=w, phone=phone):
-                pg = browser.new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone).new_page()
+            def opened(email, w=w, login=False):
+                """A guest's page on /login, READY set; email's in the
+                account's stored login (logged_in, READY first), on no page
+                yet; or, where what follows the login is measured (login:
+                ana's osvrt prompt, petra's welcome), logged in through
+                /login here, READY first."""
+                pg = context(w, None if login else email, ready=True).new_page(); pages.append(pg)
                 pg.on("pageerror", lambda e: errs.append(f"{w}px {email}: {e}"))
                 pg.on("dialog", lambda dlg: dlg.accept())                   # the player's beforeunload
-                pg.goto(server + "/login"); pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); localStorage.setItem('qmt-phone', String(Date.now())); }")
-                if email:
+                if login or not email:
+                    pg.goto(server + "/login"); pg.evaluate(READY)
+                if login:
                     pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
-                    pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+                    with pg.expect_navigation():
+                        pg.click("main button[type=submit]")
                 return pg
 
             def measure(pg, where, dialog=None, w=w):
@@ -3957,8 +3990,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 if dialog:
                     out.extend(f"[members {w}px {where}] {p}" for p in pg.evaluate(DIALOG, dialog))
 
-            def go(pg, path, where=None, dialog=None, unfold=False):
-                pg.goto(server + path); pg.wait_for_load_state("networkidle")
+            def go(pg, path, where=None, dialog=None, unfold=False, settle=False):
+                pg.goto(server + path)
+                if settle:                                                  # it focuses a field once loaded (autofocus)
+                    pg.wait_for_load_state("networkidle")
                 if unfold:                                                  # every <details> open: what a tap shows
                     pg.evaluate("() => document.querySelectorAll('main details').forEach(d => { d.open = true; })")
                     pg.wait_for_timeout(100)
@@ -3970,7 +4005,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
 
             g = opened(None)                                                # a guest
             for path in ("/login", "/signup", "/forgot", f"/reset?token={token}"):
-                go(g, path, path.split("?")[0])
+                go(g, path, path.split("?")[0], settle=path != "/signup")
             g.goto(server + "/forgot"); g.fill("main input[name=email]", "nitko@test.local")
             with g.expect_navigation():
                 g.click("main button[type=submit]")
@@ -3980,7 +4015,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             measure(g, "the login window", "#authDlg")
             tap(g, "#authTabSignup"); measure(g, "the login window, Registracija", "#authDlg")
 
-            a = opened("ana@test.local")                                    # ana: the prompt after her login
+            a = opened("ana@test.local", login=True)                        # ana: the prompt after her login
             if a.locator("#fbPrompt[open]").count():
                 measure(a, "the osvrt prompt", "#fbPrompt"); a.keyboard.press("Escape")
             else:
@@ -4000,10 +4035,9 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                "#seriesDlg")
             for path in ("/treninzi", f"/treninzi/{pid}", base, "/profil", "/tekstovi"):
                 go(a, path, unfold=path == base)                            # the day: each exercise open
-            a.goto(server + base); a.wait_for_load_state("networkidle")     # the player
+            a.goto(server + base)                                           # the player
             with a.expect_navigation():
                 tap(a, "main form.go button[type=submit]")
-            a.wait_for_load_state("networkidle")
             tap(a, "button.pl-done")                                        # ✓: the rest bar
             measure(a, "a step, its rest bar", "#plRest")
             if w < 1000:
@@ -4034,7 +4068,7 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             s = opened("sara@test.local")                                   # sara: no plan
             for path in ("/raspored", "/treninzi", "/dvoranski"):
                 go(s, path, f"sara {path}")
-            n = opened("petra@test.local")                                  # a new member: the profile's welcome
+            n = opened("petra@test.local", login=True)                      # a new member: the profile's welcome
             measure(n, "the welcome")
             t = opened("trener@test.local")                                 # the trainer
             for path in (f"/treninzi/{pid}", base):
@@ -4042,7 +4076,8 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             go(t, "/tekstovi", "trener /tekstovi")
             t.evaluate("() => document.getElementById('copyToggle').click()")
             measure(t, "trener /tekstovi edit mode")
-            browser.close()
+            for pg in pages:
+                pg.context.close()
         return out + [f"[members] js: {e}" for e in errs]
 
     def hours_edit(pg):
@@ -4087,18 +4122,17 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         how = "a touch" if touch else "the mouse came over them"
         return [] if after == before else [f"the announcements moved within 2 s of {how}: {before} -> {after}"]
 
-    def still(pw):
+    def still():
         """Under reduced motion the announcements never move by themselves
         (a swipe and the dots still work): 6.5 s on, with their row on the
         screen, the first card is still the one in view."""
-        ctx = pw.chromium.launch().new_context(viewport={"width": 390, "height": 900}, has_touch=True, is_mobile=True,
-                                               reduced_motion="reduce")
-        pg = ctx.new_page(); pg.goto(server + "/"); pg.wait_for_load_state("networkidle")
+        ctx = context(390, reduced_motion="reduce")
+        pg = ctx.new_page(); pg.goto(server + "/"); pg.evaluate("document.fonts.ready")
         pg.evaluate(IN_VIEW); pg.wait_for_timeout(6500); seen = pg.evaluate(STATE)
-        ctx.browser.close()
+        ctx.close()
         return [] if seen == [0, "true,false"] else [f"[reduced motion 390px] the announcements moved by themselves: {seen}"]
 
-    def banner(pw):
+    def banner():
         """The install banner (base.html) asks again a week after it was
         dismissed, until the app is installed. On an iPhone it shows at load
         (the share-sheet steps, no native prompt to wait for), so each case
@@ -4109,12 +4143,12 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         phone number, so since 26.11.2026 the phone reminder would come
         first (tests/test_kao.py): dismissed this week, it is out of the
         way, and the install banner is what this measures."""
-        out, ctx = [], pw.chromium.launch().new_context(viewport={"width": 390, "height": 900}, has_touch=True,
-                                                         is_mobile=True, user_agent=IPHONE)
+        out, ctx = [], context(390, user_agent=IPHONE)
         pg = ctx.new_page()
         pg.goto(server + "/login"); pg.evaluate("localStorage.setItem('qmt-phone', String(Date.now()))")
         pg.fill("main input[name=email]", "ivan@test.local"); pg.fill("main input[name=password]", "lozinka123")
-        pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
+        with pg.expect_navigation():
+            pg.click("main button[type=submit]")
         pg.goto(server + "/prehrana")                 # the second page with the banner: it asks
         if not pg.locator("#a2hs").is_visible():
             out.append("not shown on the second page")
@@ -4126,21 +4160,18 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             pg.evaluate(f"localStorage.setItem('qmt-a2hs', String({value}))"); pg.reload()
             if pg.locator("#a2hs").is_visible() != back:
                 out.append(f"dismissed {when}, it is {'still away' if back else 'back'}")
-        ctx.browser.close()
+        ctx.close()
         return [f"[install banner 390px] {p}" for p in out]
 
-    def walk(pw, email, widths, label, strict=True, lines=False, switch=(), auto=(), photos=(), adds=(), one_line=False,
+    def walk(email, widths, label, strict=True, lines=False, switch=(), auto=(), photos=(), adds=(), one_line=False,
              hours=()):
         problems = []
         for w in widths:
             phone = w < 600
-            ctx = pw.chromium.launch().new_context(viewport={"width": w, "height": 900}, has_touch=phone, is_mobile=phone)
+            ctx = context(w, email)
             pg = ctx.new_page(); errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
-            if email:
-                pg.goto(server + "/login"); pg.fill("main input[name=email]", email); pg.fill("main input[name=password]", "lozinka123")
-                pg.click("main button[type=submit]"); pg.wait_for_load_state("networkidle")
             for path in PAGES if email else ("/",):
-                pg.goto(server + path); pg.wait_for_load_state("networkidle"); pg.evaluate("document.fonts.ready")
+                pg.goto(server + path); pg.evaluate("document.fonts.ready")
                 where = f"[{label} {email or 'guest'} {w}px {path}]"
                 problems += [f"{where} {p}" for p in pg.evaluate(MEASURE, strict)["problems"]]
                 if path != "/":
@@ -4181,33 +4212,36 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
                 if w in adds:                               # the editor adds a card and deletes it, likewise
                     problems += [f"{where} add/delete: {p}" for p in add_drop(pg)]
             problems += [f"[{label} {w}px] js: {e}" for e in errs]
-            ctx.browser.close()
+            ctx.close()
         return problems
 
     with sync_playwright() as pw:
+        browser = pw.chromium.launch()                # the one browser (context(), logged_in())
         photo_on()                                    # the default texts, the first announcement over a photo:
-        problems = walk(pw, None, (900, 1280), "defaults", one_line=True)   # a plain one is one line on a wide screen
-        problems += gym_rows(pw)                      # the gym's cards added, hidden and deleted (the default texts)
-        problems += hours_rows(pw)                    # the hours' rows removed, added and emptied (the default rows)
-        problems += emptied(pw)                       # an emptied text stays empty, a number does not (the default texts)
-        problems += extra_lines(pw)                   # a line added under PRO's bullets and the headline, then removed
+        problems = walk(None, (900, 1280), "defaults", one_line=True)   # a plain one is one line on a wide screen
+        problems += gym_rows()                        # the gym's cards added, hidden and deleted (the default texts)
+        problems += hours_rows()                      # the hours' rows removed, added and emptied (the default rows)
+        problems += emptied()                         # an emptied text stays empty, a number does not (the default texts)
+        problems += extra_lines()                     # a line added under PRO's bullets and the headline, then removed
         fill(words)                                   # long texts: 300 characters, lists of 12 (the extra lines 12 of 300), the hours 12 rows
-        problems += walk(pw, None, (360, 390, 900, 1280), "words", auto=(390, 1280))
-        problems += still(pw)                         # under reduced motion: never by themselves
-        problems += walk(pw, "trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280), photos=(390,),
+        problems += walk(None, (360, 390, 900, 1280), "words", auto=(390, 1280))
+        problems += still()                           # under reduced motion: never by themselves
+        problems += walk("trener@test.local", (360, 390, 900, 1280), "words", switch=(390, 1280), photos=(390,),
                          adds=(390, 1280), hours=(390,))
-        problems += walk(pw, "ivan@test.local", (360, 1280), "words")
-        problems += karton(pw, (360, 390, 900, 1280))  # the karton's three views, every form open, the editor's panel
-        problems += members(pw, (360, 390, 900, 1280))  # every member page, its dialogs and bars (25.11.2026)
-        problems += clanarina(pw)                     # Dodaj plan's two groups and their switches (one text in four lines)
-        problems += banner(pw)                        # the install banner's week between asks
+        problems += walk("ivan@test.local", (360, 1280), "words")
+        problems += karton((360, 390, 900, 1280))     # the karton's three views, every form open, the editor's panel
+        problems += members((360, 390, 900, 1280))    # every member page, its dialogs and bars (25.11.2026)
+        problems += clanarina()                       # Dodaj plan's two groups and their switches (one text in four lines)
+        problems += banner()                          # the install banner's week between asks
         db.set_announcement_field(one, "body", LINES, None)   # line breaks: the first announcement's text in three lines
-        problems += walk(pw, None, (390, 1280), "lines", lines=True)
-        problems += walk(pw, "trener@test.local", (390,), "lines", lines=True)
+        problems += walk(None, (390, 1280), "lines", lines=True)
+        problems += walk("trener@test.local", (390,), "lines", lines=True)
         fill(lambda n: "W" * n)                       # one unbreakable word: must wrap, never widen
-        problems += walk(pw, "trener@test.local", (360, 1280), "one-word", strict=False, hours=(360,))
-        problems += karton(pw, (360, 1280), strict=False)
-        problems += members(pw, (360, 1280), strict=False)
+        problems += walk("trener@test.local", (360, 1280), "one-word", strict=False, hours=(360,))
+        problems += karton((360, 1280), strict=False)
+        problems += members((360, 1280), strict=False)
+        problems += [f"[login] js: {e}" for e in login_errs]
+        browser.close()
     print("\n".join(problems))
     assert not problems, f"{len(problems)} layout problems, listed above"
 
