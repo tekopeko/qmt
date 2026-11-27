@@ -2,11 +2,15 @@
 tabs which are related for me and in another group the tabs which are there
 and different because I am an admin").
 
-A client's row: Početna · Raspored · Karton · Online treninzi (while an
-online plan runs) · Moja članarina · Prehrana. Staff's, the trainer's and the
-owner's: that row (without Karton until 24.11.2026, when staff got a karton
-of their own; the owner: "Lets show the Karton tab in the Admin view as
-well"), then "Admin ▾", a menu in the account
+A client's row: Početna · Raspored · Karton · Dvoranski treninzi (while a
+plan that books termini runs, since 27.11.2026: build 2 of the dvoranski
+treninzi; the owner: "I would show the tab only to members with a gym
+plan. Similarly how a online training tab shows only to members with an
+online plan.") · Online treninzi (while an online plan runs) · Moja
+članarina · Prehrana. Staff's, the trainer's and the owner's: that row
+(without Karton until 24.11.2026, when staff got a karton of their own; the
+owner: "Lets show the Karton tab in the Admin view as well"; Dvoranski
+treninzi always, as Online treninzi), then "Admin ▾", a menu in the account
 menu's component: Gledaj kao član (/kao, staff act as a member, 26.11.2026),
 Termini (/admin), Trenutne članarine (/clanarine), Upitnik
 (/upitnik), Vježbe (/treninzi/vjezbe, the library of exercises, 30.10.2026),
@@ -25,8 +29,10 @@ as tests/test_copy.py does, and walks the owner and a client at 390 and
 1280px: the pill is one row and nothing widens the page, the wordmark rule
 holds, the Admin menu opens and closes (a click, Escape, a click outside,
 the keyboard) and its items lead to their pages, and the drawer shows its
-sections; the owner's bar of seven (six tabs and Admin ▾) is measured at
-901, 960, 1024, 1100, 1200 and 1280px, both themes. Then edit mode (26.10.2026, the owner: "when I go to a tab as an
+sections; the owner's bar (seven tabs and Admin ▾ since 27.11.2026, six
+until then) is the drawer up to 959px and one row from 960px, measured at
+901, 920, 936, 959, 960, 1024, 1100, 1200 and 1280px, both themes, and a
+bar of six keeps the drawer at 900px. Then edit mode (26.10.2026, the owner: "when I go to a tab as an
 admin, please dont make it editable but default"): no page opens in it by
 itself, so staff land on /upitnik, ?uredi=1 (the old way in) or not, in
 normal mode with the ✎ pill there to press; leaving a page ends it (a tab,
@@ -90,9 +96,16 @@ def client_for(email: str) -> TestClient:
 # ---------- the markup ----------
 
 def nav(page: str) -> str:
-    """The nav's markup, from its tag to its end."""
-    start = page.index('<nav class="nav" id="mainNav">')
+    """The nav's markup, from its tag to its end (a bar of seven tab links
+    is `nav nav-7`, 27.11.2026)."""
+    start = re.search(r'<nav class="nav(?: nav-7)?" id="mainNav">', page).start()
     return page[start:page.index("</nav>", start)]
+
+
+def seven(page: str) -> bool:
+    """Whether the page's bar says it holds seven tab links: its nav and its ☰."""
+    return ('<nav class="nav nav-7" id="mainNav">' in page
+            and '<button type="button" class="navbtn nav-burger nav-7"' in page)
 
 
 def tabs(page: str) -> list[tuple[str, str, bool]]:
@@ -126,8 +139,9 @@ def account_menu(page: str) -> list[str]:
     return re.findall(r'<span(?: id="themeLabel")?>([^<]+)</span>', menu)
 
 
-MEMBER_ROW = [("/", "Početna"), ("/raspored", "Raspored"), ("/karton", "Karton"), ("/treninzi", "Online treninzi"),
-              ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")]
+# Dvoranski treninzi after Karton since 27.11.2026 (staff always; a member while a gym plan runs)
+MEMBER_ROW = [("/", "Početna"), ("/raspored", "Raspored"), ("/karton", "Karton"), ("/dvoranski", "Dvoranski treninzi"),
+              ("/treninzi", "Online treninzi"), ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")]
 # "Gledaj kao član" first since 26.11.2026 (staff act as a member: /kao)
 TRAINER_ITEMS = [("/kao", "Gledaj kao član"), ("/admin", "Termini"), ("/clanarine", "Trenutne članarine"),
                  ("/upitnik", "Upitnik"), ("/treninzi/vjezbe", "Vježbe"), ("/tekstovi", "Tekstovi")]
@@ -136,18 +150,33 @@ ACCOUNT = ["Profil", "Tamna tema", "Odjava"]
 
 
 def test_a_clients_row_is_the_members_tabs_and_nothing_of_admin():
+    """A client's row: a gym plan and an online plan, seven tab links (the
+    bar says so, its nav and its ☰ .nav-7: the drawer up to 959px, below);
+    no online plan, no Online treninzi; since 27.11.2026 no plan that books
+    termini, no Dvoranski treninzi (an online plan alone, none at all). His
+    karton lights his Karton tab."""
     make_user("ivan@test.local", plans=("grupni", "online"))
     make_user("ana@test.local", plans=("grupni",))                     # no online plan: no Online treninzi, as before
+    make_user("mia@test.local", plans=("online",))                     # online alone: no Dvoranski treninzi
+    make_user("sara@test.local")                                       # no plan: neither
     page = client_for("ivan@test.local").get("/raspored").text
     assert tabs(page) == [("/", "Početna", False), ("/raspored", "Raspored", True), ("/karton", "Karton", False),
-                          ("/treninzi", "Online treninzi", False), ("/moja-clanarina", "Moja članarina", False),
-                          ("/prehrana", "Prehrana", False)]
+                          ("/dvoranski", "Dvoranski treninzi", False), ("/treninzi", "Online treninzi", False),
+                          ("/moja-clanarina", "Moja članarina", False), ("/prehrana", "Prehrana", False)]
+    assert seven(page)
     assert admin_tab(page) is None and admin_items(page) == [] and captions(page) == []   # one plain list in the drawer too
     for mark in ('id="adminMenu"', 'href="/admin"', 'href="/clanarine"', 'href="/korisnici"', 'href="/statistika"', "Admin"):
         assert mark not in nav(page), mark
     assert account_menu(page) == ACCOUNT                                   # no Moja članarina item: the tab is the way
-    assert [label for _, label, _ in tabs(client_for("ana@test.local").get("/raspored").text)] == \
-        ["Početna", "Raspored", "Karton", "Moja članarina", "Prehrana"]
+    for email, row in (("ana@test.local", ["Početna", "Raspored", "Karton", "Dvoranski treninzi", "Moja članarina",
+                                           "Prehrana"]),
+                       ("mia@test.local", ["Početna", "Raspored", "Karton", "Online treninzi", "Moja članarina",
+                                           "Prehrana"]),
+                       ("sara@test.local", ["Početna", "Raspored", "Karton", "Moja članarina", "Prehrana"])):
+        theirs = client_for(email).get("/raspored").text
+        assert [label for _, label, _ in tabs(theirs)] == row, email
+        assert not seven(theirs) and '<nav class="nav" id="mainNav">' in theirs, email   # six or fewer: today's 900px
+        assert '<button type="button" class="navbtn nav-burger" onclick=' in theirs, email
     karton = client_for("ivan@test.local").get("/karton").text                # his karton lights his tab, as ever
     assert [label for _, label, on in tabs(karton) if on] == ["Karton"]
 
@@ -155,16 +184,19 @@ def test_a_clients_row_is_the_members_tabs_and_nothing_of_admin():
 def test_staff_get_the_members_row_and_admin_with_their_items():
     """The member's row, Karton in it since 24.11.2026 (staff have a karton
     of their own now; the owner: "Lets show the Karton tab in the Admin
-    view as well so that Amir can check out the changes we made there"),
-    then Admin ▾: six items for a trainer who is not the owner (Tekstovi
-    since 25.11.2026, "Gledaj kao član" first since 26.11.2026), eight for
-    the owner. Two captions for the drawer, Karton under "Kao član", and the
-    account menu without a Moja članarina item: the tab is in their row."""
+    view as well so that Amir can check out the changes we made there") and
+    Dvoranski treninzi since 27.11.2026 (staff always: seven tab links, the
+    bar says so), then Admin ▾: six items for a trainer who is not the owner
+    (Tekstovi since 25.11.2026, "Gledaj kao član" first since 26.11.2026),
+    eight for the owner. Two captions for the drawer, Karton under "Kao
+    član", and the account menu without a Moja članarina item: the tab is in
+    their row."""
     make_user("trener@test.local", is_trainer=True)                     # the owner, who trains too (the demo's trener)
     make_user("coach@test.local", is_trainer=True)                      # a trainer who is not the owner
     for email, items in (("coach@test.local", TRAINER_ITEMS), ("trener@test.local", OWNER_ITEMS)):
         page = client_for(email).get("/raspored").text
         assert [(href, label) for href, label, _ in tabs(page)] == MEMBER_ROW, email
+        assert seven(page), email
         assert admin_tab(page) == ("Admin ▾", False), email
         assert [(href, label) for href, label, _ in admin_items(page)] == items, email
         assert captions(page) == ["Kao član", "Admin"], email
@@ -178,11 +210,12 @@ def test_an_owner_who_does_not_train_is_staff_too():
     owner without is_trainer gets the same bar, Karton in it (24.11.2026),
     all eight items, and since 26.11.2026 Online treninzi as a trainer does,
     whatever his plans (the owner is staff by rule: app._is_staff; until
-    then the tab followed his plans, as a client's)."""
+    then the tab followed his plans, as a client's); Dvoranski treninzi
+    too, since 27.11.2026."""
     make_user("trener@test.local", plans=("grupni",))                  # the owner, not a trainer, no online plan
     page = client_for("trener@test.local").get("/raspored").text
-    assert [label for _, label, _ in tabs(page)] == ["Početna", "Raspored", "Karton", "Online treninzi", "Moja članarina",
-                                                     "Prehrana"]
+    assert [label for _, label, _ in tabs(page)] == ["Početna", "Raspored", "Karton", "Dvoranski treninzi",
+                                                     "Online treninzi", "Moja članarina", "Prehrana"]
     assert [(href, label) for href, label, _ in admin_items(page)] == OWNER_ITEMS
     assert account_menu(page) == ACCOUNT
 
@@ -279,7 +312,8 @@ def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
         assert not any(current for *_, current in admin_items(r.text))
         assert [label for _, label, on in tabs(r.text) if on] == ["Karton"]
     for path, tab in (("/", "Početna"), ("/raspored", "Raspored"), ("/karton", "Karton"),
-                      ("/treninzi", "Online treninzi"), ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")):
+                      ("/dvoranski", "Dvoranski treninzi"), ("/treninzi", "Online treninzi"),
+                      ("/moja-clanarina", "Moja članarina"), ("/prehrana", "Prehrana")):
         page = c.get(path).text
         assert admin_tab(page) == ("Admin ▾", False) and not any(current for *_, current in admin_items(page)), path
         assert [label for _, label, on in tabs(page) if on] == [tab], path
@@ -288,6 +322,46 @@ def test_admin_is_on_while_one_of_its_pages_is_open_and_marks_that_item():
     assert "<title>Trenutne članarine — QMT</title>" in clanarine and "<h1>Trenutne članarine</h1>" in clanarine
     upitnik = c.get("/upitnik").text
     assert '<header class="topbar">' in upitnik and 'class="avatar' in upitnik   # not the solo pill
+
+
+def test_dvoranski_treninzi_is_on_under_dvoranski_and_karton_is_not():
+    """Dvoranski treninzi (27.11.2026, build 2 of the dvoranski treninzi) is
+    .on on every /dvoranski page, the tab's, a training's and its osvrt's,
+    for a member (a training outside a termin of his, and his termin's, the
+    way in opening it) and for staff (one of theirs) alike; the Karton tab,
+    lit there from 26.11.2026 until then, is not, nor Admin ▾. A member
+    whose gym plan lapsed opens his training by its link still: no tab is
+    lit there, he has none for it."""
+    from datetime import datetime, timedelta
+
+    from qmt.models import Booking, Membership
+    ivan = make_user("ivan@test.local", plans=("grupni",))
+    coach = make_user("coach@test.local", is_trainer=True)
+    ana = make_user("ana@test.local", plans=("grupni",))
+    sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) - timedelta(hours=1), 60, 8, None)
+    with db.session_scope() as s:
+        s.add(Booking(user_id=ivan, session_id=sid))
+    ci = client_for("ivan@test.local")
+    termin = ci.get(f"/dvoranski/termin/{sid}")                        # made as it is opened: its page
+    [made] = db.gym_trainings(ivan)
+    assert termin.url.path == f"/dvoranski/trening/{made.id}"
+    pages = {"ivan@test.local": (db.add_gym_outside(ivan, config.today()), made.id),
+             "coach@test.local": (db.add_gym_outside(coach, config.today()),)}
+    for email, ids in pages.items():
+        c = client_for(email)
+        paths = ["/dvoranski"] + [p for tid in ids for p in (f"/dvoranski/trening/{tid}", f"/dvoranski/trening/{tid}/osvrt")]
+        for path in paths:
+            r = c.get(path)
+            assert r.status_code == 200 and r.url.path == path, (email, path)
+            assert [label for _, label, on in tabs(r.text) if on] == ["Dvoranski treninzi"], (email, path)
+            assert admin_tab(r.text) in (None, ("Admin ▾", False)), (email, path)
+            assert '<a href="/karton" class="on">' not in r.text, (email, path)
+    lapsed = db.add_gym_outside(ana, config.today())
+    with db.session_scope() as s:                                       # her plan past its dospijeće
+        s.scalar(db.select(Membership).where(Membership.user_id == ana)).next_payment = \
+            config.today() - timedelta(days=Membership.GRACE_DAYS + 1)
+    page = client_for("ana@test.local").get(f"/dvoranski/trening/{lapsed}").text
+    assert "Dvoranski treninzi" not in nav(page) and [label for _, label, on in tabs(page) if on] == []
 
 
 # ---------- in a browser ----------
@@ -400,7 +474,9 @@ def test_the_bar_menu_and_drawer_in_a_browser(server):
 
                 bar = pg.evaluate(PILL)
                 problems += [f"{where} {p}" for p in bar["problems"]]
-                check(bar["wordmark"] == ("full" if w == 1280 else "QMT"), f"the wordmark shows {bar['wordmark']}")
+                # the whole name at 1280px where its slot holds it: a client's seven tabs leave it the room,
+                # staff's seven and Admin ▾ (27.11.2026) not even in the 1100px pill, "QMT" (the brand's own query)
+                check(bar["wordmark"] == ("full" if w == 1280 and not staff else "QMT"), f"the wordmark shows {bar['wordmark']}")
 
                 if w == 1280 and staff:
                     # the menu: shut, then a click opens it under its tab, Escape shuts it
@@ -455,7 +531,8 @@ def test_the_bar_menu_and_drawer_in_a_browser(server):
                     pg.tap(".nav-burger")
                     d = pg.evaluate(DRAWER)
                     want = (["# Kao član", *MEMBER_LABELS, "# Admin", *(label for _, label in OWNER_ITEMS)] if staff else
-                            ["Početna", "Raspored", "Karton", "Online treninzi", "Moja članarina", "Prehrana"])
+                            ["Početna", "Raspored", "Karton", "Dvoranski treninzi", "Online treninzi", "Moja članarina",
+                             "Prehrana"])
                     check(d["shown"] == want, f"the drawer shows {d['shown']}")
                     check(d["hairline"] == ("1px" if staff else None), f"the hairline between its sections: {d['hairline']}")
                     check(d["inside"] and d["overflow"] == 0, f"the drawer leaves the window (overflow {d['overflow']})")
@@ -491,39 +568,90 @@ SHOWN_TABS = r"""() => {
 }"""
 
 
-def test_staffs_bar_of_seven_is_one_row_from_901px(server):
-    """Staff's bar is six tabs and Admin ▾ since 24.11.2026 (Karton joined
-    their row). The owner's, the widest (he trains too: Online treninzi
-    shows), at 901, 960, 1024, 1100, 1200 and 1280px, in both themes: the
-    tabs in the bar, not the drawer, Karton among them; the pill one row
-    (every child inside its padding and on its line, none over another, the
-    avatar's room kept; the tabs on one line, none wrapping or cutting its
-    label) and the page no wider than the window; the wordmark one of its
-    two. No rule tightens them for it (base.html: measured, none needed)."""
+# A bar of seven tab links is the ☰ drawer up to this width less one, and one
+# row from it (27.11.2026, build 2 of the dvoranski treninzi: Dvoranski
+# treninzi joined the member's row). Measured that day for the owner's bar,
+# the widest (seven tabs and Admin ▾), at every width from 901 to 1280px in
+# both themes, its seven tabs tight (base.html's rule for seven): at
+# 901–935px the avatar left the pill's padding (the page scrolling sideways
+# too, up to 914px), from 936px every tab sat on its line inside the pill,
+# the brand's slot 87px there (its floor 86.4px, "QMT").
+SEVEN_FIT = 936
+# and the fold itself: SEVEN_FIT left 0.6px to spare in Chromium on the Mac it
+# was measured on, so the bar of seven shows from 960px (Fable's review: room
+# for another browser's letter widths)
+SEVEN_FOLD = 960
+
+
+def test_a_bar_of_seven_is_the_drawer_up_to_959px_and_one_row_from_960px(server):
+    """Since 27.11.2026 a bar has seven tab links: staff's seven and Admin ▾
+    (Dvoranski treninzi joined their row; six and Admin ▾ from 24.11.2026,
+    which fitted at every width from 901px), a member's with a gym plan and
+    an online plan seven. They do not fit below SEVEN_FIT (936px, measured),
+    so a bar of seven (its nav and its ☰, .nav-7) is the ☰ drawer up to
+    SEVEN_FOLD − 1 (959px: the fold leaves room past the first fit), as every
+    bar is up to 900px. The owner's, at 901, 920, 936 and 959px: the drawer
+    (the ☰ shown, the tabs not in the bar), the pill's children inside its
+    padding, the page no wider than the window, and the drawer opened shows
+    his two sections as a phone's does, inside the window; at 960,
+    1024, 1100, 1200 and 1280px the bar: the tabs in it, Dvoranski treninzi
+    among them, the pill one row (every child inside its padding and on its
+    line, none over another, the avatar's room kept; the tabs on one line,
+    none wrapping or cutting its label), the page no wider than the window,
+    the wordmark one of its two; in both themes. A client's bar of seven the
+    same at 959 and 960px; a client's bar of six (a gym plan, no online
+    plan) keeps today's 900px: at 901px a row. No page errors."""
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
     make_user("trener@test.local", is_trainer=True)                   # the owner, a trainer too
+    make_user("ivan@test.local", plans=("grupni", "online"))           # seven tab links
+    make_user("ana@test.local", plans=("grupni",))                     # six
     problems: list[str] = []
+    admin_labels = [label for _, label in OWNER_ITEMS]
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        for theme in ("light", "dark"):
-            ctx, pg, errors = open_page(browser, server, "trener@test.local", 1280, "/raspored")
-            pg.evaluate(f"() => localStorage.setItem('qmt-theme', '{theme}')")
-            for w in (901, 960, 1024, 1100, 1200, 1280):
-                pg.set_viewport_size({"width": w, "height": 900})
-                go(pg, server + "/raspored")
-                where = f"[{theme} {w}px]"
-                bar, shown = pg.evaluate(PILL), pg.evaluate(SHOWN_TABS)
-                problems += [f"{where} {p}" for p in bar["problems"]]
-                if bar["wordmark"] not in ("full", "QMT"):
-                    problems.append(f"{where} the wordmark shows {bar['wordmark']}")
-                if shown["drawer"] or shown["labels"] != [*MEMBER_LABELS, "Admin ▾"]:
+
+        def measure(pg, where: str, labels: list[str], drawer: bool, opened: list[str] | None = None) -> None:
+            bar, shown = pg.evaluate(PILL), pg.evaluate(SHOWN_TABS)
+            problems.extend(f"{where} {p}" for p in bar["problems"])
+            if bar["wordmark"] not in ("full", "QMT"):
+                problems.append(f"{where} the wordmark shows {bar['wordmark']}")
+            if drawer:
+                if not shown["drawer"] or not pg.locator(".nav-burger").is_visible():
+                    problems.append(f"{where} not the drawer: the bar shows {shown['labels']}")
+                if opened is not None:                                   # the ☰ opens it, as on a phone
+                    pg.click(".nav-burger")
+                    d = pg.evaluate(DRAWER)
+                    if d["shown"] != opened or not d["inside"] or d["overflow"]:
+                        problems.append(f"{where} the drawer shows {d['shown']} (inside {d['inside']}, "
+                                        f"overflow {d['overflow']})")
+                    pg.click(".nav-burger")
+            else:
+                if shown["drawer"] or shown["labels"] != labels:
                     problems.append(f"{where} the bar shows {shown['labels']} (in the drawer: {shown['drawer']})")
                 if shown["clipped"]:
                     problems.append(f"{where} labels cut: {shown['clipped']}")
-                if shown["theme"] != theme:
-                    problems.append(f"{where} the page is in the {shown['theme']} theme")
-            problems += [f"[{theme}] {e}" for e in errors]
+
+        for theme in ("light", "dark"):
+            ctx, pg, errors = open_page(browser, server, "trener@test.local", 1280, "/raspored")
+            pg.evaluate(f"() => localStorage.setItem('qmt-theme', '{theme}')")
+            for w in (901, 920, SEVEN_FIT, SEVEN_FOLD - 1, SEVEN_FOLD, 1024, 1100, 1200, 1280):
+                pg.set_viewport_size({"width": w, "height": 900})
+                go(pg, server + "/raspored")
+                where = f"[owner {theme} {w}px]"
+                measure(pg, where, [*MEMBER_LABELS, "Admin ▾"], w < SEVEN_FOLD,
+                        ["# Kao član", *MEMBER_LABELS, "# Admin", *admin_labels])
+                if pg.evaluate("document.documentElement.getAttribute('data-theme')") != theme:
+                    problems.append(f"{where} the page is not in the {theme} theme")
+            problems += [f"[owner {theme}] {e}" for e in errors]
+            ctx.close()
+        client_row = ["Početna", "Raspored", "Karton", "Dvoranski treninzi", "Online treninzi", "Moja članarina", "Prehrana"]
+        for email, w, labels, drawer in (("ivan@test.local", SEVEN_FOLD - 1, client_row, True),
+                                         ("ivan@test.local", SEVEN_FOLD, client_row, False),
+                                         ("ana@test.local", 901, [x for x in client_row if x != "Online treninzi"], False)):
+            ctx, pg, errors = open_page(browser, server, email, w, "/raspored")
+            measure(pg, f"[{email.split('@')[0]} {w}px]", labels, drawer, labels if drawer else None)
+            problems += [f"[{email.split('@')[0]} {w}px] {e}" for e in errors]
             ctx.close()
         browser.close()
     print("\n".join(problems))

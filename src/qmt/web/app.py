@@ -286,13 +286,27 @@ def _has_online(user) -> bool:
     return bool(user) and (_is_staff(user) or "online" in db.active_plan_kinds(user.id))
 
 
+def _has_gym(user) -> bool:
+    """May this user see Dvoranski treninzi (27.11.2026, build 2 of
+    roadmap/2026-11-27-dvoranski-treninzi-plan.md; the owner: "I would show
+    the tab only to members with a gym plan. Similarly how a online training
+    tab shows only to members with an online plan.")? _has_online's twin:
+    staff always; a member while a plan that books termini runs
+    (SESSION_KINDS: grupni, individualni, poluindividualni,
+    rehabilitacija; active as active_plan_kinds has it, until dospijeće).
+    While staff act as a member it is asked of the member (current_user):
+    his plans decide, as for every tab."""
+    return bool(user) and (_is_staff(user) or bool(set(SESSION_KINDS) & db.active_plan_kinds(user.id)))
+
+
 def _pop_feedback_prompt(request: Request, user):
     """One-shot after login: the termini he still owes his training
     (db.pending_feedback: ended, inside the training's window, neither a
     finished gym training nor an osvrt or absence of before). The flag is
     popped on the FIRST page rendered, so the prompt asks once per login and
-    never follows the client around the app. Already being on the karton
-    or on a training's page counts as answered — the forms are right
+    never follows the client around the app. Already being on the karton,
+    on the Dvoranski treninzi tab (27.11.2026: its open trainings listed)
+    or on a training's page counts as answered — the ways in are right
     there. Since 26.11.2026 (build 3) its way leads to the newest owed
     termin's training (since 27.11.2026 /dvoranski/termin/<id>), where
     "Završi trening" is the osvrt."""
@@ -318,6 +332,7 @@ def _ctx(request: Request, user, copy_texts: dict[str, str] | None = None, **ext
             "actor": acting[0] if acting else None, "kao": acting[1] if acting else None,
             "mojimakrosi_url": config.MOJIMAKROSI_URL,
             "show_online": _has_online(user),
+            "show_gym": _has_gym(user),
             "plan_links": PLAN_LINKS,
             "signup_open": config.signup_open(),
             "signup_mode": config.signup_mode(),
@@ -2376,12 +2391,10 @@ def _render_karton(request: Request, viewer, subject, own: bool):
            if born else None)
     pending = db.pending_feedback(subject.id) if own else []
     diary = _diary_rows(subject.id)
-    # the upcoming termini (26.11.2026, build 3): a termin whose gym training
-    # is open carries its way in ("Upiši trening →", the member's window,
-    # db.gym_window_open), never on the trainer's view
-    now = datetime.now(config.TZ)
+    # the upcoming termini; their way into a gym training ("Upiši trening →",
+    # 26.11.2026, build 3) went with build 2 of the dvoranski treninzi
+    # (27.11.2026): the tab lists the open ones, the karton keeps the record
     upcoming = db.my_upcoming(subject.id)
-    gym_open_ids = {s.id for s in upcoming if own and not s.canceled and db.gym_window_open(s.starts_at, now)}
     # the body and the photos (23.11.2026, Amir's karton, part 2): the
     # weights, the newest day first (the rail card's value and history, the
     # head line's "Masa"), the photos, the newest month first, and for the
@@ -2445,7 +2458,7 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         # the termini he still owes his training stand out in the diary
         pending_ids={x.id for x in pending},
         feelings=FEELING_LABELS,
-        upcoming=upcoming, gym_open_ids=gym_open_ids, gym_hours=config.GYM_OPENS_HOURS,
+        upcoming=upcoming,
         maxes=maxes, first_day=db.FIRST_DAY,
         weights=weights, weights_shown=WEIGHTS_SHOWN, latest_kg=latest_kg,
         body_line=_body_line(subject.height_cm, latest_kg),
@@ -2739,28 +2752,6 @@ def upitnik_pitanje_obrisi(request: Request, question_id: int):
         near = rest[max(i - 1, 0)] if rest else None
     db.delete_upitnik_question(question_id)
     return RedirectResponse("/upitnik" + (f"#step-q{near}" if near else ""), status_code=303)
-
-
-@app.post("/karton/trening")
-def karton_training(request: Request, day: str = Form("")):
-    """"+ Dodaj trening izvan termina" (since 26.11.2026, build 3: the date
-    alone, today by default): a gym training outside a termin on that date
-    (db.read_day: not in the future, not before 2020; db.add_gym_outside),
-    then its page (since 27.11.2026 /dvoranski/trening/<id>, its template
-    chooser), where it is written as a termin's is. A date refused:
-    back at the form with its sentence, nothing made. Until then the plain
-    form of 23.11.2026 (napor, osjećaj, komentar and an exercise log in one
-    form, a TrainingLog row): its rows stay, read and edited as before."""
-    from urllib.parse import quote
-
-    user = current_user(request)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-    try:
-        when = db.read_day(day)
-    except ValueError as e:
-        return RedirectResponse(f"/karton?error={quote(str(e))}#trening-novi", status_code=303)
-    return RedirectResponse(f"/dvoranski/trening/{db.add_gym_outside(user.id, when)}", status_code=303)
 
 
 @app.post("/karton/absent/{session_id}")
@@ -3117,8 +3108,11 @@ def karton_photo_delete(request: Request, photo_id: int):
 # Every write asks db.gym_can_write, `staff` being app._actor; a refused one
 # changes nothing and says so in the main card. The old addresses
 # (/karton/termin/<id>/trening, /karton/trening/<id> and its osvrt) lead
-# here, query kept; their writes went. Until build 2 the Karton tab stays
-# lit here and "← Natrag" leads to the karton.
+# here, query kept; their writes went. Since build 2 (27.11.2026) the pages
+# hang under the tab "Dvoranski treninzi" (GET /dvoranski, below): its tab
+# lit, "← Natrag" to it (the karton's diary row for a viewer with no tab),
+# and a training outside a termin made there (POST /dvoranski/trening; the
+# Karton's own form, POST /karton/trening, went).
 
 # the end of a training's window as its state line says it: "do četvrtka 26.11. u ponoć"
 WEEKDAYS_GEN = ("ponedjeljka", "utorka", "srijede", "četvrtka", "petka", "subote", "nedjelje")
@@ -3337,7 +3331,11 @@ def _gym_page(request: Request, user, t, status_code: int = 200):
         uredi=q.get("uredi") == "1", krug_word=krug, red=_id(q.get("red")), focus_set=q.get("kreni") == "1",
         odmor=rest if writable and rest is not None and 1 <= rest <= 3600 else None,
         at_chooser=at_chooser, in_card=in_card, here=here,
-        back=f"/karton#{'gt-%d' % t.id if t.holds_anything or t.session_id is None else 's-%d' % t.session_id}",
+        # "← Natrag": the tab (build 2, 27.11.2026); a viewer with no tab (a
+        # member whose gym plan lapsed, staff acting as one without a gym
+        # plan) the karton's diary row, as build 1's
+        back="/dvoranski" if _has_gym(user) else
+        f"/karton#{'gt-%d' % t.id if t.holds_anything or t.session_id is None else 's-%d' % t.session_id}",
         library_rows=[[e.id, e.name, e.tags] for e, _ in db.exercises()] if writable and view in ("station", "circuit") else [],
         tags=_tag_chips() if writable and station else [], max_sets=db.MAX_SETS, first_day=db.FIRST_DAY,
         today=config.today()), status_code=status_code)
@@ -3368,14 +3366,112 @@ def gym_osvrt_old(request: Request, training_id: int):
     return _same_query(request, f"/dvoranski/trening/{training_id}/osvrt")
 
 
+# ---------- the tab "Dvoranski treninzi" (27.11.2026, build 2) ----------
+#
+# roadmap/2026-11-27-dvoranski-treninzi-plan.md, build 2; the owner: "how
+# long would it take to create a new tab called 'Dvoranski treninzi' in the
+# same level of hierarchy as the 'Online treninzi' … Maybe it would make
+# sense for the user to only input in the 'Dvoranski treninzi' tab but Amir
+# and I can always check the user's Karton?" … "I would show the tab only to
+# members with a gym plan." Members write their gym trainings there, the
+# Karton keeps the record (its diary, each row a link into the training's
+# page). The tab is _has_gym's: a member with a running plan that books
+# termini, staff always, while staff act as a member his plans.
+
+# "Zadnji treninzi": the newest trainings that hold anything, at most so many
+GYM_TAB_LAST = 10
+
+
+@app.get("/dvoranski", response_class=HTMLResponse)
+def dvoranski_page(request: Request):
+    """The tab's page (dvoranski.html): a guest to the login; a member with
+    no gym plan the gate, as /treninzi's for one with no online plan ("Dvoranski
+    treninzi su dio članarine za dvoranu."); staff always, for their own
+    trainings. Its sections: "Otvoreni treninzi", his booked termini whose
+    training he may write now (db.gym_open_termini, the soonest first: the
+    termin's title, its date and time, until when, how many exercises it
+    holds, "Upiši trening" while it holds no block, else "Nastavi trening",
+    → /dvoranski/termin/<id>), none: his next booked termin and when its
+    training opens, or "Nemaš otvorenih treninga."; "Trening izvan termina",
+    the Karton's form of 26.11.2026, moved (POST /dvoranski/trening; a
+    refused date's sentence in it); "Zadnji treninzi", his newest
+    GYM_TAB_LAST trainings that hold anything (the karton diary's order and
+    facts), each "Otvori trening" → its page, which says whether it is still
+    his to write."""
+    from datetime import time
+    from urllib.parse import quote
+
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse(f"/login?next={quote('/dvoranski')}", status_code=303)
+    has_plan = _has_gym(user)
+    open_rows, next_text, last = [], "", []
+    if has_plan:
+        now = datetime.now(config.TZ)
+        gyms = db.gym_trainings(user.id)
+        by_session = {g.session_id: g for g in gyms if g.session_id is not None}
+        for s in db.gym_open_termini(user.id, now):
+            t = by_session.get(s.id)
+            open_rows.append({
+                # _gym_when reads a termin's start as a training's: "srijeda 25.11.2026. · 18:00"
+                "id": s.id, "title": s.title, "when": _gym_when(s), "until": _gym_until(s.starts_at),
+                "holds": t.count_text if t is not None and t.exercise_items else "",
+                "started": t is not None and bool(t.blocks)})
+        if not open_rows:
+            nxt = next((s for s in db.my_upcoming(user.id) if not s.canceled), None)
+            if nxt is not None:
+                at = nxt.starts_at.astimezone(config.TZ)
+                next_text = f"{nxt.title}, {WEEKDAYS_SHORT[at.weekday()]} {at:%-d.%-m.} u {at:%H:%M}"
+        # the karton diary's order (_diary_rows): a termin's by its start, one
+        # outside a termin by its date; the newest made first on a tie
+        held = sorted((g for g in gyms if g.holds_anything), reverse=True,
+                      key=lambda g: (g.starts_at.astimezone(config.TZ) if g.starts_at is not None
+                                     else datetime.combine(g.held_on, time(0), tzinfo=config.TZ), g.id))
+        for g in held[:GYM_TAB_LAST]:
+            at = (g.starts_at.astimezone(config.TZ) if g.starts_at is not None
+                  else datetime.combine(g.held_on, time(0), tzinfo=config.TZ))
+            when = f"{WEEKDAYS_SHORT[at.weekday()]} {at:%-d.%-m.%Y.}" + (f" · {at:%H:%M}" if g.starts_at else "")
+            facts = [g.count_text] if g.exercise_items else []
+            last.append({"t": g, "when": when, "facts": " · ".join(facts + ([g.osvrt_text] if g.osvrt_text else []))})
+    return templates.TemplateResponse(request, "dvoranski.html", _ctx(
+        request, user, has_plan=has_plan, open_rows=open_rows, next_text=next_text, gym_hours=config.GYM_OPENS_HOURS,
+        last=last, error=request.query_params.get("error", ""), first_day=db.FIRST_DAY, today=config.today()))
+
+
+@app.post("/dvoranski/trening")
+def gym_outside(request: Request, day: str = Form("")):
+    """"Dodaj trening" on the tab's "Trening izvan termina" (27.11.2026,
+    build 2; the Karton's "+ Dodaj trening izvan termina" from 26.11.2026
+    until then, POST /karton/trening): a gym training outside a termin on
+    that date (db.read_day: not in the future, not before 2020;
+    db.add_gym_outside), then its page, where it is written as a termin's
+    is. Made by a member with a gym plan, by staff for themselves, and by
+    staff acting as a member whatever his plans (rule 1's "at any time": the
+    actor decides); anyone else back to the tab, which turns him away,
+    nothing made. A date refused: back at the form, its sentence there."""
+    from urllib.parse import quote
+
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not (_has_gym(user) or _gym_staff(request)):
+        return RedirectResponse("/dvoranski", status_code=303)
+    try:
+        when = db.read_day(day)
+    except ValueError as e:
+        return RedirectResponse(f"/dvoranski?error={quote(str(e))}#trening-novi", status_code=303)
+    return RedirectResponse(f"/dvoranski/trening/{db.add_gym_outside(user.id, when)}", status_code=303)
+
+
 @app.get("/dvoranski/termin/{session_id}")
 def gym_from_termin(request: Request, session_id: int):
     """A termin's training (rule 2): the member's, made the first time it
     is opened (db.gym_training_for: his booking, the termin not canceled,
     the window open for a member; staff acting as him at any time), then
     its page. A refusal: his karton, its sentence at the top. The way in
-    from the karton's rows and upcoming termini, the raspored's "Tvoj
-    sljedeći termin", the login's osvrt prompt, and a roster's "Kao član →"."""
+    from the tab's "Otvoreni treninzi" (27.11.2026), the karton's diary
+    rows, the raspored's "Tvoj sljedeći termin", the login's osvrt prompt,
+    and a roster's "Kao član →"."""
     from urllib.parse import quote
 
     user = current_user(request)
@@ -3443,6 +3539,11 @@ def gym_osvrt_save(request: Request, training_id: int, effort: str = Form(""), f
         return _gym_back(training_id, error=str(e))
     if not saved:
         raise HTTPException(status_code=404)
+    # back where "← Natrag" leads (Fable's review of build 2, 27.11.2026): the
+    # tab for a viewer who has it, its "Zadnji treninzi" showing the training;
+    # the karton's diary row for one who has not, as build 1's
+    if _has_gym(user):
+        return RedirectResponse(f"/dvoranski?ok={quote('Trening je spremljen.')}", status_code=303)
     return RedirectResponse(f"/karton?ok={quote('Trening je spremljen.')}#gt-{training_id}", status_code=303)
 
 
@@ -3779,7 +3880,8 @@ def gym_day(request: Request, training_id: int, day: str = Form("")):
 def gym_delete(request: Request, training_id: int):
     """"Obriši trening", a training outside a termin's (or one let go of its
     termin), its blocks and osvrt with it (db.delete_gym_training); a
-    termin's goes with its booking: 404 here. Then the karton."""
+    termin's goes with its booking: 404 here. Then the tab (the karton for a
+    viewer who has none)."""
     user, t = _gym_of(request, training_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -3789,6 +3891,8 @@ def gym_delete(request: Request, training_id: int):
         db.delete_gym_training(training_id, user.id, staff=_gym_staff(request))
     except db.BookingError as e:
         return _gym_back(training_id, error=str(e))
+    if _has_gym(user):                               # the tab for a viewer who has it, as the osvrt's save
+        return RedirectResponse("/dvoranski?ok=Trening+je+obrisan.", status_code=303)
     return RedirectResponse("/karton?ok=Trening+je+obrisan.#osvrti", status_code=303)
 
 

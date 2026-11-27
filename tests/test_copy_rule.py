@@ -75,13 +75,15 @@ def fragments(source: str) -> set[str]:
 # the karton of the same day): every page a member or a guest reaches, and
 # the partials they print. Since 26.11.2026 (build 3) the gym training's two
 # pages, the rest bar the player and it share, and the tag chips its "Dodaj
-# vježbu" prints (the day editor's and the library's until then).
+# vježbu" prints (the day editor's and the library's until then); since
+# 27.11.2026 the tab "Dvoranski treninzi" (dvoranski.html, build 2 of the
+# dvoranski treninzi).
 MEMBER_TEMPLATES = (
     "base.html", "landing.html", "calendar.html", "karton.html", "treninzi.html", "trening_view.html",
     "trening_day.html", "trening_player.html", "trening_kraj.html", "_pass_leave.html", "moja_clanarina.html",
     "_plan_price.html", "_period.html", "_tiers.html", "prehrana.html", "upitnik.html", "_vodic.html", "vodic.html",
     "profil.html", "login.html", "signup.html", "forgot.html", "reset.html", "verify_sent.html", "error.html",
-    "karton_trening.html", "karton_trening_osvrt.html", "_rest_bar.html", "_tagbar.html",
+    "karton_trening.html", "karton_trening_osvrt.html", "_rest_bar.html", "_tagbar.html", "dvoranski.html",
 )
 # The templates only staff reach: they stay as they are (the owner was told so).
 STAFF_TEMPLATES = (
@@ -95,9 +97,11 @@ STAFF_TEMPLATES = (
 # their own: "Preporučeno:", "Članarina vrijedi do", not these)
 ALLOWED: dict[str, set[str]] = {
     "base.html": {
-        # the nav: the tabs, Admin ▾ and its items, the drawer's captions,
-        # the account menu (the bar's room is measured: tests/test_nav.py)
-        "Kao član", "Početna", "Raspored", "Karton", "Online treninzi", "Moja članarina", "Prehrana", "Admin",
+        # the nav: the tabs (Dvoranski treninzi since 27.11.2026), Admin ▾ and
+        # its items, the drawer's captions, the account menu (the bar's room
+        # is measured: tests/test_nav.py)
+        "Kao član", "Početna", "Raspored", "Karton", "Dvoranski treninzi", "Online treninzi", "Moja članarina",
+        "Prehrana", "Admin",
         "Gledaj kao član", "Termini", "Trenutne članarine", "Upitnik", "Vježbe", "Tekstovi", "Korisnici",
         "Statistika", "Prijava", "Registriraj se", "Kontakt", "Profil", "Tamna tema", "Odjava",
         # the strip over every page while staff act as a member (26.11.2026):
@@ -218,9 +222,10 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     # "Karton" (the view staff's again, the Karton tab's search opening
     # it) and the search's no-JS button "Otvori karton"; 128 since build 1 of
     # the dvoranski treninzi, 27.11.2026: the gym training's page took the
-    # player's layout, its crumbs gone, "← Natrag" the player's slot): a long
+    # player's layout, its crumbs gone, "← Natrag" the player's slot; 129
+    # since build 2 the same day: the nav's tab "Dvoranski treninzi"): a long
     # list means texts were left out
-    assert sum(len(v) for v in ALLOWED.values()) <= 128
+    assert sum(len(v) for v in ALLOWED.values()) <= 129
 
 
 def test_the_scan_sees_a_new_literal_and_strips_what_is_code():
@@ -247,9 +252,11 @@ def test_every_plain_slot_is_on_the_texts_page_once():
     assert [page for page, *_ in copy.TEXT_PAGES] == [
         "Početna", "Raspored", "Karton", "Online treninzi", "Trening (izvođenje)", "Trening u dvorani",
         "Moja članarina", "Prehrana", "Upitnik", "Vodič", "Profil", "Prijava i registracija", "Aplikacija"]
+    # "Trening u dvorani" opens at its tab since 27.11.2026 (build 2 of the
+    # dvoranski treninzi: /dvoranski, which staff open for their own trainings)
     assert {page: href for page, href, *_ in copy.TEXT_PAGES} == {
         "Početna": "/", "Raspored": "/raspored", "Karton": "/karton", "Online treninzi": "/treninzi",
-        "Trening (izvođenje)": None, "Trening u dvorani": None, "Moja članarina": "/moja-clanarina",
+        "Trening (izvođenje)": None, "Trening u dvorani": "/dvoranski", "Moja članarina": "/moja-clanarina",
         "Prehrana": "/prehrana", "Upitnik": "/upitnik", "Vodič": "/vodic", "Profil": "/profil",
         "Prijava i registracija": None, "Aplikacija": None}
     assert [page for page, _, lists, _ in copy.TEXT_PAGES if lists] == ["Početna", "Upitnik", "Vodič"]

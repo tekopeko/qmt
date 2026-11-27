@@ -92,10 +92,11 @@ from qmt.models import PLAN_TYPES, Base, Booking, SiteCopy, TrainingLog, User
 from qmt.web.app import addon_amounts, app, reference_prices
 
 # every page that has editable text and staff open (25.11.2026: the raspored, the
-# online list, the profile; /tekstovi lists every plain text. The online pages
-# that need a programme, the player and the login pages are walked on their own)
-PAGES = ("/", "/moja-clanarina", "/prehrana", "/upitnik", "/vodic", "/karton", "/raspored", "/treninzi", "/profil",
-         "/tekstovi")
+# online list, the profile; /tekstovi lists every plain text; since 27.11.2026
+# the tab Dvoranski treninzi. The online pages that need a programme, the
+# player and the login pages are walked on their own)
+PAGES = ("/", "/moja-clanarina", "/prehrana", "/upitnik", "/vodic", "/karton", "/dvoranski", "/raspored", "/treninzi",
+         "/profil", "/tekstovi")
 
 
 @pytest.fixture(autouse=True)
@@ -2122,8 +2123,9 @@ KARTON_OPTIONAL = {
     "karton.staff.own_lead", "karton.staff.review", "karton.staff.old",
     "karton.staff.upitnik_none", "karton.staff.limits_flag", "karton.staff.maxes_empty", "karton.staff.diary_lead",
     "karton.staff.own_diary_lead", "karton.staff.diary_empty", "karton.staff.own_diary_empty",
-    # the gym training's (26.11.2026, build 3): when it opens, a termin's row with none yet
-    "karton.termini.gym_before", "karton.termini.gym_after", "karton.diary.gym_none_open", "karton.diary.gym_none"}
+    # the gym training's (26.11.2026, build 3): a termin's row with none yet
+    # (when it opens, karton.termini.gym_before / _after, went to the tab on 27.11.2026)
+    "karton.diary.gym_none_open", "karton.diary.gym_none"}
 # texts karton.html printed before they were slots (at b82221d), copied from
 # it character for character: what their defaults are (the words before a
 # link carry the dash that led to it)
@@ -2143,7 +2145,6 @@ KARTON_BEFORE = {
                          "nisi bio/la.",
     "karton.diary.canceled": "Otkazano",
     "karton.diary.absent": "Nisam bio/la",
-    "karton.outside.add": "+ Dodaj trening izvan termina",
     "karton.osvrt.effort": "Napor (1 lagano – 10 maksimalno)",
     "karton.confirm.osvrt_cta": "Obriši osvrt",
     "karton.confirm.absent_text": "Termin se miče iz dnevnika kao odrađen trening i ostaje zabilježen kao izostanak. "
@@ -2257,7 +2258,7 @@ def spans(page: str, key: str) -> list[str]:
 
 
 def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
-    """Every static text of the karton is a slot (25.11.2026): 120 of them
+    """Every static text of the karton is a slot (25.11.2026): 114 of them
     (110, and the same day's later build's 16: the documents, the body
     form's hint, "Povijest vježbe", the document's confirm; since
     26.11.2026 the height's six, karton.weight.height_*, in place of the
@@ -2265,7 +2266,10 @@ def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
     the plain form's seventeen away, its exercise block's nine, the osvrt
     form's five, "Ispuni osvrt", its Spremi and "bez osvrta", and brought
     eight: a termin's row's state and its way in, the termini's, a training
-    outside a termin's "Dodaj trening"),
+    outside a termin's "Dodaj trening": 120; on 27.11.2026 build 2 of the
+    dvoranski treninzi took six to the tab, "+ Dodaj trening izvan
+    termina", its form's heading, "Dodaj trening" and "Odustani", and the
+    termini's hint when a training opens, its two halves),
     karton.<area>.<name>, registered area by area in the page's order
     (copy.KARTON_AREAS: the panel lists them so, each once), every one a
     text of CAP characters labelled for the editor's bar ("Karton: naslov",
@@ -2276,7 +2280,10 @@ def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
     clean() keeps a text; the weight card's heading is "Tjelesna
     kompozicija" since the later build (Amir: "Tjelesna masa tu bi
     promijenio u tjelesna kompozicija")."""
-    assert len(KARTON) == 120 and KARTON == [k for k in copy.SLOTS if k.startswith("karton.")]
+    assert len(KARTON) == 114 and KARTON == [k for k in copy.SLOTS if k.startswith("karton.")]
+    for gone in ("karton.outside.add", "karton.outside.title", "karton.outside.create", "karton.outside.cancel",
+                 "karton.termini.gym_before", "karton.termini.gym_after"):         # the tab's since 27.11.2026
+        assert gone not in copy.SLOTS, gone
     areas = [key.split(".")[1] for key in KARTON]
     assert list(dict.fromkeys(areas)) == list(copy.KARTON_AREAS)                 # area by area, in the page's order
     assert [key for _, keys in copy.KARTON_PANEL for key in keys] == KARTON      # the panel: every one, once, in order
@@ -2287,7 +2294,7 @@ def test_every_karton_text_is_a_slot_with_the_words_the_page_printed():
         assert slot.label.startswith("Karton") and slot.label.count(":") == 1, key
         assert slot.default and copy.clean(slot.default) == slot.default, key
         assert slot.required == (key not in KARTON_OPTIONAL), key
-    assert len(KARTON_OPTIONAL) == 41 and KARTON_OPTIONAL <= set(KARTON)
+    assert len(KARTON_OPTIONAL) == 39 and KARTON_OPTIONAL <= set(KARTON)
     for key, label in (("karton.head.title", "Karton: naslov"), ("karton.weight.add", "Karton · masa: gumb Upiši"),
                        ("karton.osvrt.effort", "Karton · osvrt: polje Napor")):
         assert copy.SLOTS[key].label == label, key
@@ -2335,11 +2342,14 @@ def test_an_edited_karton_text_shows_where_each_view_prints_it():
         assert t.post(f"/copy/{key}", data={"text": text}).json()["text"] == text, key
     mine, own, view = (client_for("ivan@test.local").get("/karton").text, t.get("/karton").text,
                        t.get(f"/karton/{ivan}").text)
+    # the termini's way into a gym training is the raspored's card's alone
+    # since 27.11.2026 (build 2 of the dvoranski treninzi: the tab lists them)
+    raspored = client_for("ivan@test.local").get("/raspored").text
     for key, pages in (("karton.head.title", (mine, own)), ("karton.limits.title", (mine, own, view)),
                        ("karton.weight.add", (mine, own)), ("karton.diary.sets", (mine, own, view)),
                        ("karton.diary.gym_fill", (mine,)), ("karton.staff.answers", (view,)),
                        ("karton.staff.own_lead", (own,)), ("karton.diary.gym_none_open", (mine, view)),
-                       ("karton.termini.gym_link", (mine,))):
+                       ("karton.termini.gym_link", (raspored,))):
         for page in pages:
             shown = spans(page, key) if 'id="copyToggle"' in page else [
                 unescape(x) for x in re.findall(r'<span class="t">(.*?)</span>', page, re.S)]
@@ -2348,6 +2358,7 @@ def test_an_edited_karton_text_shows_where_each_view_prints_it():
     page = own.split('<section class="card k-texts"')[0]                                    # the page, not the panel
     assert "Svi odgovori" not in mine and "Svi odgovori" not in page and "Moj dnevnik i tijelo." not in mine
     assert "Upiši svoj trening" not in view and "Na trening →" not in view and "Na trening →" not in page   # his own way in
+    assert "Na trening →" not in mine                                                       # the raspored's alone
     assert 'data-confirm-title="Nisi došao/la?"' in mine and 'data-confirm-cta="Makni unos"' in mine
     assert 'data-confirm-cta="Makni unos"' in own and 'data-confirm-cta="Makni unos"' not in view   # his rows only
     assert 'placeholder="npr. leđa">' in mine
@@ -2430,15 +2441,19 @@ NEW_PREFIXES = ("raspored.", "treninzi.", "program.", "dan.", "player.", "kraj."
                 "clanarina.bills.col_", "prehrana.kicker", "prehrana.text_", "prehrana.hint_", "prehrana.open")
 NEW = [key for key in copy.SLOTS if key.startswith(NEW_PREFIXES)]
 # the gym training's page (26.11.2026, build 3; since 27.11.2026 its blocks, Stanica and Kružni set):
-# gym.<area>.* (the landing's gym.kicker and gym.h2 are the landing's)
+# gym.<area>.* (the landing's gym.kicker and gym.h2 are the landing's), and
+# since 27.11.2026 its tab's, "Dvoranski treninzi" (gym.tab.*, build 2)
 GYM_PREFIXES = ("gym.head.", "gym.state.", "gym.chooser.", "gym.add.", "gym.next", "gym.block.", "gym.whatnext",
                 "gym.form.", "gym.station.", "gym.card.", "gym.circuit.", "gym.overview.", "gym.done.", "gym.foot.",
-                "gym.osvrt.", "gym.confirm.")
+                "gym.osvrt.", "gym.confirm.", "gym.tab.")
 # of them, the ones that are no control's words (a kicker, a state's whole
-# sentence, a lead line, an empty block's word): emptied, they stay empty
-# (tests/test_gym.py's too)
+# sentence, a lead line, an empty block's word; the tab's lead, its gate's
+# sentence, the words around the hours, its two empty lines): emptied,
+# they stay empty (tests/test_gym.py's too, the training page's)
 GYM_OPTIONAL = {"gym.head.kicker", "gym.state.closed", "gym.state.staff", "gym.osvrt.kicker", "gym.chooser.own",
-                "gym.block.circuit", "gym.whatnext", "gym.overview.empty_station", "gym.overview.empty_circuit"}
+                "gym.block.circuit", "gym.whatnext", "gym.overview.empty_station", "gym.overview.empty_circuit",
+                "gym.tab.lead", "gym.tab.no_plan", "gym.tab.next_opens", "gym.tab.next_hours", "gym.tab.none",
+                "gym.tab.last_empty"}
 # the ones that are no control's words (a lead, a hint, a kicker, a chip, a
 # state's word, an empty line, a placeholder): emptied, they stay empty
 NEW_OPTIONAL = {
@@ -3907,9 +3922,11 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         27.11.2026 its blocks: a station started, every <details> open, a ✓
         and its pause bar, an empty station's form, a Kružni set started and
         one being set up, its osvrt's page, an empty one's template
-        chooser), her profile and the error
+        chooser), since 27.11.2026 the tab Dvoranski treninzi (her open
+        termin, her last trainings, a refused date's sentence in its
+        form), her profile and the error
         page; sara's gates
-        (no plan: the raspored's line, the online list's card); a new
+        (no plan: the raspored's line, the online list's card, the tab's); a new
         member's profile with its welcome; the trainer's programme, day (each
         exercise open) and /tekstovi in edit mode. Nothing overflows, widens the page or is cut
         (MEASURE); a dialog or a fixed bar stays inside the screen with all
@@ -4011,9 +4028,11 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             go(a, gym + "/osvrt", "the gym training's osvrt")
             go(a, f"/dvoranski/trening/{ana_tpl}?blok={ana_setup}", "a Kružni set being set up", unfold=True)
             go(a, f"/dvoranski/trening/{ana_empty}", "an empty gym training's template chooser")
+            go(a, "/dvoranski", "the tab Dvoranski treninzi")                # 27.11.2026: her open termin, her last
+            go(a, "/dvoranski?error=Neispravan datum.", "the tab, a refused date")
 
             s = opened("sara@test.local")                                   # sara: no plan
-            for path in ("/raspored", "/treninzi"):
+            for path in ("/raspored", "/treninzi", "/dvoranski"):
                 go(s, path, f"sara {path}")
             n = opened("petra@test.local")                                  # a new member: the profile's welcome
             measure(n, "the welcome")

@@ -75,10 +75,13 @@ ANON = ["/", "/cjenik", "/login", "/signup", "/forgot", "/prehrana",
 # "Kružni trening" (its Stanica done, its Kružni set's Krug 1 saved, Krug 2
 # open), by its row's "Otvori trening" (no time); "gym:stanica" and
 # "gym:setup" that training's empty Stanica (its form) and empty Kružni set
-# (being set up), by its overview's rows.
-CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "gym:filled",
-          "gym:osvrt", "gym:open", "gym:krug", "gym:stanica", "gym:setup", "/moja-clanarina", "/prehrana", "/profil",
-          "/treninzi", "trening:1", "dan:1", "kreni:1", "krug:1", "kraj:1", "/upitnik", "/upitnik?od=1", "/vodic"]
+# (being set up), by its overview's rows. "/dvoranski" (27.11.2026, build 2:
+# the tab Dvoranski treninzi) ivan's open termini, his form and his last
+# trainings; the owner's (staff's own: none open, his form, none held).
+CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?view=month", "/karton", "/dvoranski",
+          "gym:filled", "gym:osvrt", "gym:open", "gym:krug", "gym:stanica", "gym:setup", "/moja-clanarina", "/prehrana",
+          "/profil", "/treninzi", "trening:1", "dan:1", "kreni:1", "krug:1", "kraj:1", "/upitnik", "/upitnik?od=1",
+          "/vodic"]
 # the library of exercises (30.10.2026): its list, and one exercise's page,
 # "vjezba:<name>", found on the list by the seed's name (scripts/seed_demo.py:
 # a reseed gives the exercises new ids). Goblet čučanj has tags, similar
@@ -93,7 +96,7 @@ CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?vie
 # circuit): "predlozak:uredi" its Trening 1's editor, "predlozak:dan" that
 # day's page, found from staff's /treninzi table by its title (no client
 # reaches a dvoranski programme).
-OWNER = ["/", "/raspored", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi",
+OWNER = ["/", "/raspored", "/dvoranski", "/admin", "/clanarine", "/korisnici", "/statistika", "/treninzi",
          "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi", "predlozak:uredi", "predlozak:dan", "/profil",
          "/tekstovi", "/kao", "/kao/zapisi"]
 TEMPLATE_TITLE = "Predložak — kružni trening"          # scripts/seed_demo.py's TEMPLATE

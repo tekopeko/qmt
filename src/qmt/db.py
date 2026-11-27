@@ -3864,7 +3864,8 @@ def gym_training_for(user_id: int, session_id: int, staff: bool = False) -> int:
 
 
 def add_gym_outside(user_id: int, day: date) -> int:
-    """A training outside a termin on `day` (POST /karton/trening, its date
+    """A training outside a termin on `day` (POST /dvoranski/trening since
+    27.11.2026, the tab's form; POST /karton/trening until then; its date
     read by read_day): no session, no title, no start, no block. Its id."""
     with session_scope() as s:
         t = GymTraining(user_id=user_id, session_id=None, title="", starts_at=None, held_on=day, note="")
@@ -3888,10 +3889,29 @@ def gym_training(training_id: int, user_id: int) -> GymTraining | None:
 
 def gym_trainings(user_id: int) -> list[GymTraining]:
     """Every training of a member's, newest first (its date, then the
-    newest made): the karton's diary."""
+    newest made): the karton's diary, the tab's "Zadnji treninzi"."""
     with session_scope() as s:
         return list(s.scalars(_gym_query().where(GymTraining.user_id == user_id)
                               .order_by(GymTraining.held_on.desc(), GymTraining.id.desc())))
+
+
+def gym_open_termini(user_id: int, now: datetime | None = None) -> list[TrainingSession]:
+    """A member's booked termini whose training is his to write now (the
+    tab's "Otvoreni treninzi", 27.11.2026, build 2 of
+    roadmap/2026-11-27-dvoranski-treninzi-plan.md): gym_window_open, the
+    termin not canceled, the soonest first. A window runs from
+    GYM_OPENS_HOURS before a termin to the end of the day after it, so the
+    termini from three days back to GYM_OPENS_HOURS ahead are read and the
+    window says which of them are open."""
+    now = now or datetime.now(config.TZ)
+    with session_scope() as s:
+        rows = list(s.scalars(
+            select(TrainingSession).join(Booking, Booking.session_id == TrainingSession.id)
+            .where(Booking.user_id == user_id, TrainingSession.canceled.is_(False),
+                   TrainingSession.starts_at <= now + timedelta(hours=config.GYM_OPENS_HOURS),
+                   TrainingSession.starts_at >= now - timedelta(days=3))
+            .order_by(TrainingSession.starts_at, TrainingSession.id)))
+    return [x for x in rows if gym_window_open(x.starts_at, now)]
 
 
 def _gym_locked(s: Session, training_id: int, user_id: int, staff: bool) -> GymTraining | None:

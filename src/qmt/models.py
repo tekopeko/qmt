@@ -1608,7 +1608,8 @@ class GymTraining(Base):
     ON CONFLICT DO NOTHING on uq_gym_trainings_user_session, a partial
     unique index, so two opens at once make one), its `title` and
     `starts_at` the termin's then (snapshots: a record), `held_on` its
-    Zagreb date. A training outside a termin (POST /karton/trening) has no
+    Zagreb date. A training outside a termin (POST /dvoranski/trening, the
+    tab's form, since 27.11.2026; POST /karton/trening until then) has no
     session, title '' and no start, `held_on` the date the member picked. A
     cancelled booking takes its training with it (db.cancel_booking): the
     row goes when nothing was done in it, one that holds a record is let go

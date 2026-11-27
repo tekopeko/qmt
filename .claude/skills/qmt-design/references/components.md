@@ -8,7 +8,7 @@ first; a new class is a last resort and needs a comment explaining the gap.
 
 | class | where | what |
 |---|---|---|
-| `.topbar` | base | a floating dark-glass pill (999px, blur, sticky 10px below the top, max 1100px) on every screen and both themes; ONE row at every width: brand left, tabs middle, avatar right, all inside the pill's padding. `.brand-slot` takes the room the tabs leave and is a query container: the wordmark shows in full when the slot is ≥19.2rem, else "QMT" (never a window breakpoint — the pill is capped, so the window says nothing about the room inside). 7+ tabs run tight (`.nav:has(> a:nth-of-type(7))`; no bar has seven links: a client six at most, staff six and Admin ▾ since 24.11.2026, Karton joining their row, which the rule does not count and which needs none of it: the owner's bar measured at 901, 960, 1024, 1100, 1200 and 1280px in both themes keeps every tab on its line inside the pill, the brand's slot 191px at 901px, the whole name from 1024px), all tabs tighten ≤1200px and fold into ☰ ≤900px. Tabs never wrap. The ☰ drawer: a client's is one plain list; staff's two sections under `.nav-cap` captions (PT Sans 700 .72rem uppercase, `#9a9aa0` on the bar's glass), "Kao član" and "Admin", a hairline (`.nav-admin`'s border-top) between them, Admin ▾'s items as rows like the tabs (no icons, the current one `.on`'s look) and the tab itself no row; it scrolls inside itself when taller than the window (the bar is sticky) |
+| `.topbar` | base | a floating dark-glass pill (999px, blur, sticky 10px below the top, max 1100px) on every screen and both themes; ONE row at every width: brand left, tabs middle, avatar right, all inside the pill's padding. `.brand-slot` takes the room the tabs leave and is a query container: the wordmark shows in full when the slot is ≥19.2rem, else "QMT" (never a window breakpoint — the pill is capped, so the window says nothing about the room inside). 7+ tabs run tight where they show (`.nav:has(> a:nth-of-type(7))`, from 960px). Since 27.11.2026 a bar has seven tab links (Dvoranski treninzi joined the member's row, after Karton: a member with a gym plan and an online plan; staff, seven and Admin ▾; six and Admin ▾ from 24.11.2026 fitted at every width from 901px), and seven do not fit below 936px: measured for the owner's bar, the widest, at every width from 901 to 1280px in both themes, the avatar left the pill at 901–935px, from 936px every tab sat on its line inside the pill, the brand's slot 87px ("QMT"; staff's wordmark is "QMT" at every width since, a client's seven leave the whole name room at 1280px). So a bar of seven, `.nav.nav-7` and its `.nav-burger.nav-7` (the template counts the tabs), is the ☰ drawer up to 959px (Step 2's rules again for `.nav-7`, keep the two in step) and one row from 960px (the first fit, 936px, left 0.6px to spare: the fold leaves 24px for another browser's letter widths) (`tests/test_nav.py`, `SEVEN_FIT`); six or fewer keep the drawer at ≤900px. All tabs tighten ≤1200px and fold into ☰ ≤900px. Tabs never wrap. The ☰ drawer: a client's is one plain list; staff's two sections under `.nav-cap` captions (PT Sans 700 .72rem uppercase, `#9a9aa0` on the bar's glass), "Kao član" and "Admin", a hairline (`.nav-admin`'s border-top) between them, Admin ▾'s items as rows like the tabs (no icons, the current one `.on`'s look) and the tab itself no row; it scrolls inside itself when taller than the window (the bar is sticky) |
 | `.nav > a` / `.nav .navbtn` / `.nav a.cta` / `.nav a.dark` / `.on` | base | tab: a link right in `.nav` (`> a`: Admin ▾'s items are links further in, rows of its menu) or a `.navbtn` (Admin ▾, `.menu-btn`, its caret part of its label, `aria-hidden`); red pill (`.cta`); dark glass pill (`.dark`, the pill's own "black", theme-free because the bar is always dark); current page (`.on`; Admin ▾ while one of its pages is open, and the same look while its menu is open). A client: Početna · Raspored · Karton · Online treninzi (with an online plan) · Moja članarina · Prehrana; staff (trainer, owner): that row, Karton in it since 24.11.2026 (their own karton: `.on` at `/karton` and their own gym trainings' pages, and since 27.11.2026 at a client's `/karton/<id>`, which the tab's search opens, Admin ▾ not, no item current; `/upitnik` Admin ▾ → Upitnik), then Admin ▾ (26.10.2026). Guest bar: Prijava `.cta` (plus Registriraj se at the same weight while signup is open) · "Kontakt" `.dark`; never a Cjenik tab, and no "Što nudimo" — the photo leads to the offer |
 | `.topbar.compact` | base (guests) | Shape's small pill: `width: fit-content`, centred; the brand is content-sized (no slot query) and the wordmark shortens below 420px, where even the small pill cannot hold the name beside the ☰. Its drawer is a centred 300px card, not a sliver the pill's width |
 | `.kao-bar` | base (staff acting as a member, 26.11.2026) | the strip over every page while a trainer or the owner is in a member's account (`kao` in the context; the one-task pages and the error page too): the first child of `body`, sticky at the very top, `--kao-h` tall (44px, 52px on a coarse pointer), `z-index` 45; the topbar's pill sits under it (`body[data-kao] .topbar`'s sticky top is `--kao-h` + 10px) and html's `scroll-padding-top` is `--kao-h`, so a jump to an anchor clears both (its own `scroll-margin` on top); a drawer under it scrolls in the window less the strip. The karton's amber: `--warn` text on `--warn-soft` laid over `--bg` (`linear-gradient(var(--warn-soft), var(--warn-soft)) var(--bg)`: solid, no page text shows through; 4.6:1 light, 8.5:1 dark), a 30% `--warn` hairline under it, Inter 500 .88rem. ONE line at every width, its content on the pill's column (`padding: 0 max(16px, (100% − 1100px) / 2)`): `.kao-as` "Gledaš kao: **name**" (700), cut with an ellipsis (its `title` the whole name and the email), then "Izađi" (`.kao-exit`, a form posting `/kao/izlaz`): a `--warn` pill with `--bg` ink (5.5:1 light, 11:1 dark), 700 .82rem, 32px, 44px on a coarse pointer, never pushed off a 360px screen; its hover a 18% `--text` mix, never the base red. `role="status"`. Staff's own chrome: fixed words, no slot. The page carries the member's id (`body[data-kao]`), whose script marks every form that posts (`?kao=`) and every fetch that is no GET (`X-QMT-Kao`): the server runs a write only for the identity it was drawn for |
@@ -409,19 +409,36 @@ what each Krug did. A booked termin with none: its
 row's `.le-actions` "Upiši trening" (`.act`, inside the window) beside "Nisam
 bio/la", and under the head its state, `.le-state` (muted .8rem, the online
 pass's `.le-sub` size): "Trening još nije upisan." / "Trening nije upisan.".
-**"+ Dodaj trening izvan termina"** (`.log-new`, the member's own karton, above
-the diary's rows): an `.act` that opens its form (`qmtToggleForm`) in a hairline
-box (`--surface`, `--r-md`, 14px 12px 12px), Datum (`type=date`) alone and
-"Dodaj trening" (`.btn-sm.btn-signal`): its training's page does the rest.
-**"Nadolazeći termini"**' way in (26.11.2026): a termin whose training is open
-ends its `.cal-row` with "Upiši trening →" (`.act.cal-go`, pushed right), and
-under the list, once, a muted `.hint.gym-when` (.82rem, 8px over it) says when
-a training opens. The raspored's "Tvoj sljedeći termin" carries the same link
-(`.act.nt-gym`, 8px under the card's lines, wrapping inside the card).
+**"+ Dodaj trening izvan termina"** (`.log-new`, 26.11.2026) and **"Nadolazeći
+termini"**' way in ("Upiši trening →", `.act.cal-go`, and the `.hint.gym-when`
+under the list) went on 27.11.2026 (build 2 of the dvoranski treninzi): the
+karton keeps the record, the tab Dvoranski treninzi the forms (below). The
+raspored's "Tvoj sljedeći termin" keeps its "Upiši trening →" (`.act.nt-gym`,
+8px under the card's lines, wrapping inside the card).
+**The tab Dvoranski treninzi** (`dvoranski.html`, `/dvoranski`, 27.11.2026): the
+`/treninzi` list's column (`.dv`, 640px), the page's h1 and lead, three sections
+(`.dv-sec`, 30px apart, each its h2 at 1.05rem). "Otvoreni treninzi": a `.card.dv-open`
+per open termin (16px 20px 18px, 14px 16px 16px on a phone), the training page's head
+in small: the title an h3 (1.02rem, the display face), `.dv-when` (700 tabular,
+never muted), `.dv-state` and `.dv-holds` (muted .88rem), then ONE `.btn.btn-sm`
+(`.dv-go`, 12px over it: the card's primary action, no glow), the cards 12px apart
+(`.dv-list`); none open, one muted `.hint.dv-none` (its link a `.tlink`).
+"Trening izvan termina" (`#trening-novi`): a `.card.dv-new` holding the form
+(`.dv-form`: the date `.field`, 260px at most, then `.btn.btn-sm`), a refusal's
+`.alert` inside the card, over the field (the page's top shows none). "Zadnji
+treninzi": one `.card.dv-last` (4px 20px), a `.dv-row` per training, hairlines
+between (`border-top` on the second on): `.dv-main` (the title `.dv-kicker`,
+700 .7rem .12em uppercase muted, the diary's kicker; `.dv-at` 700 .92rem
+tabular; `.dv-facts` muted .82rem) and "Otvori trening" (`.act`) at its end, which
+takes a line of its own when its words are long (`flex-wrap`); under the card
+"Svi tvoji treninzi su u kartonu →" (`.act.act-quiet.dv-all`). A member with no
+gym plan: the gate's `.card.dv-gate`, /treninzi's (34px, centred, its one sentence
+bold). Its buttons' words wrap inside them (the training page's rule).
 **The gym training's page** (`karton_trening.html`, `/dvoranski/trening/<id>`;
 26.11.2026, build 3; since 27.11.2026 a row of blocks, Stanica and Kružni set, on
 the online player's layout, build 1 of `roadmap/2026-11-27-dvoranski-treninzi-plan.md`):
-the normal layout and nav, the player's own rules copied into the page's head
+the normal layout and nav (since build 2 its tab Dvoranski treninzi lit, "← Natrag"
+to it), the player's own rules copied into the page's head
 under the player's classes (not promoted to base.html: a second page that needs
 them moves them there): `.pl` (640px; 1044px from 1000px), `.pl-segs` /
 `.pl-track` (a 4px piece per block: done `--accent`, the one on screen `--text`

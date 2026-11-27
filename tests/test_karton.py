@@ -191,9 +191,11 @@ def test_staff_have_a_karton_of_their_own():
     /karton is staff's own as a member's: the trainer's, and the owner's
     who does not train. Neither has the upitnik card (staff never fill it)
     nor "Nadolazeći termini" (they book none), and the empty diary says
-    "Još nema treninga u dnevniku." with no way to book. The rest is a
-    member's: "+ Dodaj trening izvan termina" makes his training (a gym
-    training since 26.11.2026), the maxes count what he ticks in it, his
+    "Još nema treninga u dnevniku." with no way to book (and since
+    27.11.2026 no form: "+ Dodaj trening izvan termina" went to the tab).
+    The rest is a member's: his training outside a termin (a gym training
+    since 26.11.2026, made on the tab "Dvoranski treninzi" since
+    27.11.2026) is in his diary, the maxes count what he ticks in it, his
     weight and his limitations save, and his finished
     online pass (staff use the player) is in his diary. A client's karton,
     /karton/<id>, is staff's, the trainer's and the owner's alike (the
@@ -212,14 +214,15 @@ def test_staff_have_a_karton_of_their_own():
         for gone in ('<section class="upitnik', "Upitnik još nije ispunjen", "Ispuni upitnik",
                      "dio zasebne članarine", 'id="termini-h"', "Nadolazeći termini", "rezerviraj prvi"):
             assert gone not in page, gone
-        assert '<p class="hint">Još nema treninga u dnevniku.</p>' in page and 'id="trening-novi"' in page
+        assert '<p class="hint">Još nema treninga u dnevniku.</p>' in page
+        assert 'id="trening-novi"' not in page and 'action="/karton/trening"' not in page   # the tab's since 27.11.2026
         assert 'id="masa"' in page and 'id="ogranicenja"' in page and 'id="napredak"' in page
 
     today = config.today()
     # his training outside a termin (since 26.11.2026 a gym training, its date
-    # alone, then its page; since 27.11.2026 at /dvoranski, its blocks): a
-    # Stanica added there, its exercise chosen and a set ticked
-    r = ca.post("/karton/trening", data={"day": today.isoformat()}, follow_redirects=False)
+    # alone, then its page; since 27.11.2026 at /dvoranski, its blocks, made
+    # on the tab): a Stanica added there, its exercise chosen and a set ticked
+    r = ca.post("/dvoranski/trening", data={"day": today.isoformat()}, follow_redirects=False)
     [log] = db.gym_trainings(amir)
     assert location(r) == f"/dvoranski/trening/{log.id}" and ca.get(location(r)).status_code == 200
     ca.post(f"/dvoranski/trening/{log.id}/blok", data={"vrsta": "stanica"})
@@ -630,41 +633,40 @@ def test_an_old_row_lists_its_exercises_and_edits_without_them():
     assert ci.post(f"/karton/feedback/{sid}", data={"effort": "7"}).status_code in (404, 405)
 
 
-def test_a_training_outside_a_termin_asks_its_date_alone():
-    """"+ Dodaj trening izvan termina" (since 26.11.2026 its date alone,
-    today by default, never after it, not before 2020): POST /karton/trening
-    makes a gym training outside a termin on that date (no session, no
-    title, no start) and opens its page (since 27.11.2026 at /dvoranski); a date in the future, before
-    2020-01-01, empty or no date makes nothing ("Neispravan datum.", back at
-    the form). The diary lists it as a training of its own ("Trening izvan
-    termina", "Otvori trening"), staff's own karton too."""
-    ivan = make_user("ivan@test.local")
-    make_user("trener@test.local", is_trainer=True)
-    ci = client_for("ivan@test.local")
-    today = config.today()
-    page = ci.get("/karton").text
-    new = " ".join(bare(page).split('<div class="log-new" id="trening-novi">')[1].split("</form>")[0].split())
-    assert ('<button type="button" class="act" onclick="qmtToggleForm(\'trening-novi\')">+ Dodaj trening izvan termina'
-            '</button>') in new
-    assert '<form class="le-edit" method="post" action="/karton/trening">' in new
-    assert (f'<input id="nt-day" type="date" name="day" value="{today.isoformat()}" '
-            f'min="2020-01-01" max="{today.isoformat()}" required>') in new
-    assert "name=\"effort\"" not in new and "<fieldset" not in new and "Dodaj trening</button>" in new
-
-    for day in ((today + timedelta(days=1)).isoformat(), "2019-12-31", "", "23.11.2026", "2026-02-30"):
-        r = ci.post("/karton/trening", data={"day": day}, follow_redirects=False)
-        assert location(r) == "/karton?error=Neispravan datum.#trening-novi", day
-    assert db.gym_trainings(ivan) == []
-    r = ci.post("/karton/trening", data={"day": "2020-01-01"}, follow_redirects=False)
+def test_the_karton_keeps_a_training_outside_a_termin_and_makes_none():
+    """The karton keeps the record, the tab the forms (27.11.2026, build 2
+    of the dvoranski treninzi; the owner: "Maybe it would make sense for the
+    user to only input in the 'Dvoranski treninzi' tab but Amir and I can
+    always check the user's Karton?"). "+ Dodaj trening izvan termina" and
+    its form, a member's own karton's and a staff member's own since
+    26.11.2026, are gone, and POST /karton/trening with them (405, nothing
+    made: the tab's POST /dvoranski/trening makes one, tests/test_dvoranski.py).
+    One made there is a row of the diary of its own ("Trening izvan
+    termina", its date, "Otvori trening" → its page), a member's and a staff
+    member's alike, and the trainer's view reads it with no button."""
+    ivan = make_user("ivan@test.local", plans=("grupni",))
+    trener = make_user("trener@test.local", is_trainer=True, plans=())
+    ci, ct = client_for("ivan@test.local"), client_for("trener@test.local")
+    for c in (ci, ct):
+        page = bare(c.get("/karton").text).split("<main", 1)[1]               # the page, not its style's notes
+        for gone in ('id="trening-novi"', 'class="log-new"', "+ Dodaj trening izvan termina", 'action="/karton/trening"',
+                     'id="nt-day"'):
+            assert gone not in page, gone
+    r = ci.post("/karton/trening", data={"day": config.today().isoformat()}, follow_redirects=False)
+    assert r.status_code == 405 and db.gym_trainings(ivan) == []
+    r = ci.post("/dvoranski/trening", data={"day": "2020-01-01"}, follow_redirects=False)
     [t] = db.gym_trainings(ivan)
     assert location(r) == f"/dvoranski/trening/{t.id}"
     assert (t.session_id, t.title, t.starts_at, t.held_on) == (None, "", None, date(2020, 1, 1))
+    db.add_gym_block(t.id, ivan, "stanica")
+    db.set_gym_station(db.gym_training(t.id, ivan).blocks[0].id, ivan, db.create_exercise("Plank"), 2, seconds=30)
     row = bare(ci.get("/karton").text).split(f'id="gt-{t.id}"')[1].split('<div class="log-entry')[0]
     assert '<div class="le-kicker">Trening izvan termina</div>' in row and '<span class="when">sri 1.1.2020.</span>' in row
     assert f'<a class="act" href="/dvoranski/trening/{t.id}">Otvori trening</a>' in row
-    ct = client_for("trener@test.local")                                    # staff's own karton: theirs too
-    r = ct.post("/karton/trening", data={"day": today.isoformat()}, follow_redirects=False)
-    [mine] = db.gym_trainings(db.get_user_by_email("trener@test.local").id)
+    view = bare(ct.get(f"/karton/{ivan}").text).split(f'id="gt-{t.id}"')[1].split('<div class="log-entry')[0]
+    assert '<div class="le-kicker">Trening izvan termina</div>' in view and "/dvoranski/" not in view
+    r = ct.post("/dvoranski/trening", data={"day": config.today().isoformat()}, follow_redirects=False)
+    [mine] = db.gym_trainings(trener)
     assert location(r) == f"/dvoranski/trening/{mine.id}" and ct.get(location(r)).status_code == 200
 
 

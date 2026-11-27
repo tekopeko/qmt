@@ -260,15 +260,17 @@
       .topbar.compact .brand .short { display: inline; }
     }
     .nav-burger { display: none; font-size: 1.35rem; padding: 6px 12px; }
-    /* Seven tabs or more run tight at every width, so the studio's name
-       still fits beside them in the 1100px pill. Not in the drawer (≤900px),
-       where each tab has a row to itself. No bar has seven links: a client
-       six at most, staff six and Admin ▾ since 24.11.2026 (Karton joined
-       their row), which this rule does not count and which need none of it:
-       measured for the owner (the widest bar) at 901–1280px, both themes,
-       every tab on its line inside the pill, the brand's slot still 191px at
-       901px (its floor 86px), the whole name from 1024px. */
-    @media (min-width: 901px) {
+    /* Seven tabs or more run tight at every width they show at, so the
+       studio's name still fits beside them in the 1100px pill. Not in the
+       drawer, where each tab has a row to itself. Six tabs and Admin ▾
+       (staff's since 24.11.2026, Karton joining their row) needed none of
+       it: measured for the owner (the widest bar) at 901–1280px, both
+       themes, every tab on its line inside the pill. Since 27.11.2026 a bar
+       has seven tab links (Dvoranski treninzi joined the member's row: a
+       member with a gym plan and an online plan, and staff, whose are seven
+       and Admin ▾): it shows from 960px (the drawer below, the rules after
+       Step 2), tight here. */
+    @media (min-width: 960px) {
       .nav:has(> a:nth-of-type(7)) > a { padding: 8px 10px; font-size: .84rem; }
     }
 
@@ -323,6 +325,51 @@
       .nav .menu .mi { display: none; }
     }
 
+    /* Step 2 for a bar of seven tab links (27.11.2026: Dvoranski treninzi
+       joined the member's row; the template marks its nav and its ☰ .nav-7):
+       seven do not fit in the pill below 936px. Measured for the owner's
+       bar, the widest (seven tabs and Admin ▾), at every width from 901 to
+       1280px in both themes, tight as above: at 901–935px the avatar leaves
+       the pill (and the page scrolls sideways up to 914px), from 936px every
+       tab is on its line inside the pill, the brand "QMT"
+       (tests/test_nav.py pins the number), with 0.6px to spare there. So the fold
+       is at 960px, 24px on for another browser's letter widths (Fable's review):
+       up to 959px such a bar is the ☰
+       drawer, the rules of Step 2 above again for .nav-7 (CSS cannot say
+       "≤900px, or ≤959px with seven" in one block: keep the two in step); a
+       bar of six or fewer keeps the drawer at ≤900px. Phones are Step 2's. */
+    @media (min-width: 901px) and (max-width: 959px) {
+      .nav-burger.nav-7 { display: inline-flex; }
+      .nav.nav-7 {
+        display: none;
+        position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+        flex-direction: column; align-items: stretch; gap: 2px;
+        background: rgba(22, 22, 24, .96); padding: 10px 10px 12px;
+        border-radius: 22px; border: 1px solid rgba(255, 255, 255, .09);
+        box-shadow: 0 16px 28px rgba(0, 0, 0, .45);
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        max-height: calc(100vh - 96px); max-height: calc(100dvh - 96px);
+        overflow-y: auto; overscroll-behavior: contain;
+      }
+      .nav.nav-7.open { display: flex; }
+      .nav.nav-7 a, .nav.nav-7 .navbtn {
+        padding: 13px 14px; font-size: 1rem; border-radius: 10px;
+        justify-content: flex-start; width: 100%;
+      }
+      .nav.nav-7 form { width: 100%; }
+      .nav.nav-7 .nav-cap { display: block; padding: 10px 14px 4px; color: #9a9aa0;
+                            font: 700 .72rem var(--font-display); text-transform: uppercase; letter-spacing: .1em; }
+      .nav.nav-7 .navbtn.menu-btn { display: none; }
+      .nav.nav-7 .nav-admin { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, .09); }
+      .nav.nav-7 .menu { display: block; position: static; width: auto; max-width: none; padding: 0;
+                         overflow: visible; background: none; border: none; border-radius: 0; box-shadow: none; }
+      .nav.nav-7 .menu a { color: #cfcfcc; font-weight: 600; }
+      .nav.nav-7 .menu a:hover { color: #fff; background: rgba(255,255,255,.09); }
+      .nav.nav-7 .menu a:focus-visible { background: none; outline: 2px solid var(--accent); outline-offset: 2px; }
+      .nav.nav-7 .menu a[aria-current="page"] { color: #fff; background: rgba(255,255,255,.13); font-weight: 600; box-shadow: none; }
+      .nav.nav-7 .menu .mi { display: none; }
+    }
+
     /* ===== "Gledaš kao: …" (26.11.2026, staff acting as a member: while a
        trainer or the owner is in a member's account the app is the
        member's, app.current_user): a strip across the very top of every
@@ -356,6 +403,9 @@
     /* the ☰ drawer under a pill that the strip lowers: its scroll room less the strip */
     @media (max-width: 900px) {
       body[data-kao] .nav { max-height: calc(100vh - 96px - var(--kao-h)); max-height: calc(100dvh - 96px - var(--kao-h)); }
+    }
+    @media (min-width: 901px) and (max-width: 959px) {     /* a bar of seven's drawer (Step 2 for .nav-7) */
+      body[data-kao] .nav.nav-7 { max-height: calc(100vh - 96px - var(--kao-h)); max-height: calc(100dvh - 96px - var(--kao-h)); }
     }
 
     main { max-width: 1100px; margin: 0 auto; padding: clamp(22px, 3.5vw, 40px) clamp(14px, 4vw, 40px) 70px; }
@@ -1169,12 +1219,17 @@
 <header class="topbar{% if not user or solo %} compact{% endif %}">
   <div class="brand-slot"><a href="/" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
      <span class="full">Quality Movement Training</span><span class="short">QMT</span></a></div>
+  {# a bar of seven tab links (27.11.2026: Dvoranski treninzi and Online
+     treninzi both, beside the five every member has) says so, its nav and
+     its ☰: it is the ☰ drawer up to the width where seven fit (the CSS
+     above, Step 2 for .nav-7) #}
+  {% set seven = user and 5 + (1 if show_gym else 0) + (1 if show_online else 0) >= 7 %}
   {% if not brand_only %}
-  <button type="button" class="navbtn nav-burger" onclick="qmtToggleNav()"
+  <button type="button" class="navbtn nav-burger{% if seven %} nav-7{% endif %}" onclick="qmtToggleNav()"
           aria-label="Izbornik" aria-expanded="false" aria-controls="mainNav">☰</button>
   {% endif %}
   {% if not brand_only %}
-  <nav class="nav" id="mainNav">
+  <nav class="nav{% if seven %} nav-7{% endif %}" id="mainNav">
     {% if user %}
       {% set path = request.url.path %}
       {# Staff, the trainer and the owner, get a member's tabs and Admin ▾
@@ -1196,13 +1251,19 @@
       {% if staff %}<p class="nav-cap">Kao član</p>{% endif %}
       <a href="/" class="{% if path == '/' %}on{% endif %}">Početna</a>
       <a href="/raspored" class="{% if path.startswith('/raspored') %}on{% endif %}">Raspored</a>
-      {# one's own gym training (26.11.2026) is under one's own karton, staff's
-         too, and since 27.11.2026 so is a client's karton for staff (the
-         search on their Karton tab opens it): every /karton page, and the
-         training's pages at /dvoranski (27.11.2026, until build 2 gives them
-         a tab of their own); a client's /upitnik too, staff's is Admin ▾'s #}
-      {% set at_karton = path.startswith(('/karton', '/dvoranski')) or (not staff and path.startswith('/upitnik')) %}
+      {# every /karton page, and since 27.11.2026 a client's karton for staff
+         (the search on their Karton tab opens it); a client's /upitnik too,
+         staff's is Admin ▾'s. One's own gym training was under the karton
+         from 26.11.2026 until build 2 of the dvoranski treninzi gave it its
+         own tab (27.11.2026, below) #}
+      {% set at_karton = path.startswith('/karton') or (not staff and path.startswith('/upitnik')) %}
       <a href="/karton" class="{% if at_karton %}on{% endif %}">Karton</a>
+      {# Dvoranski treninzi (27.11.2026; the owner: "I would show the tab
+         only to members with a gym plan. Similarly how a online training
+         tab shows only to members with an online plan."): app._has_gym, a
+         plan that books termini, staff always; .on on every /dvoranski page
+         (the tab's, a training's and its osvrt's) #}
+      {% if show_gym %}<a href="/dvoranski" class="{% if path.startswith('/dvoranski') %}on{% endif %}">Dvoranski treninzi</a>{% endif %}
       {# a paid product: without an active online plan the tab doesn't exist #}
       {% if show_online %}<a href="/treninzi" class="{% if path.startswith('/treninzi') and not at_vjezbe %}on{% endif %}">Online treninzi</a>{% endif %}
       <a href="/moja-clanarina" class="{% if path.startswith('/moja-clanarina') %}on{% endif %}">Moja članarina</a>

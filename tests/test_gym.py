@@ -30,7 +30,8 @@ Stanica empty and started, a Kružni set set up and started, "Nastavi
 trening", the overview, read only), its osvrt, the old addresses leading
 here, the karton's diary and termini, the raspored's card, a roster's "Kao
 član →", the texts; the browser half walks the owner's two templates on a
-phone."""
+phone. The tab the pages hang under since 27.11.2026, "Dvoranski treninzi"
+(build 2), is tests/test_dvoranski.py's."""
 
 from __future__ import annotations
 
@@ -510,14 +511,15 @@ def test_a_member_writes_inside_his_window_and_staff_acting_as_him_at_any_time()
 
 
 def test_a_training_outside_a_termin_is_always_its_members():
-    """A training outside a termin (POST /karton/trening, the Karton's
-    form, leads to its page): no state line, every write at any date, its
-    date changed ("promijeni datum", read_day's rules), deleted ("Obriši
-    trening", asks first; then the karton). A termin's has no date form and
-    is not deleted here (404): it goes with its booking."""
+    """A training outside a termin (POST /dvoranski/trening, the tab's form
+    since 27.11.2026, the Karton's until then, leads to its page): no state
+    line, every write at any date, its date changed ("promijeni datum",
+    read_day's rules), deleted ("Obriši trening", asks first; then the
+    karton). A termin's has no date form and is not deleted here (404): it
+    goes with its booking."""
     ivan = make_user("ivan@test.local")
     ci = client_for("ivan@test.local")
-    r = ci.post("/karton/trening", data={"day": "2021-03-04"}, follow_redirects=False)
+    r = ci.post("/dvoranski/trening", data={"day": "2021-03-04"}, follow_redirects=False)
     [t] = db.gym_trainings(ivan)
     tid = t.id
     assert location(r) == f"/dvoranski/trening/{tid}"
@@ -537,7 +539,8 @@ def test_a_training_outside_a_termin_is_always_its_members():
     assert ci.post(f"/dvoranski/trening/{other}/obrisi").status_code == 404
     assert f'action="/dvoranski/trening/{other}/datum"' not in ci.get(page_url(other)).text
     r = ci.post(f"/dvoranski/trening/{tid}/obrisi", follow_redirects=False)
-    assert location(r) == "/karton?ok=Trening je obrisan.#osvrti" and [x.id for x in db.gym_trainings(ivan)] == [other]
+    # back at the tab (27.11.2026: a viewer who has it; the karton for one who has not, tests/test_dvoranski.py)
+    assert location(r) == "/dvoranski?ok=Trening je obrisan." and [x.id for x in db.gym_trainings(ivan)] == [other]
     with db.session_scope() as s:                                           # its block went with it
         assert s.scalar(sa_text("SELECT count(*) FROM gym_training_blocks WHERE training_id = :t"), {"t": tid}) == 0
 
@@ -657,8 +660,9 @@ def test_the_old_addresses_lead_to_the_new_ones_and_their_writes_are_gone():
     pages of 26.11.2026) 303 to /dvoranski/termin/<id>,
     /dvoranski/trening/<id> and its osvrt, the query kept (a guest too,
     who is then sent to log in there); the old writes went (404 or 405),
-    nothing changed. POST /karton/trening, the Karton's form, stays and
-    leads to the new page."""
+    nothing changed. POST /karton/trening, the Karton's form, went with
+    build 2 (27.11.2026: the tab's POST /dvoranski/trening makes one):
+    nothing made."""
     ivan = make_user("ivan@test.local")
     ex = library("Goblet čučanj")
     sid = termin(ivan, now() - timedelta(hours=1))
@@ -684,7 +688,7 @@ def test_the_old_addresses_lead_to_the_new_ones_and_their_writes_are_gone():
     t = db.gym_training(tid, ivan)
     assert (len(t.blocks), t.finished_at, done_of(item)) == (1, None, [])
     r = ci.post("/karton/trening", data={"day": config.today().isoformat()}, follow_redirects=False)
-    assert re.fullmatch(r"/dvoranski/trening/\d+", location(r))
+    assert r.status_code in (404, 405) and [x.id for x in db.gym_trainings(ivan)] == [tid]
 
 
 # ---------- the blocks' rules (db.py) ----------
@@ -1467,16 +1471,17 @@ def heads(card: str) -> list[str]:
 
 def test_the_page_names_its_training_and_offers_the_templates():
     """GET /dvoranski/termin/<id> opens the member's training: the player's
-    top (no strip with no block, "← Natrag" to his karton at the termin's
-    row, the clock rendered hidden with no tick to count from, "Završi
-    trening" its osvrt), the head (the kicker "Trening u dvorani", the
-    termin's title as the h1, right under it its date and time, "Upis je
-    otvoren do četvrtka 26.11. u ponoć."), then, with no block, the
-    template chooser: "Odaberi predložak", a button per template in its
-    order (its title over its facts), under a hairline "ili složi sam/a:"
-    with "+ Stanica" and "+ Kružni set"; no overview, no dock, no
-    "Isprazni trening"; the rest bar. No phone reminder and no install
-    banner (no_nudges); the Karton tab lit (until build 2)."""
+    top (no strip with no block, "← Natrag" to the tab "Dvoranski treninzi"
+    since build 2, 27.11.2026, his karton at the termin's row until then,
+    the clock rendered hidden with no tick to count from, "Završi trening"
+    its osvrt), the head (the kicker "Trening u dvorani", the termin's title
+    as the h1, right under it its date and time, "Upis je otvoren do
+    četvrtka 26.11. u ponoć."), then, with no block, the template chooser:
+    "Odaberi predložak", a button per template in its order (its title over
+    its facts), under a hairline "ili složi sam/a:" with "+ Stanica" and "+
+    Kružni set"; no overview, no dock, no "Isprazni trening"; the rest bar.
+    No phone reminder and no install banner (no_nudges); the tab Dvoranski
+    treninzi lit, the Karton tab not (its until build 2)."""
     ivan = make_user("ivan@test.local")
     db.reset_gym_templates()
     stanicni, kruzni = db.gym_templates()
@@ -1488,7 +1493,7 @@ def test_the_page_names_its_training_and_offers_the_templates():
     page = r.text
     assert str(r.url).endswith(f"/dvoranski/trening/{t.id}") and r.status_code == 200
     assert 'class="pl-segs"' not in page and 'class="pl-track"' not in page
-    assert f'<a class="act act-quiet" href="/karton#s-{sid}"><span class="t">← Natrag</span></a>' in page
+    assert '<a class="act act-quiet" href="/dvoranski"><span class="t">← Natrag</span></a>' in page
     assert '<span class="pl-timer" hidden title="Vrijeme treninga">' in page
     assert (f'<a class="act pl-end" href="/dvoranski/trening/{t.id}/osvrt"><span class="t">Završi trening</span></a>'
             in page)
@@ -1510,7 +1515,7 @@ def test_the_page_names_its_training_and_offers_the_templates():
         assert gone not in page, gone
     assert page.count('id="plRest"') == 1
     assert 'id="phoneCard"' not in page and 'id="a2hs"' not in page
-    assert '<a href="/karton" class="on">Karton</a>' in page
+    assert '<a href="/dvoranski" class="on">Dvoranski treninzi</a>' in page and '<a href="/karton" class="">' in page
     with db.session_scope() as s:                                           # "ili složi sama:" as she reads it
         s.get(User, ivan).sex = "f"
     assert '<span class="t">ili složi sama:</span>' in ci.get(page_url(t.id)).text
@@ -1798,12 +1803,15 @@ def test_the_overview_marks_each_block_and_rings_the_one_on_screen():
 
 
 def test_after_the_window_the_page_reads_only():
-    """Past its window the member's page is the record: "← Natrag", the
-    head, the state line, the overview of what was done as text (a block
-    with no exercise not shown: a Stanica's line, a Kružni set's own line
-    and its exercises), the saved osvrt without "Uredi osvrt"; no card, no
-    form, no input, no button, no strip, no clock, no rest bar; …/osvrt
-    leads back to the page."""
+    """Past its window the member's page is the record: "← Natrag" (the
+    tab, since 27.11.2026; once his gym plan has lapsed, and the tab with
+    it, his karton at the training's row, as until then), the head, the
+    state line, the overview of what was done as text (a block with no
+    exercise not shown: a Stanica's line, a Kružni set's own line and its
+    exercises), the saved osvrt without "Uredi osvrt"; no card, no form, no
+    input, no button, no strip, no clock, no rest bar; …/osvrt leads back
+    to the page."""
+    from qmt.models import Membership
     ivan = make_user("ivan@test.local")
     ex = library("Goblet čučanj", "Plank")
     tid = db.gym_training_for(ivan, termin(ivan, now() - timedelta(days=3)), staff=True)
@@ -1826,9 +1834,15 @@ def test_after_the_window_the_page_reads_only():
     assert '<p class="gt-facts">napor 7/10</p>' in main and "Uredi osvrt" not in main
     for gone in ("<form", "<input", "<button", 'id="glavno"', "pl-segs", "pl-timer", 'id="plRest"', "pl-dock", "pl-end"):
         assert gone not in main, gone
-    assert f'<a class="act act-quiet" href="/karton#gt-{tid}"><span class="t">← Natrag</span></a>' in main
+    assert '<a class="act act-quiet" href="/dvoranski"><span class="t">← Natrag</span></a>' in main
     r = ci.get(f"/dvoranski/trening/{tid}/osvrt", follow_redirects=False)
     assert location(r) == f"/dvoranski/trening/{tid}"
+    with db.session_scope() as s:                                           # his gym plan lapsed: no tab
+        s.scalar(select(Membership).where(Membership.user_id == ivan)).next_payment = \
+            config.today() - timedelta(days=Membership.GRACE_DAYS + 1)
+    page = ci.get(page_url(tid)).text
+    assert f'<a class="act act-quiet" href="/karton#gt-{tid}"><span class="t">← Natrag</span></a>' in page
+    assert 'href="/dvoranski"' not in page and "Upis je zatvoren" in page
 
 
 def test_the_osvrt_is_zavrsi_trening():
@@ -1836,8 +1850,9 @@ def test_the_osvrt_is_zavrsi_trening():
     "Osvrt na trening", the title, the date and time; Napor, ten round
     buttons, required; Osjećaj; Komentar; "Spremi trening"; "Natrag na
     trening"), no nudges. Refused ("Neispravan osvrt."): the page again,
-    400, what was chosen kept, nothing stored. Saved: the karton at its
-    diary row, "Trening je spremljen.", the page saying the osvrt ("napor
+    400, what was chosen kept, nothing stored. Saved: the tab (since
+    27.11.2026; the karton's diary row for a viewer with no tab),
+    "Trening je spremljen.", the page saying the osvrt ("napor
     7/10 · Dobro", the comment, "Uredi osvrt"); saved again, its first
     save's time stays."""
     ivan = make_user("ivan@test.local")
@@ -1866,7 +1881,7 @@ def test_the_osvrt_is_zavrsi_trening():
     assert 'value="dobro" checked' in r.text and ">Teško.</textarea>" in r.text and " required checked" not in r.text
     assert db.gym_training(tid, ivan).finished_at is None
     r = post(effort="7", feeling="dobro", note="  Teško.  ")
-    assert location(r) == f"/karton?ok=Trening je spremljen.#gt-{tid}"
+    assert location(r) == "/dvoranski?ok=Trening je spremljen."            # the tab, his: its last trainings show it
     t = db.gym_training(tid, ivan)
     first = t.finished_at
     assert (t.effort, t.feeling, t.note) == (7, "dobro", "Teško.") and first is not None
@@ -1976,38 +1991,36 @@ def test_the_diary_lists_each_training_in_its_state():
     assert f'href="/dvoranski/termin/{stale}"' in acting and f'href="/dvoranski/trening/{tid}"' in acting
 
 
-def test_the_way_in_is_on_the_termini_and_the_raspored_while_the_window_is_open():
-    """"Nadolazeći termini": a termin whose training is open carries
-    "Upiši trening →" (→ /dvoranski/termin/<id>; none further ahead, none
-    canceled, none on the trainer's view), and under the list, once,
-    "Trening upisuješ od 4 h prije termina do kraja idućeg dana."; the
-    raspored's "Tvoj sljedeći termin" carries the same link while it is
-    open."""
+def test_the_way_in_is_on_the_raspored_while_the_window_is_open_and_no_more_on_the_termini():
+    """The raspored's "Tvoj sljedeći termin" carries "Upiši trening →" (→
+    /dvoranski/termin/<id>) while its training is open: none further ahead,
+    none canceled. "Nadolazeći termini" on the karton carried it too, and
+    under its list "Trening upisuješ od 4 h prije termina do kraja idućeg
+    dana.", from 26.11.2026 until build 2 of the dvoranski treninzi
+    (27.11.2026): the tab lists the open trainings since, the karton's
+    termini are the termini alone, a member's and the trainer's view's."""
     ivan, ana = make_user("ivan@test.local"), make_user("ana@test.local")
     make_user("coach@test.local", is_trainer=True, plans=())
     soon = termin(ivan, now() + timedelta(hours=3), title="Snaga")
     later = termin(ivan, now() + timedelta(hours=6), title="Mobilnost")
     with db.session_scope() as s:
         s.add(Booking(user_id=ana, session_id=later))
-    link = '<a class="act cal-go" href="/dvoranski/termin/{}"><span class="t">Upiši trening →</span></a>'
-    hint = ('<p class="hint gym-when"><span class="t">Trening upisuješ od</span> 4 <span class="t">h prije termina do '
-            'kraja idućeg dana.</span></p>')
 
     def termini(page: str) -> str:
         return page.split('<section class="card termini"')[1].split("</section>")[0]
 
     ci = client_for("ivan@test.local")
     mine = termini(ci.get("/karton").text)
-    assert link.format(soon) in mine and f"/dvoranski/termin/{later}" not in mine and mine.count(hint) == 1
+    assert "Snaga" in mine and "Mobilnost" in mine
+    for gone in ("/dvoranski/", "cal-go", "Upiši trening", "gym-when", "Trening upisuješ od", "h prije termina"):
+        assert gone not in mine, gone
     card = ci.get("/raspored").text.split('<section class="card next-termin"')[1].split("</section>")[0]
     assert f'<a class="act nt-gym" href="/dvoranski/termin/{soon}"><span class="t">Upiši trening →</span></a>' in card
     ca = client_for("ana@test.local")
-    assert "/dvoranski/termin/" not in termini(ca.get("/karton").text)
     assert "nt-gym" not in ca.get("/raspored").text.split('<section class="card next-termin"')[1].split("</section>")[0]
     make_user("trener@test.local", plans=())
     assert "/dvoranski/termin/" not in termini(client_for("trener@test.local").get(f"/karton/{ivan}").text)
     db.set_session_canceled(soon, True)
-    assert "/dvoranski/termin/" not in termini(ci.get("/karton").text)
     assert "nt-gym" not in ci.get("/raspored").text.split('<section class="card next-termin"')[1].split("</section>")[0]
 
 
@@ -2048,7 +2061,10 @@ def test_a_rosters_kao_clan_lands_on_his_training_and_every_write_there_is_recor
 
 # ---------- the texts ----------
 
-GYM_SLOTS = [k for k in copy.SLOTS if k.startswith("gym.") and k not in ("gym.kicker", "gym.h2")]   # the landing's two
+# the training page's and its osvrt's: gym.* but the landing's two and the
+# tab's (gym.tab.*, 27.11.2026: tests/test_dvoranski.py)
+GYM_SLOTS = [k for k in copy.SLOTS if k.startswith("gym.") and k not in ("gym.kicker", "gym.h2")
+             and not k.startswith("gym.tab.")]
 GYM_OPTIONAL = {"gym.head.kicker", "gym.state.closed", "gym.state.staff", "gym.osvrt.kicker", "gym.chooser.own",
                 "gym.block.circuit", "gym.whatnext", "gym.overview.empty_station", "gym.overview.empty_circuit"}
 GONE = ("gym.empty", "gym.template.open", "gym.part.edit", "gym.part.name", "gym.part.circuit", "gym.part.rounds",
@@ -2067,7 +2083,8 @@ def test_every_text_of_the_page_is_a_slot_with_its_words():
     script); where the words do the same job as in the player, on the day
     page or its finish screen, theirs print (player.*, dan.*, kraj.*). One
     edited prints in its place; /tekstovi lists them under "Trening u
-    dvorani", after "Trening (izvođenje)", area by area."""
+    dvorani", after "Trening (izvođenje)", area by area, after the tab's
+    own (since 27.11.2026, "Dvoranski treninzi": gym.tab.*)."""
     assert len(GYM_SLOTS) == 65 and not set(GONE) & set(copy.SLOTS)
     assert {k for k in GYM_SLOTS if not copy.SLOTS[k].required} == GYM_OPTIONAL
     assert all(copy.SLOTS[k].label.startswith("Trening u dvorani") for k in GYM_SLOTS)
@@ -2124,23 +2141,26 @@ def test_every_text_of_the_page_is_a_slot_with_its_words():
     h2 = re.findall(r'<h2 id="tx-\d+">([^<]*)</h2>', tekstovi)
     assert h2.index("Trening u dvorani") == h2.index("Trening (izvođenje)") + 1
     section = tekstovi.split(">Trening u dvorani</h2>")[1].split("<h2")[0]
-    assert re.findall(r"<h3>([^<]*)</h3>", section) == ["Zaglavlje", "Predložak", "Stanica i kružni set", "Polja",
-                                                       "Stanica", "Kružni set", "Pregled", "Kraj treninga", "Osvrt",
-                                                       "Prozori za potvrdu"]
+    assert re.findall(r"<h3>([^<]*)</h3>", section) == ["Dvoranski treninzi", "Zaglavlje", "Predložak",
+                                                       "Stanica i kružni set", "Polja", "Stanica", "Kružni set",
+                                                       "Pregled", "Kraj treninga", "Osvrt", "Prozori za potvrdu"]
     assert all(f'data-copy="{k}"' in section for k in GYM_SLOTS)
 
 
-def test_staffs_own_training_lights_their_karton():
-    """Staff have trainings outside a termin of their own (no termini): the
-    page serves them as a member's, the nav's Karton lit and Admin ▾ not
-    (their own karton's pages, not a member's), the editor's ✎ on it."""
+def test_staffs_own_training_lights_their_tab():
+    """Staff have trainings outside a termin of their own (no termini), made
+    on the tab (POST /dvoranski/trening, 27.11.2026): the page serves them
+    as a member's, the nav's Dvoranski treninzi lit (their Karton until
+    build 2) and Admin ▾ not, "← Natrag" to the tab, the editor's ✎ on it."""
     coach = make_user("coach@test.local", is_trainer=True, plans=())
     cs = client_for("coach@test.local")
-    r = cs.post("/karton/trening", data={"day": config.today().isoformat()}, follow_redirects=False)
+    r = cs.post("/dvoranski/trening", data={"day": config.today().isoformat()}, follow_redirects=False)
     tid = int(location(r).rsplit("/", 1)[1])
     page = cs.get(page_url(tid)).text
     assert db.gym_training(tid, coach).session_id is None and 'class="card pl-card gt-chooser"' in page
-    assert 'id="copyToggle"' in page and '<a href="/karton" class="on">Karton</a>' in page
+    assert 'id="copyToggle"' in page and '<a href="/dvoranski" class="on">Dvoranski treninzi</a>' in page
+    assert '<a href="/karton" class="">Karton</a>' in page
+    assert '<a class="act act-quiet" href="/dvoranski"><span class="ed t" data-copy="player.top.back"' in page
     assert re.search(r'id="adminBtn" class="navbtn menu-btn"\s', page)               # not .on
     assert 'href="/clanarine" role="menuitem" aria-current' not in page
 
@@ -2310,7 +2330,12 @@ def test_stanicni_trening_on_a_phone(server):
         with pg.expect_navigation():
             pg.locator(".kr-go .btn").tap()
         pg.wait_for_load_state("networkidle")
-        check(pg.url.endswith(f"#gt-{t.id}"), f"the osvrt led to {pg.url}")
+        # back at the tab, his (27.11.2026): the training among its last ones;
+        # the record is in the karton's diary
+        check(pg.url.split("?")[0].endswith("/dvoranski") and pg.locator(".alert.ok").inner_text() == "Trening je spremljen.",
+              f"the osvrt led to {pg.url}")
+        check(pg.locator(f'a[href="/dvoranski/trening/{t.id}"]').count() == 1, "the saved training is not among the last ones")
+        pg.goto(server + f"/karton#gt-{t.id}")
         row = pg.locator(f"#gt-{t.id}")
         row.locator("details.sets > summary").tap()
         lines = [" ".join(x.split()) for x in row.locator("details.sets li").all_inner_texts()]

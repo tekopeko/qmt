@@ -206,11 +206,6 @@
   .cal-row strong { max-width:50%; overflow-wrap:break-word; }
   .termini .empty { font-size:.85rem; color:var(--muted); padding:6px 4px; overflow-wrap:anywhere; }
   .termini .more { margin-top:12px; }
-  /* a termin whose gym training is open (26.11.2026, build 3): its way in
-     at the row's end, a pill (.act); under the list, once, when a training
-     opens (muted .82rem) */
-  .cal-row .cal-go { margin-left:auto; flex:none; }
-  .termini .gym-when { font-size:.82rem; margin-top:8px; overflow-wrap:anywhere; }
 
   /* ===== the estimated maxes (23.11.2026, Amir: "izračun maksova"): a
      card between the upitnik block and the diary, as wide as the upitnik
@@ -426,13 +421,8 @@
      the head, muted, the online pass's .le-sub size */
   .log-entry .le-state { font-size:.8rem; margin-top:2px; overflow-wrap:anywhere; }
 
-  /* "+ Dodaj trening izvan termina" above the diary's rows (23.11.2026;
-     since 26.11.2026 its date alone, the gym training opening with it):
-     its form opens under it in a hairline box (qmtToggleForm, as a row's) */
-  .log-new { margin-bottom:10px; }
-  .log-new .le-edit { margin-top:10px; padding:14px 12px 12px; background:var(--surface);
-                      border:1px solid var(--line); border-radius:var(--r-md); }
-  .log-new.editing .le-edit { display:block; }
+  /* an old training outside a termin's date, in its row's edit form (its
+     "+ Dodaj trening izvan termina" went to the tab on 27.11.2026) */
   .le-edit input[type="date"] { min-width:0; }
 
   /* ===== the karton's texts are copy slots (25.11.2026, karton.* in
@@ -985,10 +975,10 @@
 
 {# "Nadolazeći termini": what is still ahead, a card of the column since
    25.11.2026 (the rail's until then). Staff book no termini: their own
-   karton has none (24.11.2026). Since 26.11.2026 (build 3) a termin whose
-   gym training is open carries its way in ("Upiši trening →", the
-   member's own karton), and under the list, once, when a training opens
-   (two optional slots, the hours config's) #}
+   karton has none (24.11.2026). A termin's way into its gym training
+   ("Upiši trening →" while it is open, and the hint under the list when a
+   training opens; 26.11.2026, build 3) went on 27.11.2026: the tab
+   "Dvoranski treninzi" lists the open ones #}
 {% if not staff_own %}
 <section class="card termini" aria-labelledby="termini-h">
   <h2 id="termini-h">{{ c.t("karton.termini.title") }}</h2>
@@ -996,13 +986,9 @@
   <div class="cal-row" {% if s.canceled %}style="opacity:.55;"{% endif %}>
     <span class="when">{{ weekdays_short[s.starts_at.astimezone(tz).weekday()] }} {{ s.starts_at.astimezone(tz).strftime("%-d.%-m. %H:%M") }}</span>
     <span class="what"{% if s.canceled %} style="text-decoration:line-through;"{% endif %}>{{ s.title }}</span>
-    {% if s.canceled and (can_edit_copy or copy_text("karton.termini.canceled", copy_texts)) %}<strong style="margin-left:auto; color:var(--danger); font-size:.72rem;">{{ c.t("karton.termini.canceled") }}</strong>
-    {% elif s.id in gym_open_ids %}<a class="act cal-go" href="/dvoranski/termin/{{ s.id }}">{{ c.t("karton.termini.gym_link") }}</a>{% endif %}
+    {% if s.canceled and (can_edit_copy or copy_text("karton.termini.canceled", copy_texts)) %}<strong style="margin-left:auto; color:var(--danger); font-size:.72rem;">{{ c.t("karton.termini.canceled") }}</strong>{% endif %}
   </div>
   {% else %}{% if can_edit_copy or copy_text("karton.termini.empty", copy_texts) %}<p class="empty">{{ c.t("karton.termini.empty") }}</p>{% endif %}{% endfor %}
-  {% if own and (copy_on("karton.termini.gym_before") or copy_on("karton.termini.gym_after")) %}
-  <p class="hint gym-when">{{ c.t("karton.termini.gym_before") }} {{ gym_hours }} {{ c.t("karton.termini.gym_after") }}</p>
-  {% endif %}
   {% if own %}<a class="act act-quiet more" href="/raspored">{{ c.t("karton.termini.open") }}</a>{% endif %}
 </section>
 {% endif %}
@@ -1010,32 +996,18 @@
 
 {# the diary (Dnevnik treninga), last (25.11.2026): its heading, its lead
    (a slot per view: the member's, a staff member's own, the trainer's
-   view), "+ Dodaj trening izvan termina" and its rows #}
+   view) and its rows #}
   <div class="k-sec">
     <h2 id="osvrti">{{ c.t("karton.diary.title") }}</h2>
     {% set lead = "karton.staff.own_diary_lead" if staff_own else "karton.diary.lead" if own else "karton.staff.diary_lead" %}
     {% if can_edit_copy or copy_text(lead, copy_texts) %}
     <p class="hint" style="margin-bottom:12px;">{{ c.t(lead) }}</p>
     {% endif %}
-    {% if own %}
     {# a training done outside a termin (23.11.2026, Amir: "da si on može sam
-       upisati koji trening je radio"): since 26.11.2026 (build 3) its date
-       alone (today by default, never in the future), then its gym
-       training's page, where it is written as a termin's is #}
-    <div class="log-new" id="trening-novi">
-      <button type="button" class="act" onclick="qmtToggleForm('trening-novi')">{{ c.t("karton.outside.add") }}</button>
-      <form class="le-edit" method="post" action="/karton/trening">
-        <p style="margin:0 0 8px;"><strong>{{ c.t("karton.outside.title") }}</strong></p>
-        <div class="field"><label for="nt-day">{{ c.t("karton.outside.day") }}</label>
-          <input id="nt-day" type="date" name="day" value="{{ today.isoformat() }}"
-                 min="{{ first_day.isoformat() }}" max="{{ today.isoformat() }}" required></div>
-        <div style="display:flex; gap:9px;">
-          <button type="submit" class="btn-sm btn-signal">{{ c.t("karton.outside.create") }}</button>
-          <button type="button" class="btn-sm btn-ghost" onclick="qmtToggleForm('trening-novi')">{{ c.t("karton.outside.cancel") }}</button>
-        </div>
-      </form>
-    </div>
-    {% endif %}
+       upisati koji trening je radio") is made on the tab "Dvoranski treninzi"
+       since 27.11.2026 (build 2 of the dvoranski treninzi; "+ Dodaj trening
+       izvan termina" and its form here from 26.11.2026 until then): the
+       karton keeps the record, each row a link into the training's page #}
     {# a diary row's optional texts (its kickers and chips): printed while
        each holds a text, for an editor always (his empty box) #}
     {% set k_online = can_edit_copy or copy_text("karton.diary.online", copy_texts) %}
