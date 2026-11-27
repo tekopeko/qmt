@@ -1336,11 +1336,14 @@
   {% endif %}
 </header>
 <main class="{% block main_class %}{% endblock %}">
-  {# a page may put the error alert elsewhere instead (the upitnik: under its title) #}
+  {# a page may put the error alert elsewhere instead (the upitnik: under its
+     title). A flash is a route's sentence, as its reader reads it (the
+     slash forms, 27.11.2026: the filter gendered), here and wherever a
+     page prints one #}
   {% block error_alert %}
   {% if request.query_params.get("error") %}
     <div class="alert" role="alert">
-      <span>{{ request.query_params.get("error") }}</span>
+      <span>{{ request.query_params.get("error") | gendered }}</span>
       {# the param is a plan kind, so the href is always our own page: the
          plan's card on /moja-clanarina, with its price #}
       {% if request.query_params.get("cta") %}
@@ -1353,7 +1356,7 @@
      repeat a booking) — one alert either way #}
   {% block ok_alert %}
   {% if request.query_params.get("ok") %}
-    <div class="alert ok" role="status">{{ request.query_params.get("ok") }}</div>
+    <div class="alert ok" role="status">{{ request.query_params.get("ok") | gendered }}</div>
   {% endif %}
   {% endblock %}
   {% block content %}{% endblock %}
@@ -1407,8 +1410,10 @@
 </dialog>
 {% endif %}
 {% if can_edit_copy %}
-{# the copy editor: a toggle, and a bar that appears while one text is open #}
-<button type="button" class="copy-toggle" id="copyToggle" aria-pressed="false">✎ Uredi tekstove</button>
+{# the copy editor: a toggle, and a bar that appears while one text is open;
+   data-rod: whose sex this page's slash forms read as (27.11.2026), which a
+   save posts, so its answer says the text to show (none for none) #}
+<button type="button" class="copy-toggle" id="copyToggle" aria-pressed="false"{% if rod %} data-rod="{{ rod }}"{% endif %}>✎ Uredi tekstove</button>
 <div class="copy-bar" id="copyBar" hidden role="status" aria-live="polite">
   <span class="cb-label"></span><span class="cb-count"></span><span class="cb-hint">Enter = novi red · ⌘/Ctrl+Enter = spremi</span><span class="cb-msg"></span>
   <button type="button" class="btn btn-sm" id="cbSave">Spremi</button>
@@ -1453,11 +1458,33 @@
   // say what the settings do. An ↑ / ↓ that would put a question before
   // the one it is asked after carries its refusal (data-refuse): a press
   // says it in the bar, and nothing is sent.
+  // The slash forms (27.11.2026): a text shown as this page's reader reads
+  // it ("sam" for "sam/a": the toggle's data-rod, the editor's own sex, on
+  // the trainer's view of a karton the member's) carries what is stored,
+  // data-raw. Edit mode shows and edits what is stored (the resolved text
+  // waits in data-shown), leaving it shows the resolved one again; a save
+  // posts the page's sex, and its answer the text to show beside each it
+  // stored (shown, shown_items, shown_rows), so no reload is needed.
   (function () {
     var mode = false, cur = null, orig = "";
     var tog = document.getElementById("copyToggle"), bar = document.getElementById("copyBar");
     var label = bar.querySelector(".cb-label"), count = bar.querySelector(".cb-count"), msg = bar.querySelector(".cb-msg");
     var resetBtn = document.getElementById("cbReset");
+    var rod = tog.dataset.rod ? "&rod=" + encodeURIComponent(tog.dataset.rod) : "";
+    // every resolved text its stored words (edit mode) or its resolved ones again
+    function raw(on) {
+      document.querySelectorAll(".ed[data-raw]").forEach(function (x) {
+        if (on && !x.hasAttribute("data-shown")) { x.setAttribute("data-shown", x.textContent); x.textContent = x.dataset.raw; }
+        else if (!on && x.hasAttribute("data-shown")) { x.textContent = x.dataset.shown; x.removeAttribute("data-shown"); }
+      });
+    }
+    // a text as saved, in edit mode: what is stored shows, and the text
+    // shown outside it waits beside it when the two differ
+    function stored(x, text, shown) {
+      x.textContent = text;
+      if (shown !== undefined && shown !== text) { x.setAttribute("data-raw", text); x.setAttribute("data-shown", shown); }
+      else { x.removeAttribute("data-raw"); x.removeAttribute("data-shown"); }
+    }
     function isItem(el) { return el.hasAttribute("data-index") && !el.hasAttribute("data-part"); }
     function isCell(el) { return el.hasAttribute("data-part"); }
     // the other cell of a cell's row: its text
@@ -1507,10 +1534,10 @@
       el.removeAttribute("contenteditable"); el.classList.remove("ed-on"); cur = null; bar.hidden = true;
       if (!keep && el.hasAttribute("data-fresh")) { var ul = el.closest("ul"); el.closest("li").remove(); fitAdd(ul); }
     }
-    // one item, the same shape _copy.html renders
-    function item(ul, text, i) {
+    // one item, the same shape _copy.html renders (`shown`: its text outside edit mode)
+    function item(ul, text, i, shown) {
       var li = document.createElement("li"), sp = document.createElement("span"), x = document.createElement("button");
-      sp.className = "ed t"; sp.textContent = text;
+      sp.className = "ed t"; stored(sp, text, shown);
       sp.setAttribute("data-copy", ul.dataset.list); sp.setAttribute("data-index", i);
       sp.setAttribute("data-max", ul.dataset.max); sp.setAttribute("data-label", ul.dataset.label);
       x.type = "button"; x.className = "ed-x"; x.textContent = "✕"; x.setAttribute("aria-label", "Ukloni stavku " + (i + 1));
@@ -1520,20 +1547,20 @@
       var add = ul.nextElementSibling;
       if (add && add.classList.contains("ed-add")) add.hidden = ul.children.length >= +ul.dataset.maxItems;
     }
-    function draw(ul, items) {
+    function draw(ul, items, shown) {
       ul.textContent = "";
-      items.forEach(function (t, i) { ul.appendChild(item(ul, t, i)); });
+      items.forEach(function (t, i) { ul.appendChild(item(ul, t, i, shown && shown[i])); });
       fitAdd(ul);
     }
     // one row of a table of rows, the same shape _copy.html renders: two
     // cells, each an .ed that saves with the row's index and its part (the
     // days' cell td.d), and the row's ✕ in a third cell
-    function tableRow(table, cells, i) {
+    function tableRow(table, cells, i, shown) {
       var tr = document.createElement("tr"), xc = document.createElement("td"), x = document.createElement("button");
       cells.forEach(function (text, p) {
         var td = document.createElement("td"), sp = document.createElement("span");
         if (!p) td.className = "d";
-        sp.className = "ed t"; sp.textContent = text;
+        sp.className = "ed t"; stored(sp, text, shown && shown[p]);
         sp.setAttribute("data-copy", table.dataset.rows); sp.setAttribute("data-index", i); sp.setAttribute("data-part", p);
         sp.setAttribute("data-max", table.dataset.max);
         sp.setAttribute("data-label", table.dataset.label + ", red " + (i + 1) + ": " + table.dataset["cell" + p]);
@@ -1543,10 +1570,10 @@
       x.type = "button"; x.className = "ed-x"; x.textContent = "✕"; x.setAttribute("aria-label", "Ukloni red " + (i + 1));
       xc.appendChild(x); tr.appendChild(xc); return tr;
     }
-    function drawRows(table, rows) {
+    function drawRows(table, rows, shown) {
       var body = table.tBodies[0] || table.createTBody();
       body.textContent = "";
-      rows.forEach(function (cells, i) { body.appendChild(tableRow(table, cells, i)); });
+      rows.forEach(function (cells, i) { body.appendChild(tableRow(table, cells, i, shown && shown[i])); });
       var add = table.nextElementSibling;
       if (add && add.classList.contains("ed-add")) add.hidden = rows.length >= +table.dataset.maxRows;
     }
@@ -1556,11 +1583,11 @@
     function sendRows(table, body, name) {
       fetch("/copy/" + encodeURIComponent(table.dataset.rows), {
         method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"},
-        body: body, credentials: "same-origin"
+        body: body + rod, credentials: "same-origin"
       }).then(function (r) { return r.json(); }).then(function (d) {
         if (!d.ok) { says(name, d.error || "Nije spremljeno."); return; }
         if (cur && table.contains(cur)) end(false);
-        drawRows(table, d.rows);
+        drawRows(table, d.rows, d.shown_rows);
         if (!cur) bar.hidden = true;                 // an earlier failure's message goes
       }).catch(function () { says(name, "Nije spremljeno — provjeri vezu."); });
     }
@@ -1576,26 +1603,26 @@
       msg.textContent = "Spremam…";
       fetch("/copy/" + encodeURIComponent(el.dataset.copy), {
         method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"},
-        body: body, credentials: "same-origin"
+        body: body + rod, credentials: "same-origin"
       }).then(function (r) { return r.json(); }).then(function (d) {
         if (!d.ok) { msg.textContent = d.error || "Nije spremljeno."; return; }
         if (d.rows) {                                // a table of rows: redraw it from the answer
           var table = el.closest("table");
           if (cur && table.contains(cur)) end(true);
-          drawRows(table, d.rows); return;
+          drawRows(table, d.rows, d.shown_rows); return;
         }
         if (d.items) {                               // a list: redraw it from the answer
           var ul = el.closest("ul");
           el.removeAttribute("data-fresh");
           if (cur && ul.contains(cur)) end(true);
-          draw(ul, d.items); return;
+          draw(ul, d.items, d.shown_items); return;
         }
         // the same text can sit in several places (the add-on's amount on every tier)
-        document.querySelectorAll('[data-copy="' + el.dataset.copy + '"]').forEach(function (x) { x.textContent = d.text; });
+        document.querySelectorAll('[data-copy="' + el.dataset.copy + '"]').forEach(function (x) { stored(x, d.text, d.shown); });
         // and what was saved with it, wherever it shows: a price's first
         // number is its bazna cijena too (23.11.2026, app.py's copy_save)
         (d.also || []).forEach(function (a) {
-          document.querySelectorAll('[data-copy="' + a.key + '"]').forEach(function (x) { x.textContent = a.text; });
+          document.querySelectorAll('[data-copy="' + a.key + '"]').forEach(function (x) { stored(x, a.text, a.shown); });
         });
         orig = d.text; end(true);
       }).catch(function () { msg.textContent = "Nije spremljeno — provjeri vezu."; });
@@ -1832,6 +1859,7 @@
     function setMode(on) {
       end(false);
       mode = !!on; document.body.classList.toggle("editing", mode);
+      raw(mode);                                     // the slash forms: stored words in edit mode, resolved outside it
       tog.setAttribute("aria-pressed", mode ? "true" : "false"); tog.textContent = mode ? "✓ Gotovo" : "✎ Uredi tekstove";
     }
     function once() { try { sessionStorage.setItem("qmt-editing-once", "1"); } catch (e) {} }

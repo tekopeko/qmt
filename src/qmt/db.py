@@ -25,7 +25,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased, joinedload, load_only, selectinload, sessionmaker
 
 from . import config, copy, upitnik
-from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, ActingLog, Announcement, Base, Booking,
+from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, SEXES, ActingLog, Announcement,
+                     Base, Booking,
                      Exercise, GymCard, GymTraining, GymTrainingItem, GymTrainingPart, LimitationFile, Membership,
                      OnboardingResponse,
                      Payment, Program, ProgramDay,
@@ -132,20 +133,40 @@ def read_height(raw: str | None) -> int | None:
     return int(value)
 
 
-KEEP = object()                  # update_profile: a height not given stays what it is
+BAD_SEX = "Neispravan spol."
+
+
+def read_sex(raw: str | None) -> str | None:
+    """"Spol" as the profile's select posts it (27.11.2026): "f" or "m"
+    (models.SEXES' keys), "" (or spaces) for not said, None; anything else
+    ValueError BAD_SEX ("Neispravan spol.")."""
+    value = (raw or "").strip()
+    if not value:
+        return None
+    if value not in SEXES:
+        raise ValueError(BAD_SEX)
+    return value
+
+
+KEEP = object()                  # update_profile: a height (since 27.11.2026 a sex) not given stays what it is
 
 
 def update_profile(user_id: int, name: str, last_name: str,
-                   birth_date: date | None, phone: str, *, height_cm=KEEP) -> bool:
+                   birth_date: date | None, phone: str, *, height_cm=KEEP, sex=KEEP) -> bool:
     """The profile's fields, every one as given: the form posts them all.
     `height_cm` (23.11.2026, read_height's) is the karton's height, None for
     none, checked again here (ValueError BAD_HEIGHT); a caller that does not
     name it (KEEP, the default: /profil since 26.11.2026, whose form has no
     height any more, the seeds, the tests' users) leaves the stored height
-    as it is: the karton's form sets it (set_height)."""
+    as it is: the karton's form sets it (set_height). `sex` (27.11.2026,
+    read_sex's: "f", "m", None for not said, checked again here, ValueError
+    BAD_SEX) the same way: KEEP, the default, leaves the stored one (a
+    profile form that posts none, the seeds, the tests' users)."""
     if height_cm is not KEEP and height_cm is not None and (
             type(height_cm) is not int or not HEIGHT_LIMITS[0] <= height_cm <= HEIGHT_LIMITS[1]):
         raise ValueError(BAD_HEIGHT)
+    if sex is not KEEP and sex is not None and sex not in SEXES:
+        raise ValueError(BAD_SEX)
     with session_scope() as s:
         u = s.get(User, user_id)
         if u is None:
@@ -156,6 +177,8 @@ def update_profile(user_id: int, name: str, last_name: str,
         u.phone = phone.strip() or None
         if height_cm is not KEEP:
             u.height_cm = height_cm
+        if sex is not KEEP:
+            u.sex = sex
         return True
 
 

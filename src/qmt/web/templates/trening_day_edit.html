@@ -277,8 +277,8 @@
   {# the part as this day names it (26.11.2026), a renamed one with its default after it #}
   <h3 class="st-cap" id="dio-{{ key }}">{{ own or label }}{% if own %} <span class="st-cap-def">({{ label }})</span>{% endif %}</h3>
   {% if here %}
-    {% if refused %}<div class="alert st-alert" role="alert"><span>{{ refused }}</span></div>
-    {% elif request.query_params.get("ok") %}<div class="alert ok st-alert" role="status">{{ request.query_params.get("ok") }}</div>{% endif %}
+    {% if refused %}<div class="alert st-alert" role="alert"><span>{{ refused | gendered }}</span></div>
+    {% elif request.query_params.get("ok") %}<div class="alert ok st-alert" role="status">{{ request.query_params.get("ok") | gendered }}</div>{% endif %}
   {% endif %}
   <div class="st-tools">
   <details class="st-circ{% if circ %} on{% endif %}"{% if here and refused and not by_name %} open{% endif %}>
@@ -323,8 +323,8 @@
         </span>
       </span>
       {% if here_row %}
-        {% if refused %}<div class="alert st-alert" role="alert"><span>{{ refused }}</span></div>
-        {% elif request.query_params.get("ok") %}<div class="alert ok st-alert" role="status">{{ request.query_params.get("ok") }}</div>{% endif %}
+        {% if refused %}<div class="alert st-alert" role="alert"><span>{{ refused | gendered }}</span></div>
+        {% elif request.query_params.get("ok") %}<div class="alert ok st-alert" role="status">{{ request.query_params.get("ok") | gendered }}</div>{% endif %}
       {% endif %}
       <form class="st-form" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke/{{ it.id }}">
         {% if circ %}<input type="hidden" name="circuit" value="1">{% endif %}
@@ -412,8 +412,8 @@
 {% set slots_here = p.venue == "dvorana" %}
 <form id="dodaj" method="post" action="/treninzi/{{ p.id }}/dan/{{ day.id }}/stavke" class="card add-ex">
   {% if in_add %}
-    {% if request.query_params.get("error") %}<div class="alert" role="alert"><span>{{ request.query_params.get("error") }}</span></div>
-    {% elif request.query_params.get("ok") %}<div class="alert ok" role="status">{{ request.query_params.get("ok") }}</div>{% endif %}
+    {% if request.query_params.get("error") %}<div class="alert" role="alert"><span>{{ request.query_params.get("error") | gendered }}</span></div>
+    {% elif request.query_params.get("ok") %}<div class="alert ok" role="status">{{ request.query_params.get("ok") | gendered }}</div>{% endif %}
   {% endif %}
   {% if choices or slots_here %}
   {% if choices %}{{ tagbar(tags) }}{% endif %}

@@ -2458,7 +2458,7 @@ NEW_OPTIONAL = {
     "player.step.extra_set", "player.list.circuit", "player.list.swapped",
     "kraj.kicker_done", "kraj.kicker_stale", "kraj.stale_tail", "kraj.effort_low", "kraj.effort_high",
     "kraj.note_placeholder", "leave.lead_player", "leave.lead_kraj",
-    "profil.head.lead", "profil.welcome", "profil.form.phone_placeholder", "profil.account.since",
+    "profil.head.lead", "profil.welcome", "profil.form.phone_placeholder", "profil.form.sex_hint", "profil.account.since",
     "auth.login.lead", "auth.login.no_account", "auth.login.invite_only", "auth.closed", "auth.signup.lead_open",
     "auth.signup.invite", "auth.signup.name_placeholder", "auth.signup.have_account", "auth.forgot.lead",
     "auth.reset.lead", "auth.verify.sent_to", "auth.verify.click", "auth.verify.hours", "auth.verify.reset_valid",
@@ -2523,15 +2523,17 @@ def test_every_new_text_is_a_slot_with_the_words_the_page_printed():
     the profile's "Visina (cm)" left (the karton's since), the phone
     reminder's three came (app.phone.*, its lead optional); 271 the same
     day, a dvoranski day's empty slot on the day's page (dan.slot,
-    "Prazno mjesto", required)."""
-    assert len(NEW) == 271
+    "Prazno mjesto", required); 274 since 27.11.2026, the profile's
+    "Spol" (profil.form.sex, its label, and .sex_none, its none option,
+    required; .sex_hint, its hint, optional)."""
+    assert len(NEW) == 274
     for key in NEW:
         slot = copy.SLOTS[key]
         assert isinstance(slot, copy.Slot) and slot.max == copy.CAP, key
         assert slot.default and copy.clean(slot.default) == slot.default, key
         assert slot.required == (key not in NEW_OPTIONAL), key
         assert slot.label.startswith(NEW_LABELS[key.split(".")[0]]), key
-    assert NEW_OPTIONAL <= set(NEW) and len(NEW_OPTIONAL) == 120
+    assert NEW_OPTIONAL <= set(NEW) and len(NEW_OPTIONAL) == 121
     assert {key: copy.SLOTS[key].default for key in NEW_BEFORE} == NEW_BEFORE
     for key, label in (("raspored.termin.book", "Raspored · termin: gumb Rezerviraj (i u prozoru termina)"),
                        ("player.round.done", "Trening · krug: gumb, iza broja kruga"),

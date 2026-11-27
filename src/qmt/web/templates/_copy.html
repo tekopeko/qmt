@@ -11,14 +11,20 @@
    editor, which edit mode gives a box to click (base.html). A required
    slot's .ed says so (data-required), so the editor's bar can tell him
    what Spremi will do with an empty one.
+   The slash forms (27.11.2026): every text here prints as the page's
+   reader reads it (the filter gendered: "bio/la" as "bila" for a member
+   who gave "f"; for one who has not, and a guest, the text as stored). An
+   editor's span whose text that changes carries the stored one, data-raw,
+   which base.html's editor shows and edits in edit mode.
    Use: {% import "_copy.html" as c with context %} … {{ c.t("hero.kicker") }} #}
 {% macro t(key) -%}
   {%- set slot = COPY[key] -%}
   {%- set text = copy_texts.get(key, slot.default) -%}
+  {%- set shown = text | gendered -%}
   {%- if can_edit_copy -%}
-    <span class="ed t" data-copy="{{ key }}" data-max="{{ slot.max }}" data-label="{{ slot.label }}"{% if slot.required %} data-required{% endif %}>{{ text }}</span>
+    <span class="ed t" data-copy="{{ key }}" data-max="{{ slot.max }}" data-label="{{ slot.label }}"{% if slot.required %} data-required{% endif %}{% if shown != text %} data-raw="{{ text }}"{% endif %}>{{ shown }}</span>
   {%- elif text -%}
-    <span class="t">{{ text }}</span>
+    <span class="t">{{ shown }}</span>
   {%- endif -%}
 {%- endmacro %}
 
@@ -46,10 +52,11 @@
    data-required: no text of a row is (copy.ANNOUNCEMENT_SLOTS,
    copy.GYM_CARD_SLOTS), so an emptied one stays empty. #}
 {% macro field(key, text, label) -%}
+  {%- set shown = text | gendered -%}
   {%- if can_edit_copy -%}
-    <span class="ed t" data-copy="{{ key }}" data-max="{{ CAP }}" data-label="{{ label }}">{{ text }}</span>
+    <span class="ed t" data-copy="{{ key }}" data-max="{{ CAP }}" data-label="{{ label }}"{% if shown != text %} data-raw="{{ text }}"{% endif %}>{{ shown }}</span>
   {%- elif text -%}
-    <span class="t">{{ text }}</span>
+    <span class="t">{{ shown }}</span>
   {%- endif -%}
 {%- endmacro %}
 
@@ -67,15 +74,15 @@
 {% macro field_points(key, entries, label, slot, cls="", add_label="+ Dodaj stavku") -%}
   {%- if can_edit_copy -%}
     <ul{% if cls %} class="{{ cls }}"{% endif %} data-list="{{ key }}" data-max="{{ slot.max_chars }}" data-max-items="{{ slot.max_items }}" data-label="{{ label }}">
-      {%- for text in entries %}
-      <li><span class="ed t" data-copy="{{ key }}" data-index="{{ loop.index0 }}" data-max="{{ slot.max_chars }}" data-label="{{ label }}">{{ text }}</span><button type="button" class="ed-x" aria-label="Ukloni stavku {{ loop.index }}">✕</button></li>
+      {%- for text in entries %}{% set shown = text | gendered %}
+      <li><span class="ed t" data-copy="{{ key }}" data-index="{{ loop.index0 }}" data-max="{{ slot.max_chars }}" data-label="{{ label }}"{% if shown != text %} data-raw="{{ text }}"{% endif %}>{{ shown }}</span><button type="button" class="ed-x" aria-label="Ukloni stavku {{ loop.index }}">✕</button></li>
       {%- endfor %}
     </ul>
     <button type="button" class="act ed-add"{% if entries | length >= slot.max_items %} hidden{% endif %}>{{ add_label }}</button>
   {%- elif entries -%}
     <ul{% if cls %} class="{{ cls }}"{% endif %}>
       {%- for text in entries %}
-      <li><span class="t">{{ text }}</span></li>
+      <li><span class="t">{{ text | gendered }}</span></li>
       {%- endfor %}
     </ul>
   {%- endif -%}
@@ -137,8 +144,8 @@
     <table data-rows="{{ key }}" data-max="{{ slot.max_chars }}" data-max-rows="{{ slot.max_rows }}" data-label="{{ slot.label }}" data-cell0="{{ slot.cell_labels[0] }}" data-cell1="{{ slot.cell_labels[1] }}">
       {%- for row in entries %}{% set i = loop.index0 %}
       <tr>
-        {%- for text in row -%}
-        <td{% if loop.first %} class="d"{% endif %}><span class="ed t" data-copy="{{ key }}" data-index="{{ i }}" data-part="{{ loop.index0 }}" data-max="{{ slot.max_chars }}" data-label="{{ slot.label }}, red {{ i + 1 }}: {{ slot.cell_labels[loop.index0] }}">{{ text }}</span></td>
+        {%- for text in row %}{% set shown = text | gendered -%}
+        <td{% if loop.first %} class="d"{% endif %}><span class="ed t" data-copy="{{ key }}" data-index="{{ i }}" data-part="{{ loop.index0 }}" data-max="{{ slot.max_chars }}" data-label="{{ slot.label }}, red {{ i + 1 }}: {{ slot.cell_labels[loop.index0] }}"{% if shown != text %} data-raw="{{ text }}"{% endif %}>{{ shown }}</span></td>
         {%- endfor -%}
         <td class="ed-xc"><button type="button" class="ed-x" aria-label="Ukloni red {{ i + 1 }}">✕</button></td></tr>
       {%- endfor %}
@@ -147,7 +154,7 @@
   {%- elif entries -%}
     <table>
       {%- for row in entries %}
-      <tr><td class="d">{% if row[0] %}<span class="t">{{ row[0] }}</span>{% endif %}</td><td>{% if row[1] %}<span class="t">{{ row[1] }}</span>{% endif %}</td></tr>
+      <tr><td class="d">{% if row[0] %}<span class="t">{{ row[0] | gendered }}</span>{% endif %}</td><td>{% if row[1] %}<span class="t">{{ row[1] | gendered }}</span>{% endif %}</td></tr>
       {%- endfor %}
     </table>
   {%- endif -%}

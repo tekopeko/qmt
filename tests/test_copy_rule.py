@@ -281,8 +281,10 @@ def test_every_slot_of_this_build_is_printed_by_a_template_or_the_code():
     unique in the editor's bar. 270 since 26.11.2026: the profile's
     "Visina (cm)" left (the karton's since), the phone reminder's three
     came (app.phone.*); 271 the same day, a dvoranski day's empty slot on
-    the day's page (dan.slot, "Prazno mjesto")."""
-    assert len(BUILD) == 271
+    the day's page (dan.slot, "Prazno mjesto"); 274 since 27.11.2026, the
+    profile's "Spol": its label, its none option and its hint
+    (profil.form.sex*)."""
+    assert len(BUILD) == 274
     sources = APP + "".join((TEMPLATES / n).read_text() for n in MEMBER_TEMPLATES)
     why = {k for k in BUILD if k.startswith("raspored.report.why_")}
     chips = {k for k in BUILD if k.startswith("clanarina.chip.")}

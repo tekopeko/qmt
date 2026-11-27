@@ -317,8 +317,8 @@
 
 {# a form's word inside its card or the add card #}
 {% macro said() -%}
-  {%- if request.query_params.get("error") %}<div class="alert" role="alert"><span>{{ request.query_params.get("error") }}</span></div>
-  {%- elif request.query_params.get("ok") %}<div class="alert ok" role="status">{{ request.query_params.get("ok") }}</div>{% endif -%}
+  {%- if request.query_params.get("error") %}<div class="alert" role="alert"><span>{{ request.query_params.get("error") | gendered }}</span></div>
+  {%- elif request.query_params.get("ok") %}<div class="alert ok" role="status">{{ request.query_params.get("ok") | gendered }}</div>{% endif -%}
 {%- endmacro %}
 
 {# an exercise's rating (the player's ten round buttons, its question's

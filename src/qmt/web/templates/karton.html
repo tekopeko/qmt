@@ -656,18 +656,20 @@
     {% for i in range(3) %}<span class="{% if i < rung %}on{% endif %}"></span>{% endfor %}
   </div>
   <p class="ramp-note">Razina {{ rung }} od 3 — programi na /treninzi prate ovu razinu.</p>
-  {% if v2 and onboarding.pain_high and pain_note %}<p class="u-note">{{ pain_note }}</p>{% endif %}
+  {% if v2 and onboarding.pain_high and pain_note %}<p class="u-note">{{ pain_note | gendered }}</p>{% endif %}
   {% if not v2 and own %}<p class="u-old">{{ c.t("karton.upitnik.old") }} <a class="tlink" href="/upitnik">{{ c.t("karton.upitnik.old_link") }}</a>.</p>
   {% elif not v2 and (can_edit_copy or copy_text("karton.staff.old", copy_texts)) %}<p class="u-old">{{ c.t("karton.staff.old") }}</p>{% endif %}
   {% if not own or actor %}{% if actor %}<p class="hint u-staff u-answers">Vidi samo trener</p>{% endif %}
   {# the trainer has no "Ispuni ponovno" — for them the answers (ozljede!) are
      the only place this information exists; staff acting as the member read
-     them too, under their caption (26.11.2026, build 4) #}
+     them too, under their caption (26.11.2026, build 4). Each question as
+     the member whose answers they are reads it (the slash forms, 27.11.2026:
+     this page's rod is his, the trainer's view too), each answer as given #}
   <details>
     <summary>{{ c.t("karton.staff.answers") }}</summary>
     <ul>
       {% for question, answer, depth in u_rows %}
-      <li{% if depth %} class="follow d{{ [depth, 3] | min }}"{% endif %}>{{ question }} — <strong>{{ answer }}</strong></li>
+      <li{% if depth %} class="follow d{{ [depth, 3] | min }}"{% endif %}>{{ question | gendered }} — <strong>{{ answer }}</strong></li>
       {% endfor %}
     </ul>
   </details>

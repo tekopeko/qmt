@@ -41,6 +41,12 @@ ONLINE_TIER_SLOTS = {"start": "offer.online", "pro": "offer.online2", "elite": "
 # Post-training feedback (the Strava pattern): RPE number + how it felt.
 FEELING_LABELS = {"slabo": "Slabo", "dobro": "Dobro", "odlicno": "Odlično"}
 
+# A member's sex, as the profile's "Spol" offers it (27.11.2026, optional:
+# User.sex, NULL for not said), in this order after its none option. The
+# app uses it for its grammar alone: a text's slash forms ("bio/la") read
+# as his (grammar.gendered).
+SEXES = {"f": "Žensko", "m": "Muško"}
+
 # An online programme's day (30.10.2026, ProgramDay): its sections, in the
 # day's order (the dict's order), each item in one of them; and the weekday
 # a day suggests, 0 = ponedjeljak (a suggestion, never a gate). The main
@@ -110,6 +116,8 @@ class Base(DeclarativeBase):
 
 class User(Base):
     __tablename__ = "users"
+    # the sex the member gave (27.11.2026, migration 3d9a6f2c8b51): SEXES' keys or NULL
+    __table_args__ = (CheckConstraint("sex IN ('f', 'm')", name="ck_users_sex"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(320), unique=True)
@@ -131,6 +139,12 @@ class User(Base):
     # own (Weight), his monthly photos too (ProgressPhoto).
     height_cm: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     limitations: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    # His sex, if he gave it (27.11.2026, the profile's "Spol", optional;
+    # db.read_sex, db.update_profile): "f" or "m" (SEXES), NULL for not
+    # said, which every account is until he does. For the grammar alone:
+    # the slash forms of what he reads ("bio/la") read as his
+    # (grammar.gendered); shown to nobody.
+    sex: Mapped[str | None] = mapped_column(String(1), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # The trainer runs the timetable and sees rosters; clients only see their own
     # bookings. Same one-owner shape as mojimakrosi's is_admin.

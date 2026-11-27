@@ -279,7 +279,7 @@
         {% if round_rest or copy_on("player.round.intro") %}
         <p class="cr-intro">{{ c.t("player.round.intro") }}{% if round_rest %} {{ c.t("player.round.rest") }} {{ round_rest }}.{% endif %}</p>
         {% endif %}
-        {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
+        {% if error %}<div class="alert" role="alert"><span>{{ error | gendered }}</span></div>{% endif %}
         <form class="pl-log" id="plLog" method="post" action="{{ base }}/vjezba/{{ k }}"{% if odmor %} data-odmor="{{ odmor }}"{% endif %}>
           <input type="hidden" name="part" value="{{ step.circuit.section }}">
           <input type="hidden" name="round" value="{{ step.round }}">
@@ -339,7 +339,7 @@
           {%- if saved %} {{ c.opt("player.saved", "span", ' class="pl-saved"') }}{% endif %}</p>
         <h1 class="pl-name" id="pl-name">{{ ex.name }}</h1>
         {% if swapped %}<p class="pl-for">{{ c.t("player.step.swapped_for") }} {{ planned.name }}</p>{% endif %}
-        {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
+        {% if error %}<div class="alert" role="alert"><span>{{ error | gendered }}</span></div>{% endif %}
         {# the dose, the line for the next time (25.11.2026: after a rating,
            _next_line), then the rests (_player's rest_line) and the note #}
         {% if dose %}<p class="pl-dose">{{ dose }}</p>{% endif %}

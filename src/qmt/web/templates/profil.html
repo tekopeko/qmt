@@ -21,6 +21,15 @@
   /* the phone reminder's "Upiši broj" lands at #p-phone (26.11.2026): the
      field clear of the floating pill */
   #p-phone { scroll-margin-top: 96px; }
+  /* "Spol" (27.11.2026), after "Datum rođenja": its hint the hint's look
+     (.85rem, muted), 6px under its select. Where the form is narrow (a
+     phone) a column of two leaves its select too little room for "Ne želim
+     navesti" (measured: 83px for its 118 at 360px, 111 at 390), so from the
+     date on each field has a row of its own; the names stay side by side.
+     The form's own width decides, not the window's (a container query). */
+  .p-sex-hint { margin-top: 6px; line-height: 1.4; }
+  .p-form { container-type: inline-size; }
+  @container (max-width: 400px) { .p-grid > .field:nth-child(n+3) { grid-column: 1 / -1; } }
 </style>{% endblock %}
 {% block content %}
 <h1>{{ c.t("profil.head.title") }}</h1>
@@ -30,8 +39,8 @@
 {{ c.opt("profil.welcome", "div", ' class="alert" role="status" style="max-width:560px;"') }}
 {% endif %}
 
-<form method="post" action="/profil" class="card" style="max-width:560px; padding:18px 20px; margin-bottom:26px;">
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+<form method="post" action="/profil" class="card p-form" style="max-width:560px; padding:18px 20px; margin-bottom:26px;">
+  <div class="p-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
     <div class="field"><label for="p-name">{{ c.t("profil.form.name") }}</label>
       <input id="p-name" type="text" name="name" value="{{ user.name or '' }}" required></div>
     <div class="field"><label for="p-last">{{ c.t("profil.form.last") }}</label>
@@ -39,6 +48,18 @@
     <div class="field"><label for="p-born">{{ c.t("profil.form.born") }}</label>
       <input id="p-born" type="date" name="birth_date"
              value="{{ user.birth_date.isoformat() if user.birth_date else '' }}"></div>
+    {#- "Spol" (27.11.2026, optional): the none option (its words a slot,
+       edited on /tekstovi: an option holds no box), then models.SEXES; the
+       app's grammar alone reads it (the slash forms of what he reads) #}
+    {%- set hint = copy_on("profil.form.sex_hint") %}
+    <div class="field"><label for="p-sex">{{ c.t("profil.form.sex") }}</label>
+      <select id="p-sex" name="sex"{% if hint %} aria-describedby="p-sex-hint"{% endif %}>
+        <option value="">{{ copy_text("profil.form.sex_none", copy_texts) }}</option>
+        {%- for key, label in sexes.items() %}
+        <option value="{{ key }}"{% if user.sex == key %} selected{% endif %}>{{ label }}</option>
+        {%- endfor %}
+      </select>
+      {{ c.opt("profil.form.sex_hint", "p", ' class="hint p-sex-hint" id="p-sex-hint"') }}</div>
     {% set placeholder = copy_text("profil.form.phone_placeholder", copy_texts) %}
     <div class="field"><label for="p-phone">{{ c.t("profil.form.phone") }}</label>
       <input id="p-phone" type="tel" name="phone" value="{{ user.phone or '' }}"{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}></div>

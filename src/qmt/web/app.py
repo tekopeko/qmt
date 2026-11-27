@@ -21,10 +21,10 @@ from jinja2 import pass_context
 
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import auth, config, copy, db, mailer, payments, reminders, storage, upitnik
+from .. import auth, config, copy, db, grammar, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, ONLINE_TIER_SLOTS, ONLINE_TIERS, PAYMENT_METHODS, PLAN_ABBR,
-                      PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, VENUES, WEEKDAYS as DAY_WEEKDAYS, add_month,
-                      alpha_key, duration_text, effort_of, fold, matches, plural, sub_month)
+                      PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, SEXES, VENUES, WEEKDAYS as DAY_WEEKDAYS,
+                      add_month, alpha_key, duration_text, effort_of, fold, matches, plural, sub_month)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -95,12 +95,37 @@ templates.env.globals["VENUES"] = VENUES
 # a programme as the library's pages name it, "Booty build (napredna razina)"
 # (vjezba.html: the programmes that hold an exercise)
 templates.env.filters["program_name"] = db.program_name
+
+
+@pass_context
+def _gendered(ctx, text):
+    """A text as this page's reader reads it (27.11.2026, the slash forms:
+    grammar.gendered by the context's `rod`, _ctx): the filter `gendered`,
+    which _copy.html's macros print every text through, and every flash
+    and refusal a template prints. For a reader who has not said his sex
+    (rod None, every guest) the text itself."""
+    return grammar.gendered(text, ctx.get("rod"))
+
+
+templates.env.filters["gendered"] = _gendered
+
+
+@pass_context
+def _copy_text(ctx, key: str, texts: dict[str, str]):
+    """A slot's text where no span can hold it: an attribute (a confirm's
+    words, a placeholder), a script's word, a select's option, and the
+    templates' conditions on a text being there. As the page's reader reads
+    it since 27.11.2026 (the slash forms, as _gendered), which no condition
+    minds: a text resolved is never emptied."""
+    return grammar.gendered(texts.get(key, copy.SLOTS[key].default), ctx.get("rod"))
+
+
 # a price slot's text as the page prints it, and whether it is a number at
 # all: "€" follows "50" and "od 30", not "na upit" (landing.html,
 # _plan_price.html), nor an amount that carries its own (21.10.2026: a gym
 # card's yearly price, typed with its sign where the landing added none,
 # is its plan's price.<plan>.year_amount slot since migration 6e2b9d41c7a3)
-templates.env.globals["copy_text"] = lambda key, texts: texts.get(key, copy.SLOTS[key].default)
+templates.env.globals["copy_text"] = _copy_text
 templates.env.tests["priced"] = lambda text: any(ch.isdigit() for ch in str(text)) and "€" not in str(text)
 
 
@@ -300,6 +325,12 @@ def _ctx(request: Request, user, copy_texts: dict[str, str] | None = None, **ext
             # them already passes its dict), and whether this viewer may edit
             "copy_texts": db.copy_texts() if copy_texts is None else copy_texts,
             "can_edit_copy": _can_edit_copy(user),
+            # whose sex the page's slash forms read as (27.11.2026, the
+            # filter gendered and copy_text): the user the page is for, the
+            # member while staff act as him, None for a guest and for one
+            # who has not said; the trainer's view of a karton passes the
+            # member's (_render_karton)
+            "rod": getattr(user, "sex", None),
             "feedback_prompt": _pop_feedback_prompt(request, user),
             "is_owner": _is_owner(user), **extra}
 
@@ -400,7 +431,43 @@ def logout(request: Request):
 
 @app.post("/copy/{key}")
 def copy_save(request: Request, key: str, text: str = Form(""), index: str = Form(""),
-              reset: str = Form(""), part: str = Form(""), remove: str = Form(""), add: str = Form("")):
+              reset: str = Form(""), part: str = Form(""), remove: str = Form(""), add: str = Form(""),
+              rod: str = Form("")):
+    """Save one edited text (_copy_save), what is stored always the text as
+    typed, its slash forms and all. Since 27.11.2026 (the slash forms) the
+    editor's script posts the sex its page's reader reads as (`rod`: the
+    editor's own, the member's on the trainer's view of a karton; nothing
+    for none), and the answer then carries the text to show beside each it
+    stores (_shown); with none, the answer as it was."""
+    return _shown(_copy_save(request, key, text, index, reset, part, remove, add), rod if rod in SEXES else None)
+
+
+def _shown(answer: JSONResponse, sex: str | None) -> JSONResponse:
+    """POST /copy/{key}'s answer for a page whose reader is of `sex` (the
+    slash forms, 27.11.2026): beside each text it carries, the text that
+    page shows (grammar.gendered), so the editor shows it once edit mode
+    ends, no reload: "shown" beside a text ("text", and each of "also"),
+    "shown_items" beside a list's "items", "shown_rows" beside a table's
+    "rows". A refusal, a switch's or a photo's answer, and every answer for
+    no sex, stay as they were."""
+    if sex is None:
+        return answer
+    data = json.loads(answer.body)
+    if not data.get("ok"):
+        return answer
+    if isinstance(data.get("text"), str):
+        data["shown"] = grammar.gendered(data["text"], sex)
+    for extra in data.get("also", ()):
+        extra["shown"] = grammar.gendered(extra["text"], sex)
+    if "items" in data:
+        data["shown_items"] = [grammar.gendered(t, sex) for t in data["items"]]
+    if "rows" in data:
+        data["shown_rows"] = [[grammar.gendered(t, sex) for t in row] for row in data["rows"]]
+    return JSONResponse(data, status_code=answer.status_code)
+
+
+def _copy_save(request: Request, key: str, text: str, index: str, reset: str, part: str, remove: str,
+               add: str) -> JSONResponse:
     """Save one edited text (the in-place editor in base.html posts here).
     JSON in both directions: this is called by fetch, never by a form. The
     limit is the slot's, enforced here as well as in the browser; reset=1
@@ -1677,7 +1744,7 @@ def forgot(request: Request, email: str = Form(...)):
         return templates.TemplateResponse(request, "verify_sent.html", _ctx(
             request, None, email=email, dev_link=None, reset_mode=True))
     link = f"{config.PUBLIC_BASE_URL}/reset?token={auth.make_reset_token(u.email, u.password_hash)}"
-    sent = mailer.send_password_reset_email(u.email, link)
+    sent = mailer.send_password_reset_email(u.email, link, u.sex)     # its slash form as the account's (27.11.2026)
     if not sent and config.IS_PROD:
         return RedirectResponse("/forgot?error=Slanje+emaila+nije+uspjelo.", status_code=303)
     return templates.TemplateResponse(request, "verify_sent.html", _ctx(
@@ -2160,18 +2227,26 @@ def profil_page(request: Request):
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/profil')}", status_code=303)
     # the person's own data only: plans, uplate and računi are /moja-clanarina's
-    # (tz: the Račun card's registration date, in the studio's time zone)
+    # (tz: the Račun card's registration date, in the studio's time zone;
+    # sexes: "Spol"'s options after its none, 27.11.2026)
     return templates.TemplateResponse(request, "profil.html", _ctx(
-        request, user, first_login="dopuni" in request.query_params, tz=config.TZ))
+        request, user, first_login="dopuni" in request.query_params, tz=config.TZ, sexes=SEXES))
 
 
 @app.post("/profil")
-def profil_save(request: Request, name: str = Form(...), last_name: str = Form(...),
-                birth_date: str = Form(""), phone: str = Form("")):
+async def profil_save(request: Request, name: str = Form(...), last_name: str = Form(...),
+                      birth_date: str = Form(""), phone: str = Form("")):
     """The profile's fields, every one as posted. The height, a field here
     from 23.11.2026, is the karton's since 26.11.2026 (the owner's note:
     "visinu maknut iz profila u karton"; POST /karton/visina): nothing here
-    reads it, and a save keeps the stored one."""
+    reads it, and a save keeps the stored one. "Spol" (27.11.2026,
+    db.read_sex: "f", "m", "" for not said; anything else refused, nothing
+    saved): a form that posts none (a page drawn before the field) keeps
+    the stored one. It is read off the form itself: FastAPI takes an
+    emptied field for one not sent, and "" here is "Ne želim navesti".
+    Staff acting as the member set his: it is his profile (the record has
+    the write)."""
+    sex = (await request.form()).get("sex")
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2184,8 +2259,15 @@ def profil_save(request: Request, name: str = Form(...), last_name: str = Form(.
             return RedirectResponse("/profil?error=Neispravan+datum+rođenja.", status_code=303)
     if not name.strip() or not last_name.strip():
         return RedirectResponse("/profil?error=Ime+i+prezime+su+obavezni.", status_code=303)
+    try:
+        if sex is not None and not isinstance(sex, str):
+            raise ValueError(db.BAD_SEX)                          # a file where a choice goes
+        given = db.KEEP if sex is None else db.read_sex(sex)
+    except ValueError as e:
+        from urllib.parse import quote
+        return RedirectResponse("/profil?error=" + quote(str(e)), status_code=303)
     entry_pass = not user.profile_complete       # the after-sign-up completion
-    db.update_profile(user.id, name, last_name, born, phone)
+    db.update_profile(user.id, name, last_name, born, phone, sex=given)
     if entry_pass and born is not None:
         # done onboarding: drop them on the landing page, not back on the form
         # (still incomplete -> stay here so they can finish)
@@ -2375,8 +2457,10 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         named = m["name"] != email
         plans = m["plans"] or "bez članarine"
         kao_rows.append([m["user"].id, m["name"], f"{email} · {plans}" if named else plans, email if named else ""])
+    # the slash forms read as the member's (27.11.2026): the texts here are
+    # about him, the trainer's view of his karton too
     return templates.TemplateResponse(request, "karton.html", _ctx(
-        request, viewer, copy_texts=texts, subject=subject, own=own, age=age, staff_own=staff_own,
+        request, viewer, copy_texts=texts, subject=subject, own=own, age=age, staff_own=staff_own, rod=subject.sex,
         can_upitnik=own and not staff_own and _has_online(subject),
         onboarding=onboarding, answers=answers,
         levels=upitnik.LEVELS, goals=upitnik.GOALS, max_score_v1=upitnik.MAX_SCORE_V1,
@@ -3371,7 +3455,9 @@ async def gym_item_done(request: Request, training_id: int, item_id: int):
 
     def answer(error: str | None = None, mark: str = ""):
         if as_json:
-            return JSONResponse({"ok": error is None, "error": error or "", "mark": mark},
+            # the script says the sentence as it comes: as its member reads
+            # it (the slash forms, 27.11.2026; a redirect's is the page's)
+            return JSONResponse({"ok": error is None, "error": grammar.gendered(error or "", user.sex), "mark": mark},
                                 status_code=400 if error else 200)
         return _gym_back(training_id, item=item_id, error=error, ok=None if error else GYM_SAVED)
 

@@ -264,7 +264,7 @@
   <div class="q-head">
     <p class="q-title">{{ c.t("upitnik.title") }}</p>
     {% if request.query_params.get("error") %}
-    <div class="alert" role="alert"><span>{{ request.query_params.get("error") }}</span></div>
+    <div class="alert" role="alert"><span>{{ request.query_params.get("error") | gendered }}</span></div>
     {% endif %}
     <p class="q-intro">{{ c.t("upitnik.intro") }}</p>
   </div>
@@ -287,13 +287,16 @@
   {% set name = "Pitanje " ~ q.n %}
   {# a conditional question (its condition working: q.follows) is asked
      only after that answer, so it is required of nobody here: the script
-     asks it when it is asked, the server checks what was #}
+     asks it when it is asked, the server checks what was. An option it is
+     asked after (data-has) is the row's text, as a member's tick posts it;
+     on the editor's preview, whose options are his texts as he reads them
+     outside edit mode (the slash forms, 27.11.2026), as he reads it #}
   {% set req = "" if q.follows else " required" %}
   <section class="q-step{% if not q.shown %} is-off{% endif %}{% if q.muted %} is-muted{% endif %}" id="step-{{ q.id }}" data-q="{{ q.id }}" data-kind="{{ q.kind }}"
            {%- if q.follows %} data-parent="{{ q.follows }}"
              {%- if q.parent_kind == "yesno" %} data-is="{{ yes if q.condition == 'yes' else no }}"
              {%- elif q.parent_kind == "scale" %} data-from="{{ q.condition[2:] }}"
-             {%- else %} data-has="{{ q.condition }}"{% endif %}{% endif %}
+             {%- else %} data-has="{{ q.condition | gendered if can_edit_copy else q.condition }}"{% endif %}{% endif %}
            {%- if can_edit_copy %} data-flag{% if q.depth %} data-depth="{{ [q.depth, 4] | min }}"{% endif %}{% endif %}>
     {% if can_edit_copy %}{{ controls(q) }}
     <p class="q-ed-line">{{ lines[q.id] }}{% if ifs[q.id] %}<span class="q-ed-if{% if q.muted %} muted{% elif q.void %} void{% endif %}">{{ ifs[q.id] }}</span>{% endif %}</p>{% endif %}
@@ -311,16 +314,18 @@
       {{ c.field_points(key ~ ".options", q.options, name ~ ": " ~ QUESTION["options"].label, QUESTION["options"],
                         cls="opts", add_label="+ Dodaj odgovor") }}
       {% elif q.kind == "choice" %}
+      {#- an option reads as its member reads it (the slash forms, 27.11.2026);
+         its value, what is posted and stored, is the row's text as it is #}
       <div class="opts" role="radiogroup" aria-labelledby="h-{{ q.id }}">
         {% for text in q.options %}
-        <label class="opt"><input type="radio" name="{{ q.id }}" value="{{ text }}"{{ req }}><span class="t">{{ text }}</span></label>
+        <label class="opt"><input type="radio" name="{{ q.id }}" value="{{ text }}"{{ req }}><span class="t">{{ text | gendered }}</span></label>
         {% endfor %}
       </div>
       {% else %}
       {# several may be ticked, so "Dalje" goes on (one at least: the script, the server) #}
       <div class="opts" role="group" aria-labelledby="h-{{ q.id }}">
         {% for text in q.options %}
-        <label class="opt"><input type="checkbox" name="{{ q.id }}" value="{{ text }}"><span class="t">{{ text }}</span></label>
+        <label class="opt"><input type="checkbox" name="{{ q.id }}" value="{{ text }}"><span class="t">{{ text | gendered }}</span></label>
         {% endfor %}
       </div>
       {% endif %}

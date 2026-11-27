@@ -51,7 +51,7 @@
   <p class="kr-sum">{% if n_items %}{{ done_n }} od {{ n_items }} {{ plural(n_items, "vježbe", "vježbe", "vježbi") }}{% else %}{{ log.done_text }}{% endif %} · {{ elapsed }}</p>
   {# the first sentence names a value (code), the second is a slot #}
   {% if stale %}<p class="kr-stale">Započet {{ pass_when(log.date) }} i nije završen — nastavak više nije moguć. {{ c.t("kraj.stale_tail") }}</p>{% endif %}
-  {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
+  {% if error %}<div class="alert" role="alert"><span>{{ error | gendered }}</span></div>{% endif %}
 
   <form class="kr-form" method="post" action="{{ base }}/kraj">
     <section class="kr-field" aria-labelledby="kr-napor">

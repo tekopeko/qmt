@@ -6,7 +6,7 @@ to showing the link on-page (dev only — app.py refuses that path in prod).
 
 from __future__ import annotations
 
-from . import config
+from . import config, grammar
 
 
 def _send(to: str, subject: str, html: str) -> bool:
@@ -56,15 +56,18 @@ def send_new_user_notice(owner_email: str, new_email: str, full_name: str | None
       </div>""")
 
 
-def send_password_reset_email(to: str, link: str) -> bool:
-    return _send(to, "Nova lozinka za QMT", f"""
+def send_password_reset_email(to: str, link: str, sex: str | None = None) -> bool:
+    """The reset link. Its "tražio/la" as the account's sex reads it (27.11.2026,
+    grammar.gendered: User.sex, None for not said, the text as it was); the
+    verification email stays as it is, its reader has said nothing yet."""
+    return _send(to, "Nova lozinka za QMT", grammar.gendered(f"""
       <div style="font-family:sans-serif;max-width:480px">
         <h2>Quality Movement Training</h2>
         <p>Zatražena je promjena lozinke za tvoj račun:</p>
         <p>{_button(link, "Postavi novu lozinku")}</p>
         <p style="color:#777;font-size:13px">Link vrijedi 1 sat i može se iskoristiti
         jednom. Ako nisi ti tražio/la promjenu, ignoriraj poruku — lozinka ostaje ista.</p>
-      </div>""")
+      </div>""", sex))
 
 
 def send_membership_reminder(to: str, plan_label: str, dospijece) -> bool:

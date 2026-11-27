@@ -45,7 +45,7 @@
    sentence in `error`; the clip's and the delete's refusals as ?error= #}
 {% block error_alert %}
 {% set shown_error = error or request.query_params.get("error") %}
-{% if shown_error %}<div class="alert" role="alert"><span>{{ shown_error }}</span></div>{% endif %}
+{% if shown_error %}<div class="alert" role="alert"><span>{{ shown_error | gendered }}</span></div>{% endif %}
 {% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Putanja"><a href="/treninzi/vjezbe">Vježbe</a><span class="sep">/</span><span class="here">{{ e.name if e else "Nova vježba" }}</span></nav>

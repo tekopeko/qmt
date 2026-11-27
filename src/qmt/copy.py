@@ -191,6 +191,16 @@ install banner's card for a member with no phone number).
 tests/test_copy_rule.py holds the rule for the pages to come: a literal
 text on such a page fails it.
 
+The slash forms (27.11.2026): a text that does not know its reader says
+both forms, "bio/la", "sam/a", "siguran/na", and the gym owner may type
+his so. A member who gave his sex on the profile (models.User.sex) reads
+each in his form, wherever a text prints: _copy.html's macros and
+copy_text pass every text through grammar.gendered (the template filter
+`gendered`, app.py), by the page's reader (`rod`); one who has not said,
+and every guest, reads it as stored. What is stored, and what the editor
+edits, is always the text with its slashes: a span resolved for an editor
+carries the stored text (data-raw), which edit mode shows and edits.
+
 The price slots (18.10.2026) are plain Slots with one job: every price the
 site shows, whether or not Stripe is configured (app.py, reference_prices
 and _offer_prices). No Stripe Price overrides them (the owner's call, the
@@ -394,7 +404,7 @@ VODIC_SECTIONS = (
              "Rezultati dolaze kad je sustav dobar, a ovaj je sustav stvoren upravo za to."),
     _section("Prije nego što počneš vježbati",
              "Tvoje zdravlje i sigurnost su nam na prvom mjestu. Prije početka preporučujemo sportsko-medicinski "
-             "pregled kako bi bio/bila sigurna da možeš trenirati bez ograničenja. Nije uvjet za korištenje "
+             "pregled kako bi bio/bila siguran/sigurna da možeš trenirati bez ograničenja. Nije uvjet za korištenje "
              "aplikacije, ali je preporuka za tvoje dobro.\n"
              "Crvene zastave koje ne smiješ ignorirati. Odmah prekini trening ako osjetiš:",
              ("Bol u zglobovima tijekom vježbanja", "Oštru bol u mišiću",
@@ -1232,6 +1242,15 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "profil.form.name": Slot("Ime", CAP, "Profil: polje Ime", required=True),
     "profil.form.last": Slot("Prezime", CAP, "Profil: polje Prezime", required=True),
     "profil.form.born": Slot("Datum rođenja", CAP, "Profil: polje Datum rođenja", required=True),
+    # "Spol" (27.11.2026, optional, models.SEXES: the slash forms of what the
+    # member reads resolved by it, grammar.gendered): the field's label, its
+    # none option (a select's words: printed plain, edited on /tekstovi) and
+    # the hint under the field (its „bio/la” in quotes: no slash form, so it
+    # reads the same whatever the reader's sex)
+    "profil.form.sex": Slot("Spol (neobavezno)", CAP, "Profil: polje Spol", required=True),
+    "profil.form.sex_none": Slot("Ne želim navesti", CAP, "Profil: polje Spol, odgovor bez spola", required=True),
+    "profil.form.sex_hint": Slot("Da ti se aplikacija obraća u pravom rodu: „bio” ili „bila”, ne „bio/la”.", CAP,
+                                 "Profil: savjet ispod polja Spol"),
     "profil.form.phone": Slot("Telefon (neobavezno)", CAP, "Profil: polje Telefon", required=True),
     "profil.form.phone_placeholder": Slot("09x xxx xxxx", CAP, "Profil: primjer u polju Telefon"),
     # (no height since 26.11.2026: the karton's, karton.weight.height_*)

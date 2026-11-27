@@ -40,7 +40,7 @@
   {{ c.opt("gym.osvrt.kicker", "p", ' class="kr-eyebrow"') }}
   <h1>{% if t.title %}{{ t.title }}{% else %}{{ c.t("gym.head.outside") }}{% endif %}</h1>
   <p class="kr-when">{{ when }}</p>
-  {% if error %}<div class="alert" role="alert"><span>{{ error }}</span></div>{% endif %}
+  {% if error %}<div class="alert" role="alert"><span>{{ error | gendered }}</span></div>{% endif %}
 
   <form class="kr-form" method="post" action="/karton/trening/{{ t.id }}/osvrt">
     <section class="kr-field" aria-labelledby="kr-napor">
