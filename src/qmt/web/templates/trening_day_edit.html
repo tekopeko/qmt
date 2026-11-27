@@ -542,7 +542,7 @@
       var value = d.querySelector("form input[type=hidden]");
       var cbx = value && qmtCombobox({rows: rows, value: value}, {form: value.form});
       if (!cbx) return;
-      cbx.input.value = d.getAttribute("data-hint") || "";
+      cbx.input.value = qmtHintStart(rows, d.getAttribute("data-hint"));   // the hint, while it finds something
       d.hidden = false;
       d.addEventListener("toggle", function () { if (d.open) cbx.input.focus(); });
     });

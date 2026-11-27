@@ -23,7 +23,19 @@
    part is a plain form without the script (a card's "Spremi" saves every
    row that holds a number); the script ticks a set in place (a fetch that
    saves the card's ticked rows whole), starts the pause, adds a row, and
-   makes the add card's combobox over the page's one #library-json. #}
+   makes the add card's combobox over the page's one #library-json.
+   Part B (26.11.2026): each part's caption as the training names it, and
+   beside it a quiet "Uredi dio" (its name, "Kružni dio", Krugova, "Odmor
+   nakon kruga (s)"); a circuit part its exercises as compact cards (what
+   one round asks, no set table) and then a block per round, "Krug 1" …
+   "Krug n" (a native <details>: the first round not saved open, a saved
+   one folded with its ✓), each exercise's inputs, the round's rating and
+   ONE button, "Krug 2 odrađen" (a plain form: the page comes back at the
+   part and starts the rest bar with the part's rest after a round,
+   ?odmor=); a slot's card ("Prazno mjesto · čučanj", dashed), its
+   library's combobox opening on its hint (the script's) and "Odaberi"; and
+   while the training holds no row "Odaberi gotov trening", every
+   dvoranski programme's training a button that copies it in. #}
 {% import "_copy.html" as c with context %}
 {% from "_tagbar.html" import tagbar %}
 {% set no_nudges = true %}
@@ -48,8 +60,14 @@
   .gt-state { margin-top: 4px; color: var(--muted); font-size: .92rem; overflow-wrap: anywhere; }
   .gt { max-width: 640px; margin-top: clamp(18px, 3vw, 26px); }
   .gt-empty { margin: 4px 0 18px; overflow-wrap: anywhere; }
-  .gt-part .dx-cap:first-child { margin-top: 0; }
-  .gt-part + .gt-part .dx-cap { margin-top: 26px; }
+  /* a part (part B: its head a wrapping row, the caption, then "Uredi dio"
+     beside it; open, its form takes the row's width under them), 26px
+     between two parts, its word (?dio=) under the head */
+  .gt-part + .gt-part { margin-top: 26px; }
+  .gt-part-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 10px; }
+  .gt-part-head .dx-cap { flex: 0 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; scroll-margin-top: 90px; }
+  .gt-part > .alert { margin: 0 0 10px; }
+  .gt-part > .alert > span { min-width: 0; overflow-wrap: anywhere; }
   .gt-cards { display: grid; gap: 10px; }
 
   /* ===== a card: a native <details> (it opens without the script), its
@@ -59,13 +77,14 @@
      some), the day page's ▷ that turns down when open. Open: what was
      given besides (the pause, the note), the set table, "+ serija", the
      rating, "Kako se izvodi", the quiet row ===== */
-  details.gt-card { scroll-margin-top: 90px; }
-  details.gt-card > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px;
-                              min-height: 56px; padding: 12px 14px 12px 18px; border-radius: var(--r-lg);
-                              transition: background .15s; }
-  details.gt-card > summary::-webkit-details-marker { display: none; }
-  details.gt-card > summary:hover { background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
-  details.gt-card > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  /* (part B: a round's block, details.gt-round, is a card of the same shape) */
+  details:is(.gt-card, .gt-round) { scroll-margin-top: 90px; }
+  details:is(.gt-card, .gt-round) > summary { list-style: none; cursor: pointer; display: flex; align-items: center;
+                                              gap: 12px; min-height: 56px; padding: 12px 14px 12px 18px;
+                                              border-radius: var(--r-lg); transition: background .15s; }
+  details:is(.gt-card, .gt-round) > summary::-webkit-details-marker { display: none; }
+  details:is(.gt-card, .gt-round) > summary:hover { background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
+  details:is(.gt-card, .gt-round) > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .gt-main { flex: 1; min-width: 0; }
   .gt-name { display: block; font-weight: 700; overflow-wrap: anywhere; }
   .gt-planned { display: block; margin-top: 2px; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums;
@@ -75,7 +94,7 @@
   .gt-go { flex: none; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center;
            justify-content: center; background: var(--surface-2); color: var(--text); font-size: .78rem;
            transition: transform .2s; }
-  details.gt-card[open] > summary .gt-go { transform: rotate(90deg); }
+  details:is(.gt-card, .gt-round)[open] > summary .gt-go { transform: rotate(90deg); }
   .gt-body { padding: 0 16px 16px; }
   @media (min-width: 600px) { .gt-body { padding: 0 18px 18px; } }
   .gt-body > .alert { margin: 0 0 12px; }
@@ -130,6 +149,115 @@
     .gt-form .gt-note-f { grid-column: span 3; }
     .gt-form .gt-go-f { grid-column: auto; align-self: end; }
   }
+  /* (a circuit part's "Uredi zadano", part B, asks no Serije and no Pauza:
+     its four fields fill the first line exactly, the note and Spremi the
+     second, as a normal card's) */
+
+  /* ===== "Uredi dio" (part B, 26.11.2026; the owner: "Lets have Glavni
+     dio A, B and C but lets also allow Amir to rename them."): a quiet pill
+     beside the part's caption (.act.act-quiet summary of a native
+     <details>), whose ONE form, open, takes the head's width under it in a
+     hairline box (the day editor's "Kružno" form's look): "Naziv dijela"
+     across it, "Kružni dio" a whole-row checkbox (44px), Krugova and "Odmor
+     nakon kruga (s)" side by side, Spremi across both on a phone; from
+     600px the two and Spremi on one line, each control at its field's
+     bottom (a label that wraps keeps them level). A closed one's form has
+     no box (Chrome lays out a closed <details>' content when measured). ===== */
+  .gt-part-edit { flex: none; max-width: 100%; }
+  .gt-part-edit[open] { flex: 1 0 100%; }
+  .gt-part-edit > summary { list-style: none; cursor: pointer; width: fit-content; max-width: 100%; }
+  .gt-part-edit > summary::-webkit-details-marker { display: none; }
+  .gt-part-edit:not([open]) > .gt-part-form { display: none; }
+  .gt-part-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; margin-top: 8px;
+                  padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+  .gt-part-form > div { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+  .gt-part-form label { margin-bottom: 3px; overflow-wrap: anywhere; }
+  .gt-part-form :is(input[type=text], input[type=number]) { height: 40px; padding: 0 10px; min-width: 0; }
+  .gt-part-form .gt-go-f .btn { width: 100%; height: 40px; }
+  .gt-part-form :is(.gt-pname, .gt-check, .gt-go-f) { grid-column: 1 / -1; }
+  /* "Kružni dio": a whole-row label (the global label is an uppercase caption) */
+  .gt-part-form .gt-check { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 0;
+                            font: 500 .92rem var(--font-body); text-transform: none; letter-spacing: 0;
+                            color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
+  .gt-check input { flex: none; width: 20px; height: 20px; margin: 0; padding: 0; accent-color: var(--accent-fill); }
+  @media (pointer: coarse) {
+    .gt-part-form :is(input[type=text], input[type=number]), .gt-part-form .gt-go-f .btn { height: 44px; }
+  }
+  @media (min-width: 600px) {
+    .gt-part-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .gt-part-form .gt-go-f { grid-column: auto; align-self: end; }
+  }
+
+  /* ===== a circuit part's exercise (part B): the card, compact (48px, a
+     little less padding): what one round asks under the name, its mark the
+     rounds it holds ("2/3", "✓"); open, the note, "Kako se izvodi" and the
+     quiet row. No set table: the rounds below take the inputs ===== */
+  details.gt-crow > summary { min-height: 48px; padding: 8px 12px 8px 16px; }
+
+  /* ===== a slot (part B, a template's empty place): its card dashed, no
+     fill or shadow (a place to fill, not an exercise: the day page's
+     .dx-slot), "Prazno mjesto · čučanj" muted and 600 where a name stands;
+     open, the library's combobox opening on its hint (the script's: the
+     form is rendered hidden) and "Odaberi", then "Ukloni" ===== */
+  details.gt-slot { background: none; box-shadow: none; border-style: dashed; }
+  details.gt-slot .gt-name { color: var(--muted); font-weight: 600; }
+  .gt-fill { display: grid; gap: 0 12px; margin-top: 2px; }
+  /* from 600px the picker and Odaberi side by side, the picker 12rem at
+     least: a long retyped button wraps in what is left, never squeezes the
+     picker under its own words */
+  @media (min-width: 600px) { .gt-fill { grid-template-columns: minmax(12rem, 1fr) auto; align-items: end; } }
+  .gt-fill .field { min-width: 0; }
+  .gt-fill .btn { justify-self: start; }               /* its words' width, as the add card's Dodaj */
+  @media (min-width: 600px) { .gt-fill .btn { margin-bottom: 14px; } }   /* level with the input over the field's room */
+  @media (pointer: coarse) { .gt-fill .cbx > input { min-height: 44px; } }
+
+  /* ===== a circuit's rounds (part B): a card per round under the part's
+     exercises, 14px under them, its summary the cards' (56px, "Krug 2" in
+     700, the ✓ of a saved round in --good, the ▷); open, a hairline box per
+     exercise (the player's round screen's .cr-row: --r-md, 4px 14px 12px):
+     its name (600) over what one round asks (muted .85rem, tabular), its
+     inputs by its shape under small labels (PON. · KG, SEK., PON. · SEK.:
+     the set log's header words, 44px, centred and tabular), two to a row;
+     then the round's rating and ONE button, "Krug 2 odrađen" ===== */
+  .gt-rounds { display: grid; gap: 10px; margin-top: 14px; }
+  .gt-rrows { display: grid; gap: 10px; }
+  .gt-rrow { padding: 10px 14px 12px; border: 1px solid var(--line); border-radius: var(--r-md); }
+  .gt-rname { font-weight: 600; overflow-wrap: anywhere; }
+  .gt-rdose { margin-top: 2px; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums;
+              overflow-wrap: anywhere; }
+  .gt-rin { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+  .gt-rin > div { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+  .gt-rin label { margin-bottom: 4px; font: 700 .72rem var(--font-body); letter-spacing: .12em; overflow-wrap: anywhere; }
+  .gt-rin input { height: 44px; padding: 0 10px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums;
+                  min-width: 0; }
+  .gt-rfoot { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 14px; }
+  .gt-rform > .alert { margin: 0 0 12px; }
+  .gt-rform > .alert > span { min-width: 0; overflow-wrap: anywhere; }
+
+  /* ===== "Odaberi gotov trening" (part B): while the training holds no
+     row, an .act whose <details> lists every dvoranski programme's training
+     (none: no control), each row ONE button that copies it in: a hairline
+     row 56px at least (--surface, --r-md), "<programme> · Trening N" in 700
+     over its facts (muted: its razina, "4 vježbe · 3 prazna mjesta"), a
+     muted → at the right (a programme's day card's: a phone has no hover
+     to say it is a link), the whole row the tap target; its hover a
+     deeper surface, never the base red ===== */
+  .gt-tpl { margin: 0 0 18px; }
+  .gt-tpl > summary { list-style: none; cursor: pointer; width: fit-content; max-width: 100%; }
+  .gt-tpl > summary::-webkit-details-marker { display: none; }
+  .gt-tpl-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+  .gt-tpl > .alert { margin: 10px 0 0; }                  /* a refusal's word, between the pill and the list */
+  .gt-tpl > .alert > span { min-width: 0; overflow-wrap: anywhere; }
+  .gt-tpl-list form { margin: 0; }
+  .gt-tpl-row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                width: 100%; min-height: 56px; padding: 10px 14px 10px 16px; border: 1px solid var(--line);
+                border-radius: var(--r-md); background: var(--surface); color: var(--text); box-shadow: none;
+                text-align: left; white-space: normal; font: inherit; }
+  .gt-tpl-row:hover { background: var(--surface-2); color: var(--text); transform: none; }
+  .gt-tpl-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .gt-tpl-name { font-weight: 700; overflow-wrap: anywhere; }
+  .gt-tpl-facts { color: var(--muted); font-size: .82rem; font-weight: 500; overflow-wrap: anywhere; }
+  .gt-tpl-go { flex: none; color: var(--muted); font-weight: 700; }
 
   /* ===== "Dodaj vježbu": a card at the bottom while the page is writable:
      its heading, the tag chips (base.html's .tagbar: a tap puts its word in
@@ -179,8 +307,11 @@
 </style>
 {% endblock %}
 {# a form's word comes back to its card (?stavka=) or to the add card
-   (?dodaj=1), never to the page's top, out of view on a phone scrolled there #}
-{% set here = focus is not none or in_add %}
+   (?dodaj=1), and since part B to its part (?dio=: under its caption, or in
+   its round, ?krug=) or to the templates' list (?predlozak=1, while it is
+   there), never to the page's top, out of view on a phone scrolled there #}
+{% set in_tpl = request.query_params.get("predlozak") == "1" and presets %}
+{% set here = focus is not none or in_add or dio is not none or in_tpl %}
 {% block error_alert %}{% if not here %}{{ super() }}{% endif %}{% endblock %}
 {% block ok_alert %}{% if not here %}{{ super() }}{% endif %}{% endblock %}
 
@@ -203,6 +334,54 @@
     </div>
   </div>
 </div>
+{% endmacro %}
+
+{# "Kako se izvodi": the clip (preload none), what one rep is, how it is
+   done; nothing when the exercise has none of them (a normal card's and a
+   circuit's exercise's) #}
+{% macro how(it) %}
+    {% set ex = it.exercise %}
+    {% if ex and (ex.video or ex.rep_note or ex.instructions) %}
+    <details class="gt-how ex-video">
+      <summary>{{ c.t("player.step.how") }}</summary>
+      {% if ex.video %}<video src="/media/{{ ex.video }}" controls playsinline preload="none"></video>{% endif %}
+      {% if ex.rep_note %}<p><strong>{{ c.t("dan.exercise.rep") }}</strong> {{ ex.rep_note }}</p>{% endif %}
+      {% if ex.instructions %}<p>{{ ex.instructions }}</p>{% endif %}
+    </details>
+    {% endif %}
+{% endmacro %}
+
+{# "Uredi zadano": what was given, the day editor's row form's grid; in a
+   circuit part (part B, `circ`) no Serije and no Pauza (they do not apply
+   there: the form says so, `circuit`, and the route keeps them) #}
+{% macro zadano_form(it, circ) %}
+      <details class="gt-edit"{% if zadano and it.id == focus %} open{% endif %}>
+        <summary class="act act-quiet">{{ c.t("gym.card.edit") }}</summary>
+        <form class="gt-form" method="post" action="/karton/trening/{{ t.id }}/stavke/{{ it.id }}">
+          {% if circ %}<input type="hidden" name="circuit" value="1">{% endif %}
+          <div><label for="gt-{{ it.id }}-dio">{{ c.t("gym.form.section") }}</label>
+            <select id="gt-{{ it.id }}-dio" name="section">
+              {% for k in SECTIONS %}<option value="{{ k }}"{% if k == it.section %} selected{% endif %}>{{ t.part_label(k) }}</option>{% endfor %}
+            </select></div>
+          {% if not circ %}
+          <div><label for="gt-{{ it.id }}-sets">{{ c.t("gym.form.sets") }}</label>
+            <input id="gt-{{ it.id }}-sets" type="number" name="sets" inputmode="numeric" min="1" max="99" value="{{ it.sets if it.sets is not none else '' }}"></div>
+          {% endif %}
+          <div><label for="gt-{{ it.id }}-reps">{{ c.t("gym.form.reps") }}</label>
+            <input id="gt-{{ it.id }}-reps" type="number" name="reps" inputmode="numeric" min="1" max="999" value="{{ it.reps if it.reps is not none else '' }}"></div>
+          <div><label for="gt-{{ it.id }}-secs">{{ c.t("gym.form.seconds") }}</label>
+            <input id="gt-{{ it.id }}-secs" type="number" name="seconds" inputmode="numeric" min="1" max="3600" value="{{ it.seconds if it.seconds is not none else '' }}"></div>
+          <div><label for="gt-{{ it.id }}-kg">{{ c.t("gym.form.kg") }}</label>
+            <input id="gt-{{ it.id }}-kg" type="number" name="kg" inputmode="decimal" min="0.5" max="500" step="0.5" value="{{ it.kg|kg_value }}"></div>
+          {% if not circ %}
+          <div><label for="gt-{{ it.id }}-rest">{{ c.t("gym.form.rest") }}</label>
+            <input id="gt-{{ it.id }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600" value="{{ it.rest_seconds if it.rest_seconds is not none else '' }}"></div>
+          {% endif %}
+          <div class="gt-note-f"><label for="gt-{{ it.id }}-note">{{ c.t("gym.form.note") }}</label>
+            <input id="gt-{{ it.id }}-note" type="text" name="note" maxlength="500" value="{{ it.note }}"></div>
+          <div class="gt-go-f"><button type="submit" class="btn btn-sm">{{ c.t("gym.form.save") }}</button></div>
+        </form>
+      </details>
 {% endmacro %}
 
 {# a card: its summary (the name, what was given, the mark), then its set
@@ -257,46 +436,153 @@
     {% else %}
     <p class="gt-done"><strong>{{ c.t("gym.card.done") }}</strong> {{ it.done_text or "—" }}</p>
     {% endif %}
-    {% set ex = it.exercise %}
-    {% if ex and (ex.video or ex.rep_note or ex.instructions) %}
-    <details class="gt-how ex-video">
-      <summary>{{ c.t("player.step.how") }}</summary>
-      {% if ex.video %}<video src="/media/{{ ex.video }}" controls playsinline preload="none"></video>{% endif %}
-      {% if ex.rep_note %}<p><strong>{{ c.t("dan.exercise.rep") }}</strong> {{ ex.rep_note }}</p>{% endif %}
-      {% if ex.instructions %}<p>{{ ex.instructions }}</p>{% endif %}
-    </details>
-    {% endif %}
-    {% if writable %}
+    {{ how(it) }}
+    {% if writable %}{{ tools(it, first, last, none) }}{% endif %}
+  </div>
+</details>
+{% endmacro %}
+
+{# a card's quiet row: "Uredi zadano", ↑, ↓ (within its part), "Ukloni
+   vježbu"; an exercise gone from the library "Ukloni vježbu" alone #}
+{% macro tools(it, first, last, circ) %}
     <div class="gt-tools">
       {% if not it.gone %}
-      <details class="gt-edit"{% if zadano and it.id == focus %} open{% endif %}>
-        <summary class="act act-quiet">{{ c.t("gym.card.edit") }}</summary>
-        <form class="gt-form" method="post" action="/karton/trening/{{ t.id }}/stavke/{{ it.id }}">
-          <div><label for="gt-{{ it.id }}-dio">{{ c.t("gym.form.section") }}</label>
-            <select id="gt-{{ it.id }}-dio" name="section">
-              {% for k in SECTIONS %}<option value="{{ k }}"{% if k == it.section %} selected{% endif %}>{{ t.part_label(k) }}</option>{% endfor %}
-            </select></div>
-          <div><label for="gt-{{ it.id }}-sets">{{ c.t("gym.form.sets") }}</label>
-            <input id="gt-{{ it.id }}-sets" type="number" name="sets" inputmode="numeric" min="1" max="99" value="{{ it.sets if it.sets is not none else '' }}"></div>
-          <div><label for="gt-{{ it.id }}-reps">{{ c.t("gym.form.reps") }}</label>
-            <input id="gt-{{ it.id }}-reps" type="number" name="reps" inputmode="numeric" min="1" max="999" value="{{ it.reps if it.reps is not none else '' }}"></div>
-          <div><label for="gt-{{ it.id }}-secs">{{ c.t("gym.form.seconds") }}</label>
-            <input id="gt-{{ it.id }}-secs" type="number" name="seconds" inputmode="numeric" min="1" max="3600" value="{{ it.seconds if it.seconds is not none else '' }}"></div>
-          <div><label for="gt-{{ it.id }}-kg">{{ c.t("gym.form.kg") }}</label>
-            <input id="gt-{{ it.id }}-kg" type="number" name="kg" inputmode="decimal" min="0.5" max="500" step="0.5" value="{{ it.kg|kg_value }}"></div>
-          <div><label for="gt-{{ it.id }}-rest">{{ c.t("gym.form.rest") }}</label>
-            <input id="gt-{{ it.id }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600" value="{{ it.rest_seconds if it.rest_seconds is not none else '' }}"></div>
-          <div class="gt-note-f"><label for="gt-{{ it.id }}-note">{{ c.t("gym.form.note") }}</label>
-            <input id="gt-{{ it.id }}-note" type="text" name="note" maxlength="500" value="{{ it.note }}"></div>
-          <div class="gt-go-f"><button type="submit" class="btn btn-sm">{{ c.t("gym.form.save") }}</button></div>
-        </form>
-      </details>
+      {{ zadano_form(it, circ) }}
       <button type="submit" form="gt-up-{{ it.id }}" class="act act-quiet"{% if first %} disabled{% endif %} aria-label="Pomakni gore: {{ it.name }}">↑</button>
       <button type="submit" form="gt-down-{{ it.id }}" class="act act-quiet"{% if last %} disabled{% endif %} aria-label="Pomakni dolje: {{ it.name }}">↓</button>
       {% endif %}
       <button type="submit" form="gt-x-{{ it.id }}" class="act act-quiet">{{ c.t("gym.card.remove") }}</button>
     </div>
+{% endmacro %}
+
+{# a circuit part's exercise (part B): the card, compact, what one round
+   asks (round_dose) and its rounds' mark; open, the note, what was done as
+   text when read only (or gone), "Kako se izvodi" and the quiet row,
+   "Uredi zadano" without Serije and Pauza. Its inputs are the rounds' #}
+{% macro crow(it, first, last, circ) %}
+{% set planned = it.round_dose %}{% set mark = t.mark_of(it) %}
+<details class="card gt-card gt-crow" id="stavka-{{ it.id }}"{% if it.id == opened %} open{% endif %}>
+  <summary>
+    <span class="gt-main">
+      <span class="gt-name">{{ it.name }}</span>
+      {% if planned %}<span class="gt-planned">{{ c.t("gym.card.planned") }} {{ planned }}</span>{% endif %}
+    </span>
+    <span class="gt-mark{% if mark == '✓' %} ok{% endif %}"{% if mark %} role="img" aria-label="{{ 'odrađeno' if mark == '✓' else mark ~ ' kruga odrađena' }}"{% endif %}>{{ mark }}</span>
+    <span class="gt-go" aria-hidden="true">▷</span>
+  </summary>
+  <div class="gt-body">
+    {% if it.id == focus %}{{ said() }}{% endif %}
+    {% if it.note %}<p class="gt-sub">{{ it.note }}</p>{% endif %}
+    {% if not writable or it.gone %}<p class="gt-done"><strong>{{ c.t("gym.card.done") }}</strong> {{ it.done_text or "—" }}</p>{% endif %}
+    {{ how(it) }}
+    {% if writable %}{{ tools(it, first, last, circ) }}{% endif %}
+  </div>
+</details>
+{% endmacro %}
+
+{# a slot (part B, a template's empty place): "Prazno mjesto · čučanj"
+   muted and what was given (a circuit's: what one round asks); open, its
+   note, the library's combobox opening on its hint and "Odaberi" (the
+   script's: rendered hidden, without it nothing fills a slot), "Ukloni".
+   It is in no round, no count, no diary line #}
+{% macro slot_card(it, circ) %}
+{% set planned = it.round_dose if circ else it.dose %}
+<details class="card gt-card gt-slot" id="stavka-{{ it.id }}"{% if it.id == opened %} open{% endif %}>
+  <summary>
+    <span class="gt-main">
+      <span class="gt-name">{{ c.t("dan.slot") }}{% if it.hint %} · {{ it.hint }}{% endif %}</span>
+      {% if planned %}<span class="gt-planned">{{ c.t("gym.card.planned") }} {{ planned }}</span>{% endif %}
+    </span>
+    <span class="gt-go" aria-hidden="true">▷</span>
+  </summary>
+  <div class="gt-body">
+    {% if it.id == focus %}{{ said() }}{% endif %}
+    {% if it.note %}<p class="gt-sub">{{ it.note }}</p>{% endif %}
+    {% if writable %}
+    <form class="gt-fill" method="post" action="/karton/trening/{{ t.id }}/stavke/{{ it.id }}/vjezba" data-hint="{{ it.hint }}" hidden>
+      <div class="field"><label for="gt-fill-{{ it.id }}">{{ c.t("gym.add.exercise") }}</label>
+        <input type="hidden" id="gt-fill-{{ it.id }}" name="exercise_id" value=""></div>
+      <button type="submit" class="btn btn-sm">{{ c.t("gym.slot.pick") }}</button>
+    </form>
+    <div class="gt-tools">
+      <button type="submit" form="gt-x-{{ it.id }}" class="act act-quiet">{{ c.t("gym.slot.remove") }}</button>
+    </div>
     {% endif %}
+  </div>
+</details>
+{% endmacro %}
+
+{# "Uredi dio" (part B): beside a part's caption, its own name and whether
+   it is a circuit, ONE form (open again after its refusal: ?dio=&uredi=1) #}
+{% macro part_edit(key, circ) %}
+<details class="gt-part-edit"{% if dio == key and zadano and request.query_params.get("error") %} open{% endif %}>
+  <summary class="act act-quiet">{{ c.t("gym.part.edit") }}</summary>
+  <form class="gt-part-form" method="post" action="/karton/trening/{{ t.id }}/dio/{{ key }}">
+    <div class="gt-pname"><label for="gt-p-{{ key }}-name">{{ c.t("gym.part.name") }}</label>
+      <input id="gt-p-{{ key }}-name" type="text" name="title" maxlength="60" value="{{ t.part_title(key) }}" placeholder="{{ SECTIONS[key] }}"></div>
+    <label class="gt-check"><input type="checkbox" name="circuit" value="1"{% if circ %} checked{% endif %}> {{ c.t("gym.part.circuit") }}</label>
+    <div><label for="gt-p-{{ key }}-rounds">{{ c.t("gym.part.rounds") }}</label>
+      <input id="gt-p-{{ key }}-rounds" type="number" name="rounds" inputmode="numeric" min="2" max="20" value="{{ circ.rounds if circ else 3 }}"></div>
+    <div><label for="gt-p-{{ key }}-rest">{{ c.t("gym.part.rest") }}</label>
+      <input id="gt-p-{{ key }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600" value="{{ circ.rest_seconds if circ and circ.rest_seconds is not none else '' }}"></div>
+    <div class="gt-go-f"><button type="submit" class="btn btn-sm">{{ c.t("gym.part.save") }}</button></div>
+  </form>
+</details>
+{% endmacro %}
+
+{# a circuit's round (part B): "Krug n" (code: the round's number), ✓ once
+   saved; open, each exercise's inputs by its shape (reps_<id>, kg_<id>,
+   sec_<id>: db.set_fields), first values _gym_rounds', the exercises the
+   page was drawn for (`stavke`), the round's rating (the player's words,
+   none chosen) and ONE button (the player's "Krug 2 odrađen": its number
+   code, the word a slot; one span, the button is a flex box) #}
+{% macro round_block(key, r) %}
+<details class="card gt-round" id="krug-{{ key }}-{{ r.n }}"{% if r.open %} open{% endif %}>
+  <summary>
+    <span class="gt-main"><span class="gt-name">Krug {{ r.n }}</span></span>
+    <span class="gt-mark{% if r.saved %} ok{% endif %}"{% if r.saved %} role="img" aria-label="spremljeno"{% endif %}>{% if r.saved %}✓{% endif %}</span>
+    <span class="gt-go" aria-hidden="true">▷</span>
+  </summary>
+  <div class="gt-body">
+    <form class="gt-rform" method="post" action="/karton/trening/{{ t.id }}/dio/{{ key }}/krug/{{ r.n }}">
+      {% if dio == key and round_word == r.n %}{{ said() }}{% endif %}
+      <input type="hidden" name="stavke" value="{{ r.rows|map(attribute='it')|map(attribute='id')|join(',') }}">
+      <div class="gt-rrows">
+        {% for b in r.rows %}{% set x = b.it %}{% set pre = "gt-r" ~ r.n ~ "-" ~ x.id %}
+        <div class="gt-rrow">
+          <p class="gt-rname" id="{{ pre }}-n">{{ x.name }}</p>
+          {% if x.round_dose %}<p class="gt-rdose">{{ x.round_dose }}</p>{% endif %}
+          <div class="gt-rin">
+            {% if "reps" in b.fields %}
+            <div><label id="{{ pre }}-reps-l" for="{{ pre }}-reps">{{ c.t("player.col.reps") }}</label>
+              <input id="{{ pre }}-reps" type="number" name="reps_{{ x.id }}" value="{{ b.reps }}" inputmode="numeric" min="0" max="999" step="1" aria-labelledby="{{ pre }}-n {{ pre }}-reps-l"></div>
+            {% endif %}
+            {% if "kg" in b.fields %}
+            <div><label id="{{ pre }}-kg-l" for="{{ pre }}-kg">{{ c.t("player.col.kg") }}</label>
+              <input id="{{ pre }}-kg" type="number" name="kg_{{ x.id }}" value="{{ b.kg }}" inputmode="decimal" min="0" max="500" step="0.5" aria-labelledby="{{ pre }}-n {{ pre }}-kg-l"></div>
+            {% endif %}
+            {% if "seconds" in b.fields %}
+            <div><label id="{{ pre }}-sec-l" for="{{ pre }}-sec">{{ c.t("player.col.sec") }}</label>
+              <input id="{{ pre }}-sec" type="number" name="sec_{{ x.id }}" value="{{ b.sec }}" inputmode="numeric" min="0" max="3600" step="1" aria-labelledby="{{ pre }}-n {{ pre }}-sec-l"></div>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="gt-rfoot">
+        <div class="pl-rate">
+          <p class="pl-rate-h" id="gt-rate-{{ key }}-{{ r.n }}">{{ c.t("player.rate.round") }} {{ c.opt("player.optional", "span", ' class="pl-opt"') }}</p>
+          <div class="scale-box">
+            <div class="scale" role="radiogroup" aria-labelledby="gt-rate-{{ key }}-{{ r.n }}">
+              {% for v in range(1, 11) %}
+              <label class="sc"><input type="radio" name="effort" value="{{ v }}"><span>{{ v }}</span></label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-sm"><span>Krug {{ r.n }} {{ c.t("player.round.done") }}</span></button>
+      </div>
+    </form>
   </div>
 </details>
 {% endmacro %}
@@ -326,17 +612,50 @@
 {% elif state_key %}{{ c.opt(state_key, "p", ' class="gt-state"') }}
 {% elif state_text %}<p class="gt-state">{{ state_text }}</p>{% endif %}
 
-<div class="gt">
-  {% if not items and writable %}{{ c.opt("gym.empty", "p", ' class="hint gt-empty"') }}{% endif %}
-  {# the parts in SECTIONS' order, each while it holds a row, as the
-     training names it (part_label: its default name in part A) #}
-  {% for key in SECTIONS %}{% set part = t.by_section[key]|rejectattr("is_slot")|list %}
-  {% if part %}
+<div class="gt"{% if odmor %} data-odmor="{{ odmor }}"{% endif %}>
+  {% if not t.items and writable %}{{ c.opt("gym.empty", "p", ' class="hint gt-empty"') }}{% endif %}
+  {# "Odaberi gotov trening" (part B): while the training holds no row,
+     every dvoranski programme's training, a button each that copies it in
+     (none: no control) #}
+  {% if presets %}
+  <details class="gt-tpl"{% if in_tpl %} open{% endif %}>
+    <summary class="act">{{ c.t("gym.template.open") }}</summary>
+    {% if in_tpl %}{{ said() }}{% endif %}
+    <ul class="gt-tpl-list">
+      {% for p in presets %}
+      <li><form method="post" action="/karton/trening/{{ t.id }}/predlozak">
+        <input type="hidden" name="dan" value="{{ p.id }}">
+        <button type="submit" class="gt-tpl-row"><span class="gt-tpl-txt"><span class="gt-tpl-name">{{ p.name }}</span>{% if p.facts %}<span class="gt-tpl-facts">{{ p.facts }}</span>{% endif %}</span><span class="gt-tpl-go" aria-hidden="true">→</span></button>
+      </form></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+  {# the parts in SECTIONS' order, each while it holds a row (a slot too),
+     as the training names it (part_label), a circuit's caption saying so
+     ("· kružno · 3 kruga · odmor 90 s"), "Uredi dio" beside it while
+     writable; a normal part its cards, a circuit part its exercises compact
+     and then its rounds; a slot its own card in either #}
+  {% for key in SECTIONS %}{% set part = t.by_section[key] %}
+  {% if part %}{% set circ = t.circuit(key) %}
   <section class="gt-part" aria-labelledby="dio-{{ key }}">
-    <h2 class="dx-cap" id="dio-{{ key }}">{{ t.part_label(key) }}</h2>
-    <div class="gt-cards">
-      {% for it in part %}{{ card(it, loop.first, loop.last) }}{% endfor %}
+    <div class="gt-part-head">
+      <h2 class="dx-cap" id="dio-{{ key }}">{{ t.part_label(key) }}{% if circ %}{% if copy_on("player.list.circuit") %} · {{ c.t("player.list.circuit") }}{% endif %} · {{ circ.rounds_text }}{% if circ.rest_text %} · {{ c.t("gym.part.rest_caption") }} {{ circ.rest_text }}{% endif %}{% endif %}</h2>
+      {% if writable %}{{ part_edit(key, circ) }}{% endif %}
     </div>
+    {% if dio == key and round_word is none %}{{ said() }}{% endif %}
+    <div class="gt-cards">
+      {% for it in part %}
+      {% if it.is_slot %}{{ slot_card(it, circ) }}
+      {% elif circ %}{{ crow(it, loop.first, loop.last, circ) }}
+      {% else %}{{ card(it, loop.first, loop.last) }}{% endif %}
+      {% endfor %}
+    </div>
+    {% if writable and rounds[key] %}
+    <div class="gt-rounds">
+      {% for r in rounds[key] %}{{ round_block(key, r) }}{% endfor %}
+    </div>
+    {% endif %}
   </section>
   {% endif %}
   {% endfor %}
@@ -440,13 +759,45 @@
     // value the hidden exercise_id, the tag chips putting their word in it;
     // Dodaj with nothing picked stops at "Odaberi vježbu s popisa.".
     var lib = document.getElementById("library-json"), value = document.getElementById("gt-add-ex");
-    var addForm = document.getElementById("dodaj");
-    if (lib && value && addForm && window.qmtCombobox) {
+    var addForm = document.getElementById("dodaj"), all = [];
+    try {
+      all = lib ? JSON.parse(lib.textContent).map(function (x) { return {id: String(x[0]), name: x[1], tags: x[2] || ""}; }) : [];
+    } catch (e) { all = []; }
+    if (value && addForm && window.qmtCombobox) {
       try {
-        var all = JSON.parse(lib.textContent).map(function (x) { return {id: String(x[0]), name: x[1], tags: x[2] || ""}; });
         qmtCombobox({rows: all, value: value}, {form: addForm, tagbar: addForm.querySelector(".tagbar")});
       } catch (e) {}
     }
+
+    // A slot's card (part B): its form's combobox over the same library
+    // (the rows folded once for every combobox over them), opening on the
+    // slot's hint, so the list is already narrowed (a hint that finds
+    // nothing in the library: empty, the whole list); the form shown here
+    // (rendered hidden: without the script nothing fills a slot). A tap
+    // that opens the card puts the focus in it, its list open; a card open
+    // at load (the first not done) takes no focus. "Odaberi" with nothing
+    // picked stops at "Odaberi vježbu s popisa.".
+    if (window.qmtCombobox) {
+      [].forEach.call(document.querySelectorAll("form.gt-fill"), function (f) {
+        var hidden = f.querySelector("input[name=exercise_id]"), card = f.closest("details");
+        var cbx = null;
+        try { cbx = qmtCombobox({rows: all, value: hidden}, {form: f}); } catch (e) { cbx = null; }
+        if (!cbx) return;
+        cbx.input.value = qmtHintStart(all, f.getAttribute("data-hint"));   // the hint, while it finds something
+        f.hidden = false;
+        var head = card && card.querySelector("summary");
+        if (head) head.addEventListener("click", function () {
+          if (!card.open) setTimeout(function () { if (card.open) cbx.input.focus(); }, 0);
+        });
+      });
+    }
+
+    // A round's save (part B) comes back with the part's rest after a round
+    // (?odmor=, the .gt box's data-odmor): the rest bar counts it down at
+    // load, as the player does after a step (no tap yet on this page: it
+    // may end silent, "KRENI" its signal)
+    var box = document.querySelector(".gt[data-odmor]"), odmor = box ? parseInt(box.getAttribute("data-odmor"), 10) || 0 : 0;
+    if (odmor > 0 && window.qmtRest) window.qmtRest.begin(odmor);
 
     // A card's set table (rule 4, "a tick saves"). Its ✓ column, "+ serija"
     // and the ticks are the script's; "Spremi" (the no-JS way) goes. A ✓

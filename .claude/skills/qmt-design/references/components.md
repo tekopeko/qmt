@@ -462,6 +462,40 @@ their pill (`main :is(.act, .btn, .btn-sm)`). **Its osvrt**
 `.kr-eyebrow` "Osvrt na trening", the title as the h1, `.kr-when` (700 tabular),
 Napor, Osjećaj, Komentar, "Spremi trening" and `.kr-more`'s "Natrag na trening"
 (`.act.act-quiet`).
+**The gym training, part B** (26.11.2026): **a part's head** (`.gt-part-head`, a
+wrapping flex row, 6px 10px, 10px over its cards; parts 26px apart): its `h2.dx-cap`
+(no margin of its own there; a circuit's "KRUG 1 · KRUŽNO · 3 KRUGA · ODMOR 90 S")
+and, while writable, **"Uredi dio"** beside it (`.act.act-quiet` summary of
+`details.gt-part-edit`; open, it takes the head's width and its ONE form,
+`.gt-part-form`, lies under it in the day editor's "Kružno" box: hairline,
+`--surface`, `--r-md`, 12px 14px; "Naziv dijela" across, "Kružni dio" a whole-row
+checkbox label (`.gt-check`, 44px, 500 .92rem in the text's case), Krugova and
+"Odmor nakon kruga (s)" side by side and Spremi across both on a phone, the two and
+Spremi on one line from 600px; 40px controls, 44px on a coarse pointer; a closed
+one's form has no box). Its word (`.alert`) under the head. **A circuit's
+exercise** (`details.card.gt-card.gt-crow`): the card with a 48px summary (8px 12px
+8px 16px), what one round asks under the name, its mark the rounds ("1/3", "✓");
+open, the note, "Kako se izvodi", the quiet row (its "Uredi zadano" two fields fewer:
+from 600px Dio and the three numbers on its first line, the note and Spremi on its
+second, as a normal card's). **A round** (`details.card.gt-round#krug-<key>-<n>`, the cards'
+summary: "Krug 2" in 700, a saved round's ✓ in `--good`, the ▷), the rounds a grid
+10px apart, 14px under the exercises (`.gt-rounds`); open, `.gt-rform`: an exercise a
+hairline box each (`.gt-rrow`: `--r-md`, 10px 14px 12px; the player's round screen's
+`.cr-row`), its name (600) over what one round asks (`.gt-rdose`, muted .85rem
+tabular), its inputs two to a row (`.gt-rin`: the set log's header words over 44px
+centred tabular inputs), then `.gt-rfoot` (a column, 12px): the round's rating
+(`.pl-rate`) and "Krug 2 odrađen" (`.btn.btn-sm`, one span). **A slot**
+(`details.card.gt-card.gt-slot`): dashed, no fill, no shadow (the day page's
+`.dx-slot`), "Prazno mjesto · čučanj" muted 600; open, `.gt-fill` (the combobox's
+field and "Odaberi", its words' width; side by side from 600px, the field 12rem at
+least, so a long retyped button wraps rather than squeezing the picker; rendered
+hidden, the script's) and "Ukloni" (`.act.act-quiet`). **"Odaberi gotov trening"**
+(`details.gt-tpl`, 18px over what follows, while the training holds no row): an
+`.act` summary; open, `.gt-tpl-list` (a grid 8px apart, 10px under it) of
+`button.gt-tpl-row`, each a hairline row 56px at least (`--surface`, `--r-md`, 10px
+14px 10px 16px): `.gt-tpl-name` 700 over `.gt-tpl-facts` (muted 500 .82rem), a muted
+→ at the right (`.gt-tpl-go`), the whole row the target, its hover `--surface-2`.
+After a round's save the page starts the rest bar at load (`.gt[data-odmor]`).
 **"Procijenjeni maksimumi"** (`section.card.maxes`, 23.11.2026): between the
 upitnik block and the diary grid, 720px at most like the upitnik block, 18px
 20px (16px under 600px); its h2 1.05rem, `.mx-hint` .82rem, then a compact

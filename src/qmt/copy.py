@@ -1061,9 +1061,11 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "dan.exercise.rep": Slot("Jedno ponavljanje:", CAP, "Online treninzi · vježba: Jedno ponavljanje: (i u izvođenju)",
                              required=True),
     # a dvoranski programme's empty slot on the day's page (26.11.2026: staff's,
-    # no client reaches such a day), its hint after it: "Prazno mjesto · čučanj"
-    "dan.slot": Slot("Prazno mjesto", CAP, "Online treninzi · trening: Prazno mjesto (dvoranski, trener)",
-                     required=True),
+    # no client reaches such a day), its hint after it: "Prazno mjesto · čučanj";
+    # since part B of the gym training also a slot's card there, the same words
+    # for the same thing (a member's copy of such a day)
+    "dan.slot": Slot("Prazno mjesto", CAP, "Online treninzi · trening: Prazno mjesto (dvoranski, trener; i trening "
+                     "u dvorani)", required=True),
     "dan.empty": Slot("Trening još nema vježbi.", CAP, "Online treninzi · trening: bez vježbi"),
     "dan.empty_staff": Slot("Trening još nema vježbi — dodaj ih u uređivanju.", CAP,
                             "Online treninzi · trening: bez vježbi (trener)"),
@@ -1155,6 +1157,23 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "gym.state.staff": Slot("Za člana je upis zatvoren; uređuješ kao trener.", CAP,
                             "Trening u dvorani · stanje: trener izvan članova roka"),
     "gym.empty": Slot("Trening je još prazan — dodaj prvu vježbu.", CAP, "Trening u dvorani: prazan trening"),
+    # part B (26.11.2026): the templates while the training holds no row,
+    # each part's "Uredi dio" and a circuit's caption ("· kružno · 3 kruga
+    # · odmor 90 s": kružno the player's slot, the count and the seconds
+    # code); a round's rating, its button's word and its fields' headers
+    # are the player's (player.rate.round, player.round.done, player.col.*),
+    # a slot's name the day page's (dan.slot)
+    "gym.template.open": Slot("Odaberi gotov trening", CAP, "Trening u dvorani · predložak: gumb Odaberi gotov trening",
+                              required=True),
+    "gym.part.edit": Slot("Uredi dio", CAP, "Trening u dvorani · dio: gumb Uredi dio", required=True),
+    "gym.part.name": Slot("Naziv dijela", CAP, "Trening u dvorani · dio: polje Naziv dijela", required=True),
+    "gym.part.circuit": Slot("Kružni dio", CAP, "Trening u dvorani · dio: kvačica Kružni dio", required=True),
+    "gym.part.rounds": Slot("Krugova", CAP, "Trening u dvorani · dio: polje Krugova", required=True),
+    "gym.part.rest": Slot("Odmor nakon kruga (s)", CAP, "Trening u dvorani · dio: polje Odmor nakon kruga",
+                          required=True),
+    "gym.part.save": Slot("Spremi", CAP, "Trening u dvorani · dio: gumb Spremi", required=True),
+    "gym.part.rest_caption": Slot("odmor", CAP, "Trening u dvorani · dio: odmor u naslovu kružnog dijela, prije sekundi",
+                                  required=True),
     # an exercise's card
     "gym.card.planned": Slot("Zadano:", CAP, "Trening u dvorani · vježba: Zadano:, prije zadanog", required=True),
     "gym.card.add_set": Slot("+ serija", CAP, "Trening u dvorani · vježba: gumb + serija", required=True),
@@ -1173,6 +1192,9 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     "gym.form.rest": Slot("Pauza (s)", CAP, "Trening u dvorani · zadano: polje Pauza", required=True),
     "gym.form.note": Slot("Napomena", CAP, "Trening u dvorani · zadano: polje Napomena", required=True),
     "gym.form.save": Slot("Spremi", CAP, "Trening u dvorani · zadano: gumb Spremi", required=True),
+    # a slot's card (part B): its combobox's field is the add card's (gym.add.exercise)
+    "gym.slot.pick": Slot("Odaberi", CAP, "Trening u dvorani · prazno mjesto: gumb Odaberi", required=True),
+    "gym.slot.remove": Slot("Ukloni", CAP, "Trening u dvorani · prazno mjesto: gumb Ukloni", required=True),
     # "Dodaj vježbu", the card at the bottom
     "gym.add.title": Slot("Dodaj vježbu", CAP, "Trening u dvorani · dodaj vježbu: naslov", required=True),
     "gym.add.exercise": Slot("Vježba", CAP, "Trening u dvorani · dodaj vježbu: polje Vježba", required=True),
@@ -1378,7 +1400,10 @@ _TEXT_RULES = (
     # one, a member's they reach as the member)
     ("Trening u dvorani", None, False, (
         ("Zaglavlje", ("gym.head.", "gym.state.", "gym.empty")),
+        ("Predložak", ("gym.template.",)),
+        ("Dio i krugovi", ("gym.part.",)),
         ("Vježba", ("gym.card.", "gym.form.")),
+        ("Prazno mjesto", ("gym.slot.",)),
         ("Dodaj vježbu", ("gym.add.",)),
         ("Kraj treninga", ("gym.done.", "gym.foot.")),
         ("Osvrt", ("gym.osvrt.",)),

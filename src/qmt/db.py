@@ -26,7 +26,8 @@ from sqlalchemy.orm import Session, aliased, joinedload, load_only, selectinload
 
 from . import config, copy, upitnik
 from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSION_KINDS, ActingLog, Announcement, Base, Booking,
-                     Exercise, GymCard, GymTraining, GymTrainingItem, LimitationFile, Membership, OnboardingResponse,
+                     Exercise, GymCard, GymTraining, GymTrainingItem, GymTrainingPart, LimitationFile, Membership,
+                     OnboardingResponse,
                      Payment, Program, ProgramDay,
                      ProgramDayCircuit, ProgramDayItem, ProgramDayPart, ProgressPhoto, ReminderLog, SessionTemplate,
                      SiteCopy,
@@ -3832,9 +3833,10 @@ def add_gym_outside(user_id: int, day: date) -> int:
 
 
 def _gym_query():
-    """A gym training with its items and each item's exercise (a joined load),
-    usable once the session is closed."""
-    return select(GymTraining).options(selectinload(GymTraining.items))
+    """A gym training with its items and each item's exercise (a joined load)
+    and since part B its parts (their names, their circuits), usable once
+    the session is closed."""
+    return select(GymTraining).options(selectinload(GymTraining.items), selectinload(GymTraining.parts))
 
 
 def gym_training(training_id: int, user_id: int) -> GymTraining | None:
@@ -3929,10 +3931,12 @@ def update_gym_item(item_id: int, user_id: int, section: str, sets: int | None, 
     """Save what was given for an exercise ("Uredi zadano": its part, sets,
     reps, seconds, kg, the pause after a set, a note; the day editor's row
     form's rules: ITEM_LIMITS, the note ITEM_NOTE_MAX, an item moved to
-    another part goes last in it). What was done stays as saved. False for
-    an item that is no member's (or not of `training_id`). ValueError with
-    the sentence to show (NO_SECTION, BAD_NUMBER, the note's length);
-    BookingError GYM_CLOSED."""
+    another part goes last in it). What was done stays as saved. `sets` or
+    `rest_seconds` given as KEEP (part B: a circuit part's form asks
+    neither, they do not apply there) stays what it is, as
+    update_day_item's. False for an item that is no member's (or not of
+    `training_id`). ValueError with the sentence to show (NO_SECTION,
+    BAD_NUMBER, the note's length); BookingError GYM_CLOSED."""
     if section not in SECTIONS:
         raise ValueError(NO_SECTION)
     _checked_item_numbers(sets=sets, reps=reps, seconds=seconds, kg=kg, rest_seconds=rest_seconds)
@@ -3948,7 +3952,11 @@ def update_gym_item(item_id: int, user_id: int, section: str, sets: int | None, 
             it.section = section
             it.position = s.scalar(select(func.max(GymTrainingItem.position))
                                    .where(GymTrainingItem.training_id == t.id)) + 1
-        it.sets, it.reps, it.seconds, it.rest_seconds, it.note = sets, reps, seconds, rest_seconds, note
+        if sets is not KEEP:
+            it.sets = sets
+        if rest_seconds is not KEEP:
+            it.rest_seconds = rest_seconds
+        it.reps, it.seconds, it.note = reps, seconds, note
         it.kg = None if kg is None else _checked_item_kg(kg)
         t.updated_at = func.now()
         return True
@@ -4021,14 +4029,18 @@ def save_gym_done(item_id: int, user_id: int, sets: list[dict], effort: int | No
 
 
 def empty_gym_training(training_id: int, user_id: int, staff: bool = False) -> bool:
-    """"Isprazni trening": every exercise of the training and its sets go;
-    the training stays (a termin's exists for its booking), its osvrt as it
-    was. False for one that is no member's. BookingError GYM_CLOSED."""
+    """"Isprazni trening": every exercise of the training and its sets go,
+    and since part B its parts' own names and circuits with them (a
+    template's "Krug 1 · kružno" would otherwise meet the next exercise
+    added by hand: Fable's review, 26.11.2026); the training stays (a
+    termin's exists for its booking), its osvrt as it was. False for one
+    that is no member's. BookingError GYM_CLOSED."""
     with session_scope() as s:
         t = _gym_locked(s, training_id, user_id, staff)
         if t is None:
             return False
         s.execute(sa_delete(GymTrainingItem).where(GymTrainingItem.training_id == training_id))
+        s.execute(sa_delete(GymTrainingPart).where(GymTrainingPart.training_id == training_id))
         t.updated_at = func.now()
         return True
 
@@ -4077,6 +4089,241 @@ def finish_gym_training(training_id: int, user_id: int, effort: int | None, feel
             t.finished_at = datetime.now(config.TZ)
         t.updated_at = func.now()
         return True
+
+
+# ---------- the gym training, part B: a part's name and circuit, a round, a template, a slot ----------
+# The owner: "Lets have Glavni dio A, B and C but lets also allow Amir to
+# rename them."; Amir: "tu ne mogu staviti kružni dio … nema nigdje da stavi
+# kvačicu... Pauza itd..."; the owner: "the user should be able to choose a
+# dvoranski programme as a template and then edit the exercises there" …
+# "only slots to put them in. Also no hard cap on the number of exercises or
+# anything." Every write here is a training's like part A's: its row FOR
+# UPDATE first and gym_can_write (_gym_locked), a refusal changing nothing.
+
+# a round's save whose page was drawn for another part (the player's words, app.DAY_CHANGED)
+GYM_CHANGED = "Trening se u međuvremenu promijenio — provjeri vježbu i spremi ponovno."
+NO_TEMPLATE = "Odaberi predložak s popisa."
+GYM_NOT_EMPTY = "Trening već ima vježbe — isprazni ga pa odaberi predložak."
+TEMPLATE_CHANGED = "Predložak se u međuvremenu promijenio — odaberi ga ponovno."
+
+
+def set_gym_part(training_id: int, user_id: int, section: str, title: str, circuit: bool,
+                 rounds: int | None = None, rest_seconds: int | None = None, staff: bool = False) -> bool:
+    """"Uredi dio": a part of a training (SECTIONS' key `section`) named
+    `title` (one line, clean_name; "" its default name again) and, with
+    `circuit`, done as a circuit: `rounds` rounds (2–20), `rest_seconds`
+    after a round (0–3600; None for none); without it a normal part,
+    whatever the numbers say (the day editor's set_part_name, set_circuit
+    and clear_circuit, in one form). A part with neither a name nor a
+    circuit has no row. What its exercises hold stays as it is: a set ticked
+    while it was a normal part carries no round and is kept (the round
+    blocks read only the sets that carry one), and switching a circuit off
+    keeps every set. Under the training's row lock (_gym_locked), the row
+    written with ON CONFLICT on its key. False for a training that is no
+    member's. ValueError with the sentence to show: NO_SECTION,
+    PART_TITLE_TOO_LONG ("Najviše 60 znakova."), BAD_NUMBER for rounds
+    outside 2–20 (or none) or a rest outside 0–3600; BookingError
+    GYM_CLOSED. A refusal changes nothing."""
+    if section not in SECTIONS:
+        raise ValueError(NO_SECTION)
+    title = clean_name(title or "")
+    if len(title) > PART_TITLE_MAX:
+        raise ValueError(PART_TITLE_TOO_LONG)
+    if circuit:
+        (least, most), (rest_least, rest_most) = CIRCUIT_LIMITS["rounds"], CIRCUIT_LIMITS["rest_seconds"]
+        if type(rounds) is not int or not least <= rounds <= most:
+            raise ValueError(BAD_NUMBER)
+        if rest_seconds is not None and (type(rest_seconds) is not int or not rest_least <= rest_seconds <= rest_most):
+            raise ValueError(BAD_NUMBER)
+    else:
+        rounds = rest_seconds = None
+    with session_scope() as s:
+        t = _gym_locked(s, training_id, user_id, staff)
+        if t is None:
+            return False
+        if title or rounds is not None:
+            values = {"title": title, "rounds": rounds, "rest_seconds": rest_seconds}
+            s.execute(pg_insert(GymTrainingPart).values(training_id=training_id, section=section, **values)
+                      .on_conflict_do_update(index_elements=["training_id", "section"], set_=values))
+        else:
+            s.execute(sa_delete(GymTrainingPart).where(GymTrainingPart.training_id == training_id,
+                                                       GymTrainingPart.section == section))
+        t.updated_at = func.now()
+        return True
+
+
+def save_gym_round(training_id: int, user_id: int, section: str, round: int, sets_by_item: dict,
+                   effort: int | None = None, staff: bool = False) -> bool:
+    """One round of a circuit part of a training saved ("Krug 2 odrađen":
+    the player's save_circuit_round, for a gym training): `sets_by_item`
+    item id -> its one set of this round as read_sets reads it ({"reps":
+    10, "kg": 16.0}), or None for an exercise not done in it, for every
+    exercise of the part that a round takes inputs for (GymTraining.
+    round_items: the page was drawn for exactly these; any other set of
+    ids, a part that is no circuit now or a round past its rounds is
+    GYM_CHANGED, nothing saved). In one write, under the training's row
+    lock (two rounds at once keep both): each exercise done gets its set as
+    round `round`'s ({"reps": 10, "kg": 16.0, "round": 2}), a set of that
+    round it held replaced, its other rounds kept, sorted by round after
+    the sets that carry none (ticked while the part was a normal one: kept
+    as they were); one not done loses the set of this round it had (with
+    none left at all, its time and its rating go). `effort` (1–10, "Koliko
+    je bio težak ovaj krug?"), when given, is written on every exercise the
+    round saved; with none, an exercise keeps the rating it had. done_at
+    now for each one saved. False for a training that is no member's.
+    ValueError with the sentence to show: NO_SECTION, NO_ROUND_EXERCISE
+    ("Upiši bar jednu vježbu.") when no exercise is done, a set's sentences
+    (_checked_sets: a round outside ROUND_LIMITS BAD_NUMBER, more than
+    MAX_SETS in one exercise TOO_MANY_SETS), BAD_NUMBER for a rating that
+    is none of 1–10, GYM_CHANGED; BookingError GYM_CLOSED."""
+    if section not in SECTIONS:
+        raise ValueError(NO_SECTION)
+    effort = _checked_effort(effort)
+    checked: dict[int, dict] = {}
+    for item_id, one in sets_by_item.items():
+        if one is None:
+            continue
+        if not isinstance(one, dict):
+            raise ValueError(BAD_NUMBER)
+        [checked[item_id]] = _checked_sets([{**one, "round": round}])
+    if not checked:
+        raise ValueError(NO_ROUND_EXERCISE)
+    with session_scope() as s:
+        t = _gym_locked(s, training_id, user_id, staff)
+        if t is None:
+            return False
+        part = s.get(GymTrainingPart, (training_id, section), populate_existing=True)
+        items = [it for it in _gym_items(s, training_id) if it.section == section and it.exercise_id is not None]
+        if (part is None or part.rounds is None or not 1 <= round <= part.rounds
+                or {it.id for it in items} != set(sets_by_item)):
+            raise ValueError(GYM_CHANGED)
+        now = datetime.now(config.TZ)
+        for it in items:
+            old = it.done_sets
+            kept = [x for x in old if not (type(x.get("round")) is int and x["round"] == round)]
+            st = checked.get(it.id)
+            if st is None:                               # not done in this round: its set of this round goes
+                if len(kept) == len(old):
+                    continue
+                it.done = json.dumps(kept, ensure_ascii=False)
+                if not kept:
+                    it.done_at, it.effort = None, None
+                continue
+            plain = [x for x in kept if type(x.get("round")) is not int]
+            by_round = sorted([x for x in kept if type(x.get("round")) is int] + [st], key=lambda x: x["round"])
+            it.done = json.dumps(_checked_sets(plain + by_round), ensure_ascii=False)
+            it.done_at = now
+            if effort is not None:
+                it.effort = effort
+        t.updated_at = func.now()
+        return True
+
+
+def gym_templates() -> list[ProgramDay]:
+    """The trainings a gym training may be made from ("Odaberi gotov
+    trening", part B): every day of every dvoranski programme that holds a
+    row (an exercise or a slot: an empty one would copy nothing), each with
+    its programme, its items (and their exercises), its circuits and its
+    parts' names loaded; by the programme's title in the alphabet's order
+    (alpha_key), then its days in their order. Every member is offered
+    every one (the plan: a gym-only member has no razina)."""
+    with session_scope() as s:
+        days = list(s.scalars(select(ProgramDay).join(Program, Program.id == ProgramDay.program_id)
+                              .where(Program.venue == "dvorana")
+                              .options(selectinload(ProgramDay.items), selectinload(ProgramDay.circuits),
+                                       selectinload(ProgramDay.parts), joinedload(ProgramDay.program))))
+    return sorted((d for d in days if d.items), key=lambda d: (alpha_key(d.program.title), d.program_id, d.position))
+
+
+def gym_from_template(training_id: int, user_id: int, day_id: int | None, staff: bool = False) -> bool:
+    """"Odaberi gotov trening" (part B; the owner: "the user should be able
+    to choose a dvoranski programme as a template and then edit the
+    exercises there"): a dvoranski programme's training (its day `day_id`)
+    copied into a training that holds no row: its parts' names and
+    circuits (ProgramDayPart, ProgramDayCircuit; the training's own part
+    rows replaced), then its rows in the day's order, exercises and slots
+    alike, each in its part with its hint, its numbers (sets, reps,
+    seconds, kg, the rest between sets) and its note; a day's rest after an
+    exercise is not carried (a gym training has none). The template never
+    changes. Under the training's row lock (_gym_locked); the template's
+    exercises are taken FOR KEY SHARE before its rows are read
+    (add_day_item's lock: an exercise deleted meanwhile waits for the
+    copy). False for a training that is no member's. ValueError with the
+    sentence to show: GYM_NOT_EMPTY ("Trening već ima vježbe — isprazni ga
+    pa odaberi predložak.") for a training that holds a row, NO_TEMPLATE
+    ("Odaberi predložak s popisa.") for a day that is none or no dvoranski
+    programme's, TEMPLATE_CHANGED when an exercise of it went under the
+    copy; BookingError GYM_CLOSED. A refusal changes nothing."""
+    try:
+        with session_scope() as s:
+            t = _gym_locked(s, training_id, user_id, staff)
+            if t is None:
+                return False
+            if s.scalar(select(func.count()).select_from(GymTrainingItem)
+                        .where(GymTrainingItem.training_id == training_id)):
+                raise ValueError(GYM_NOT_EMPTY)
+            day = None if day_id is None else s.scalar(
+                select(ProgramDay).join(Program, Program.id == ProgramDay.program_id)
+                .where(ProgramDay.id == day_id, Program.venue == "dvorana"))
+            if day is None:
+                raise ValueError(NO_TEMPLATE)
+            s.execute(select(Exercise.id)
+                      .where(Exercise.id.in_(select(ProgramDayItem.exercise_id).where(ProgramDayItem.day_id == day_id)))
+                      .order_by(Exercise.id).with_for_update(read=True, key_share=True))
+            rows = list(s.scalars(select(ProgramDayItem).where(ProgramDayItem.day_id == day_id)
+                                  .order_by(ProgramDayItem.position)))
+            names = {p.section: p.title for p in s.scalars(select(ProgramDayPart).where(ProgramDayPart.day_id == day_id))}
+            circuits = {c.section: c for c in s.scalars(select(ProgramDayCircuit)
+                                                         .where(ProgramDayCircuit.day_id == day_id))}
+            s.execute(sa_delete(GymTrainingPart).where(GymTrainingPart.training_id == training_id))
+            n = 0
+            for key in SECTIONS:
+                c = circuits.get(key)
+                if names.get(key) or c is not None:
+                    s.add(GymTrainingPart(training_id=training_id, section=key, title=names.get(key, ""),
+                                          rounds=c.rounds if c is not None else None,
+                                          rest_seconds=c.rest_seconds if c is not None else None))
+                for it in (r for r in rows if r.section == key):
+                    n += 1
+                    s.add(GymTrainingItem(
+                        training_id=training_id, section=key, position=n, exercise_id=it.exercise_id,
+                        exercise_name=it.exercise.name[:160] if it.exercise is not None else "", hint=it.hint or "",
+                        sets=it.sets, reps=it.reps, seconds=it.seconds, kg=it.kg, rest_seconds=it.rest_seconds,
+                        note=it.note or "", done="[]"))
+            t.updated_at = func.now()
+            return True
+    except IntegrityError:                               # an exercise deleted under the copy: the foreign key
+        raise ValueError(TEMPLATE_CHANGED) from None
+
+
+def fill_gym_slot(item_id: int, user_id: int, exercise_id: int, staff: bool = False,
+                  training_id: int | None = None) -> bool:
+    """A slot's "Odaberi" (part B): a library exercise into a slot of a
+    training, which is an ordinary card of it from then on (its place, its
+    numbers, its note and its hint as they were; the exercise's name
+    snapshotted, as add_gym_item's). The exercise's row FOR KEY SHARE
+    first, then the training's (add_gym_item's order). False for an item
+    that is no member's (or not of `training_id`). ValueError with the
+    sentence to show: UNKNOWN_EXERCISE ("Nepoznata vježba.") for an
+    exercise not in the library (deleted while it was put in too),
+    SLOT_FILLED ("Mjesto je već popunjeno.") for a row that is no slot;
+    BookingError GYM_CLOSED."""
+    try:
+        with session_scope() as s:
+            e = s.get(Exercise, exercise_id, with_for_update={"read": True, "key_share": True})
+            if e is None:
+                raise ValueError(UNKNOWN_EXERCISE)
+            found = _gym_item_locked(s, item_id, user_id, staff, training_id)
+            if found is None:
+                return False
+            t, it = found
+            if not it.is_slot:
+                raise ValueError(SLOT_FILLED)
+            it.exercise_id, it.exercise_name = e.id, e.name[:160]
+            t.updated_at = func.now()
+            return True
+    except IntegrityError:                               # the exercise deleted under it: the foreign key
+        raise ValueError(UNKNOWN_EXERCISE) from None
 
 
 def gym_clip(name: str, user_id: int) -> bool:

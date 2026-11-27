@@ -1600,7 +1600,14 @@ class GymTraining(Base):
     FEELING_LABELS key) and `note` are the osvrt, `finished_at` its first
     save. Written by db.py only, the row locked FOR UPDATE, each write asking
     db.gym_can_write (the member's window; staff acting as him at any
-    time)."""
+    time).
+
+    `parts` (part B, 26.11.2026: GymTrainingPart) are its parts with a name
+    of their own or done as a circuit, a row per such part, loaded with the
+    training wherever its items are (db._gym_query): part_label names a
+    part, circuit(section) says whether it is one, and a circuit's
+    exercises are ticked a round at a time (db.save_gym_round), each
+    exercise's mark its rounds (mark_of)."""
 
     __tablename__ = "gym_trainings"
 
@@ -1628,6 +1635,8 @@ class GymTraining(Base):
     items: Mapped[list["GymTrainingItem"]] = relationship(
         back_populates="training", cascade="all, delete-orphan", passive_deletes=True,
         order_by="GymTrainingItem.position")
+    # its parts with a name of their own or done as a circuit (part B); the CASCADE deletes them with it
+    parts: Mapped[list["GymTrainingPart"]] = relationship(cascade="all, delete-orphan", passive_deletes=True)
 
     @property
     def outside(self) -> bool:
@@ -1636,12 +1645,52 @@ class GymTraining(Base):
         termin's title and start, and is no termin's now (session_id)."""
         return self.starts_at is None
 
+    def part(self, section: str) -> "GymTrainingPart | None":
+        """The part `section`'s row (its own name, its circuit), None for a
+        part with neither."""
+        return next((p for p in self.parts if p.section == section), None)
+
+    def part_title(self, section: str) -> str:
+        """The name of its own the training gives the part `section`
+        ("Krug 1"), "" for none ("Uredi dio"'s field)."""
+        p = self.part(section)
+        return p.title if p is not None else ""
+
     def part_label(self, section: str) -> str:
-        """A part of the training as the page names it: its default name
+        """A part of the training as the page names it: its own name when
+        it has one (part B: "Uredi dio", or a template's), else its default
         (SECTIONS: "Glavni dio A"). Every place that names a part of a gym
-        training asks this (part B of the build gives a part a name of its
-        own here, as ProgramDay.part_label does a day's)."""
-        return SECTIONS.get(section, "")
+        training asks this."""
+        return self.part_title(section) or SECTIONS.get(section, "")
+
+    def circuit(self, section: str) -> "GymTrainingPart | None":
+        """The part `section` as a circuit (its rounds, its rest after a
+        round), None for a normal part (part B)."""
+        p = self.part(section)
+        return p if p is not None and p.rounds is not None else None
+
+    def round_items(self, section: str) -> list["GymTrainingItem"]:
+        """A circuit part's exercises that a round takes inputs for, in the
+        page's order: the rows that hold a library exercise (a slot is in
+        no round; an exercise gone from the library is read only)."""
+        return [it for it in self.by_section.get(section, []) if it.exercise_id is not None]
+
+    def rounds_saved(self, section: str) -> set[int]:
+        """The rounds of the part `section` that are saved: a round is when
+        any exercise of the part holds a set of that round (the player's
+        rule, app._saved), within the circuit's rounds."""
+        c = self.circuit(section)
+        if c is None:
+            return set()
+        rows = [it for it in self.by_section.get(section, []) if not it.is_slot]
+        return {n for n in range(1, c.rounds + 1) if any(it.round_set(n) is not None for it in rows)}
+
+    def mark_of(self, it: "GymTrainingItem") -> str:
+        """An exercise's mark as its part reads it: a normal part's the
+        card's (GymTrainingItem.mark: its sets against its Serije), a
+        circuit's its rounds ("✓" every round, "2/3" some, "" none)."""
+        c = self.circuit(it.section)
+        return it.mark if c is None else it.round_mark(c.rounds)
 
     @property
     def by_section(self) -> dict[str, list["GymTrainingItem"]]:
@@ -1690,8 +1739,11 @@ class GymTraining(Base):
         order: (its name, what was given and the word after it, the sets as
         done): ("Goblet čučanj", "zadano 3 × 10 · 20 kg — odrađeno", ["10 ×
         20 kg", "10 × 20 kg", "8 × 20 kg", "težina 8/10"]); "zadano …" only
-        when anything was given, "odrađeno —" when nothing was ticked."""
-        return [it.line() for it in self.exercise_items]
+        when anything was given, "odrađeno —" when nothing was ticked; in a
+        circuit part (part B) what one round asks (its round_dose: its sets
+        do not apply there) and a set per round, in their order. A slot is
+        no exercise: no line."""
+        return [it.line(self.circuit(it.section)) for it in self.exercise_items]
 
 
 class GymTrainingItem(Base):
@@ -1713,8 +1765,14 @@ class GymTrainingItem(Base):
     `exercise_id` is the library's row (SET NULL) and `exercise_name` its
     name when added: a gym training is a record, so an exercise deleted from
     the library stays in it by name (`gone`). A row with neither is a SLOT
-    (part B: a template's empty place, filled from the library). No cap on
-    the rows."""
+    (part B: a template's empty place, `hint` what goes there, filled from
+    the library: db.fill_gym_slot). No cap on the rows.
+
+    In a circuit part (part B, GymTraining.circuit) each set of `done`
+    carries its round ({"reps": 10, "kg": 16.0, "round": 2}: round_set),
+    sorted by round, and the mark counts rounds (round_mark); sets ticked
+    while the part was a normal one carry none and stay as they were (the
+    round blocks read only the sets that carry a round)."""
 
     __tablename__ = "gym_training_items"
 
@@ -1797,6 +1855,17 @@ class GymTrainingItem(Base):
             return ""
         return "✓" if self.sets is None or n >= self.sets else f"{n}/{self.sets}"
 
+    def round_set(self, n: int) -> dict | None:
+        """The set this exercise holds of round n of its circuit part (part
+        B: a set saved by a round carries its round), None for none."""
+        return next((s for s in self.done_sets if type(s.get("round")) is int and s["round"] == n), None)
+
+    def round_mark(self, rounds: int) -> str:
+        """Its mark in a circuit part of `rounds` rounds (part B): "✓" when
+        it holds a set of every round, "2/3" of some, "" of none."""
+        n = sum(1 for k in range(1, rounds + 1) if self.round_set(k) is not None)
+        return "" if not n else "✓" if n >= rounds else f"{n}/{rounds}"
+
     @property
     def done_text(self) -> str:
         """The sets done and the rating as one line: "10 × 20 kg · 10 × 20
@@ -1806,10 +1875,49 @@ class GymTrainingItem(Base):
             words.append(f"težina {self.effort}/10")
         return " · ".join(words)
 
-    def line(self) -> tuple[str, str, list[str]]:
+    def line(self, circuit=None) -> tuple[str, str, list[str]]:
         """(its name, "zadano 3 × 10 · 20 kg — odrađeno", its sets and its
-        rating): GymTraining.lines'."""
-        planned = self.dose
+        rating): GymTraining.lines'. In a circuit part (`circuit`, its
+        GymTrainingPart: part B) what was given is what one round asks,
+        "zadano 10 ponavljanja · 16 kg" (round_dose)."""
+        planned = self.round_dose if circuit is not None else self.dose
         done = [set_text(s) for s in self.done_sets]
         head = (f"zadano {planned} — " if planned else "") + ("odrađeno" if done else "odrađeno —")
         return self.name, head, done + ([f"težina {self.effort}/10"] if self.effort is not None else [])
+
+
+class GymTrainingPart(Base):
+    """A part of a gym training with a name of its own or done as a circuit
+    (26.11.2026, build 3 of roadmap/2026-11-26-gym-training-plan.md, part B;
+    Amir: "tu ne mogu staviti kružni dio … nema nigdje da stavi kvačicu...
+    Pauza itd..."; migration 36d6e2c97de7). A row means: that part
+    (`section`, a SECTIONS key, which db.py checks) of that training is
+    called `title` ("Krug 1", 60 characters at most; "" for none: its
+    default name) and / or is a circuit, `rounds` rounds (2–20, a CHECK;
+    NULL: a normal part), its exercises each done once per round with no
+    pause between them, and `rest_seconds` (0–3600, a CHECK; NULL for none)
+    the rest after a round, which the rest bar counts down after a round's
+    save. In a circuit an exercise's Serije and Pauza do not apply; they
+    stay stored and apply again once it is a normal part. One row per part
+    (the primary key); a training deleted takes its rows (CASCADE). Written
+    by db.set_gym_part ("Uredi dio": a row with neither a name nor a circuit
+    goes) and db.gym_from_template (a dvoranski programme's training's part
+    names and circuits, ProgramDayPart and ProgramDayCircuit, copied)."""
+
+    __tablename__ = "gym_training_parts"
+
+    training_id: Mapped[int] = mapped_column(ForeignKey("gym_trainings.id", ondelete="CASCADE"), primary_key=True,
+                                             autoincrement=False)
+    section: Mapped[str] = mapped_column(String(12), primary_key=True)
+    title: Mapped[str] = mapped_column(String(60), server_default=text("''"), default="")
+    rounds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("rounds BETWEEN 2 AND 20", name="ck_gym_training_parts_rounds"),
+        CheckConstraint("rest_seconds BETWEEN 0 AND 3600", name="ck_gym_training_parts_rest_seconds"),
+    )
+
+    # "3 kruga", "120 s": a day's circuit's words, one rule for both
+    rounds_text = ProgramDayCircuit.rounds_text
+    rest_text = ProgramDayCircuit.rest_text

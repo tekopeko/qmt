@@ -1,5 +1,5 @@
 """The gym training (26.11.2026, build 3 of roadmap/2026-11-26-gym-training-plan.md,
-part A).
+parts A and B).
 
 The owner: "I would remove the 'dodaj trening' and automatically add the
 training with its title already after a user booked it and he can already
@@ -25,7 +25,13 @@ clips to its member (rule 7); and the login's prompt owes a termin only while
 its training's window is open (rule 8). The page (karton_trening.html), its
 osvrt (karton_trening_osvrt.html), the karton's diary and termini, the
 raspored's card, a roster's "Kao član →", the seed; the browser half walks
-the owner's own flow on a phone."""
+the owner's own flow on a phone. Part B (migration 36d6e2c97de7): a part's
+own name and its circuit ("Uredi dio", db.set_gym_part), a circuit's rounds
+saved a round at a time (db.save_gym_round, under the training's row lock),
+a dvoranski programme's training copied in as a template
+(db.gym_from_template), a slot's card filled from the library
+(db.fill_gym_slot); its browser half a template chosen, its slots filled, a
+circuit of two rounds ticked on a phone."""
 
 from __future__ import annotations
 
@@ -123,9 +129,12 @@ def bare(html: str) -> str:
 
 
 def card_of(page: str, item_id: int) -> str:
-    """A card of the page (its <details>), to the next card or the add card."""
+    """A card of the page (its <details>), to the next card (part B: a
+    slot's, a circuit's exercise's or a round's too), the next part or the
+    add card."""
     chunk = page.split(f'id="stavka-{item_id}"')[1]
-    return re.split(r'<details class="card gt-card"|<form id="dodaj"|class="gt-finish"|class="card gt-osvrt"', chunk)[0]
+    return re.split(r'<details class="card gt-|<section class="gt-part"|<form id="dodaj"|class="gt-finish"'
+                    r'|class="card gt-osvrt"', chunk)[0]
 
 
 def tick(c: TestClient, tid: int, iid: int, polja: str, *rows: dict, effort: str = "", params=None, headers=JSON):
@@ -193,8 +202,8 @@ def test_the_migration_makes_the_two_tables_and_takes_them_away():
     ivan = make_user("ivan@test.local")
     with db.session_scope() as s:
         s.add(TrainingLog(user_id=ivan, date=date(2026, 11, 20), effort=6, note="Staro.", sets="[]"))
-    with db.engine.begin() as conn:
-        conn.execute(sa_text("DROP TABLE gym_training_items, gym_trainings"))
+    with db.engine.begin() as conn:                 # (part B's gym_training_parts, a later table, points at them)
+        conn.execute(sa_text("DROP TABLE gym_training_parts, gym_training_items, gym_trainings"))
     _run(mig.upgrade)
     assert GYM_TABLES <= set(sa_inspect(db.engine).get_table_names()) and _schema_diffs(GYM_TABLES) == []
     indexes = {i["name"]: i for i in sa_inspect(db.engine).get_indexes("gym_trainings")}
@@ -1248,6 +1257,468 @@ def test_a_rosters_kao_clan_lands_on_his_training_and_every_write_there_is_recor
     assert location(r) == "/karton?error=Termin je otkazan."
 
 
+# ---------- part B: a part's name and circuit, the rounds, the templates, a slot ----------
+
+GYM_CHANGED = "Trening se u međuvremenu promijenio — provjeri vježbu i spremi ponovno."
+
+
+def dvoranski(title: str = "Predložak — snaga", level: str | None = "srednja", day_title: str = "") -> int:
+    """A dvoranski programme with one training, its day's id (the template
+    a gym training is made from)."""
+    day = db.add_day(db.create_program(title, None, level, "cijelo", "dvorana"))
+    if day_title:
+        db.update_day(day, day_title, None, "")
+    return day
+
+
+def part_of(page: str, key: str) -> str:
+    """A part's section of the page (its head, its cards, its rounds)."""
+    return page.split(f'<section class="gt-part" aria-labelledby="dio-{key}">')[1].split("</section>")[0]
+
+
+def rnd(c: TestClient, tid: int, key: str, n: int, by_item: dict, effort: str = "", stavke=None):
+    """A round's save as its block's form posts it: each exercise's inputs
+    (reps_<id>, kg_<id>, sec_<id>), the exercises it was drawn for."""
+    data = {"stavke": ",".join(str(i) for i in (stavke if stavke is not None else by_item)), "effort": effort}
+    for iid, values in by_item.items():
+        data.update({f"{k}_{iid}": str(v) for k, v in values.items()})
+    return c.post(f"/karton/trening/{tid}/dio/{key}/krug/{n}", data=data, follow_redirects=False)
+
+
+def test_the_parts_migration_makes_its_table_and_takes_it_away():
+    """36d6e2c97de7 (part B), run on qmt_test as before it (no parts
+    table): gym_training_parts as the model has it, empty, its two CHECKs
+    (rounds 2–20, a rest after a round 0–3600) and its key CASCADE from the
+    training. Downgrade drops it, the trainings and their items as they
+    were (a circuit's sets with their rounds); a second upgrade makes it
+    again, empty."""
+    mig = _migration("36d6e2c97de7_gym_training_parts.py")
+    assert (mig.revision, mig.down_revision) == ("36d6e2c97de7", "c4e1b7f9a2d6")
+    ivan = make_user("ivan@test.local")
+    tid = db.gym_training_for(ivan, termin(ivan, now() - timedelta(hours=2)))
+    iid = db.add_gym_item(tid, ivan, db.create_exercise("Plank"), "trening", seconds=30)
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("DROP TABLE gym_training_parts"))
+    _run(mig.upgrade)
+    assert "gym_training_parts" in sa_inspect(db.engine).get_table_names()
+    assert _schema_diffs({"gym_training_parts"}) == [] and db.gym_training(tid, ivan).parts == []
+    db.set_gym_part(tid, ivan, "trening", "Krug 1", True, 3, 90)
+    db.save_gym_round(tid, ivan, "trening", 1, {iid: {"seconds": 30}})
+    for bad in ("rounds = 21", "rounds = 1", "rest_seconds = 3601", "rest_seconds = -1"):
+        with pytest.raises(Exception, match="ck_gym_training_parts"):
+            with db.engine.begin() as conn:
+                conn.execute(sa_text(f"UPDATE gym_training_parts SET {bad}"))
+    out = db.add_gym_outside(ivan, date(2026, 1, 5))
+    db.set_gym_part(out, ivan, "trening_b", "Snaga", False)
+    db.delete_gym_training(out, ivan)                                       # its part goes with it (CASCADE)
+    with db.engine.connect() as conn:
+        assert conn.execute(sa_text("SELECT training_id, section, title, rounds, rest_seconds FROM gym_training_parts")
+                            ).all() == [(tid, "trening", "Krug 1", 3, 90)]
+    _run(mig.downgrade)
+    assert "gym_training_parts" not in sa_inspect(db.engine).get_table_names()
+    with db.engine.connect() as conn:                                       # the sets as they were, with their round
+        assert json.loads(conn.execute(sa_text("SELECT done FROM gym_training_items WHERE id = :i"), {"i": iid}
+                                       ).scalar_one()) == [{"seconds": 30, "round": 1}]
+    _run(mig.upgrade)
+    assert _schema_diffs({"gym_training_parts"}) == [] and db.gym_training(tid, ivan).parts == []
+
+
+def test_uredi_dio_names_a_part_and_makes_it_a_circuit():
+    """"Uredi dio", beside each part's caption while the page is writable
+    (POST …/dio/<key>): a name of its own (one line, 60 characters at most;
+    empty: the default back) and "Kružni dio" with Krugova (2–20) and "Odmor
+    nakon kruga (s)" (0–3600, empty for none); unticked, a normal part
+    whatever the numbers say, the row gone with no name. Back at the part,
+    "Spremljeno." under its caption; a refusal there with its form open
+    again, nothing changed. The caption and every Dio name the part as
+    named, a circuit's caption "· kružno · 3 kruga · odmor 90 s"; its
+    exercises' sets stay as they were either way. A part that is none: the
+    page's top. Another member's 404; past the window refused, and no
+    "Uredi dio" on the page read only."""
+    ivan, ana = make_user("ivan@test.local"), make_user("ana@test.local")
+    ex = library("Goblet čučanj", "Plank")
+    tid = db.gym_training_for(ivan, termin(ivan, now() - timedelta(hours=1)))
+    a = db.add_gym_item(tid, ivan, ex["Goblet čučanj"], "trening", 3, 10, kg=20, rest_seconds=60)
+    db.save_gym_done(a, ivan, [{"reps": 10, "kg": 20.0}])
+    ci = client_for("ivan@test.local")
+
+    def save(key="trening", **form):
+        return ci.post(f"/karton/trening/{tid}/dio/{key}", data=form, follow_redirects=False)
+
+    def parts():
+        return [(p.section, p.title, p.rounds, p.rest_seconds) for p in db.gym_training(tid, ivan).parts]
+
+    page = ci.get(f"/karton/trening/{tid}").text
+    head = part_of(page, "trening").split('<div class="gt-cards">')[0]
+    assert '<h2 class="dx-cap" id="dio-trening">Glavni dio A</h2>' in head
+    assert ('<details class="gt-part-edit">\n  <summary class="act act-quiet"><span class="t">Uredi dio</span></summary>\n'
+            f'  <form class="gt-part-form" method="post" action="/karton/trening/{tid}/dio/trening">') in head
+    assert [re.sub(r"<[^>]+>", "", x).strip() for x in re.findall(r"<label[^>]*>(.*?)</label>", head, re.S)] == [
+        "Naziv dijela", "Kružni dio", "Krugova", "Odmor nakon kruga (s)"]
+    assert ('name="title" maxlength="60" value="" placeholder="Glavni dio A"' in head and 'value="1"> <span' in head
+            and 'name="rounds" inputmode="numeric" min="2" max="20" value="3"' in head
+            and 'name="rest" inputmode="numeric" min="0" max="3600" value=""' in head)
+    r = save(title="  Krug   1 ", rounds="5")
+    assert location(r) == f"/karton/trening/{tid}?dio=trening&ok=Spremljeno.#dio-trening"
+    assert parts() == [("trening", "Krug 1", None, None)]                  # unticked: no circuit
+    page = ci.get(f"/karton/trening/{tid}?dio=trening&ok=Spremljeno.").text
+    assert '<h2 class="dx-cap" id="dio-trening">Krug 1</h2>' in page
+    assert '<div class="alert ok" role="status">Spremljeno.</div>' in part_of(page, "trening")
+    assert page.count('class="alert ok"') == 1                              # not at the page's top
+    for where in (page.split('<form id="dodaj"')[1], card_of(page, a)):    # every Dio names it so
+        assert '<option value="trening" selected>Krug 1</option>' in where
+    r = save(title="Krug 1", circuit="1", rounds="3", rest="90")
+    assert parts() == [("trening", "Krug 1", 3, 90)] and done_of(a) == [{"reps": 10, "kg": 20.0}]
+    page = ci.get(f"/karton/trening/{tid}").text
+    assert ('<h2 class="dx-cap" id="dio-trening">Krug 1 · <span class="t">kružno</span> · 3 kruga · '
+            '<span class="t">odmor</span> 90 s</h2>') in page
+    head = part_of(page, "trening").split('<div class="gt-cards">')[0]
+    assert ('value="1" checked> <span' in head and 'min="2" max="20" value="3"' in head
+            and 'min="0" max="3600" value="90"' in head and 'value="Krug 1" placeholder="Glavni dio A"' in head)
+    save(circuit="1", rounds="4")                                           # no name, a circuit: its default and its rounds
+    assert parts() == [("trening", "", 4, None)]
+    assert '<h2 class="dx-cap" id="dio-trening">Glavni dio A · <span class="t">kružno</span> · 4 kruga</h2>' in ci.get(
+        f"/karton/trening/{tid}").text
+    save(rounds="4", rest="90")                                             # neither: the row goes
+    assert parts() == [] and done_of(a) == [{"reps": 10, "kg": 20.0}]
+    save(title="Krug 1", circuit="1", rounds="3", rest="90")
+    for form, sentence in (({"title": "x" * 61}, "Najviše 60 znakova."),
+                           ({"circuit": "1", "rounds": "1"}, "Neispravan broj."),
+                           ({"circuit": "1", "rounds": "21"}, "Neispravan broj."),
+                           ({"circuit": "1", "rounds": ""}, "Neispravan broj."),
+                           ({"circuit": "1", "rounds": "x"}, "Neispravan broj."),
+                           ({"circuit": "1", "rounds": "3", "rest": "3601"}, "Neispravan broj."),
+                           ({"circuit": "1", "rounds": "3", "rest": "-1"}, "Neispravan broj.")):
+        r = save(**form)
+        assert location(r) == f"/karton/trening/{tid}?dio=trening&uredi=1&error={sentence}#dio-trening", form
+    assert parts() == [("trening", "Krug 1", 3, 90)]
+    page = ci.get(f"/karton/trening/{tid}?dio=trening&uredi=1&error=Neispravan broj.").text
+    assert '<details class="gt-part-edit" open>' in part_of(page, "trening")
+    assert '<div class="alert" role="alert"><span>Neispravan broj.</span></div>' in part_of(page, "trening")
+    assert page.count('<div class="alert" role="alert">') == 1
+    assert location(save("kardio", title="X")) == f"/karton/trening/{tid}?error=Odaberi dio treninga."
+    assert client_for("ana@test.local").post(f"/karton/trening/{tid}/dio/trening", data={"title": "X"}).status_code == 404
+    closed = db.gym_training_for(ivan, termin(ivan, now() - timedelta(days=3)), staff=True)
+    db.add_gym_item(closed, ivan, ex["Plank"], "trening", staff=True)
+    r = ci.post(f"/karton/trening/{closed}/dio/trening", data={"title": "X"}, follow_redirects=False)
+    assert CLOSED in location(r) and db.gym_training(closed, ivan).parts == []
+    assert 'class="gt-part-edit"' not in ci.get(f"/karton/trening/{closed}").text
+
+
+def test_a_circuits_rounds_are_ticked_a_round_at_a_time():
+    """A circuit part: its exercises compact cards (what one round asks, the
+    rounds' mark, no set table; "Uredi zadano" without Serije and Pauza,
+    which it keeps), then a block per round, "Krug 1" … "Krug 3", the first
+    not saved open, each exercise's inputs by its shape, first values the
+    round's own, else what was given and the round before's weight; the
+    round's rating; ONE button "Krug 1 odrađen". A round saved (POST
+    …/dio/<key>/krug/<n>): each exercise with an input its set of the round
+    (its round kept), the rating on each, back at the part with the rest
+    after a round (?odmor=90: the page starts the rest bar at load), the
+    round folded with its ✓; saved again it replaces itself alone, an
+    exercise left empty losing its set of that round. Refused there with
+    the round open, nothing saved: nothing typed, a bad number or rating, a
+    round past its rounds or a page drawn for other exercises (GYM_CHANGED).
+    A tick posted to a circuit's exercise is refused. Every round saved:
+    "✓". Switched off, every set stays, the cards' tables tick them."""
+    ivan = make_user("ivan@test.local")
+    ex = library("Goblet čučanj", "Plank", "Mrtvi kukac", "Sklekovi")
+    tid = db.gym_training_for(ivan, termin(ivan, now() - timedelta(hours=1)))
+    g = db.add_gym_item(tid, ivan, ex["Goblet čučanj"], "trening", 3, 10, kg=16, rest_seconds=60)
+    p = db.add_gym_item(tid, ivan, ex["Plank"], "trening", seconds=30)
+    m = db.add_gym_item(tid, ivan, ex["Mrtvi kukac"], "trening", reps=5, seconds=30)
+    db.add_gym_item(tid, ivan, ex["Sklekovi"], "trening_b", 3, 10)
+    db.set_gym_part(tid, ivan, "trening", "Krug 1", True, 3, 90)
+    ci = client_for("ivan@test.local")
+    page = ci.get(f"/karton/trening/{tid}").text
+    part = part_of(page, "trening")
+    cg = card_of(page, g)
+    assert f'<details class="card gt-card gt-crow" id="stavka-{g}">' in page
+    assert '<span class="gt-planned"><span class="t">Zadano:</span> 10 ponavljanja · 16 kg</span>' in cg
+    assert '<span class="gt-mark"></span>' in cg and "gt-log" not in part and "Odmor između serija" not in part
+    form = cg.split('<form class="gt-form"')[1].split("</form>")[0]
+    assert [re.sub(r"<[^>]+>", "", x) for x in re.findall(r'<label for="gt-\d+-\w+">(.*?)</label>', form)] == [
+        "Dio", "Ponavljanja", "Sekunde", "Kilaža (kg)", "Napomena"] and '<input type="hidden" name="circuit" value="1">' in form
+    assert re.findall(r'<details class="card gt-round" id="krug-trening-(\d)"( open)?>', page) == [
+        ("1", " open"), ("2", ""), ("3", "")]
+    one = part.split('id="krug-trening-1"')[1].split('id="krug-trening-2"')[0]
+    assert '<span class="gt-name">Krug 1</span>' in one and f'name="stavke" value="{g},{p},{m}"' in one
+    assert (f'name="reps_{g}" value="10"' in one and f'name="kg_{g}" value="16"' in one and f'name="sec_{p}" value="30"' in one
+            and f'name="reps_{m}" value="5"' in one and f'name="sec_{m}" value="30"' in one and f'kg_{p}' not in one)
+    assert '<p class="pl-rate-h" id="gt-rate-trening-1"><span class="t">Koliko je bio težak ovaj krug?</span>' in one
+    assert one.count('name="effort"') == 10 and " checked" not in one
+    assert '<button type="submit" class="btn btn-sm"><span>Krug 1 <span class="t">odrađen</span></span></button>' in one
+    assert '<div class="gt">' in page                                       # no rest to count down
+
+    r = rnd(ci, tid, "trening", 1, {g: {"reps": 10, "kg": "16"}, p: {"sec": 30}, m: {"reps": 5, "sec": 30}}, effort="7")
+    assert location(r) == f"/karton/trening/{tid}?dio=trening&odmor=90#dio-trening"
+    assert done_of(g) == [{"reps": 10, "kg": 16.0, "round": 1}] and done_of(p) == [{"seconds": 30, "round": 1}]
+    assert done_of(m) == [{"reps": 5, "seconds": 30, "round": 1}]
+    page = ci.get(f"/karton/trening/{tid}?dio=trening&odmor=90").text
+    assert '<div class="gt" data-odmor="90">' in page and 'id="plRest"' in page
+    assert re.findall(r'<details class="card gt-round" id="krug-trening-(\d)"( open)?>', page) == [
+        ("1", ""), ("2", " open"), ("3", "")]
+    assert ('<span class="gt-mark ok" role="img" aria-label="spremljeno">✓</span>'
+            in page.split('id="krug-trening-1"')[1].split("</summary>")[0])
+    assert '<span class="gt-mark" role="img" aria-label="1/3 kruga odrađena">1/3</span>' in card_of(page, g)
+    assert '<div class="gt">' in ci.get(f"/karton/trening/{tid}?odmor=9999").text       # out of range: ignored
+    with db.session_scope() as s:
+        assert [s.get(GymTrainingItem, x).effort for x in (g, p, m)] == [7, 7, 7]
+    rnd(ci, tid, "trening", 2, {g: {"reps": 8, "kg": "18"}, p: {"sec": ""}, m: {"reps": "", "sec": ""}})
+    assert done_of(g)[1] == {"reps": 8, "kg": 18.0, "round": 2} and len(done_of(p)) == 1
+    with db.session_scope() as s:                                          # an unrated round: the ratings stay
+        assert s.get(GymTrainingItem, g).effort == 7
+    three = ci.get(f"/karton/trening/{tid}").text.split('id="krug-trening-3"')[1].split("</details>")[0]
+    assert f'name="reps_{g}" value="10"' in three and f'name="kg_{g}" value="18"' in three   # the round before's weight
+    # round 1 again: it replaces itself alone; one left empty loses its set of that round
+    rnd(ci, tid, "trening", 1, {g: {"reps": 9, "kg": "16"}, p: {"sec": ""}, m: {"reps": 5, "sec": 30}}, effort="9")
+    assert done_of(g) == [{"reps": 9, "kg": 16.0, "round": 1}, {"reps": 8, "kg": 18.0, "round": 2}]
+    assert done_of(p) == []
+    with db.session_scope() as s:
+        assert (s.get(GymTrainingItem, p).effort, s.get(GymTrainingItem, p).done_at) == (None, None)
+        assert (s.get(GymTrainingItem, g).effort, s.get(GymTrainingItem, m).effort) == (9, 9)
+    before = [done_of(x) for x in (g, p, m)]
+    for n, by_item, effort, stavke, sentence in (
+            (2, {g: {"reps": "", "kg": ""}, p: {"sec": ""}, m: {"reps": "", "sec": ""}}, "", None, "Upiši bar jednu vježbu."),
+            (2, {g: {"reps": "abc", "kg": "16"}, p: {"sec": ""}, m: {"reps": "", "sec": ""}}, "", None, "Neispravan broj."),
+            (2, {g: {"reps": 10, "kg": "16,3"}, p: {"sec": ""}, m: {"reps": "", "sec": ""}}, "", None, "Neispravan broj."),
+            (2, {g: {"reps": 10, "kg": "16"}, p: {"sec": ""}, m: {"reps": "", "sec": ""}}, "11", None, "Neispravan broj."),
+            (4, {g: {"reps": 10, "kg": "16"}, p: {"sec": ""}, m: {"reps": "", "sec": ""}}, "", None, GYM_CHANGED),
+            (2, {g: {"reps": 10, "kg": "16"}, p: {"sec": ""}}, "", [g, p], GYM_CHANGED)):
+        r = rnd(ci, tid, "trening", n, by_item, effort, stavke)
+        assert location(r) == f"/karton/trening/{tid}?dio=trening&krug={n}&error={sentence}#krug-trening-{n}", sentence
+    assert [done_of(x) for x in (g, p, m)] == before
+    page = ci.get(f"/karton/trening/{tid}?dio=trening&krug=2&error=Upiši bar jednu vježbu.").text
+    two = page.split('id="krug-trening-2"')[1].split("</details>")[0]
+    assert page.count('<div class="alert" role="alert">') == 1
+    assert ('<details class="card gt-round" id="krug-trening-2" open>' in page
+            and '<div class="alert" role="alert"><span>Upiši bar jednu vježbu.</span></div>' in two)
+    r = tick(ci, tid, g, "reps,kg", {"reps": 10, "kg": 20})                 # a circuit's exercise takes no tick
+    assert (r.status_code, r.json()["error"]) == (400, GYM_CHANGED) and done_of(g) == before[0]
+    for n in (2, 3):
+        rnd(ci, tid, "trening", n, {g: {"reps": 10, "kg": "16"}, p: {"sec": 30}, m: {"reps": 5, "sec": 30}})
+    page = ci.get(f"/karton/trening/{tid}").text
+    assert '<span class="gt-mark ok" role="img" aria-label="odrađeno">✓</span>' in card_of(page, g)
+    assert '<span class="gt-mark" role="img" aria-label="2/3 kruga odrađena">2/3</span>' in card_of(page, p)
+    assert not re.search(r'id="krug-trening-\d" open', page)               # every round saved: all folded
+    [line] = [x for x in db.gym_training(tid, ivan).lines() if x[0] == "Goblet čučanj"]
+    assert line == ("Goblet čučanj", "zadano 10 ponavljanja · 16 kg — odrađeno",
+                    ["9 × 16 kg", "10 × 16 kg", "10 × 16 kg", "težina 9/10"])
+    # "Uredi zadano" in a circuit part: no Serije, no Pauza, which it keeps
+    r = ci.post(f"/karton/trening/{tid}/stavke/{g}", data={"section": "trening", "reps": "12", "kg": "16", "circuit": "1"},
+                follow_redirects=False)
+    assert location(r) == f"/karton/trening/{tid}?stavka={g}&ok=Spremljeno.#stavka-{g}"
+    with db.session_scope() as s:
+        it = s.get(GymTrainingItem, g)
+        assert (it.sets, it.reps, it.rest_seconds) == (3, 12, 60)
+    # switched off: every set stays, and the card's table ticks them all
+    db.set_gym_part(tid, ivan, "trening", "Krug 1", False)
+    page = ci.get(f"/karton/trening/{tid}").text
+    assert 'class="card gt-round"' not in page and done_of(g) == [{"reps": 9, "kg": 16.0, "round": 1}, {"reps": 10, "kg": 16.0, "round": 2},
+                                                    {"reps": 10, "kg": 16.0, "round": 3}]
+    assert [ticked for _, _, ticked in table(card_of(page, g))] == [True, True, True]
+    db.set_gym_part(tid, ivan, "trening", "", True, 2, None)               # a circuit with no rest: no odmor
+    r = rnd(ci, tid, "trening", 1, {g: {"reps": 10, "kg": "16"}, p: {"sec": 30}, m: {"reps": 5, "sec": 30}})
+    assert location(r) == f"/karton/trening/{tid}?dio=trening#dio-trening"
+
+
+def test_two_rounds_at_once_keep_both():
+    """Eight rounds of one circuit part saved at the same moment (eight
+    threads, a round each; save_gym_round takes the training's row FOR
+    UPDATE), twice: every exercise holds a set of every round, none lost,
+    sorted by round."""
+    ivan = make_user("ivan@test.local")
+    ex = library("Goblet čučanj", "Plank")
+    tid = db.gym_training_for(ivan, termin(ivan, now() - timedelta(hours=1)))
+    a = db.add_gym_item(tid, ivan, ex["Goblet čučanj"], "trening", reps=10, kg=16)
+    b = db.add_gym_item(tid, ivan, ex["Plank"], "trening", seconds=30)
+    db.set_gym_part(tid, ivan, "trening", "", True, 8, 60)
+    for times in (1, 2):
+        errors, gate = [], threading.Barrier(8)
+
+        def save(n, times=times):
+            try:
+                gate.wait()
+                db.save_gym_round(tid, ivan, "trening", n, {a: {"reps": n + times, "kg": 16.0}, b: {"seconds": 30 + n}})
+            except Exception as e:                                          # reported below
+                errors.append(repr(e))
+
+        threads = [threading.Thread(target=save, args=(n,)) for n in range(1, 9)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+        assert not errors
+        assert done_of(a) == [{"reps": n + times, "kg": 16.0, "round": n} for n in range(1, 9)]
+        assert done_of(b) == [{"seconds": 30 + n, "round": n} for n in range(1, 9)]
+
+
+def test_a_template_is_copied_into_an_empty_training():
+    """While a training holds no row, "Odaberi gotov trening" lists every
+    dvoranski programme's training that holds a row ("<programme> · Trening
+    N · <naslov>", muted its razina and "2 vježbe · 2 prazna mjesta"; not an
+    online programme's, not an empty one; none: no control). Chosen (POST
+    …/predlozak): its parts' names and circuits and its rows, exercises and
+    slots alike, in its order, with their numbers and notes (a day's rest
+    after an exercise not carried); the template unchanged. Refused on a
+    training that holds a row ("Trening već ima vježbe — isprazni ga pa
+    odaberi predložak."), for a day that is none or no dvoranski
+    programme's ("Odaberi predložak s popisa."); emptied, another template
+    replaces the parts too. Read only: no list, a post refused."""
+    ivan = make_user("ivan@test.local")
+    ex = library("Goblet čučanj", "Plank", "Sklekovi")
+    day = dvoranski(day_title="Cijelo tijelo")
+    db.set_part_name(day, "trening", "Krug 1")
+    db.set_circuit(day, "trening", 3, 90)
+    db.set_part_name(day, "istezanje", "Mobilnost")
+    db.add_day_slot(day, "zagrijavanje", "mobilnost", reps=10)
+    x = db.add_day_item(day, ex["Goblet čučanj"], "trening", 3, 10, kg=16)
+    db.update_day_item(x, "trening", 3, 10, None, 60, 90, "Polako.", kg=16)    # 90 s after it: not carried
+    db.add_day_slot(day, "trening", "potisak", reps=12)
+    db.add_day_item(day, ex["Plank"], "istezanje", 2, None, 30)
+    pid = db.get_day(day).program_id
+    db.add_day(pid)                                                         # Trening 2, empty: not offered
+    online_day = db.add_day(db.create_program("Online", None, "srednja", "cijelo"))
+    db.add_day_item(online_day, ex["Sklekovi"], "trening")
+    template_before = [(it.section, it.position, it.exercise_id, it.hint, it.note) for it in db.get_day(day).items]
+    tid = db.gym_training_for(ivan, termin(ivan, now() - timedelta(hours=1)))
+    ci = client_for("ivan@test.local")
+    page = ci.get(f"/karton/trening/{tid}").text
+    tpl = page.split('<details class="gt-tpl">')[1].split("</details>")[0]
+    assert '<summary class="act"><span class="t">Odaberi gotov trening</span></summary>' in tpl
+    assert re.findall(r'<input type="hidden" name="dan" value="(\d+)">\s*<button type="submit" class="gt-tpl-row">'
+                      r'<span class="gt-tpl-txt"><span class="gt-tpl-name">([^<]*)</span><span class="gt-tpl-facts">([^<]*)'
+                      r'</span></span><span class="gt-tpl-go" aria-hidden="true">→</span></button>', tpl) == [
+        (str(day), "Predložak — snaga · Trening 1 · Cijelo tijelo", "Srednja razina · 2 vježbe · 2 prazna mjesta")]
+    assert f'<form method="post" action="/karton/trening/{tid}/predlozak">' in tpl
+    r = ci.post(f"/karton/trening/{tid}/predlozak", data={"dan": str(day)}, follow_redirects=False)
+    assert location(r) == f"/karton/trening/{tid}?ok=Predložak je dodan."
+    t = db.gym_training(tid, ivan)
+    assert [(it.section, it.position, it.exercise_id, it.exercise_name, it.hint, it.sets, it.reps, it.seconds, it.kg,
+             it.rest_seconds, it.note, it.done_sets) for it in t.items] == [
+        ("zagrijavanje", 1, None, "", "mobilnost", None, 10, None, None, None, "", []),
+        ("trening", 2, ex["Goblet čučanj"], "Goblet čučanj", "", 3, 10, None, Decimal("16.0"), 60, "Polako.", []),
+        ("trening", 3, None, "", "potisak", None, 12, None, None, None, "", []),
+        ("istezanje", 4, ex["Plank"], "Plank", "", 2, None, 30, None, None, "", [])]
+    assert sorted((p.section, p.title, p.rounds, p.rest_seconds) for p in t.parts) == [
+        ("istezanje", "Mobilnost", None, None), ("trening", "Krug 1", 3, 90)]
+    assert [(it.section, it.position, it.exercise_id, it.hint, it.note) for it in db.get_day(day).items] == template_before
+    page = ci.get(f"/karton/trening/{tid}?ok=Predložak je dodan.").text
+    assert re.findall(r'<h2 class="dx-cap" id="dio-(\w+)">([^<]*)', page) == [
+        ("zagrijavanje", "Zagrijavanje"), ("trening", "Krug 1 · "), ("istezanje", "Mobilnost")]
+    assert 'class="gt-tpl"' not in page and 'class="hint gt-empty"' not in page
+    assert '<div class="alert ok" role="status">Predložak je dodan.</div>' in page.split('class="gt-when"')[0]
+    assert t.count_text == "2 vježbe"                                       # a slot is no exercise
+    # refused on a training that holds a row; a day that is none
+    r = ci.post(f"/karton/trening/{tid}/predlozak", data={"dan": str(day)}, follow_redirects=False)
+    assert location(r) == (f"/karton/trening/{tid}?predlozak=1&error=Trening već ima vježbe — isprazni ga pa odaberi "
+                           "predložak.")
+    assert len(db.gym_training(tid, ivan).items) == 4
+    out = db.add_gym_outside(ivan, config.today())
+    for dan in (str(online_day), "abc", "", "999999"):
+        r = ci.post(f"/karton/trening/{out}/predlozak", data={"dan": dan}, follow_redirects=False)
+        assert location(r) == f"/karton/trening/{out}?predlozak=1&error=Odaberi predložak s popisa.", dan
+    assert db.gym_training(out, ivan).items == []
+    page = ci.get(f"/karton/trening/{out}?predlozak=1&error=Odaberi predložak s popisa.").text   # its word in the list
+    assert ('<details class="gt-tpl" open>' in page and page.count('<div class="alert" role="alert">') == 1
+            and '<div class="alert" role="alert"><span>Odaberi predložak s popisa.</span></div>'
+            in page.split('<details class="gt-tpl" open>')[1].split("</details>")[0])
+    assert '<details class="gt-date">' in page                              # not the date's word: its form stays shut
+    # emptied, another template: its parts in place of the first's
+    plain = dvoranski("Predložak — lagano", None)
+    db.add_day_item(plain, ex["Sklekovi"], "trening_b", 2, 8)
+    assert db.gym_training(tid, ivan).parts != []                           # the first template's names and circuits
+    ci.post(f"/karton/trening/{tid}/isprazni")
+    # emptied, the parts are their defaults again, normal ones: an exercise
+    # added by hand meets no "· kružno" of the template that went (Fable's
+    # review, 26.11.2026)
+    assert db.gym_training(tid, ivan).parts == []
+    page = ci.get(f"/karton/trening/{tid}").text
+    names = re.findall(r'<span class="gt-tpl-name">([^<]*)</span>(?:<span class="gt-tpl-facts">([^<]*)</span>)?', page)
+    assert names == [("Predložak — lagano · Trening 1", "1 vježba"), ("Predložak — snaga · Trening 1 · Cijelo tijelo",
+                                                                     "Srednja razina · 2 vježbe · 2 prazna mjesta")]
+    ci.post(f"/karton/trening/{tid}/predlozak", data={"dan": str(plain)})
+    t = db.gym_training(tid, ivan)
+    assert [(it.section, it.exercise_name, it.sets, it.reps) for it in t.items] == [("trening_b", "Sklekovi", 2, 8)]
+    assert t.parts == []
+    # read only: no list, refused
+    closed = db.gym_training_for(ivan, termin(ivan, now() - timedelta(days=3)), staff=True)
+    assert 'class="gt-tpl"' not in ci.get(f"/karton/trening/{closed}").text
+    r = ci.post(f"/karton/trening/{closed}/predlozak", data={"dan": str(day)}, follow_redirects=False)
+    assert CLOSED in location(r) and db.gym_training(closed, ivan).items == []
+    # no template at all: no control
+    with db.session_scope() as s:
+        s.execute(sa_text("DELETE FROM programs WHERE venue = 'dvorana'"))
+    assert 'class="gt-tpl"' not in ci.get(f"/karton/trening/{out}").text
+
+
+def test_a_slots_card_is_filled_from_the_library():
+    """A slot (a template's empty place): its card "Prazno mjesto · potisak"
+    muted with what was given (a circuit's: what one round asks), dashed;
+    open, its note, the library's combobox (the script's: its form rendered
+    hidden, the hint on it) and "Odaberi", then "Ukloni" (it holds nothing:
+    no confirm). In no count, no diary line, no round. "Odaberi" (POST
+    …/stavke/<id>/vjezba): the exercise in it, its name snapshotted, its
+    place, numbers, note and hint as they were, an ordinary card back open
+    with the focus in its first input (?dodano=1); in a circuit part it
+    joins the rounds. Refused at its card: nothing picked, an exercise not
+    in the library, a row that is no slot."""
+    ivan = make_user("ivan@test.local")
+    ex = library("Goblet čučanj", "Sklekovi", "Plank")
+    day = dvoranski()
+    db.set_circuit(day, "trening_b", 2, 60)
+    s1 = db.add_day_slot(day, "trening", "potisak", reps=12)
+    db.update_day_item(s1, "trening", None, 12, None, None, None, "Lagano.")
+    db.add_day_item(day, ex["Goblet čučanj"], "trening_b", reps=10, kg=16)
+    db.add_day_slot(day, "trening_b", "core", seconds=30)
+    tid = db.gym_training_for(ivan, termin(ivan, now() - timedelta(hours=1)))
+    db.gym_from_template(tid, ivan, day)
+    slot, goblet, core = (it.id for it in db.gym_training(tid, ivan).items)
+    ci = client_for("ivan@test.local")
+    page = ci.get(f"/karton/trening/{tid}").text
+    cs = card_of(page, slot)
+    assert f'<details class="card gt-card gt-slot" id="stavka-{slot}" open>' in page          # the first not done
+    assert ('<span class="gt-name"><span class="t">Prazno mjesto</span> · potisak</span>\n      '
+            '<span class="gt-planned"><span class="t">Zadano:</span> 12 ponavljanja</span>') in cs
+    assert '<p class="gt-sub">Lagano.</p>' in cs and "gt-mark" not in cs and "pl-sets" not in cs
+    assert (f'<form class="gt-fill" method="post" action="/karton/trening/{tid}/stavke/{slot}/vjezba" data-hint="potisak" '
+            'hidden>') in cs
+    assert (f'<label for="gt-fill-{slot}"><span class="t">Vježba</span></label>' in cs
+            and '<button type="submit" class="btn btn-sm"><span class="t">Odaberi</span></button>' in cs
+            and f'<button type="submit" form="gt-x-{slot}" class="act act-quiet"><span class="t">Ukloni</span></button>' in cs)
+    assert '<span class="gt-planned"><span class="t">Zadano:</span> 30 s</span>' in card_of(page, core)
+    one = page.split('id="krug-trening_b-1"')[1].split("</details>")[0]
+    assert f'name="stavke" value="{goblet}"' in one and f'name="sec_{core}"' not in one   # a slot is in no round
+    t = db.gym_training(tid, ivan)
+    assert t.count_text == "1 vježba" and [name for name, *_ in t.lines()] == ["Goblet čučanj"]
+    assert "data-confirm" not in page.split(f'<form id="gt-x-{slot}"')[1].split("</form>")[0]
+
+    def fill(iid, exercise_id):
+        return ci.post(f"/karton/trening/{tid}/stavke/{iid}/vjezba", data={"exercise_id": exercise_id},
+                       follow_redirects=False)
+
+    for value, sentence in (("", "Odaberi vježbu s popisa."), ("abc", "Odaberi vježbu s popisa."),
+                            ("999999", "Nepoznata vježba.")):
+        assert location(fill(slot, value)) == f"/karton/trening/{tid}?stavka={slot}&error={sentence}#stavka-{slot}"
+    r = fill(slot, str(ex["Sklekovi"]))
+    assert location(r) == f"/karton/trening/{tid}?stavka={slot}&dodano=1#stavka-{slot}"
+    with db.session_scope() as s:
+        it = s.get(GymTrainingItem, slot)
+        assert (it.exercise_id, it.exercise_name, it.hint, it.reps, it.note, it.position) == (
+            ex["Sklekovi"], "Sklekovi", "potisak", 12, "Lagano.", 1)
+    assert location(fill(slot, str(ex["Plank"]))) == (f"/karton/trening/{tid}?stavka={slot}&error=Mjesto je već "
+                                                      f"popunjeno.#stavka-{slot}")
+    page = ci.get(f"/karton/trening/{tid}?stavka={slot}&dodano=1").text
+    assert f'<details class="card gt-card" id="stavka-{slot}" open>' in page
+    assert table(card_of(page, slot)) == [(n, {"reps": "12", "kg": ""}, False) for n in (1, 2, 3)]
+    fill(core, str(ex["Plank"]))                                            # in a circuit: it joins the rounds
+    one = ci.get(f"/karton/trening/{tid}").text.split('id="krug-trening_b-1"')[1].split("</details>")[0]
+    assert f'name="stavke" value="{goblet},{core}"' in one and f'name="sec_{core}" value="30"' in one
+    assert db.gym_training(tid, ivan).count_text == "3 vježbe"
+    other = db.add_gym_outside(ivan, config.today())
+    assert ci.post(f"/karton/trening/{other}/stavke/{slot}/vjezba", data={"exercise_id": "1"}).status_code == 404
+
+
 # ---------- the texts ----------
 
 GYM_SLOTS = [k for k in copy.SLOTS if k.startswith("gym.") and k not in ("gym.kicker", "gym.h2")]   # the landing's two
@@ -1255,21 +1726,28 @@ GYM_OPTIONAL = {"gym.head.kicker", "gym.state.closed", "gym.state.staff", "gym.e
 
 
 def test_every_text_of_the_page_is_a_slot_with_its_words():
-    """The page's and its osvrt's texts are slots, gym.<area>.* (43),
+    """The page's and its osvrt's texts are slots, gym.<area>.* (53 since
+    part B: the template's button, "Uredi dio"'s seven, a slot's two),
     labelled "Trening u dvorani…" in the editor's bar, required but for a
     kicker, a state's whole sentence and the empty line; each printed on a
     page the member reads with its default words (a confirm's in its
     attribute, the script's in the script); where the words do the same job
     as in the player and its finish screen, the player's slots print
-    (player.*, dan.*, kraj.*). One edited prints in its place; /tekstovi
+    (player.*, dan.*, kraj.*: a round's rating and button, "kružno", a
+    slot's "Prazno mjesto"). One edited prints in its place; /tekstovi
     lists them under "Trening u dvorani", after "Trening (izvođenje)"."""
-    assert len(GYM_SLOTS) == 43
+    assert len(GYM_SLOTS) == 53
     assert {k for k in GYM_SLOTS if not copy.SLOTS[k].required} == GYM_OPTIONAL
     assert all(copy.SLOTS[k].label.startswith("Trening u dvorani") for k in GYM_SLOTS)
     ivan = make_user("ivan@test.local")
     make_user("coach@test.local", is_trainer=True, plans=())
     ex = library("Goblet čučanj", "Plank")
+    day = dvoranski()                                                       # part B: a template, a slot, a circuit
+    db.add_day_slot(day, "trening_c", "potisak", reps=12)
+    db.set_circuit(day, "istezanje", 2, 60)
+    db.add_day_item(day, ex["Plank"], "istezanje", seconds=30)
     live = db.gym_training_for(ivan, termin(ivan, now() - timedelta(hours=1)))
+    db.gym_from_template(live, ivan, day)
     empty = db.gym_training_for(ivan, termin(ivan, now() - timedelta(hours=2)))
     a = db.add_gym_item(live, ivan, ex["Goblet čučanj"], "trening", 3, 10)
     db.add_gym_item(live, ivan, ex["Plank"], "trening", 2, seconds=30)
@@ -1290,7 +1768,8 @@ def test_every_text_of_the_page_is_a_slot_with_its_words():
         text = copy.SLOTS[key].default
         assert f'<span class="t">{text}</span>' in every or f'="{text}"' in every or json.dumps(text) in every, key
     for key in ("player.col.set", "player.col.reps", "player.col.sec", "player.rate.step", "player.finish",
-                "player.rest.skip", "kraj.effort", "kraj.feeling", "kraj.save"):
+                "player.rest.skip", "kraj.effort", "kraj.feeling", "kraj.save", "player.rate.round", "player.round.done",
+                "player.list.circuit", "dan.slot"):
         assert f'<span class="t">{copy.SLOTS[key].default}</span>' in every, key
     for key, text in (("gym.card.edit", "Promijeni zadano"), ("gym.confirm.empty_title", "Sve van?"),
                       ("gym.card.failed", "Nije prošlo.")):
@@ -1302,7 +1781,8 @@ def test_every_text_of_the_page_is_a_slot_with_its_words():
     h2 = re.findall(r'<h2 id="tx-\d+">([^<]*)</h2>', tekstovi)
     assert h2.index("Trening u dvorani") == h2.index("Trening (izvođenje)") + 1
     section = tekstovi.split(">Trening u dvorani</h2>")[1].split("<h2")[0]
-    assert re.findall(r"<h3>([^<]*)</h3>", section) == ["Zaglavlje", "Vježba", "Dodaj vježbu", "Kraj treninga", "Osvrt",
+    assert re.findall(r"<h3>([^<]*)</h3>", section) == ["Zaglavlje", "Predložak", "Dio i krugovi", "Vježba",
+                                                       "Prazno mjesto", "Dodaj vježbu", "Kraj treninga", "Osvrt",
                                                        "Prozori za potvrdu"]
     assert all(f'data-copy="{k}"' in section for k in GYM_SLOTS)
 
@@ -1508,3 +1988,129 @@ def test_a_training_on_a_phone(server):
     check((t.effort, t.feeling, t.note) == (7, "dobro", "Dobar trening."), f"the osvrt stored {(t.effort, t.feeling, t.note)}")
     offline = [e for e in errors if "ERR_INTERNET_DISCONNECTED" not in e and "Failed to load resource" not in e]
     assert not problems and not offline, problems + offline
+
+
+def test_a_template_and_its_circuit_on_a_phone(server):
+    """Part B at 390px, touch, as ivan, on his termin's training: empty, its
+    "Odaberi gotov trening" opens the list and a row copies the template in
+    (a circuit part "Krug 1" of two rounds, 60 s after a round, of two
+    slots); the first slot's card is open, its combobox on the slot's hint
+    ("čučanj": the list already narrowed), a pick and "Odaberi" make it a
+    card of the circuit, whose rounds appear; the second slot, opened by a
+    tap (the focus in its picker, the list open), filled the same way. Round
+    1 (its first values what was given) "Krug 1 odrađen": the page back at
+    the part, the rest bar counting the part's 60 s, round 1 folded with its
+    ✓ and round 2 open, the weight carried; round 2's weight changed, "Krug 2
+    odrađen": every round ✓, each exercise's mark ✓, the sets stored a set
+    a round. No page scrolls sideways, at 360px either; no page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    ivan = make_user("ivan@test.local")
+    ex = {name: db.create_exercise(name, "Upute za: " + name, tags=tags)
+          for name, tags in (("Goblet čučanj", "noge"), ("Čučanj s vlastitom težinom", "noge"), ("Plank", "core"))}
+    day = dvoranski("Predložak — kružni", day_title="Krug")
+    db.set_part_name(day, "trening", "Krug 1")
+    db.set_circuit(day, "trening", 2, 60)
+    db.add_day_slot(day, "trening", "čučanj", reps=10, kg=16)
+    db.add_day_slot(day, "trening", "core", seconds=30)
+    start = (now() - timedelta(minutes=90)).replace(second=0, microsecond=0)
+    sid = termin(ivan, start, title="Snaga")
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    def items():
+        [t] = db.gym_trainings(ivan)
+        return t, t.items
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        pg = ctx.new_page()
+        errors: list[str] = []
+        pg.on("pageerror", lambda e: errors.append(f"page error: {e}"))
+        pg.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
+        pg.goto(server + "/login")
+        pg.evaluate("() => { localStorage.setItem('qmt-a2hs', 'installed'); "
+                    "localStorage.setItem('qmt-phone', String(Date.now())); }")
+        pg.fill("main input[name=email]", "ivan@test.local")
+        pg.fill("main input[name=password]", "lozinka123")
+        pg.click("main button[type=submit]")
+        pg.wait_for_load_state("networkidle")
+
+        def wide(where: str) -> None:
+            for w, h in ((390, 844), (360, 780)):
+                pg.set_viewport_size({"width": w, "height": h})
+                check(pg.evaluate(OVERFLOW) == 0, f"{where} at {w}px overflows by {pg.evaluate(OVERFLOW)}px")
+            pg.set_viewport_size({"width": 390, "height": 844})
+
+        pg.goto(server + f"/karton/termin/{sid}/trening")
+        pg.wait_for_load_state("networkidle")
+        t, _ = items()
+        check(pg.url.endswith(f"/karton/trening/{t.id}"), f"the training is at {pg.url}")
+        pg.locator(".gt-tpl > summary").tap()
+        row = pg.locator(".gt-tpl-row", has_text="Predložak — kružni · Trening 1 · Krug")
+        check(row.is_visible(), "the template's row is not shown")
+        wide("the template list")
+        with pg.expect_navigation():
+            row.tap()
+        pg.wait_for_load_state("networkidle")
+        _, its = items()
+        squat, core = its[0].id, its[1].id
+        check([it.hint for it in its] == ["čučanj", "core"] and all(it.is_slot for it in its), "the slots are not copied")
+        check(pg.locator(f"#stavka-{squat}").get_attribute("open") is not None, "the first slot is not open")
+        box = pg.locator(f"#gt-fill-{squat}-q")
+        check(box.input_value() == "čučanj", f"the picker holds {box.input_value()!r}, not the hint")
+        wide("the slots")
+        box.tap()
+        options = pg.locator(f"#gt-fill-{squat}-list [role=option]")
+        check(options.count() == 2, f"the hint narrows the list to {options.count()} rows")
+        options.filter(has_text="Goblet čučanj").first.tap()
+        with pg.expect_navigation():
+            pg.locator(f"#stavka-{squat} form.gt-fill button[type=submit]").tap()
+        pg.wait_for_load_state("networkidle")
+        check(pg.locator(f"#stavka-{squat}.gt-crow").count() == 1, "the filled slot is no circuit's card")
+        check(pg.locator("#krug-trening-1").count() == 1, "its rounds did not appear")
+        pg.locator(f"#stavka-{core} > summary").tap()
+        pg.wait_for_timeout(150)
+        check(pg.evaluate("document.activeElement && document.activeElement.id") == f"gt-fill-{core}-q",
+              "a slot opened by a tap does not take the focus in its picker")
+        pg.locator(f"#gt-fill-{core}-q").fill("plank")
+        pg.locator(f"#gt-fill-{core}-list [role=option]", has_text="Plank").first.tap()
+        with pg.expect_navigation():
+            pg.locator(f"#stavka-{core} form.gt-fill button[type=submit]").tap()
+        pg.wait_for_load_state("networkidle")
+        one = pg.locator("#krug-trening-1")
+        check(one.get_attribute("open") is not None, "round 1 is not open")
+        check(one.locator(f"input[name=kg_{squat}]").input_value() == "16"
+              and one.locator(f"input[name=sec_{core}]").input_value() == "30", "round 1's first values are not the zadano")
+        wide("the rounds")
+        with pg.expect_navigation():
+            one.locator('button[type="submit"]').tap()
+        pg.wait_for_load_state("networkidle")
+        check("?dio=trening&odmor=60" in pg.url and pg.url.endswith("#dio-trening"), f"round 1 led to {pg.url}")
+        rest = pg.locator("#plRest")
+        check(rest.is_visible() and pg.locator(".pl-rest-t").inner_text() in ("1:00", "0:59", "0:58"),
+              "the rest after a round did not start")
+        wide("a round saved, the rest bar showing")
+        pg.locator(".pl-rest-skip").tap()
+        one, two = pg.locator("#krug-trening-1"), pg.locator("#krug-trening-2")
+        check(one.get_attribute("open") is None and one.locator(".gt-mark").inner_text() == "✓", "round 1 is not folded, ✓")
+        check(two.get_attribute("open") is not None and two.locator(f"input[name=kg_{squat}]").input_value() == "16",
+              "round 2 is not open with the weight carried")
+        two.locator(f"input[name=kg_{squat}]").fill("18")
+        with pg.expect_navigation():
+            two.locator('button[type="submit"]').tap()
+        pg.wait_for_load_state("networkidle")
+        check(pg.locator("details.gt-round[open]").count() == 0, "a round stays open when every one is saved")
+        check([pg.locator(f"#stavka-{x} .gt-mark").inner_text() for x in (squat, core)] == ["✓", "✓"],
+              "the exercises' marks are not ✓")
+        pg.locator(".pl-rest-skip").tap()
+        wide("every round saved")
+        browser.close()
+    check(done_of(squat) == [{"reps": 10, "kg": 16.0, "round": 1}, {"reps": 10, "kg": 18.0, "round": 2}],
+          f"the squat stored {done_of(squat)}")
+    check(done_of(core) == [{"seconds": 30, "round": 1}, {"seconds": 30, "round": 2}], f"the plank stored {done_of(core)}")
+    assert not problems and not errors, problems + errors

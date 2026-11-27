@@ -3273,8 +3273,10 @@ KG = "d0ed87d5c98f_program_day_items_kg.py"
 PARTS = "a7d3c5e9f214_day_parts_and_slots.py"
 # c4e1b7f9a2d6 (26.11.2026, build 3): the gym trainings, whose items' key
 # points at exercises: a test that drops the library drops them first and
-# makes them again on top
+# makes them again on top; and 36d6e2c97de7 (build 3, part B) their parts,
+# whose key points at the trainings: dropped before them, made after them
 GYM = "c4e1b7f9a2d6_gym_trainings.py"
+GYM_PARTS = "36d6e2c97de7_gym_training_parts.py"
 
 
 def _old_items() -> list[tuple]:
@@ -3346,15 +3348,17 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     exercise; fc1840b0a981 the days' circuits; d0ed87d5c98f the items'
     planned weight; a7d3c5e9f214 Glavni dio C, the parts' names and the
     slots; c4e1b7f9a2d6 the gym trainings, whose items point at the
-    library), and every table is the models'."""
+    library; 36d6e2c97de7 their parts), and every table is the models'."""
     mig = _migration("4c2e8a6f1d39_exercise_library.py")
     assert (mig.revision, mig.down_revision) == ("4c2e8a6f1d39", "b18ebed39701")
     with db.engine.begin() as conn:                                         # the tables as before the revision
         # (workout_logs, 3890252ee50f's, program_day_circuits, fc1840b0a981's, and
         # program_day_parts, a7d3c5e9f214's, point at program_days, and
-        # gym_training_items, c4e1b7f9a2d6's, at exercises: they go first)
-        conn.execute(sa_text("DROP TABLE gym_training_items, gym_trainings, workout_logs, program_day_circuits, "
-                             "program_day_parts, program_day_items, program_days, exercise_alternatives, exercises"))
+        # gym_training_items, c4e1b7f9a2d6's, at exercises: they go first, and
+        # gym_training_parts, 36d6e2c97de7's, with the trainings it points at)
+        conn.execute(sa_text("DROP TABLE gym_training_parts, gym_training_items, gym_trainings, workout_logs, "
+                             "program_day_circuits, program_day_parts, program_day_items, program_days, "
+                             "exercise_alternatives, exercises"))
         conn.execute(sa_text("CREATE TABLE program_items (id serial PRIMARY KEY, "
                              "program_id integer NOT NULL REFERENCES programs (id) ON DELETE CASCADE, "
                              "position integer NOT NULL, title varchar(160) NOT NULL, body text, "
@@ -3414,8 +3418,10 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     _run(_migration(KG).upgrade)                                             # and the items' planned weight
     _run(_migration(PARTS).upgrade)                                          # and C, the parts' names, the slots
     _run(_migration(GYM).upgrade)                                            # and the gym trainings
+    _run(_migration(GYM_PARTS).upgrade)                                      # and their parts (part B)
     assert "program_items" not in _tables() and _schema_diffs(
-        TRENINZI | {"program_day_circuits", "program_day_parts", "gym_trainings", "gym_training_items"}) == []
+        TRENINZI | {"program_day_circuits", "program_day_parts", "gym_trainings", "gym_training_items",
+                    "gym_training_parts"}) == []
     assert _library() == library
     assert [[(i.exercise.name, i.sets, i.reps, i.seconds, i.note) for i in items_of(p)] for p in (p1, p2, p3)] == [
         [("Goblet čučanj", 3, 8, None, "8 kg"), ("Plank", None, None, None, "")],

@@ -157,7 +157,10 @@ ALLOWED: dict[str, set[str]] = {
         "Vježba",                            # "Vježba 3"
         "Odrađena serija",                   # a screen reader's words, as an aria-label
     },
-    "karton_trening.html": {"Karton", "Trening"},   # the crumbs (26.11.2026, the gym training)
+    "karton_trening.html": {
+        "Karton", "Trening",                 # the crumbs (26.11.2026, the gym training)
+        "Krug",                              # "Krug 2", a circuit's round's number (part B), as the player's
+    },
     "_tagbar.html": {"još"},                 # "još 5": a count (the tag chips past the first twelve)
     "trening_kraj.html": {
         "od",                                # "6 od 8 vježbi"
@@ -207,9 +210,10 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     # upitnik editor's; 125 since 26.11.2026: the gym training's crumbs and
     # the tag chips' count; 128 since build 4 the same day: the Karton tab's
     # way into a member's app, its label and its select's first option, and
-    # the caption "Vidi samo trener" while staff act as a member): a long
-    # list means texts were left out
-    assert sum(len(v) for v in ALLOWED.values()) <= 128
+    # the caption "Vidi samo trener" while staff act as a member; 129 since
+    # build 3's part B, the gym training's round "Krug 2"): a long list
+    # means texts were left out
+    assert sum(len(v) for v in ALLOWED.values()) <= 129
 
 
 def test_the_scan_sees_a_new_literal_and_strips_what_is_code():

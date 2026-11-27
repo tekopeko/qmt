@@ -14,7 +14,10 @@ Glavni dio A is done as a circuit since 24.11.2026 (DEMO_CIRCUIT); and since
 26.11.2026 one dvoranski programme, a template of empty slots with a renamed
 circuit part (TEMPLATE, seed_template), and ivan's gym training of
 yesterday's group termin, filled in (GYM_TRAINING, seed_gym_training), beside
-a termin today whose training is open and empty.
+a termin today whose training is open and empty; and (build 3 part B) a
+training of his outside a termin today made from that template, its
+circuit's slots filled and its first round saved (GYM_FILL, GYM_ROUND,
+seed_gym_template).
 """
 
 from __future__ import annotations
@@ -487,6 +490,45 @@ def seed_gym_training() -> None:
     print(f"  Ivan: trening u dvorani {day:%-d.%-m.} 18:00, {len(GYM_TRAINING)} vježbe, osvrt")
 
 
+# Ivan's training made from the template (26.11.2026, build 3 part B): a
+# training outside a termin today, made from the seed's dvoranski template
+# (TEMPLATE: its parts, Glavni dio A "Krug 1" a circuit of 3 rounds, 90 s
+# after a round, and its slots), the circuit's four slots filled by their
+# hints, (hint: the exercise, what one round asks: reps, seconds, kg), its
+# first round saved (GYM_ROUND: each exercise's set, the round rated 6), the
+# warm-up's and the stretch's slots left empty; ivan's open training of
+# today's termin gets nothing (its page offers the template). The audit
+# walks this one as "gym:krug".
+GYM_FILL = {"čučanj": ("Goblet čučanj", 10, None, 16), "potisak": ("Sklekovi", 10, None, None),
+            "povlačenje": ("Veslanje u pretklonu", 10, None, 10), "core": ("Plank", None, 30, None)}
+GYM_ROUND = {"Goblet čučanj": {"reps": 10, "kg": 16.0}, "Sklekovi": {"reps": 10, "kg": 0.0},
+             "Veslanje u pretklonu": {"reps": 10, "kg": 10.0}, "Plank": {"seconds": 30}}
+
+
+def seed_gym_template() -> None:
+    """Ivan's training from the template (GYM_FILL, GYM_ROUND); after
+    seed_template (the template) and seed_program (the library)."""
+    from sqlalchemy import select
+
+    from qmt.models import Program
+
+    ivan = db.get_user_by_email("ivan@qmt.local")
+    with db.session_scope() as s:
+        pid = s.scalar(select(Program.id).where(Program.title == TEMPLATE[0], Program.venue == "dvorana"))
+    day = db.get_program(pid).days[0]
+    tid = db.add_gym_outside(ivan.id, db.config.today())
+    db.gym_from_template(tid, ivan.id, day.id)
+    ids = {e.name: e.id for e, _ in db.exercises()}
+    for it in db.gym_training(tid, ivan.id).items:
+        if it.is_slot and it.hint in GYM_FILL:
+            name, reps, seconds, kg = GYM_FILL[it.hint]
+            db.fill_gym_slot(it.id, ivan.id, ids[name])
+            db.update_gym_item(it.id, ivan.id, it.section, db.KEEP, reps, seconds, kg, db.KEEP, "")
+    t = db.gym_training(tid, ivan.id)
+    db.save_gym_round(tid, ivan.id, "trening", 1, {it.id: GYM_ROUND[it.name] for it in t.round_items("trening")}, 6)
+    print(f"  Ivan: trening izvan termina iz predloška „{TEMPLATE[0]}”, {len(GYM_FILL)} mjesta popunjena, krug 1 spremljen")
+
+
 # Ivan's history in the player (30.10.2026, stage 3): two finished passes of
 # his Trening 1 (srednja × cijelo, "Cijelo tijelo"), days ago, each pass's sets
 # per exercise of the day by name: (reps or None, kg, seconds or None) per set,
@@ -562,6 +604,7 @@ if __name__ == "__main__":
     print("karton:")
     seed_karton()
     seed_gym_training()
+    seed_gym_template()
     print("online treninzi (povijest):")
     seed_passes()
     print("aktualno:")

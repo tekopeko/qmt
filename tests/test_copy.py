@@ -2426,9 +2426,10 @@ NEW_PREFIXES = ("raspored.", "treninzi.", "program.", "dan.", "player.", "kraj."
                 "clanarina.lapsed.", "clanarina.add.", "clanarina.addon.", "clanarina.bills.portal",
                 "clanarina.bills.col_", "prehrana.kicker", "prehrana.text_", "prehrana.hint_", "prehrana.open")
 NEW = [key for key in copy.SLOTS if key.startswith(NEW_PREFIXES)]
-# the gym training's page (26.11.2026, build 3): gym.<area>.* (the landing's gym.kicker and gym.h2 are the landing's)
+# the gym training's page (26.11.2026, build 3): gym.<area>.* (the landing's gym.kicker and gym.h2 are the landing's;
+# part B's template, part and slot areas too)
 GYM_PREFIXES = ("gym.head.", "gym.state.", "gym.empty", "gym.card.", "gym.form.", "gym.add.", "gym.done.", "gym.foot.",
-                "gym.osvrt.", "gym.confirm.")
+                "gym.osvrt.", "gym.confirm.", "gym.template.", "gym.part.", "gym.slot.")
 # of them, the ones that are no control's words (a kicker, a state's whole
 # sentence, the empty line): emptied, they stay empty (tests/test_gym.py's too)
 GYM_OPTIONAL = {"gym.head.kicker", "gym.state.closed", "gym.state.staff", "gym.empty", "gym.osvrt.kicker"}
@@ -3218,6 +3219,20 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
     for planned in ((3, 10, None, 20, 60), (2, None, 30, None, 30)):
         db.add_gym_item(ana_gym, ana, goblet, "trening", *planned)
     db.save_gym_done(db.gym_training(ana_gym, ana).items[0].id, ana, [{"reps": 10, "kg": 20.0}], 8)
+    # part B (26.11.2026): a dvoranski template (a part named and a circuit
+    # of two rounds, a slot in it and one in the warm-up), a training of
+    # hers made from it with its first round saved; and an empty one of
+    # hers, whose page lists the template
+    tpl = db.add_day(db.create_program("Predložak — kružni", None, "srednja", "cijelo", "dvorana"))
+    db.set_part_name(tpl, "trening_b", "Krug 1")
+    db.set_circuit(tpl, "trening_b", 2, 60)
+    db.add_day_slot(tpl, "zagrijavanje", "mobilnost", reps=10)
+    db.add_day_slot(tpl, "trening_b", "čučanj", reps=10, kg=16)
+    db.add_day_item(tpl, goblet, "trening_b", reps=8, kg=20)
+    ana_tpl, ana_empty = db.add_gym_outside(ana, config.today()), db.add_gym_outside(ana, config.today())
+    db.gym_from_template(ana_tpl, ana, tpl)
+    db.save_gym_round(ana_tpl, ana, "trening_b", 1, {it.id: {"reps": 8, "kg": 20.0} for it in
+                                                     db.gym_training(ana_tpl, ana).round_items("trening_b")}, 7)
     soon = datetime.now(config.TZ).replace(hour=18, minute=0, second=0, microsecond=0) + timedelta(days=2)
     for hours, cap, kind, hers, off in ((0, 8, "grupni", True, False), (1, 8, "grupni", False, False),
                                         (2, 1, "individualni", False, False), (3, 1, "individualni", True, False),
@@ -3882,7 +3897,9 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
         (each exercise open, as a tap opens it), the player (a step with its
         rest bar, the dock, the leave dialog, both rounds, the finish screen
         and its leave dialog), her gym training (26.11.2026: every card open,
-        a ✓ and its rest bar, its osvrt's page), her profile and the error
+        a ✓ and its rest bar, its osvrt's page; part B, one made from a
+        template, every part's "Uredi dio", a slot and a circuit's rounds
+        open, and an empty one's list of templates), her profile and the error
         page; sara's gates
         (no plan: the raspored's line, the online list's card); a new
         member's profile with its welcome; the trainer's programme, day (each
@@ -3982,6 +3999,10 @@ def test_layout_holds_with_long_texts_and_line_breaks(server):
             measure(a, "the gym training, its rest bar", "#plRest")
             a.evaluate("() => { const b = document.querySelector('#plRest .pl-rest-skip'); if (b) b.click(); }")
             go(a, gym + "/osvrt", "the gym training's osvrt")
+            # part B: a training from a template (every part's "Uredi dio", a
+            # slot's card and picker, a circuit's rounds open), an empty one's templates
+            go(a, f"/karton/trening/{ana_tpl}", "a gym training from a template", unfold=True)
+            go(a, f"/karton/trening/{ana_empty}", "an empty gym training's templates", unfold=True)
 
             s = opened("sara@test.local")                                   # sara: no plan
             for path in ("/raspored", "/treninzi"):

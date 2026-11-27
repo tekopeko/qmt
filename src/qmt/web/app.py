@@ -3099,6 +3099,55 @@ def _gym_rows(it) -> list[dict]:
     return rows + [dict(first, ticked=False) for _ in range(planned - len(rows))]
 
 
+def _gym_rounds(t, key: str, want: int | None) -> list[dict]:
+    """A circuit part's round blocks (part B), "Krug 1" … "Krug n", each
+    {"n", "saved" (an exercise of the part holds a set of it), "open" (the
+    round `want` names, a refused one, else the first round not saved: a
+    saved one folded with its ✓), "rows": per exercise a round takes inputs
+    for (GymTraining.round_items) {"it", "fields" (db.set_fields), "reps",
+    "kg", "sec": its inputs' first values}}: what this round saved of it;
+    else what was given (its reps, its seconds) and, for the weight, the
+    round before's when it holds one, else what was given (rule 5: no load
+    next time here). [] for a part that is no circuit or takes no inputs (a
+    part of slots alone: a slot is in no round)."""
+    c, live = t.circuit(key), t.round_items(key)
+    if c is None or not live:
+        return []
+    saved = t.rounds_saved(key)
+    first = next((n for n in range(1, c.rounds + 1) if n not in saved), None)
+    opened = want if want is not None and 1 <= want <= c.rounds else first
+    out = []
+    for n in range(1, c.rounds + 1):
+        rows = []
+        for it in live:
+            mine = it.round_set(n)
+            if mine is not None:
+                values = _set_values(mine)
+            else:
+                before = it.round_set(n - 1)
+                kg = before.get("kg") if before is not None and (before.get("kg") or 0) > 0 else it.kg
+                values = {"reps": "" if it.reps is None else str(it.reps), "kg": _kg_value(kg),
+                          "sec": "" if it.seconds is None else str(it.seconds)}
+            rows.append({"it": it, "fields": db.set_fields(it), **values})
+        out.append({"n": n, "saved": n in saved, "open": n == opened, "rows": rows})
+    return out
+
+
+def _gym_templates() -> list[dict]:
+    """"Odaberi gotov trening"'s list (part B): every dvoranski programme's
+    training that holds a row (db.gym_templates), {"id" (its day's), "name"
+    ("Predložak — kružni trening · Trening 1", the day's label after the
+    programme's title), "facts" (muted: its razina's label, "4 vježbe" and
+    "3 prazna mjesta", each when it has one)}."""
+    out = []
+    for d in db.gym_templates():
+        n = len(d.exercise_items)
+        facts = [upitnik.LEVELS.get(d.program.level or "", ""), f"{n} {plural(n, 'vježba', 'vježbe', 'vježbi')}",
+                 d.slots_text]
+        out.append({"id": d.id, "name": f"{d.program.title} · {d.label}", "facts": " · ".join(w for w in facts if w)})
+    return out
+
+
 def _gym_page(request: Request, user, t, status_code: int = 200):
     """The training's page (karton_trening.html). Its state line: a termin's
     training open to its member says until when ("Upis je otvoren do
@@ -3108,8 +3157,17 @@ def _gym_page(request: Request, user, t, status_code: int = 200):
     uređuješ kao trener."; a training outside a termin none. ?stavka=<id>
     names the card a form came back to (open, its word in it; ?uredi=1 its
     "Uredi zadano" open, ?dodano=1 the focus in its first input: one just
-    added); else the first card not done is open. The add card's Dio is the
-    part of the row added last, else Glavni dio A."""
+    added); else the first card not done is open (part B: a slot, or a
+    normal part's exercise not ✓; a circuit's exercises are compact rows,
+    their rounds open instead). The add card's Dio is the part of the row
+    added last, else Glavni dio A. Part B: each part as the training names
+    it, with its "Uredi dio" (?dio=<key> names the part a form came back
+    to: its word under its caption, ?uredi=1 its form open again after a
+    refusal, ?krug=<n> the round a refused round's save came back to); a
+    circuit part's round blocks (_gym_rounds); while it holds no row, the
+    templates (_gym_templates); ?odmor=<s> (a round's save: the part's rest
+    after a round, an int 1–3600, anything else ignored) starts the rest
+    bar at load."""
     now = datetime.now(config.TZ)
     staff = _gym_staff(request)
     writable = db.gym_can_write(t, now, staff)
@@ -3126,8 +3184,14 @@ def _gym_page(request: Request, user, t, status_code: int = 200):
     items = t.exercise_items
     focus = _id(request.query_params.get("stavka"))
     focus = focus if any(it.id == focus for it in t.items) else None
-    opened = focus if focus is not None else next((it.id for it in items if not it.gone and it.mark != "✓"), None)
+    dio = request.query_params.get("dio")
+    dio = dio if focus is None and dio in SECTIONS and t.by_section[dio] else None   # a part on the page
+    opened = focus if focus is not None else next(
+        (it.id for key in SECTIONS for it in t.by_section[key]
+         if it.is_slot or (not it.gone and t.circuit(key) is None and it.mark != "✓")), None)
     last = max(t.items, key=lambda it: it.id, default=None)
+    rest = _id(request.query_params.get("odmor"))
+    krug = _id(request.query_params.get("krug")) if dio is not None else None
     texts = db.copy_texts()
     return templates.TemplateResponse(request, "karton_trening.html", _ctx(
         request, user, copy_texts=texts, t=t, items=items, when=_gym_when(t), writable=writable,
@@ -3137,6 +3201,10 @@ def _gym_page(request: Request, user, t, status_code: int = 200):
         focus=focus, opened=opened, zadano=request.query_params.get("uredi") == "1",
         added=request.query_params.get("dodano") == "1", in_add=request.query_params.get("dodaj") == "1",
         add_dio=last.section if last is not None else "trening",
+        dio=dio, rounds={key: _gym_rounds(t, key, krug if key == dio else None) for key in SECTIONS},
+        round_word=krug,
+        odmor=rest if writable and rest is not None and 1 <= rest <= 3600 else None,
+        presets=_gym_templates() if writable and not t.items else [],
         library_rows=[[e.id, e.name, e.tags] for e, _ in db.exercises()] if writable else [],
         tags=_tag_chips() if writable else [], max_sets=db.MAX_SETS, first_day=db.FIRST_DAY,
         today=config.today()), status_code=status_code)
@@ -3251,18 +3319,22 @@ def gym_item_add(request: Request, training_id: int, exercise_id: str = Form("")
 @app.post("/karton/trening/{training_id}/stavke/{item_id}")
 def gym_item_save(request: Request, training_id: int, item_id: int, section: str = Form("trening"),
                   sets: str = Form(""), reps: str = Form(""), seconds: str = Form(""), kg: str = Form(""),
-                  rest: str = Form(""), note: str = Form("")):
+                  rest: str = Form(""), note: str = Form(""), circuit: str = Form("")):
     """"Uredi zadano": an exercise's part, sets, reps, seconds, kg, the
     pause after a set and a note (db.update_gym_item, the day editor's row
     form's rules); back at its card with "Spremljeno." or the refusal, its
-    form open again then."""
+    form open again then. A circuit part's form (part B) asks no Serije and
+    no Pauza, which do not apply there, and says so (`circuit`, the day
+    editor's way): the item keeps the ones it has stored (db.KEEP),
+    wherever its Dio takes it."""
     user, t = _gym_of(request, training_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     _gym_item(t, item_id)
     try:
-        saved = db.update_gym_item(item_id, user.id, section, _count(sets), _count(reps), _count(seconds),
-                                   db.read_item_kg(kg), _count(rest), note, staff=_gym_staff(request),
+        kept = (db.KEEP, db.KEEP) if circuit else (_count(sets), _count(rest))
+        saved = db.update_gym_item(item_id, user.id, section, kept[0], _count(reps), _count(seconds),
+                                   db.read_item_kg(kg), kept[1], note, staff=_gym_staff(request),
                                    training_id=training_id)
     except (ValueError, db.BookingError) as e:
         return _gym_back(training_id, item=item_id, error=str(e), zadano=True)
@@ -3304,7 +3376,9 @@ async def gym_item_done(request: Request, training_id: int, item_id: int):
         return _gym_back(training_id, item=item_id, error=error, ok=None if error else GYM_SAVED)
 
     fields = db.set_fields(it)
-    if field("polja") != ",".join(fields):
+    # a circuit's exercise is saved a round at a time (part B: gym_round_save),
+    # never by a tick: a page drawn before its part became a circuit is refused
+    if field("polja") != ",".join(fields) or t.circuit(it.section) is not None:
         return answer(DAY_CHANGED)
     n = min(max(_id(field("rows")) or 0, 0), 30)
     raw = [{f: field(f"{SET_INPUTS[f]}_{i}") for f in fields} for i in range(1, n + 1)]
@@ -3403,6 +3477,152 @@ def gym_delete(request: Request, training_id: int):
     except db.BookingError as e:
         return _gym_back(training_id, error=str(e))
     return RedirectResponse("/karton?ok=Trening+je+obrisan.#osvrti", status_code=303)
+
+
+# ---------- the gym training, part B: a part's name and circuit, a round, a template, a slot ----------
+#
+# The owner: "Lets have Glavni dio A, B and C but lets also allow Amir to
+# rename them."; Amir: "tu ne mogu staviti kružni dio … nema nigdje da stavi
+# kvačicu... Pauza itd..."; the owner: "the user should be able to choose a
+# dvoranski programme as a template and then edit the exercises there". Plain
+# forms all, each asking db.gym_can_write as part A's (staff acting as the
+# member at any time), back where its word belongs: a part's (?dio=<key>
+# #dio-<key>), a round's refusal at its round, a slot's at its card, a
+# template's at the page's top, where its list is.
+
+# a template copied into the training
+GYM_TEMPLATE_OK = "Predložak je dodan."
+
+
+@app.post("/karton/trening/{training_id}/dio/{section}")
+def gym_part_save(request: Request, training_id: int, section: str, title: str = Form(""), circuit: str = Form(""),
+                  rounds: str = Form(""), rest: str = Form("")):
+    """"Uredi dio" (part B): the part's own name ("Naziv dijela", 60
+    characters; empty: its default) and, "Kružni dio" ticked, a circuit of
+    `rounds` rounds (2–20) with `rest` seconds after a round (0–3600, empty
+    for none); unticked a normal part whatever the numbers say
+    (db.set_gym_part: the day editor's rules and sentences). Back at the
+    part (?dio=<key>#dio-<key>), "Spremljeno." under its caption, or the
+    refusal's sentence there with the form open again (?uredi=1); a part
+    that is none at the page's top ("Odaberi dio treninga.")."""
+    from urllib.parse import quote
+
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    back = f"/karton/trening/{training_id}"
+    if section not in SECTIONS:
+        return RedirectResponse(f"{back}?error={quote(db.NO_SECTION)}", status_code=303)
+    try:
+        on = bool(circuit)
+        saved = db.set_gym_part(training_id, user.id, section, title, on, _count(rounds) if on else None,
+                                _count(rest) if on else None, staff=_gym_staff(request))
+    except (ValueError, db.BookingError) as e:
+        return RedirectResponse(f"{back}?dio={section}&uredi=1&error={quote(str(e))}#dio-{section}", status_code=303)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"{back}?dio={section}&ok={quote(GYM_SAVED)}#dio-{section}", status_code=303)
+
+
+@app.post("/karton/trening/{training_id}/dio/{section}/krug/{n}")
+async def gym_round_save(request: Request, training_id: int, section: str, n: int):
+    """A circuit part's round, "Krug 2 odrađen" (part B; the player's round
+    on the page: its one button, every exercise of the part in it): each
+    exercise's inputs, reps_<item id>, kg_<item id>, sec_<item id> (its
+    db.set_fields; every one empty: not done in this round), the round's
+    rating (`effort`) and the exercises the page was drawn for (`stavke`,
+    their ids), saved whole (db.save_gym_round). Back at the part
+    (?dio=<key>&odmor=<s>#dio-<key>: the page starts the rest bar at load
+    with the part's rest after a round, none for none or 0, as the player
+    does after a step), the round folded with its ✓, the next one open.
+    Refused (nothing done "Upiši bar jednu vježbu.", "Neispravan broj.", a
+    page drawn for another part, a round past its rounds, a part that is no
+    circuit now: GYM_CHANGED): back at that round, open, its sentence in it
+    (?dio=<key>&krug=<n>#krug-<key>-<n>), nothing saved; a part that is
+    none at the page's top."""
+    from urllib.parse import quote
+
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    back = f"/karton/trening/{training_id}"
+    if section not in SECTIONS:
+        return RedirectResponse(f"{back}?error={quote(db.NO_SECTION)}", status_code=303)
+    form = await request.form()
+
+    def field(name: str) -> str:
+        value = form.get(name)
+        return value if isinstance(value, str) else ""
+
+    circ, items = t.circuit(section), t.round_items(section)
+    drawn = sorted(x for x in (_id(v) for v in field("stavke").split(",")) if x is not None)
+    try:
+        if circ is None or not 1 <= n <= circ.rounds or drawn != sorted(it.id for it in items):
+            raise ValueError(db.GYM_CHANGED)
+        raw = {it.id: {f: field(f"{SET_INPUTS[f]}_{it.id}") for f in db.set_fields(it)} for it in items}
+        sets = {it.id: None if all(not v.strip() for v in raw[it.id].values())
+                else db.read_sets([raw[it.id]], db.set_fields(it))[0] for it in items}
+        saved = db.save_gym_round(training_id, user.id, section, n, sets, db.read_effort(field("effort")),
+                                  staff=_gym_staff(request))
+    except (ValueError, db.BookingError) as e:
+        return RedirectResponse(f"{back}?dio={section}&krug={n}&error={quote(str(e))}#krug-{section}-{n}",
+                                status_code=303)
+    if not saved:
+        raise HTTPException(status_code=404)
+    rest = circ.rest_seconds
+    return RedirectResponse(f"{back}?dio={section}" + (f"&odmor={rest}" if rest else "") + f"#dio-{section}",
+                            status_code=303)
+
+
+@app.post("/karton/trening/{training_id}/predlozak")
+def gym_template(request: Request, training_id: int, dan: str = Form("")):
+    """"Odaberi gotov trening" (part B): a dvoranski programme's training
+    (`dan`, its day's id) copied into this one while it holds no row
+    (db.gym_from_template: the parts' names and circuits, the rows,
+    exercises and slots alike, with their numbers and notes), then the page
+    with its rows, "Predložak je dodan." at its top; refused (a training
+    that holds a row, "Trening već ima vježbe — isprazni ga pa odaberi
+    predložak."; a day that is none or no dvoranski programme's, "Odaberi
+    predložak s popisa."): its sentence in the list, open (?predlozak=1),
+    or at the page's top when the list is not there (a training that
+    holds a row has none)."""
+    from urllib.parse import quote
+
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    try:
+        saved = db.gym_from_template(training_id, user.id, _id(dan), staff=_gym_staff(request))
+    except (ValueError, db.BookingError) as e:
+        return RedirectResponse(f"/karton/trening/{training_id}?predlozak=1&error={quote(str(e))}", status_code=303)
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"/karton/trening/{training_id}?ok={quote(GYM_TEMPLATE_OK)}", status_code=303)
+
+
+@app.post("/karton/trening/{training_id}/stavke/{item_id}/vjezba")
+def gym_slot_fill(request: Request, training_id: int, item_id: int, exercise_id: str = Form("")):
+    """A slot's "Odaberi" (part B): the exercise picked in its card's
+    combobox (which opens on the slot's hint) goes into the slot
+    (db.fill_gym_slot), an ordinary card from then on: back at it, open,
+    the focus in its first input (?dodano=1). Refused (nothing picked
+    "Odaberi vježbu s popisa.", "Nepoznata vježba.", a row that is no slot
+    "Mjesto je već popunjeno."): back at the card, its sentence in it."""
+    user, t = _gym_of(request, training_id)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    _gym_item(t, item_id)
+    chosen = _id(exercise_id)
+    try:
+        if chosen is None:
+            raise ValueError(db.NO_EXERCISE)
+        saved = db.fill_gym_slot(item_id, user.id, chosen, staff=_gym_staff(request), training_id=training_id)
+    except (ValueError, db.BookingError) as e:
+        return _gym_back(training_id, item=item_id, error=str(e))
+    if not saved:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"/karton/trening/{training_id}?stavka={item_id}&dodano=1#stavka-{item_id}",
+                            status_code=303)
 
 
 # ---------- treninzi (custom training programmes) ----------

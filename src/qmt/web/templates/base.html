@@ -2366,6 +2366,23 @@
     function quiet() { picking = true; input.focus(); picking = false; }
     return {input: input, fail: fail, focus: quiet};
   }
+  // What a slot's picker starts with (26.11.2026; the day editor's "Popuni
+  // vježbom", a gym training's slot card): its hint, so the list is already
+  // narrowed, but only while the hint finds something. A hint that matches
+  // no exercise ("mobilnost" in a library with no such name or tag) would
+  // open on "Nijedna vježba ne odgovara traženju."; the picker starts empty
+  // then, on the whole list (Fable's review). `rows` as qmtCombobox takes
+  // them ({name, tags}); the match is its own: every word in the name or
+  // the tags, folded.
+  function qmtHintStart(rows, hint) {
+    var words = qmtFold(hint || "").split(/\s+/).filter(Boolean);
+    if (!words.length) return "";
+    var found = rows.some(function (r) {
+      var name = r.fname != null ? r.fname : qmtFold(r.name), tags = r.ftags != null ? r.ftags : qmtFold(r.tags || "");
+      return words.every(function (w) { return name.indexOf(w) >= 0 || tags.indexOf(w) >= 0; });
+    });
+    return found ? hint : "";
+  }
 
   // Mjesečno / Godišnje (.period, _period.html): each switch works the
   // prices of its own group, its closest [data-period-group] (the landing's
