@@ -338,7 +338,10 @@
 </div>
 {% else %}{{ super() }}{% endif %}
 {% endblock %}
-{% block content %}
+{% block content %}{#- staff's week (28.11.2026, build 2 of the admin view): in the admin view the
+   rosters' (roster), as staff's raspored always was; in the member view the member's calendar, with
+   nothing to book (no_book) and one muted line of staff's own where the booking gate's stands. The
+   data are staff's in both (every week, no window, no gate): only the drawing differs #}{% set roster = can_edit_copy and bar_admin %}{% set no_book = can_edit_copy and not roster %}
 {# a booking's ✕ (the next-termin card and "Moje rezervacije"): asks first,
    then cancels; `day` is the day a phone is showing, kept by the script #}
 {% macro unbook(s) %}
@@ -483,7 +486,7 @@
   <p class="hint" style="padding: 30px 0 10px;">{{ c.t("raspored.week.beyond") }} {{ weeks_ahead }} unaprijed.</p>
 {% elif week_empty and (can_edit_copy or copy_on("raspored.week.empty")) %}
   <p class="hint" style="padding: 30px 0 10px;">{{ c.t("raspored.week.empty") }}
-  {% if can_edit_copy %}<a class="act act-quiet" href="/admin">{{ c.t("raspored.week.add") }}</a>{% endif %}</p>
+  {% if roster %}<a class="act act-quiet" href="/admin">{{ c.t("raspored.week.add") }}</a>{% endif %}</p>
 {% endif %}
 <div class="week{% if week_empty %} all-empty{% endif %}" data-selected="{{ selected_day.isoformat() }}"
      data-week="{{ monday.isoformat() }}" data-prev="{{ prev_week }}" data-next="{{ next_week or '' }}">
@@ -497,7 +500,7 @@
         <div class="name">{{ s.title }}{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}</div>
         {# capacity line: for the trainer the Polaznici button already carries it,
            so only the canceled/closed states show here; clients still need "X/8 mjesta" #}
-        {% set show_cap = s.canceled or s.closed or not can_edit_copy %}
+        {% set show_cap = s.canceled or s.closed or not roster %}
         {# the state's word (a copy slot since 25.11.2026: emptied, no line),
            or the free places, a count #}
         {% set cap = "raspored.state.canceled" if s.canceled else "raspored.state.closed" if s.closed
@@ -511,7 +514,7 @@
           {% else %}<span{% if not s.full %} style="color:var(--good); font-weight:700;"{% endif %}>{{ s.booked }}</span>/{{ s.capacity }} mjesta{% endif %}
         </div>
         {% endif %}
-        {% if can_edit_copy %}
+        {% if roster %}
           <form method="get" action="/admin/session/{{ s.id }}">
             {# one flex child so the button's gap:8px doesn't split "5" from "/8" #}
             <button class="btn-sm btn-ghost" type="submit"><span>{{ c.t("raspored.trainer.roster") }} <span style="font-weight:700; color:{{ 'var(--accent)' if s.full else 'var(--good)' }};">{{ s.booked }}</span><span style="color:var(--muted);">/{{ s.capacity }}</span></span></button>
@@ -533,6 +536,7 @@
         {% elif not s.allowed %}
           {{ c.opt("raspored.termin.need", "div", ' class="cap" title="Za ovaj tip termina treba aktivna članarina — javi se treneru."') }}
         {% elif s.after_period %}{# after his plan's dospijeće: the line under the week says until when #}
+        {% elif no_book %}{# staff's member view: nothing to book, the line under the week says why #}
         {% elif not s.full %}
           <form method="post" action="/book/{{ s.id }}">
             <input type="hidden" name="week" value="{{ monday.isoformat() }}">
@@ -543,7 +547,7 @@
         {% endif %}
       </div>
       {# the same termin as a phone's row (shown only in the one-day view) #}
-      {% if can_edit_copy %}
+      {% if roster %}
       <a class="sess-row{% if s.past %} past{% endif %}{% if s.canceled %} canceled{% endif %}{% if s.closed %} closed{% endif %}" href="/admin/session/{{ s.id }}">
         <span class="rt">{{ s.time }}–{{ s.end }}</span>
         <span class="rn">{{ s.title }}</span>{% if s.one_on_one %}<span class="tag-11">1:1</span>{% endif %}
@@ -553,7 +557,7 @@
       {# what a tap does: book (free, allowed, open, inside the paid period), mine (cancel while allowed), mine-late (say until when); nothing otherwise #}
       {%- if s.canceled or s.past %}{% set act = "" %}
       {%- elif s.mine %}{% set act = "mine" if s.can_cancel else "mine-late" %}
-      {%- elif s.allowed and not s.full and not s.closed and not s.after_period %}{% set act = "book" %}
+      {%- elif s.allowed and not s.full and not s.closed and not s.after_period and not no_book %}{% set act = "book" %}
       {%- else %}{% set act = "" %}{% endif %}
       {%- set when = weekdays_short[day.date.weekday()] ~ " " ~ day.date.strftime("%-d.%-m.") %}
       {% if act %}
@@ -586,6 +590,10 @@
   {% endfor %}
 </div>
 {% endif %}
+{%- if no_book %}
+{# staff's member view (28.11.2026): the booking gate's place, one muted line of their own (no slot) #}
+<p class="hint gate-line">Admin račun ne rezervira termine.</p>
+{%- endif %}
 
 {% if not can_edit_copy and not has_active_plan and view != "month" %}{# the month page has its own note #}
 {# the moment they most want to know what a plan costs — so say it here;

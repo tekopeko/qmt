@@ -87,14 +87,15 @@ MEMBER_TEMPLATES = (
 )
 # The templates only staff reach: they stay as they are (the owner was told so).
 # Since 27.11.2026 (build 3 of the dvoranski treninzi) Amir's templates' list
-# and editor; since the evening of that day the search for a member
-# (_member_find.html), a partial karton.html and dvoranski.html print on
-# staff's own pages alone (never a member's, never while staff act as one).
+# and editor; from the evening of that day until 28.11.2026 the search for a
+# member (_member_find.html), which went; since 28.11.2026 (build 2 of the
+# admin view) the admin's lists of members, Kartoni and Dvoranski treninzi
+# (/kao's page with their own words).
 STAFF_TEMPLATES = (
     "admin.html", "clanarine.html", "korisnici.html", "statistika.html", "roster.html", "template_edit.html",
     "treninzi_admin.html", "trening_edit.html", "trening_day_edit.html", "vjezbe.html", "vjezba.html",
     "tekstovi.html", "kao.html", "kao_zapisi.html", "dvoranski_predlosci.html", "dvoranski_predlozak.html",
-    "_member_find.html",
+    "kartoni.html", "dvoranski_clanovi.html",
 )
 
 # a sentence built around a value: the fixed words whose grammar hangs on a
@@ -102,13 +103,18 @@ STAFF_TEMPLATES = (
 # their own: "Preporučeno:", "Članarina vrijedi do", not these)
 ALLOWED: dict[str, set[str]] = {
     "base.html": {
-        # the nav: the tabs (Dvoranski treninzi since 27.11.2026), Admin ▾ and
-        # its items, the drawer's captions, the account menu (the bar's room
+        # the nav: the tabs (Dvoranski treninzi since 27.11.2026), and since
+        # 28.11.2026 (build 2 of the admin view) the admin view's three
+        # menus, their items and the drawer's captions (Članovi, Treninzi,
+        # Sadržaj; Admin ▾ and the captions "Kao član" / "Admin" until then),
+        # the owner's Statistika, the account menu and its switch between
+        # a staff account's two views (staff's own chrome; the bar's room
         # is measured: tests/test_nav.py)
-        "Kao član", "Početna", "Raspored", "Karton", "Dvoranski treninzi", "Online treninzi", "Moja članarina",
-        "Prehrana", "Admin",
+        "Početna", "Raspored", "Karton", "Dvoranski treninzi", "Online treninzi", "Moja članarina", "Prehrana",
+        "Članovi", "Treninzi", "Sadržaj", "Kartoni", "Vodič",
         "Gledaj kao član", "Termini", "Trenutne članarine", "Upitnik", "Vježbe", "Tekstovi", "Korisnici",
         "Statistika", "Prijava", "Registriraj se", "Kontakt", "Profil", "Tamna tema", "Odjava",
+        "Pogled člana", "Admin pogled",
         # the strip over every page while staff act as a member (26.11.2026):
         # staff's own chrome, which a member never reads
         "Gledaš kao:", "Izađi",
@@ -131,6 +137,9 @@ ALLOWED: dict[str, set[str]] = {
         # a value's sentence: the repeat's count, the paket's size, the hours, the weeks, the places
         "— još", "Paket od", "treninga je popunjen, ostatak nije rezerviran.", "h prije termina", "h prije termina.",
         "unaprijed.", "mjesta",
+        # a staff account's member view (28.11.2026): its line in the booking
+        # gate's place, staff's own chrome, which a member never reads
+        "Admin račun ne rezervira termine.",
     },
     "karton.html": {
         # the karton's own build (25.11.2026, CLAUDE.md "The karton's texts"):
@@ -139,7 +148,7 @@ ALLOWED: dict[str, set[str]] = {
         "@data-confirm: Unos", "@data-confirm: kg", "@data-confirm: od", "@data-confirm: i njegov dokument bit će trajno obrisani.",
         "@data-confirm: kg od", "@data-confirm: bit će trajno obrisan.", "@data-confirm: Dokument „",
         "@data-confirm: ” bit će trajno obrisan.", "@data-confirm: Fotografija za", "@data-confirm: bit će trajno obrisana.",
-        "kg", "Karton", "Karton —", "god.", "Bolovi", "bodova", "Razina",
+        "kg", "Kartoni", "Karton —", "god.", "Bolovi", "bodova", "Razina",
         "od 3 — programi na /treninzi prate ovu razinu.", "Dokument (pdf, jpg, png ili webp, do", "MB)", "Visina", "cm",
         "Fotografija (jpg, png ili webp, do", "Zadnji put:", "Procjena maksimuma:", "napor", "od",
         "Svi tekstovi kartona",
@@ -152,6 +161,14 @@ ALLOWED: dict[str, set[str]] = {
         # select's first option and its no-JS button, is _member_find.html's
         # since the evening of 27.11.2026: staff's alone)
         "Otvori kao član", "Vidi samo trener",
+    },
+    "treninzi.html": {
+        # staff's /treninzi (28.11.2026, build 2 of the admin view): the
+        # member's list of every online programme by razina, its lead and
+        # its link to the admin's table, and a razina with none: staff's
+        # own chrome, which a member never reads
+        "Svi online programi, po razini. Uređuješ ih u adminu:", "Treninzi → Online treninzi",
+        "Nema programa za ovu razinu.",
     },
     "trening_view.html": {
         "Treninzi",                          # the crumb
@@ -174,12 +191,13 @@ ALLOWED: dict[str, set[str]] = {
         "Vrijeme (neobavezno)",
     },
     "dvoranski.html": {
-        # staff's way to their templates on their own tab (27.11.2026, build 3
-        # of the dvoranski treninzi): staff's own chrome, which a member never
-        # reads, as the trainer's "Otvori kao član"; and since the evening of
-        # that day a later termin's button for staff acting as the member,
-        # "Pripremi trening" (its line of when it opens for him is code)
-        "Predlošci treninga →", "Pripremi trening",
+        # since the evening of 27.11.2026 a later termin's button for staff
+        # acting as the member, "Pripremi trening" (its line of when it opens
+        # for him is code): staff's own chrome, which a member never reads,
+        # as the trainer's "Otvori kao član" (staff's "Predlošci treninga →",
+        # on their own tab from 27.11.2026, went to the admin's Dvoranski
+        # treninzi on 28.11.2026)
+        "Pripremi trening",
         # since 28.11.2026, for staff acting as the member alone: the form's
         # time of day and the gym plan the training counts against (each
         # plan's words code), and the sentence under the gate of a member
@@ -251,9 +269,15 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     # since 28.11.2026: staff plan a member's training outside a termin, the
     # tab's "Vrijeme (neobavezno)" and "Članarina", the training page's
     # "Vrijeme (neobavezno)", and the sentence under a member's gate for
-    # staff, each read only while staff act as the member): a long list
-    # means texts were left out
-    assert sum(len(v) for v in ALLOWED.values()) <= 132
+    # staff, each read only while staff act as the member; 140 since
+    # 28.11.2026, build 2 of the admin view: the bar's three menus, Kartoni
+    # and Vodič among their items, the view switch's two words, less Admin
+    # ▾'s "Admin" and the caption "Kao član"; the read-only karton's crumb
+    # "Kartoni" where it said "Karton"; staff's member view's line on the
+    # raspored, staff's /treninzi's lead, its link and a razina with none;
+    # "Predlošci treninga →" gone from the tab): a long list means texts
+    # were left out
+    assert sum(len(v) for v in ALLOWED.values()) <= 140
 
 
 def test_the_scan_sees_a_new_literal_and_strips_what_is_code():

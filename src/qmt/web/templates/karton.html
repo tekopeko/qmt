@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% import "_copy.html" as c with context %}
-{% import "_member_find.html" as mf %}
 {% block title %}Karton — QMT{% endblock %}
 {% block head %}
 <style>
@@ -252,9 +251,10 @@
      one .act, tucked under the lead, the cards below it; since build 4 in
      base.html's amber tint (.act-kao), as every way into a member's app */
   .kao-open { margin:-8px 0 22px; }
-  {#- the Karton tab of the trainer and the owner carries the search for a
-     member (form.k-find): its rules are _member_find.html's, printed with it
-     (since 27.11.2026, evening: Dvoranski treninzi carries it too) #}
+  {#- the Karton tab of the trainer and the owner carried the search for a
+     member (form.k-find, _member_find.html's) from 27.11.2026 until
+     28.11.2026, when it went to the admin's Članovi → Kartoni (build 2 of
+     the admin view) #}
   .k-body { display:block; font-variant-numeric:tabular-nums; }
   span.t:not(:empty) + .k-body { margin-top:4px; }     /* under the lead; an emptied lead leaves no gap */
   .kc-head { display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap; }
@@ -462,9 +462,6 @@
   .k-texts dt { font-size:.82rem; color:var(--muted); overflow-wrap:anywhere; }
   .k-texts dd { margin:2px 0 0; font-size:.92rem; overflow-wrap:anywhere; }
 </style>
-{%- if staff_own and find_members %}
-{{ mf.style() }}
-{%- endif %}
 {% endblock %}
 
 {# A training's sets folded under "Serije" (base.html's details.sets): an
@@ -531,11 +528,12 @@
 
 {% block content %}
 {% if not own %}
-{# the trainer's view, staff's: since 27.11.2026 reached from the Karton tab's
-   search (Korisnici's "Karton" too, the owner's), its crumb leads back
-   there, for the trainer and the owner alike (Korisnici for some hours that
-   day, Trenutne članarine until then) #}
-<nav class="crumbs" aria-label="Putanja"><a href="/karton">Karton</a><span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
+{# the trainer's view, staff's (Korisnici's "Karton" leads here, the
+   owner's): since 28.11.2026 under the admin's Članovi → Kartoni, its crumb
+   leading there, for the trainer and the owner alike (the Karton tab, its
+   search, on 27.11.2026; Korisnici for some hours that day, Trenutne
+   članarine until then) #}
+<nav class="crumbs" aria-label="Putanja"><a href="/kartoni">Kartoni</a><span class="sep">/</span><span class="here">{{ subject.name or subject.email }}</span></nav>
 {% endif %}
 {#- the title: the member's own "Moj karton" (a slot); while staff act as him
    (27.11.2026, evening, either way in: the owner, "on the top of the tap it
@@ -565,19 +563,6 @@
   <button type="submit" class="act act-kao">Otvori kao član</button>
 </form>
 {% endif %}
-{#- the Karton tab of the trainer and the owner (27.11.2026; the way into a
-   member's app, POST /kao, from 26.11.2026, build 4): the search for a
-   member, _member_find.html's (Dvoranski treninzi's too), every member /kao
-   lists in its order (a native select and "Otvori karton" without the
-   script; with it base.html's combobox), POST /karton/clan → a tab's view
-   of him, landing here, on his own karton (the evening of 27.11.2026; his
-   read-only karton until then). Never while acting (the page is then the
-   member's own karton), on the trainer's view or a member's; no member at
-   all, no form. Staff's own chrome, no slot. Its tags trim the lines they
-   stand on: every other page is byte for byte as before. #}
-{%- if staff_own and find_members %}
-{{ mf.form("/karton/clan", find_members, find_rows, "Otvori karton") }}
-{%- endif %}
 
 {# the cards above the diary, in their reading order (25.11.2026): one
    column below 1000px; from 1000px two (.k-cards' grid), the upitnik block
@@ -1252,9 +1237,4 @@
   })();
 
 </script>
-{#- the search for a member's script, _member_find.html's (it needs base.html's
-   combobox, defined before this block), where the search is #}
-{%- if staff_own and find_members %}
-{{ mf.script() }}
-{%- endif %}
 {% endblock %}

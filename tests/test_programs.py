@@ -95,7 +95,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import inspect as sa_inspect, text as sa_text
 from sqlalchemy.exc import IntegrityError
 
-from qmt import auth, config, db
+from qmt import auth, config, copy, db
 from qmt.models import SECTIONS, VENUES, Base, ProgramDay, ProgramDayItem, alpha_key, fold, matches
 from qmt.web.app import app
 
@@ -260,7 +260,7 @@ def stored_counts() -> tuple[int, ...]:
 
 
 def admin_row(page: str, title: str) -> tuple[str, str, bool] | None:
-    """A programme's row in the trainer's /treninzi table: its Dani, its
+    """A programme's row in the admin's table (/programi; staff's /treninzi until 28.11.2026): its Dani, its
     Vježbe and whether "prazno!" stands beside them; None without one."""
     m = re.search(rf'<td><strong>{re.escape(title)}</strong></td>\s*<td>(\d+)</td>\s*'
                   rf'<td>(\d+)( <span[^>]*>prazno!</span>)?</td>', page)
@@ -329,21 +329,25 @@ def test_a_client_sees_every_programme_of_his_razina_whatever_its_type():
 
 
 def test_opening_treninzi_makes_no_programme_and_no_exercise():
-    """Nothing makes a programme but Amir (30.10.2026): the trainer's
-    /treninzi lists what there is and makes nothing, no programme, day,
-    item or exercise, on an empty database (each razina "Nema programa za
-    ovu razinu.") and on one with a programme, however often it opens."""
+    """Nothing makes a programme but Amir (30.10.2026): the trainer's table
+    (the admin's /programi since 28.11.2026, staff's /treninzi until then)
+    lists what there is and makes nothing, no programme, day, item or
+    exercise, on an empty database (each razina "Nema programa za ovu
+    razinu.") and on one with a programme, however often it opens; nor
+    does staff's /treninzi, the member's list since."""
     ct, *_ = trainer_with_clients()
     assert stored_counts() == (0, 0, 0, 0)
     for _ in range(2):
-        page = ct.get("/treninzi").text
+        assert ct.get("/treninzi").status_code == 200
+        page = ct.get("/programi").text
         assert stored_counts() == (0, 0, 0, 0) and db.all_programs() == []
     assert page.count("Nema programa za ovu razinu.") == 3
     pid = db.create_program("Tjedan 1", None, "srednja", "gornji")
     hold(pid, db.create_exercise("Plank"))
     assert stored_counts() == (1, 1, 1, 1)
     for _ in range(2):
-        page = ct.get("/treninzi").text
+        assert ct.get("/treninzi").status_code == 200
+        page = ct.get("/programi").text
         assert stored_counts() == (1, 1, 1, 1)
     assert [p.id for p, _, _ in db.all_programs()] == [pid]
     assert page.count("Nema programa za ovu razinu.") == 2 and admin_row(page, "Tjedan 1") == ("1", "1", False)
@@ -362,11 +366,11 @@ def test_a_programme_whose_last_day_is_deleted_stays_with_none():
     r = ct.post(f"/treninzi/{pid}/dan/{did}/obrisi", follow_redirects=False)
     assert location(r) == f"/treninzi/{pid}/uredi?ok=Trening je obrisan."
     assert stored_counts() == (1, 0, 0, 1)
-    ct.get("/treninzi")
+    ct.get("/programi")
     view, editor = ct.get(f"/treninzi/{pid}").text, ct.get(f"/treninzi/{pid}/uredi").text
     ci = client_for("ivan@test.local")                                      # pocetna / cijelo: his
     assert ci.get("/treninzi").status_code == 200 and ci.get(f"/treninzi/{pid}").status_code == 200
-    table = ct.get("/treninzi").text                                        # again, after its pages
+    table = ct.get("/programi").text                                        # again, after its pages
     assert stored_counts() == (1, 0, 0, 1) and db.get_program(pid).days == []
     assert admin_row(table, "Cijelo tijelo — početna") == ("0", "0", True)
     assert re.search(r'<p class="hint" data-opt>' + ed("program.empty_staff", "Program još nema treninga — dodaj prvi u uređivanju.")
@@ -390,12 +394,12 @@ def test_a_day_whose_last_exercise_is_removed_stays_empty():
     r = ct.post(f"{day}/stavke/{iid}/obrisi", follow_redirects=False)
     assert r.headers["location"] == f"{day}/uredi"
     assert stored_counts() == (1, 1, 0, 1)
-    for path in ("/treninzi", f"/treninzi/{pid}", f"/treninzi/{pid}/uredi", day, f"{day}/uredi"):
+    for path in ("/treninzi", "/programi", f"/treninzi/{pid}", f"/treninzi/{pid}/uredi", day, f"{day}/uredi"):
         assert ct.get(path).status_code == 200, path
     ci = client_for("ivan@test.local")                                      # pocetna / cijelo: his
     assert ci.get("/treninzi").status_code == 200 and ci.get(f"/treninzi/{pid}").status_code == 200
     client_day = ci.get(day).text
-    table = ct.get("/treninzi").text
+    table = ct.get("/programi").text
     assert stored_counts() == (1, 1, 0, 1) and [len(d.items) for d in db.get_program(pid).days] == [0]
     assert admin_row(table, "Cijelo tijelo — početna") == ("1", "0", True)
     assert '<p class="hint" style="margin-top:22px;"><span class="t">Trening još nema vježbi.</span></p>' in client_day
@@ -450,7 +454,7 @@ def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
     i dodaj treninge", which opens the new programme's editor, the
     programme with no day."""
     ct, *_ = trainer_with_clients()
-    page = ct.get("/treninzi").text
+    page = ct.get("/programi").text
     lead = ("Sve je automatski: upitnik svrsta polaznika u razinu, a on odmah vidi sve programe te razine, po tipu "
             "treninga — ništa se ne dodjeljuje ručno. Programe slažeš sam: za svaku razinu napravi programe po tipu "
             "pa im dodaj treninge i vježbe. Razina bez programa polazniku kaže da se programi još pripremaju.")
@@ -464,11 +468,65 @@ def test_the_trainers_treninzi_page_says_he_makes_the_programmes():
     r = ct.post("/treninzi", data={"title": "Tjedan 1", "level": "srednja", "goal": "donji"}, follow_redirects=False)
     pid = db.all_programs()[0][0].id
     assert r.headers["location"] == f"/treninzi/{pid}/uredi" and stored_counts() == (1, 0, 0, 0)
-    assert gym.strip() not in ct.get("/treninzi").text                      # an online one: still not
+    assert gym.strip() not in ct.get("/programi").text                      # an online one: still not
     gid = db.create_program("Snaga u dvorani", None, "pocetna", "cijelo", "dvorana")
-    assert f'<p class="hint"> {lead}{gym} </p>' in " ".join(ct.get("/treninzi").text.split())
+    assert f'<p class="hint"> {lead}{gym} </p>' in " ".join(ct.get("/programi").text.split())
     db.delete_program(gid)
-    assert gym.strip() not in ct.get("/treninzi").text
+    assert gym.strip() not in ct.get("/programi").text
+
+
+def test_staffs_treninzi_is_every_online_programme_by_razina():
+    """Since 28.11.2026 (build 2 of roadmap/2026-11-28-admin-view-plan.md)
+    staff's /treninzi is the member's list, not the table (the admin's
+    Treninzi → Online treninzi, /programi): every online programme, by
+    razina in LEVELS' order, each razina under its caption (an h2; a razina
+    with none "Nema programa za ovu razinu."), within it by type as a
+    member's list is (a type's caption the day page's .dx-cap, an h3, in
+    GOALS' order, each type's by title), each card a link to its page, "N
+    treninga"; a dvoranski programme and one of no razina in none of it.
+    The lead is staff's own, "Svi online programi, po razini. Uređuješ ih u
+    adminu: Treninzi → Online treninzi." (the last four words a link to
+    /programi); no head pill, no upitnik's prompt, no table, no "Novi
+    program". A programme's and a day's pages keep their "Uredi …" for
+    staff; the programme's and the day's editors lead back to /programi
+    (their crumbs, the delete; a refused "Novi program" too, above)."""
+    ct, *_ = trainer_with_clients()
+    legs = db.create_program("Noge", None, "srednja", "donji")
+    whole = db.create_program("Cijelo A", None, "srednja", "cijelo")
+    did = db.add_day(whole)
+    db.create_program("Core B", None, "pocetna", "core")
+    db.create_program("Cijelo B", None, "srednja", "cijelo")
+    db.create_program("Dvorana", None, "srednja", "cijelo", "dvorana")
+    db.create_program("Skica", None)
+    page = ct.get("/treninzi").text
+    main = page.split("<main", 1)[1].split("</main>", 1)[0]
+    assert ('<p class="hint">Svi online programi, po razini. Uređuješ ih u adminu: '
+            '<a class="tlink" href="/programi">Treninzi → Online treninzi</a>.</p>') in main
+    sections = []
+    for sec in main.split('<section aria-labelledby="razina-')[1:]:
+        sec = sec.split("</section>", 1)[0]
+        cap = re.search(r'<h2 id="razina-(\w+)" style="font-size:1.05rem;">([^<]*)</h2>', sec)
+        types = re.findall(r'<h3 class="dx-cap"[^>]*>([^<]*)</h3>', sec)
+        sections.append((cap.group(1), cap.group(2), types, re.findall(r"<strong>([^<]*)</strong>", sec),
+                         "Nema programa za ovu razinu." in sec))
+    assert sections == [("pocetna", "Početna razina", ["Core"], ["Core B"], False),
+                        ("srednja", "Srednja razina", ["Cijelo tijelo", "Donji dio tijela"], ["Cijelo A", "Cijelo B", "Noge"],
+                         False),
+                        ("napredna", "Napredna razina", [], [], True)]
+    assert f'<a class="card" href="/treninzi/{whole}"' in main and "1 trening" in main and f'href="/treninzi/{legs}"' in main
+    for gone in ("Dvorana", "Skica", "Programi po razinama", "Novi program", 'action="/treninzi"', "Ispuni upitnik",
+                 'data-copy="treninzi.head.lead"', "Ispuni ponovno"):
+        assert gone not in main, gone
+    assert re.search(r"<h1>" + ed("treninzi.head.title", copy.SLOTS["treninzi.head.title"].default) + "</h1>", main)
+    assert f'href="/treninzi/{whole}/uredi"' in ct.get(f"/treninzi/{whole}").text
+    assert f'href="/treninzi/{whole}/dan/{did}/uredi"' in ct.get(f"/treninzi/{whole}/dan/{did}").text
+    editor = ct.get(f"/treninzi/{whole}/uredi").text
+    assert '<nav class="crumbs" aria-label="Putanja"><a href="/programi">Treninzi</a><span class="sep">/</span>' in editor
+    assert ('<nav class="crumbs" aria-label="Putanja"><a href="/programi">Treninzi</a><span class="sep">/</span>'
+            in ct.get(f"/treninzi/{whole}/dan/{did}/uredi").text)
+    member = client_for("ivan@test.local")
+    assert member.get("/programi").status_code == 403
+    assert TestClient(app).get("/programi", follow_redirects=False).headers["location"] == "/login"
 
 
 def test_a_programme_is_one_of_four_types_core_last():
@@ -483,7 +541,7 @@ def test_a_programme_is_one_of_four_types_core_last():
     ct, *_ = trainer_with_clients()
     types = [("cijelo", "Cijelo tijelo"), ("gornji", "Gornji dio tijela"), ("donji", "Donji dio tijela"),
              ("core", "Core")]
-    page = ct.get("/treninzi").text
+    page = ct.get("/programi").text
     assert '<div class="field"><label for="np-goal">Tip programa</label>' in page and ">Cilj<" not in page
     assert '<th style="padding:8px 6px;">Tip</th><th>Program</th>' in page
     new = page.split('id="np-goal"')[1].split("</select>")[0]
@@ -494,7 +552,7 @@ def test_a_programme_is_one_of_four_types_core_last():
     assert (p.title, p.level, p.goal) == ("Core 1", "srednja", "core")
     for title, goal in (("Gornji", "gornji"), ("Cijelo", "cijelo"), ("Donji", "donji")):
         db.create_program(title, None, "srednja", goal)
-    table = ct.get("/treninzi").text
+    table = ct.get("/programi").text
     srednja = table.split("Srednja razina</td>")[1].split("Napredna razina</td>")[0]
     assert re.findall(r'<td style="padding:9px 6px; white-space:nowrap;">([^<]*)</td>', srednja) == [l for _, l in types]
     edit = ct.get(f"/treninzi/{pid}/uredi").text
@@ -504,7 +562,7 @@ def test_a_programme_is_one_of_four_types_core_last():
     assert '<option value="core" selected>Core</option>' in sel
     for bad in ({"level": "srednja", "goal": "ruke"}, {"level": "x", "goal": "core"}):
         r = ct.post("/treninzi", data={"title": "X", **bad}, follow_redirects=False)
-        assert location(r) == "/treninzi?error=Odaberi razinu i tip programa.", bad
+        assert location(r) == "/programi?error=Odaberi razinu i tip programa.", bad
         r = ct.post(f"/treninzi/{pid}/edit", data={"title": "X", **bad}, follow_redirects=False)
         assert location(r) == f"/treninzi/{pid}/uredi?error=Odaberi razinu i tip programa.", bad
     p = db.get_program(pid)
@@ -531,7 +589,7 @@ def test_neither_programme_form_asks_vrsta():
     online one online, whatever is posted. The CHECK still holds."""
     ct, *_ = trainer_with_clients()
     assert VENUES == {"online": "Online", "dvorana": "Dvoranski"}
-    page = ct.get("/treninzi").text
+    page = ct.get("/programi").text
     form = page.split('<form method="post" action="/treninzi" class="card"')[1].split("</form>")[0]
     assert VENUE_GRID in form and form.index('id="np-goal"') < form.index('id="np-level"')
     assert "Vrsta" not in form and 'name="venue"' not in form and "Dvoranski" not in form
@@ -603,7 +661,7 @@ def test_a_dvoranski_programme_is_staffs_only():
         assert r.status_code == 403, r.request.url
     assert db.passes(ivan) == [] and db.open_pass(ivan, did) is None
 
-    table = ct.get("/treninzi").text
+    table = ct.get("/programi").text
     assert '<td><strong>Snaga u dvorani</strong> <span class="venue-chip">dvoranski</span></td>' in table
     assert '<td><strong>Snaga online</strong></td>' in table and table.count('class="venue-chip"') == 1
     assert re.search(r'<h1>Snaga u dvorani <span class="venue-chip" data-opt>' + ed("program.head.venue", "dvoranski")
@@ -777,7 +835,7 @@ def test_delete_program_keeps_the_exercises_and_their_clips():
     name, intro = db.exercise(eid).video, db.get_day(did).intro_video
     assert (config.MEDIA_DIR / intro).is_file()
     r = ct.post(f"/treninzi/{pid}/delete", follow_redirects=False)
-    assert location(r) == "/treninzi?ok=Program je obrisan."
+    assert location(r) == "/programi?ok=Program je obrisan."
     assert db.get_program(pid) is None and db.get_day(did) is None
     assert db.exercise(eid).video == name and (config.MEDIA_DIR / name).is_file()
     assert not (config.MEDIA_DIR / intro).exists()
@@ -1925,7 +1983,7 @@ def test_the_day_editor_shows_each_row_and_its_form():
     db.update_day_item(ig, "trening", 4, 10, None, 60, 90, "16 kg")
     db.update_day_item(ip, "trening", 3, None, 40, None, None, "")
     page = ct.get(f"/treninzi/{pid}/dan/{did}/uredi").text
-    assert (f'<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span>'
+    assert (f'<nav class="crumbs" aria-label="Putanja"><a href="/programi">Treninzi</a><span class="sep">/</span>'
             f'<a href="/treninzi/{pid}/uredi">Cijelo tijelo — početna</a><span class="sep">/</span>'
             '<span class="here">Trening 1</span></nav>\n<h1>Trening 1</h1>') in page
     assert "<title>Uredi: Trening 1 — Cijelo tijelo — početna — QMT</title>" in page
@@ -3161,12 +3219,12 @@ def test_a_slot_is_no_exercise_anywhere_else():
     # staff's table says the slots beside the exercises, and a programme of
     # slots alone is not flagged "prazno!" (Fable's review, 26.11.2026)
     assert db.program_slot_counts() == {pid: 3}
-    table = ct.get("/treninzi").text
+    table = ct.get("/programi").text
     assert re.search(r'<td>2 <span class="hint slots-n"[^>]*>· 3 prazna mjesta</span></td>', table) and "prazno!" not in table
     only = db.create_program("Predložak", None, "srednja", "cijelo", venue="dvorana")
     db.add_day_slot(db.add_day(only), "trening", "")
     bare = db.create_program("Prazan", None, "srednja", "cijelo")
-    table = ct.get("/treninzi").text
+    table = ct.get("/programi").text
     assert re.search(r'<td>0 <span class="hint slots-n"[^>]*>· 1 prazno mjesto</span></td>', table)
     assert admin_row(table, "Prazan") == ("0", "0", True) and table.count("prazno!") == 1
     for extra in (only, bare):

@@ -163,8 +163,10 @@ def test_the_list_and_the_editor_are_staffs_under_the_tab():
     Stanica numbered, nothing to set; a Kružni set with Vježbi, Krugova and
     "Pauza nakon kruga (s)" and Spremi; each row ↑ / ↓ / ✕ with no confirm;
     "+ Stanica", "+ Kružni set", the muted line, "Obriši predložak" asking).
-    Both pages light the tab Dvoranski treninzi, Admin ▾ not. A template
-    that is none: 404."""
+    Both pages are admin pages since 28.11.2026 (build 2 of the admin
+    view): they light the admin's Treninzi, its Dvoranski treninzi item
+    current (the tab Dvoranski treninzi of a member's row, Admin ▾ not,
+    until then). A template that is none: 404."""
     coach, owner = staff()
     stanicni, kruzni = db.gym_templates(all=True)
     for c in (coach, owner):
@@ -186,9 +188,8 @@ def test_the_list_and_the_editor_are_staffs_under_the_tab():
         assert ('<form method="post" action="/dvoranski/predlosci" class="card tp-new" id="novi">' in page
                 and '<input id="tp-title" type="text" name="title" maxlength="80" required>' in page
                 and '<button type="submit" class="btn btn-sm">+ Novi predložak</button>' in page)
-        assert '<a href="/dvoranski" class="on">Dvoranski treninzi</a>' in page
-        menu = page.split('id="adminMenu"')[1].split("</div>")[0]                   # Admin ▾: no item current
-        assert 'class="navbtn menu-btn on"' not in page and 'aria-current="page"' not in menu
+        assert lit_item(page) == ("treninzi", "/dvoranski/clanovi")          # Treninzi → Dvoranski treninzi
+        assert '<a href="/dvoranski" class="on">' not in page
         assert top_has_no_word(page)
 
         r = c.get(f"{LIST}/{kruzni.id}")
@@ -216,8 +217,16 @@ def test_the_list_and_the_editor_are_staffs_under_the_tab():
         assert f'<p class="hint tp-free">{FREE}</p>' in page
         drop = page.split(f'action="/dvoranski/predlosci/{kruzni.id}/obrisi" class="ex-delete tp-drop"')[1].split("</form>")[0]
         assert " ".join(CONFIRM.split()) in " ".join(drop.split()) and '<button class="btn-ghost">Obriši predložak</button>' in drop
-        assert '<a href="/dvoranski" class="on">Dvoranski treninzi</a>' in page and 'class="navbtn menu-btn on"' not in page
+        assert lit_item(page) == ("treninzi", "/dvoranski/clanovi") and '<a href="/dvoranski" class="on">' not in page
         assert c.get(f"{LIST}/999999").status_code == 404
+
+
+def lit_item(page: str) -> tuple[str, str] | None:
+    """The admin bar's lit tab (its menu's key) and its item current (its
+    href), since 28.11.2026; None when no menu is lit."""
+    m = re.search(r'id="(\w+)Btn" class="navbtn menu-btn on"', page)
+    current = re.findall(r'<a href="([^"]+)" role="menuitem" aria-current="page">', page)
+    return (m.group(1), current[0]) if m and len(current) == 1 else None
 
 
 def test_a_member_a_guest_and_staff_acting_as_a_member_are_refused():
@@ -258,18 +267,21 @@ def test_a_member_a_guest_and_staff_acting_as_a_member_are_refused():
     assert coach.get(LIST).status_code == 200 and coach.get(f"{LIST}/{tid}").status_code == 200
 
 
-def test_the_way_in_is_on_staffs_own_tab_and_on_no_members():
-    """Staff's own /dvoranski carries "Predlošci treninga →" (one .act)
-    right under the lead; a member's never, nor the page staff see while
-    acting as a member (his)."""
+def test_the_way_in_is_the_admins_dvoranski_treninzi_and_on_no_members():
+    """"Predlošci treninga →" (one .act) stands under the lead of the
+    admin's Dvoranski treninzi (/dvoranski/clanovi, since 28.11.2026: build
+    2 of the admin view; under the lead of staff's own /dvoranski until
+    then, which carries none since); a member's page never, nor the page
+    staff see while acting as a member (his)."""
     coach, owner = staff()
     ivan = make_user("ivan@test.local")
     link = '<p class="dv-tpl"><a class="act" href="/dvoranski/predlosci">Predlošci treninga →</a></p>'
     for c in (coach, owner):
-        page = c.get("/dvoranski").text
-        head = main_of(page).split('<div class="dv">')[0]
-        assert link in head and head.index('data-copy="gym.tab.lead"') < head.index(link)
+        page = c.get("/dvoranski/clanovi").text
+        head = main_of(page).split('<div class="kao">')[0]
+        assert link in head and head.index("Pripremi ili dodaj trening članu.") < head.index(link)
         assert main_of(page).count('href="/dvoranski/predlosci"') == 1
+        assert "/dvoranski/predlosci" not in main_of(c.get("/dvoranski").text)   # staff's own tab: none
     assert "/dvoranski/predlosci" not in client_for("ivan@test.local").get("/dvoranski").text
     coach.post(f"/kao/{ivan}")
     acting = coach.get("/dvoranski").text
@@ -614,8 +626,8 @@ OVERFLOW = "() => document.documentElement.scrollWidth - document.documentElemen
 
 
 def test_a_template_made_by_staff_and_taken_by_a_member_on_a_phone(server):
-    """At 390px with touch, as the trainer: the tab's "Predlošci treninga →"
-    to the list, a template made ("+ Novi predložak") → its editor, "+
+    """At 390px with touch, as the trainer: the admin's Dvoranski treninzi's
+    "Predlošci treninga →" (staff's own tab's until 28.11.2026) to the list, a template made ("+ Novi predložak") → its editor, "+
     Stanica" and "+ Kružni set" added, the set's Krugova changed and saved
     ("Spremljeno." in its row), the two swapped with the set's ↑; then as a
     member, his empty training's chooser offers it, and a training made from
@@ -665,7 +677,7 @@ def test_a_template_made_by_staff_and_taken_by_a_member_on_a_phone(server):
             pg.wait_for_load_state("networkidle")
 
         ctx, pg = phone("coach@test.local")
-        pg.goto(server + "/dvoranski")
+        pg.goto(server + "/dvoranski/clanovi")
         pg.wait_for_load_state("networkidle")
         go(pg, 'main a[href="/dvoranski/predlosci"]')
         check(pg.url == server + LIST, f"Predlošci treninga → led to {pg.url}")

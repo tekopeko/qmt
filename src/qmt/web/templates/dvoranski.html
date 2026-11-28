@@ -31,12 +31,11 @@
    At the foot the way to the karton's diary. Every text a slot, gym.tab.*, and the training
    page's where the tab says the same (gym.state.open, gym.state.counted, gym.head.outside,
    gym.head.date_field). While staff act as the member the title names him
-   ("Dvoranski treninzi — Ivan Horvat": the name code). Staff's own page carries, under the
-   lead, the search for a member (_member_find.html, the Karton tab's: a pick enters a tab's
-   view of him, POST /dvoranski/clan) and since build 3 (27.11.2026) one .act, "Predlošci
-   treninga →" (/dvoranski/predlosci, Amir's templates): their own words. #}
+   ("Dvoranski treninzi — Ivan Horvat": the name code). Staff's own page is their own
+   trainings' as a member's: the search for a member and "Predlošci treninga →" it carried
+   under the lead from 27.11.2026 went on 28.11.2026 to the admin's Treninzi → Dvoranski
+   treninzi (/dvoranski/clanovi, build 2 of the admin view). #}
 {% import "_copy.html" as c with context %}
-{% import "_member_find.html" as mf %}
 {% block title %}Dvoranski treninzi — QMT{% endblock %}
 {% block head %}
 <style>
@@ -80,30 +79,19 @@
      as him read one muted sentence of theirs under it (28.11.2026) */
   .dv-gate { max-width: 640px; padding: 34px; text-align: center; overflow-wrap: anywhere; }
   .dv-gate-staff { margin-top: 8px; }
-  /* staff's way to their templates (27.11.2026, build 3), under the lead */
-  .dv-tpl { margin: 0 0 24px; }
   /* a button's words are a slot the editor retypes: they wrap inside it
      rather than push the page (the training page's rule) */
   main :is(.act, .btn, .btn-sm) { white-space: normal; overflow-wrap: anywhere; max-width: 100%; text-align: center; }
 </style>
-{%- if find_members %}
-{{ mf.style() }}
-{%- endif %}
 {% endblock %}
-{# a refused date's sentence is the form's: printed in its section; the
-   search's refusal (?trazi=1) at the page's top, as on the Karton tab #}
-{% block error_alert %}{% if find_error %}{{ super() }}{% endif %}{% endblock %}
+{# a refused date's sentence is the form's: printed in its section, never at
+   the page's top (the search's refusal, ?trazi=1, was there until
+   28.11.2026, when the search went to the admin's Dvoranski treninzi) #}
+{% block error_alert %}{% endblock %}
 {% block content %}
 <h1>{{ c.t("gym.tab.title") }}{% if kao %} — {{ kao.full_name or kao.email }}{% endif %}</h1>
 {{ c.opt("gym.tab.lead", "p", ' class="hint"') }}
-{%- if find_members %}
-{{ mf.form("/dvoranski/clan", find_members, find_rows, "Otvori treninge") }}
-{%- endif %}
-{% if can_edit_copy %}
-{# staff's way to the gym training's templates (27.11.2026, build 3: app.gym_templates_page): staff's own
-   words, no slot; never a member's, nor while staff act as one (the page is then his) #}
-<p class="dv-tpl"><a class="act" href="/dvoranski/predlosci">Predlošci treninga →</a></p>
-{% endif %}
+{# (28.11.2026) the search for a member and "Predlošci treninga →" that stood here, staff's, are the admin's #}
 
 {% if not has_plan %}
 {# the gate; staff acting as such a member (28.11.2026) read under it why nothing is offered:
@@ -196,7 +184,4 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
-{%- if find_members %}
-{{ mf.script() }}
-{%- endif %}
 {% endblock %}

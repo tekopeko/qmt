@@ -2720,14 +2720,14 @@ def test_an_emptied_optional_member_text_prints_no_element():
 
 
 def test_the_texts_page_is_staffs_and_lists_every_plain_text():
-    """/tekstovi (Admin ▾ → Tekstovi, 25.11.2026): a guest goes to log in, a
+    """/tekstovi (Admin ▾ → Tekstovi, 25.11.2026; the admin's Sadržaj → Tekstovi since 28.11.2026): a guest goes to log in, a
     client is refused (403, as on any staff page); the trainer gets every
     plain slot's span once, page by page in the nav's order under its h2
     (copy.TEXT_PAGES), "Otvori stranicu →" beside the h2 of a page he can
     open, the lists' line under the landing's, the upitnik's and the
     guide's, each area under its caption (h3), every row its label over its
     text, "(prazno)" beside each for an emptied one; no list, table, switch
-    or photo among them. Admin ▾ is lit there, its item current. Each
+    or photo among them. Its tab is lit there (Sadržaj), its item current. Each
     "Otvori stranicu →" leads to a page the trainer opens."""
     make_user("ivan@test.local", plans=("grupni",)); make_user("trener@test.local", is_trainer=True)
     r = TestClient(app).get("/tekstovi", follow_redirects=False)
@@ -2750,7 +2750,7 @@ def test_the_texts_page_is_staffs_and_lists_every_plain_text():
     assert all(unescape(label) == copy.SLOTS[key].label for label, key in rows)
     assert tx.count('<span class="tx-empty">(prazno)</span>') == len(plain)
     nav = page.split("</header>", 1)[0]
-    assert re.search(r'id="adminBtn" class="navbtn menu-btn on"', nav)
+    assert re.search(r'id="sadrzajBtn" class="navbtn menu-btn on"', nav)
     assert '<a href="/tekstovi" role="menuitem" aria-current="page">' in nav
     assert '<span class="t">' not in tx                                              # every text the editor's span
 

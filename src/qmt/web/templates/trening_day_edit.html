@@ -206,7 +206,7 @@
 {% block error_alert %}{% if not in_row and not in_dio and not in_add %}{{ super() }}{% endif %}{% endblock %}
 {% block ok_alert %}{% if not in_row and not in_dio and not in_add %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
-<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}/uredi">{{ p.title }}</a><span class="sep">/</span><span class="here">Trening {{ day.position }}</span></nav>
+<nav class="crumbs" aria-label="Putanja"><a href="/programi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}/uredi">{{ p.title }}</a><span class="sep">/</span><span class="here">Trening {{ day.position }}</span></nav>
 <h1>Trening {{ day.position }}</h1>
 <p class="hint">
   Naslov, preporučeni dan u tjednu i uvod; ispod toga vježbe po dijelovima (zagrijavanje, glavni dio A, B i C te istezanje) — serije, ponavljanja, sekunde, kilaža, odmor i napomena.

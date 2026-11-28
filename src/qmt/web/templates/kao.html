@@ -2,17 +2,20 @@
 {% block title %}Gledaj kao član — QMT{% endblock %}
 {% block head %}
 <style>
-  /* "Gledaj kao član" (26.11.2026, Admin ▾'s first item; the owner: "Amir
-     can look at the app just like the user sees the app and he can do
-     everything the user does in the same way"): every member, the /admin
-     pages' look, a 720px column. The search filters as it is typed (the
-     library's and /tekstovi's way: shown by the script, the whole list
-     without it), then ONE card of rows, a hairline between the ones shown:
-     the name in 700 over the email (muted) and the running plans (muted,
-     small), and at the row's end "Otvori →" (.act, a form: into his
-     account; since 26.11.2026, build 4, base.html's amber .act-kao, as
-     every way into a member's app), which wraps under the words on a
-     narrow phone. */
+  /* "Gledaj kao član" (26.11.2026; the admin's Članovi → Gledaj kao član
+     since 28.11.2026; the owner: "Amir can look at the app just like the
+     user sees the app and he can do everything the user does in the same
+     way"): every member, the /admin pages' look, a 720px column. The
+     search filters as it is typed (the library's and /tekstovi's way:
+     shown by the script, the whole list without it), then ONE card of
+     rows, a hairline between the ones shown: the name in 700 over the
+     email (muted) and the running plans (muted, small), and at the row's
+     end "Otvori →" (.act, a form: into his account; since 26.11.2026,
+     build 4, base.html's amber .act-kao, as every way into a member's
+     app), which wraps under the words on a narrow phone. Since 28.11.2026
+     the admin's Kartoni and Dvoranski treninzi are this page with their
+     own lead and row's entry (kartoni.html, dvoranski_clanovi.html: its
+     blocks kao_lead and kao_go). */
   .kao { max-width: 720px; }
   .kao-log { margin: -10px 0 18px; }
   .kao-search { margin: 0 0 12px; }
@@ -30,15 +33,18 @@
 </style>
 {% endblock %}
 {% block content %}
-<h1>Gledaj kao član</h1>
+{#- a page that is this one with its own words (kartoni.html,
+   dvoranski_clanovi.html) gives its h1, lead and links (kao_lead) and its
+   row's entry (kao_go); "prikaži sve" is the page's own address #}
+{% block kao_lead %}<h1>Gledaj kao član</h1>
 <p class="hint">Otvori aplikaciju kao član: vidiš što on vidi i radiš što on može. Sve što ovako promijeniš bilježi se.</p>
-{% if is_owner %}<p class="hint kao-log"><a class="tlink" href="/kao/zapisi">Zapis svih radnji →</a></p>{% endif %}
+{% if is_owner %}<p class="hint kao-log"><a class="tlink" href="/kao/zapisi">Zapis svih radnji →</a></p>{% endif %}{% endblock %}
 <div class="kao">
   {% if members %}
   <form class="kao-search" role="search" hidden>
     <input type="search" name="q" placeholder="Ime ili email" aria-label="Traži člana po imenu ili emailu" autocomplete="off">
   </form>
-  <p class="hint kao-found" aria-live="polite" hidden><span class="kao-n">{{ members|length }}</span> od {{ members|length }} · <a class="tlink" href="/kao">prikaži sve</a></p>
+  <p class="hint kao-found" aria-live="polite" hidden><span class="kao-n">{{ members|length }}</span> od {{ members|length }} · <a class="tlink" href="{{ request.url.path }}">prikaži sve</a></p>
   <div class="card kao-list">
     {% for m in members %}
     <div class="kao-row" data-find="{{ m.name }} · {{ m.user.email }}">
@@ -47,7 +53,7 @@
         {% if m.name != m.user.email %}<span class="kao-mail">{{ m.user.email }}</span>{% endif %}
         <span class="kao-plans">{{ m.plans or "bez članarine" }}</span>
       </div>
-      <form method="post" action="/kao/{{ m.user.id }}"><button type="submit" class="act act-kao">Otvori →</button></form>
+      {% block kao_go scoped %}<form method="post" action="/kao/{{ m.user.id }}"><button type="submit" class="act act-kao">Otvori →</button></form>{% endblock %}
     </div>
     {% endfor %}
     <p class="kao-none" hidden>Nijedan član ne odgovara traženju „<span class="kao-q"></span>”.</p>

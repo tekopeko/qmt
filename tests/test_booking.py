@@ -740,12 +740,66 @@ def test_the_plans_page_is_reachable_without_hunting_for_it():
         assert gone not in page, gone
 
     # the trainer does not buy plans, but edits the plans' texts there: the
-    # tab is in staff's member row too since 26.10.2026, and the account
-    # menu has no item for it
+    # tab is in staff's member row (since 28.11.2026 the member view's bar;
+    # the admin view's has none), and the account menu has no item for it
     make_user("trener@test.local", is_trainer=True, plans=())
-    page = client_for("trener@test.local").get("/raspored").text
+    t = client_for("trener@test.local")
+    page = t.get("/raspored").text                               # the admin view: the rosters' week
+    assert 'href="/moja-clanarina"' not in page.split("</header>")[0] and 'class="hint gate-line"' not in page
+    t.post("/pogled", data={"view": "member"})
+    page = t.get("/raspored").text                               # the member view
     assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page and "<span>Moja članarina</span>" not in page
-    assert 'class="hint gate-line"' not in page                  # no booking gate for him
+    assert '<a class="btn btn-sm" href="/moja-clanarina">' not in page   # no booking gate for him: his own line in its place
+    assert page.count('class="hint gate-line"') == 1 and '<p class="hint gate-line">Admin račun ne rezervira termine.</p>' in page
+
+
+def test_staffs_raspored_is_the_rosters_week_or_the_members_calendar_by_the_view():
+    """A staff account's /raspored follows its view (28.11.2026, build 2 of
+    roadmap/2026-11-28-admin-view-plan.md, decision A4). In the admin view
+    the week with its rosters, as staff's raspored always was: each
+    termin's card a "Polaznici" form and its phone row a link to its roster
+    (/admin/session/<id>), no places' line on a card, no booking, no gate,
+    no "Tjedan | Mjesec". In the member view the member's calendar: each
+    card says its places ("1/8 mjesta"), each phone row its count with
+    nothing to tap (no data-state, no chevron), no Rezerviraj (no card's
+    form, no sheet), no roster's link, and one muted line of staff's own in
+    the booking gate's place, "Admin račun ne rezervira termine." (no
+    link); still no "Tjedan | Mjesec" and no series' offer: staff book
+    nothing, and walk every week in both views (no window). The trainer
+    and the owner alike. A member's calendar beside them is his: his
+    Rezerviraj, his sheet, no such line."""
+    make_user("trener@test.local", is_trainer=True, plans=())           # the owner, a trainer too
+    make_user("coach@test.local", is_trainer=True, plans=())
+    ivan = make_user("ivan@test.local")
+    sid = future_session(hours_from_now=48, title="Snaga utorkom")
+    db.book(ivan, sid)
+    with db.session_scope() as s:
+        day = s.get(TrainingSession, sid).starts_at.astimezone(config.TZ).date()
+    week = f"/raspored?week={day - timedelta(days=day.weekday())}&day={day}"
+    far = f"/raspored?week={day - timedelta(days=day.weekday()) + timedelta(weeks=config.BOOKING_WEEKS + 2)}"
+    for email in ("coach@test.local", "trener@test.local"):
+        t = client_for(email)
+        page = t.get(week).text
+        assert f'<form method="get" action="/admin/session/{sid}">' in page and f'href="/admin/session/{sid}"' in page
+        assert f'action="/book/{sid}"' not in page and 'data-state=' not in page and 'id="sheet"' not in page
+        assert 'class="hint gate-line"' not in page and 'class="view-switch"' not in page, email
+        t.post("/pogled", data={"view": "member"})
+        page = t.get(week).text
+        assert f'/admin/session/{sid}' not in page and 'id="clanoviBtn"' not in page, email
+        assert f'action="/book/{sid}"' not in page and 'data-state=' not in page and 'id="sheet"' not in page, email
+        card = page[page.index('<div class="name">Snaga utorkom</div>'):]
+        card = card[:card.index('<div class="sess-row')]
+        assert re.search(r'<div class="cap">\s*<span style="color:var\(--good\); font-weight:700;">1</span>/8 mjesta\s*</div>', card), email
+        i = page.index('<span class="rn">Snaga utorkom</span>')
+        row = page[page.rfind('<div class="sess-row', 0, i):page.index("</div>", i)]
+        assert row.startswith('<div class="sess-row">') and '<b class="ok">1</b>/8' in row and "chev" not in row, email
+        assert page.count('class="hint gate-line"') == 1 and '<p class="hint gate-line">Admin račun ne rezervira termine.</p>' in page
+        assert '<a class="btn btn-sm" href="/moja-clanarina">' not in page and '<div class="view-switch"' not in page, email
+        assert '<form class="series-offer"' not in page, email
+        assert "Termini se objavljuju" not in t.get(far).text, email      # every week, in this view too
+        t.post("/pogled", data={"view": "admin"})
+    mine = client_for("ivan@test.local").get(week).text
+    assert "Admin račun ne rezervira termine." not in mine and 'id="sheet"' in mine and 'data-state="mine"' in mine
 
 
 def test_plan_gate_offers_the_price_instead_of_a_dead_end():

@@ -249,7 +249,9 @@ def test_the_tab_and_its_page_follow_a_plan_that_books_termini():
     its two sections and the way to the karton at its foot: a member with
     each of the four plans that book termini (grupni, individualni,
     poluindividualni, rehabilitacija) and staff, the trainer and the owner
-    (no plan of theirs). No tab, and the page the gate's one sentence
+    (no plan of theirs; since 28.11.2026 in their member view, which their
+    own /dvoranski, a member page, takes them to: the bar is read after it).
+    No tab, and the page the gate's one sentence
     ("Dvoranski treninzi su dio članarine za dvoranu.", /treninzi's way for
     one with no online plan, no section, no form): an online plan alone, no
     plan, a gym plan lapsed. A guest is sent to log in. Staff acting as a
@@ -267,15 +269,17 @@ def test_the_tab_and_its_page_follow_a_plan_that_books_termini():
     make_user("trener@test.local", plans=())                                # the owner, not a trainer
     for email in [f"{plan}@test.local" for plan in SESSION_KINDS] + ["coach@test.local", "trener@test.local"]:
         c = client_for(email)
-        assert "Dvoranski treninzi" in tabs(c.get("/raspored").text), email
-        page = c.get("/dvoranski").text
+        page = c.get("/dvoranski").text                 # a member page: a staff account's member view from here on
+        assert "Dvoranski treninzi" in tabs(page) and "Dvoranski treninzi" in tabs(c.get("/raspored").text), email
         assert all(mark in page for mark in SECTIONS) and 'class="card dv-gate"' not in page, email
         assert '<h1><span class="' in page and "<title>Dvoranski treninzi — QMT</title>" in page, email
         assert 'aria-labelledby="dv-last-h"' not in page and "Zadnji treninzi" not in page, email   # gone (27.11.2026)
         assert 'href="/karton#osvrti"' in main_of(page).split('id="trening-novi"')[1], email        # at the foot
     row = tabs(client_for("grupni@test.local").get("/raspored").text)
     assert row[row.index("Karton") + 1] == "Dvoranski treninzi"
-    staff_row = tabs(client_for("coach@test.local").get("/raspored").text)
+    coach = client_for("coach@test.local")
+    assert "Dvoranski treninzi" not in tabs(coach.get("/raspored").text)     # the admin view's bar: its three menus
+    staff_row = tabs(coach.get("/dvoranski").text)                           # his member view: a member's seven
     assert staff_row.index("Dvoranski treninzi") == staff_row.index("Karton") + 1 == staff_row.index("Online treninzi") - 1
     for email in ("mia@test.local", "sara@test.local", "lara@test.local"):
         c = client_for(email)

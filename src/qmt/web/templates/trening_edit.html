@@ -10,7 +10,7 @@
 </style>
 {% endblock %}
 {% block content %}
-<nav class="crumbs" aria-label="Putanja"><a href="/treninzi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Uređivanje</span></nav>
+<nav class="crumbs" aria-label="Putanja"><a href="/programi">Treninzi</a><span class="sep">/</span><a href="/treninzi/{{ p.id }}">{{ p.title }}</a><span class="sep">/</span><span class="here">Uređivanje</span></nav>
 <h1>Uredi program{% if p.venue == "dvorana" %} <span class="venue-chip">dvoranski</span>{% endif %}</h1>
 <p class="hint" style="margin-bottom:20px;">
   Program ima treninge; svaki trening ima zagrijavanje, glavni dio A, B i C te istezanje, a vježbe biraš iz <a class="tlink" href="/treninzi/vjezbe">baze vježbi</a>.

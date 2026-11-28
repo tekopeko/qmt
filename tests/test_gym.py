@@ -2254,8 +2254,9 @@ def test_every_text_of_the_page_is_a_slot_with_its_words():
 def test_staffs_own_training_lights_their_tab():
     """Staff have trainings outside a termin of their own (no termini), made
     on the tab (POST /dvoranski/trening, 27.11.2026): the page serves them
-    as a member's, the nav's Dvoranski treninzi lit (their Karton until
-    build 2) and Admin ▾ not, "← Natrag" to the tab, the editor's ✎ on it."""
+    as a member's, a member page (since 28.11.2026 in the member view, the
+    member's bar: no admin menu), the nav's Dvoranski treninzi lit (their
+    Karton until build 2), "← Natrag" to the tab, the editor's ✎ on it."""
     coach = make_user("coach@test.local", is_trainer=True, plans=())
     cs = client_for("coach@test.local")
     r = cs.post("/dvoranski/trening", data={"day": config.today().isoformat()}, follow_redirects=False)
@@ -2265,8 +2266,7 @@ def test_staffs_own_training_lights_their_tab():
     assert 'id="copyToggle"' in page and '<a href="/dvoranski" class="on">Dvoranski treninzi</a>' in page
     assert '<a href="/karton" class="">Karton</a>' in page
     assert '<a class="act act-quiet" href="/dvoranski"><span class="ed t" data-copy="player.top.back"' in page
-    assert re.search(r'id="adminBtn" class="navbtn menu-btn"\s', page)               # not .on
-    assert 'href="/clanarine" role="menuitem" aria-current' not in page
+    assert 'class="navbtn menu-btn' not in page and 'role="menuitem" aria-current' not in page   # no admin menu
 
 
 # ---------- in a browser, on a phone ----------

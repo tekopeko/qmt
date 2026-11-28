@@ -248,15 +248,18 @@ def test_staff_have_a_karton_of_their_own():
     assert '<p class="ms-val">82,5 kg</p>' in page and "Staro koljeno." in page
     assert "Nadolazeći termini" not in karton_only(page) and '<section class="upitnik' not in page
 
-    # a client's, /karton/<id>: the trainer opens it again (the Karton tab's
-    # search is his way in, 27.11.2026), as the owner does, and its crumb
-    # leads both back to the Karton tab, whose tab is on there
+    # a client's, /karton/<id>: the trainer opens it again (27.11.2026), as
+    # the owner does; since 28.11.2026 an admin page, under the admin's
+    # Članovi → Kartoni (lit there, its item current), its crumb leading both
+    # there (the Karton tab, its search, on 27.11.2026)
     for c in (ca, co):
         r = c.get(f"/karton/{ivan}")
         assert r.status_code == 200
         seen = r.text
-        assert '<nav class="crumbs" aria-label="Putanja"><a href="/karton">Karton</a><span class="sep">/</span>' in seen
-        assert '<a href="/karton" class="on">Karton</a>' in seen
+        assert '<nav class="crumbs" aria-label="Putanja"><a href="/kartoni">Kartoni</a><span class="sep">/</span>' in seen
+        assert 'id="clanoviBtn" class="navbtn menu-btn on"' in seen
+        assert re.findall(r'<a href="([^"]+)" role="menuitem" aria-current="page">', seen) == ["/kartoni"]
+        assert '<a href="/karton" class="on">Karton</a>' not in seen
         assert 'id="termini-h"' in seen and "Upitnik još nije ispunjen." in seen and 'id="trening-novi"' not in seen
     own = client_for("ivan@test.local").get("/karton").text                  # and his own
     assert 'id="termini-h"' in own and "Ispuni upitnik" in own and "rezerviraj prvi" in own

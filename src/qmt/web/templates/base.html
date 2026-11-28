@@ -145,12 +145,14 @@
     .avatar.on { border-color: #fff; }
     /* a red ring on a red circle reads as damage — the avatar focuses in white */
     .avatar:focus-visible { outline-color: #fff; }
-    /* ===== the topbar's menus: one component (26.10.2026), two menus =====
-       The account menu behind the avatar and, for the trainer and the owner,
-       Admin ▾ among the tabs. The button in a .menu-wrap opens the panel its
-       aria-controls names at a click (aria-expanded), one at a time; a click
-       anywhere else or Escape closes it (the script at the bottom). The
-       YouTube pattern: full-bleed rows that all start on the same icon gutter. */
+    /* ===== the topbar's menus: one component (26.10.2026) =====
+       The account menu behind the avatar and, in a staff account's admin
+       view (28.11.2026), the admin bar's three tabs, Članovi, Treninzi and
+       Sadržaj (Admin ▾ from 26.10.2026 until then). The button in a
+       .menu-wrap opens the panel its aria-controls names at a click
+       (aria-expanded), one at a time; a click anywhere else or Escape closes
+       it (the script at the bottom). The YouTube pattern: full-bleed rows
+       that all start on the same icon gutter. */
     .menu-wrap { position: relative; flex: none; }
     .menu {
       display: none; position: absolute; top: calc(100% + 9px); z-index: 60;
@@ -199,11 +201,12 @@
     @media (max-width: 900px) {
       .user-menu .who span.mail { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
     }
-    /* Admin ▾'s menu: under its tab, left-aligned to it (the script moves it
-       in where the window's edge is nearer than the menu is wide), as wide
-       as its longest row. The page that is open says so: --accent's inset
-       bar on its row's left edge (a full-bleed row has no corner to curve
-       it) and the label in bold. In the ☰ drawer its items are rows (below). */
+    /* the admin bar's menus (Admin ▾'s until 28.11.2026): each under its
+       tab, left-aligned to it (the script moves it in where the window's edge
+       is nearer than the menu is wide), as wide as its longest row. The page
+       that is open says so: --accent's inset bar on its row's left edge (a
+       full-bleed row has no corner to curve it) and the label in bold. In
+       the ☰ drawer its items are rows (below). */
     .admin-menu { left: 0; width: max-content; }
     .admin-menu a[aria-current="page"] { font-weight: 700; box-shadow: inset 3px 0 0 var(--accent); }
     .brand .mark { height: 36px; width: 36px; border-radius: 50%; display: block; flex: none; }
@@ -224,8 +227,9 @@
     .nav { display: flex; gap: 2px; align-items: center; flex-wrap: nowrap; }
     /* .nav-burger sits OUTSIDE .nav (it toggles it), so it must be named here
        explicitly or it falls back to the red default-button style. A tab is
-       a link right in .nav (> a: Admin ▾'s items are links further in, the
-       rows of its menu) or a .navbtn (Admin ▾ itself). */
+       a link right in .nav (> a: a menu's items are links further in, the
+       rows of its menu) or a .navbtn (an admin tab's menu button, and the
+       owner's Statistika, a link in a group of its own). */
     .nav > a, .nav .navbtn, .nav-burger {
       color: #cfcfcc; text-decoration: none; font: 600 .88rem var(--font-body);
       padding: 8px 13px; border: none; background: none; cursor: pointer;
@@ -234,13 +238,13 @@
       white-space: nowrap; flex: none;
     }
     .nav > a:hover, .nav .navbtn:hover, .nav-burger:hover { color: #fff; background: rgba(255,255,255,.09); transform: none; }
-    /* the page that is open; Admin ▾ also while its menu is */
+    /* the page that is open; an admin tab also while its menu is */
     .nav > a.on, .nav .navbtn.on, .nav .menu-btn[aria-expanded="true"] { color: #fff; background: rgba(255,255,255,.13); }
     .nav > a, .nav .navbtn { border-radius: 999px; }
-    /* Admin ▾: the caret is part of its label */
+    /* an admin tab: the caret is part of its label */
     .nav .menu-btn { gap: 5px; }
-    /* the captions of staff's two groups, "Kao član" and "Admin": the ☰
-       drawer's only (below) */
+    /* the captions of the admin bar's groups, Članovi, Treninzi and
+       Sadržaj: the ☰ drawer's only (below) */
     .nav-cap { display: none; }
     .nav a.cta { background: var(--accent-fill); color: #fff; font-weight: 700; margin-left: 6px; border-radius: 999px; }
     .nav a.cta:hover { background: var(--accent-fill-hover); }
@@ -271,9 +275,11 @@
        it: measured for the owner (the widest bar) at 901–1280px, both
        themes, every tab on its line inside the pill. Since 27.11.2026 a bar
        has seven tab links (Dvoranski treninzi joined the member's row: a
-       member with a gym plan and an online plan, and staff, whose are seven
-       and Admin ▾): it shows from 960px (the drawer below, the rules after
-       Step 2), tight here. */
+       member with a gym plan and an online plan; staff's seven and Admin ▾
+       until 28.11.2026, since then a staff account's member view, seven):
+       it shows from 960px (the drawer below, the rules after Step 2), tight
+       here. The admin view's bar, three menus and Statistika, needs none of
+       it. */
     @media (min-width: 960px) {
       .nav:has(> a:nth-of-type(7)) > a { padding: 8px 10px; font-size: .84rem; }
     }
@@ -295,9 +301,9 @@
         border-radius: 22px; border: 1px solid rgba(255, 255, 255, .09);
         box-shadow: 0 16px 28px rgba(0, 0, 0, .45);
         backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-        /* staff's drawer is up to twelve rows and two captions: on a short
-           phone it scrolls inside itself (the bar is sticky, so a drawer
-           taller than the window would never show its last rows) */
+        /* the admin bar's drawer is up to fourteen rows and three captions:
+           on a short phone it scrolls inside itself (the bar is sticky, so a
+           drawer taller than the window would never show its last rows) */
         max-height: calc(100vh - 96px); max-height: calc(100dvh - 96px);
         overflow-y: auto; overscroll-behavior: contain;
       }
@@ -311,11 +317,14 @@
       }
       .nav form { width: 100%; }
       .nav a.cta, .nav a.dark { margin-left: 0; justify-content: center; }
-      /* Staff's drawer is two groups (26.10.2026), each under a small
-         caption, a hairline between them: "Kao član", the member's tabs,
-         then "Admin", Admin ▾'s items as rows like theirs (no icons, the
-         current one .on's look); the tab itself is no row here. A client's
-         drawer is the one plain list, no caption. */
+      /* The admin bar's drawer (28.11.2026) is its groups, each under a
+         small caption, a hairline before the next (.nav-admin): Članovi,
+         Treninzi and Sadržaj, each menu's items as rows like a tab's (no
+         icons, the current one .on's look; the tab itself is no row here),
+         then the owner's Statistika. A member's drawer, and a staff
+         account's in its member view, is the one plain list, no caption
+         (staff's two groups, "Kao član" and "Admin", from 26.10.2026 until
+         then). */
       .nav-cap { display: block; padding: 10px 14px 4px; color: #9a9aa0;
                  font: 700 .72rem var(--font-display); text-transform: uppercase; letter-spacing: .1em; }
       .nav .navbtn.menu-btn { display: none; }
@@ -332,16 +341,19 @@
     /* Step 2 for a bar of seven tab links (27.11.2026: Dvoranski treninzi
        joined the member's row; the template marks its nav and its ☰ .nav-7):
        seven do not fit in the pill below 936px. Measured for the owner's
-       bar, the widest (seven tabs and Admin ▾), at every width from 901 to
-       1280px in both themes, tight as above: at 901–935px the avatar leaves
-       the pill (and the page scrolls sideways up to 914px), from 936px every
-       tab is on its line inside the pill, the brand "QMT"
+       bar, the widest then (seven tabs and Admin ▾), at every width from 901
+       to 1280px in both themes, tight as above: at 901–935px the avatar
+       leaves the pill (and the page scrolls sideways up to 914px), from 936px
+       every tab is on its line inside the pill, the brand "QMT"
        (tests/test_nav.py pins the number), with 0.6px to spare there. So the fold
        is at 960px, 24px on for another browser's letter widths (Fable's review):
        up to 959px such a bar is the ☰
        drawer, the rules of Step 2 above again for .nav-7 (CSS cannot say
        "≤900px, or ≤959px with seven" in one block: keep the two in step); a
-       bar of six or fewer keeps the drawer at ≤900px. Phones are Step 2's. */
+       bar of six or fewer keeps the drawer at ≤900px. Phones are Step 2's.
+       A bar of seven holds no menu and no caption since 28.11.2026 (the
+       admin view's bar is three menus and Statistika, never seven): Step
+       2's rules for those are not repeated here. */
     @media (min-width: 901px) and (max-width: 959px) {
       .nav-burger.nav-7 { display: inline-flex; }
       .nav.nav-7 {
@@ -361,17 +373,6 @@
         justify-content: flex-start; width: 100%;
       }
       .nav.nav-7 form { width: 100%; }
-      .nav.nav-7 .nav-cap { display: block; padding: 10px 14px 4px; color: #9a9aa0;
-                            font: 700 .72rem var(--font-display); text-transform: uppercase; letter-spacing: .1em; }
-      .nav.nav-7 .navbtn.menu-btn { display: none; }
-      .nav.nav-7 .nav-admin { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, .09); }
-      .nav.nav-7 .menu { display: block; position: static; width: auto; max-width: none; padding: 0;
-                         overflow: visible; background: none; border: none; border-radius: 0; box-shadow: none; }
-      .nav.nav-7 .menu a { color: #cfcfcc; font-weight: 600; }
-      .nav.nav-7 .menu a:hover { color: #fff; background: rgba(255,255,255,.09); }
-      .nav.nav-7 .menu a:focus-visible { background: none; outline: 2px solid var(--accent); outline-offset: 2px; }
-      .nav.nav-7 .menu a[aria-current="page"] { color: #fff; background: rgba(255,255,255,.13); font-weight: 600; box-shadow: none; }
-      .nav.nav-7 .menu .mi { display: none; }
     }
 
     /* ===== "Gledaš kao: …" (26.11.2026, staff acting as a member: while a
@@ -1236,10 +1237,11 @@
   <div class="brand-slot"><a href="{{ bar_href('/') }}" class="brand"><img class="mark" src="/static/logo.png" alt="QMT logo">
      <span class="full">Quality Movement Training</span><span class="short">QMT</span></a></div>
   {# a bar of seven tab links (27.11.2026: Dvoranski treninzi and Online
-     treninzi both, beside the five every member has) says so, its nav and
-     its ☰: it is the ☰ drawer up to the width where seven fit (the CSS
-     above, Step 2 for .nav-7) #}
-  {% set seven = user and 5 + (1 if bar_gym else 0) + (1 if bar_online else 0) >= 7 %}
+     treninzi both, beside the five every member has; a staff account's
+     member view, since 28.11.2026) says so, its nav and its ☰: it is the ☰
+     drawer up to the width where seven fit (the CSS above, Step 2 for
+     .nav-7). The admin view's bar is three menus and Statistika: never #}
+  {% set seven = user and not bar_admin and 5 + (1 if bar_gym else 0) + (1 if bar_online else 0) >= 7 %}
   {% if not brand_only %}
   <button type="button" class="navbtn nav-burger{% if seven %} nav-7{% endif %}" onclick="qmtToggleNav()"
           aria-label="Izbornik" aria-expanded="false" aria-controls="mainNav">☰</button>
@@ -1248,30 +1250,120 @@
   <nav class="nav{% if seven %} nav-7{% endif %}" id="mainNav">
     {% if user %}
       {% set path = request.url.path %}
-      {# Staff, the trainer and the owner, get a member's tabs and Admin ▾
-         after them (26.10.2026, the owner: the tabs he shares with the
-         members in one group, the ones that are there because he is an admin
-         in another). Their member row is a client's, Karton too since
-         24.11.2026 (the owner: "Lets show the Karton tab in the Admin view as
-         well so that Amir can check out the changes we made there"): staff
-         have a karton of their own, /karton, and their tab is .on there and,
-         since 27.11.2026, on a client's karton (/karton/<id>, which the
-         tab's search opens, its crumb leading back), Admin ▾ not; /upitnik
-         lights its own item of Admin ▾. Moja članarina is the members'
-         page, which they edit in place: everyone has the tab, nobody an
-         account-menu item for it. #}
       {% set staff = bar_staff %}{# staff by rule (26.11.2026): the trainer or the owner, app._is_staff #}
-      {# the library of exercises is under /treninzi but Admin ▾'s (30.10.2026):
-         its pages light Vježbe there, not the Online treninzi tab #}
+      {# the library of exercises is under /treninzi but the admin's (30.10.2026):
+         its pages light Vježbe, never the Online treninzi tab #}
       {% set at_vjezbe = staff and path.startswith('/treninzi/vjezbe') %}
-      {% if staff %}<p class="nav-cap">Kao član</p>{% endif %}
+      {% if bar_admin %}
+      {# The admin view's bar (28.11.2026, build 2 of
+         roadmap/2026-11-28-admin-view-plan.md; the owner: "separate all admin
+         operations in the admin menu ... so that I and Amir have only admin
+         related tabs"; app._ctx's bar_view, which follows the page): three
+         tabs, each a menu in the account menu's component (.menu, one script
+         for every menu, one open at a time), and the owner's Statistika, a
+         plain tab. A tab is .on while one of its pages is open, that item
+         aria-current: Članovi (Kartoni, and the read-only /karton/<id>, its
+         crumb "Kartoni"; Trenutne članarine; Gledaj kao član, its record
+         /kao/zapisi too; the owner's Korisnici), Treninzi (Raspored, and a
+         termin's roster, /admin/session/…, opened from the week; Termini,
+         /admin's other pages; Dvoranski treninzi, /dvoranski/clanovi and the
+         templates' pages; Online treninzi, /programi and the programme's and
+         a day's editors; Vježbe, the library's pages), Sadržaj (Tekstovi,
+         Početna, Upitnik, Vodič). In a tab's view (kao_tab: this bar over the
+         member's page) his /karton… lights Članovi → Kartoni, his
+         /dvoranski… Treninzi → Dvoranski treninzi, every link the exit
+         (bar_href). In the ☰ drawer each menu is its caption over its items as
+         rows (the tab itself no row), a hairline before the next group
+         (.nav-admin), Statistika last. No item opens its page in edit mode. #}
+      {% set at_kartoni = path == '/kartoni' or (path.startswith('/karton/') and path[8:].isdigit()) or (kao_tab and path.startswith('/karton')) %}
+      {% set at_clanarine = path.startswith('/clanarine') %}
+      {% set at_kao = path == '/kao' or path.startswith('/kao/') %}
+      {% set at_korisnici = bar_owner and path.startswith('/korisnici') %}
+      {% set at_raspored = path.startswith('/raspored') or path.startswith('/admin/session/') %}
+      {% set at_termini = path.startswith('/admin') and not at_raspored %}
+      {% set at_dvoranski = path.startswith('/dvoranski/clanovi') or path.startswith('/dvoranski/predlosci') or (kao_tab and path.startswith('/dvoranski')) %}
+      {% set at_online = path == '/programi' or (path.startswith('/treninzi/') and path.endswith('/uredi')) %}
+      {% set at_tekstovi = path.startswith('/tekstovi') %}
+      {% set at_pocetna = path == '/' %}
+      {% set at_upitnik = path.startswith('/upitnik') %}
+      {% set at_vodic = path.startswith('/vodic') %}
+      <div class="menu-wrap">
+        <p class="nav-cap">Članovi</p>
+        <button type="button" id="clanoviBtn" class="navbtn menu-btn{% if at_kartoni or at_clanarine or at_kao or at_korisnici %} on{% endif %}"
+                aria-haspopup="true" aria-expanded="false" aria-controls="clanoviMenu">Članovi <span class="caret" aria-hidden="true">▾</span></button>
+        <div class="menu admin-menu" id="clanoviMenu" role="menu" aria-labelledby="clanoviBtn">
+          <a href="{{ bar_href('/kartoni') }}" role="menuitem"{% if at_kartoni %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg><span>Kartoni</span>
+          </a>
+          <a href="{{ bar_href('/clanarine') }}" role="menuitem"{% if at_clanarine %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 14.5h4"/></svg><span>Trenutne članarine</span>
+          </a>
+          <a href="{{ bar_href('/kao') }}" role="menuitem"{% if at_kao %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg><span>Gledaj kao član</span>
+          </a>
+          {% if bar_owner %}
+          <a href="{{ bar_href('/korisnici') }}" role="menuitem"{% if at_korisnici %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8.5" r="3.3"/><path d="M3 19.5a6 6 0 0 1 12 0M15.5 5.4a3.2 3.2 0 0 1 0 6.2M17.3 14a5.8 5.8 0 0 1 3.7 5.5"/></svg><span>Korisnici</span>
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="menu-wrap nav-admin">
+        <p class="nav-cap">Treninzi</p>
+        <button type="button" id="treninziBtn" class="navbtn menu-btn{% if at_raspored or at_termini or at_dvoranski or at_online or at_vjezbe %} on{% endif %}"
+                aria-haspopup="true" aria-expanded="false" aria-controls="treninziMenu">Treninzi <span class="caret" aria-hidden="true">▾</span></button>
+        <div class="menu admin-menu" id="treninziMenu" role="menu" aria-labelledby="treninziBtn">
+          <a href="{{ bar_href('/raspored') }}" role="menuitem"{% if at_raspored %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>Raspored</span>
+          </a>
+          <a href="{{ bar_href('/admin') }}" role="menuitem"{% if at_termini %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span>Termini</span>
+          </a>
+          <a href="{{ bar_href('/dvoranski/clanovi') }}" role="menuitem"{% if at_dvoranski %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="14.5" r="6"/><path d="M8.6 9.5 7.6 6.2a1.6 1.6 0 0 1 1.5-2.1h5.8a1.6 1.6 0 0 1 1.5 2.1l-1 3.3"/></svg><span>Dvoranski treninzi</span>
+          </a>
+          <a href="{{ bar_href('/programi') }}" role="menuitem"{% if at_online %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12.5" rx="2"/><path d="M10.5 8.3v4.9l4-2.45zM8.5 20.5h7"/></svg><span>Online treninzi</span>
+          </a>
+          <a href="{{ bar_href('/treninzi/vjezbe') }}" role="menuitem"{% if at_vjezbe %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="3.5" height="10" rx="1.2"/><rect x="16.5" y="7" width="3.5" height="10" rx="1.2"/><path d="M7.5 12h9M2 12h2M20 12h2"/></svg><span>Vježbe</span>
+          </a>
+        </div>
+      </div>
+      <div class="menu-wrap nav-admin">
+        <p class="nav-cap">Sadržaj</p>
+        <button type="button" id="sadrzajBtn" class="navbtn menu-btn{% if at_tekstovi or at_pocetna or at_upitnik or at_vodic %} on{% endif %}"
+                aria-haspopup="true" aria-expanded="false" aria-controls="sadrzajMenu">Sadržaj <span class="caret" aria-hidden="true">▾</span></button>
+        <div class="menu admin-menu" id="sadrzajMenu" role="menu" aria-labelledby="sadrzajBtn">
+          <a href="{{ bar_href('/tekstovi') }}" role="menuitem"{% if at_tekstovi %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5V5h14v1.5M12 5v14M9 19h6"/></svg><span>Tekstovi</span>
+          </a>
+          <a href="{{ bar_href('/') }}" role="menuitem"{% if at_pocetna %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.8 12 4.5l8 6.3v8.2a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z"/></svg><span>Početna</span>
+          </a>
+          <a href="{{ bar_href('/upitnik') }}" role="menuitem"{% if at_upitnik %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4.5" width="14" height="17" rx="2.5"/><path d="M9.5 3h5v3h-5zM8.5 11h7M8.5 14.5h7M8.5 18h4"/></svg><span>Upitnik</span>
+          </a>
+          <a href="{{ bar_href('/vodic') }}" role="menuitem"{% if at_vodic %} aria-current="page"{% endif %}>
+            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.8C10 5.3 7.2 4.8 4 5.1v13.2c3.2-.3 6 .2 8 1.7 2-1.5 4.8-2 8-1.7V5.1c-3.2-.3-6 .2-8 1.7zM12 6.8V20"/></svg><span>Vodič</span>
+          </a>
+        </div>
+      </div>
+      {# Statistika, the owner's, a plain tab: a .navbtn link in a group of its own (the drawer's hairline before it) #}
+      {% if bar_owner %}<div class="menu-wrap nav-admin"><a href="{{ bar_href('/statistika') }}" class="navbtn{% if path.startswith('/statistika') %} on{% endif %}">Statistika</a></div>{% endif %}
+      {% else %}
+      {# A member's row, and since 28.11.2026 a staff account's in its member
+         view (a member's tabs: Karton, staff's own karton; Dvoranski
+         treninzi and Online treninzi always; no admin tab). Moja članarina is
+         the members' page, which staff edit in place: everyone has the tab,
+         nobody an account-menu item for it. #}
       <a href="{{ bar_href('/') }}" class="{% if path == '/' %}on{% endif %}">Početna</a>
       <a href="{{ bar_href('/raspored') }}" class="{% if path.startswith('/raspored') %}on{% endif %}">Raspored</a>
-      {# every /karton page, and since 27.11.2026 a client's karton for staff
-         (the search on their Karton tab opens it); a client's /upitnik too,
-         staff's is Admin ▾'s. One's own gym training was under the karton
-         from 26.11.2026 until build 2 of the dvoranski treninzi gave it its
-         own tab (27.11.2026, below) #}
+      {# every /karton page (a client's karton, /karton/<id>, is the admin
+         view's since 28.11.2026: Članovi → Kartoni); a client's /upitnik
+         too, staff's is the admin's (Sadržaj → Upitnik). One's own gym
+         training was under the karton from 26.11.2026 until build 2 of the
+         dvoranski treninzi gave it its own tab (27.11.2026, below) #}
       {% set at_karton = path.startswith('/karton') or (not staff and path.startswith('/upitnik')) %}
       <a href="{{ bar_href('/karton') }}" class="{% if at_karton %}on{% endif %}">Karton</a>
       {# Dvoranski treninzi (27.11.2026; the owner: "I would show the tab
@@ -1284,76 +1376,6 @@
       {% if bar_online %}<a href="{{ bar_href('/treninzi') }}" class="{% if path.startswith('/treninzi') and not at_vjezbe %}on{% endif %}">Online treninzi</a>{% endif %}
       <a href="{{ bar_href('/moja-clanarina') }}" class="{% if path.startswith('/moja-clanarina') %}on{% endif %}">Moja članarina</a>
       <a href="{{ bar_href('/prehrana') }}" class="{% if path.startswith('/prehrana') %}on{% endif %}">Prehrana</a>
-      {% if staff %}
-      {# Admin ▾, the account menu's component (.menu): Gledaj kao član
-         (26.11.2026: a member's account as he has it, /kao; its record,
-         /kao/zapisi, lights it too), Termini, Trenutne
-         članarine, Upitnik (in normal mode, as every page opens: the ✎ pill
-         puts it in edit mode), Vježbe (the library of exercises, 30.10.2026),
-         Tekstovi (every text of the app on one page, 25.11.2026: /tekstovi)
-         and the owner's Korisnici and Statistika. The
-         tab is .on while one of its pages is open, that item aria-current.
-         In the ☰ drawer its items are rows under the "Admin" caption, and
-         the tab is no row. #}
-      {% set at_kao = path == '/kao' or path.startswith('/kao/') %}
-      {% set at_termini = path.startswith('/admin') %}
-      {# a client's karton, /karton/<id>, lights no item since 27.11.2026: it is
-         under the Karton tab, whose search opens it (Trenutne članarine from
-         24.11.2026, Korisnici for some hours that day) #}
-      {% set at_clanarine = path.startswith('/clanarine') %}
-      {% set at_upitnik = path.startswith('/upitnik') %}
-      {% set at_tekstovi = path.startswith('/tekstovi') %}
-      {% set at_korisnici = bar_owner and path.startswith('/korisnici') %}
-      {% set at_statistika = bar_owner and path.startswith('/statistika') %}
-      <div class="menu-wrap nav-admin">
-        <p class="nav-cap">Admin</p>
-        <button type="button" id="adminBtn" class="navbtn menu-btn{% if at_kao or at_termini or at_clanarine or at_upitnik or at_vjezbe or at_tekstovi or at_korisnici or at_statistika %} on{% endif %}"
-                aria-haspopup="true" aria-expanded="false" aria-controls="adminMenu">Admin <span class="caret" aria-hidden="true">▾</span></button>
-        <div class="menu admin-menu" id="adminMenu" role="menu" aria-labelledby="adminBtn">
-          <a href="{{ bar_href('/kao') }}" role="menuitem"{% if at_kao %} aria-current="page"{% endif %}>
-            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>
-            </svg><span>Gledaj kao član</span>
-          </a>
-          <a href="{{ bar_href('/admin') }}" role="menuitem"{% if at_termini %} aria-current="page"{% endif %}>
-            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>
-            </svg><span>Termini</span>
-          </a>
-          <a href="{{ bar_href('/clanarine') }}" role="menuitem"{% if at_clanarine %} aria-current="page"{% endif %}>
-            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 14.5h4"/>
-            </svg><span>Trenutne članarine</span>
-          </a>
-          <a href="{{ bar_href('/upitnik') }}" role="menuitem"{% if at_upitnik %} aria-current="page"{% endif %}>
-            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="5" y="4.5" width="14" height="17" rx="2.5"/><path d="M9.5 3h5v3h-5zM8.5 11h7M8.5 14.5h7M8.5 18h4"/>
-            </svg><span>Upitnik</span>
-          </a>
-          <a href="{{ bar_href('/treninzi/vjezbe') }}" role="menuitem"{% if at_vjezbe %} aria-current="page"{% endif %}>
-            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="4" y="7" width="3.5" height="10" rx="1.2"/><rect x="16.5" y="7" width="3.5" height="10" rx="1.2"/><path d="M7.5 12h9M2 12h2M20 12h2"/>
-            </svg><span>Vježbe</span>
-          </a>
-          <a href="{{ bar_href('/tekstovi') }}" role="menuitem"{% if at_tekstovi %} aria-current="page"{% endif %}>
-            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 6.5V5h14v1.5M12 5v14M9 19h6"/>
-            </svg><span>Tekstovi</span>
-          </a>
-          {% if bar_owner %}
-          <a href="{{ bar_href('/korisnici') }}" role="menuitem"{% if at_korisnici %} aria-current="page"{% endif %}>
-            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="9" cy="8.5" r="3.3"/><path d="M3 19.5a6 6 0 0 1 12 0M15.5 5.4a3.2 3.2 0 0 1 0 6.2M17.3 14a5.8 5.8 0 0 1 3.7 5.5"/>
-            </svg><span>Korisnici</span>
-          </a>
-          <a href="{{ bar_href('/statistika') }}" role="menuitem"{% if at_statistika %} aria-current="page"{% endif %}>
-            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 20h16M7.5 16.5v-5M12 16.5V7M16.5 16.5v-8"/>
-            </svg><span>Statistika</span>
-          </a>
-          {% endif %}
-        </div>
-      </div>
       {% endif %}
     {% else %}
       {# The guest's two: login in red, contact in the pill's dark glass. The
@@ -1388,6 +1410,23 @@
           <circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>
         </svg><span>Profil</span>
       </a>
+      {%- if bar_staff and not kao_tab %}
+      {# the switch between a staff account's two views (28.11.2026, build 2
+         of the admin view: POST /pogled, landing on the front page, which
+         both share): the other view's name. Not in a tab's view, whose bar
+         is the admin's and every link of it the exit: a form sent from a
+         page drawn there would end the view and run nothing. Staff's own
+         chrome, no slot; its tags trim the lines they stand on, so a
+         member's menu is byte for byte as before #}
+      <form method="post" action="/pogled">
+        <input type="hidden" name="view" value="{% if bar_admin %}member{% else %}admin{% endif %}">
+        <button type="submit" role="menuitem">
+          <svg class="mi" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7.5 4 4 7.5 7.5 11M4 7.5h12.5M16.5 13l3.5 3.5-3.5 3.5M20 16.5H7.5"/>
+          </svg><span>{% if bar_admin %}Pogled člana{% else %}Admin pogled{% endif %}</span>
+        </button>
+      </form>
+      {%- endif %}
       {# one row, no submenu: the click flips the theme and seeing it flip is the feedback #}
       <button type="button" onclick="qmtToggleTheme()" role="menuitem" aria-label="Promijeni temu">
         <svg class="mi mi-moon" viewBox="0 0 24 24" aria-hidden="true">
@@ -2113,7 +2152,7 @@
     if (e.target.closest("a")) this.classList.remove("open");
   });
 
-  // ---- the topbar's menus (.menu: the account menu, staff's Admin ▾) ----
+  // ---- the topbar's menus (.menu: the account menu, the admin bar's three) ----
   // The button in a .menu-wrap opens the panel its aria-controls names at a
   // click and closes it at the next; one menu is open at a time, and the
   // account menu closes the ☰ drawer (both hang off the topbar). A click
@@ -2128,9 +2167,10 @@
     qmtMenuFit(m);
   }
   // An open dropdown stays inside the window: hung from its button's edge,
-  // it moves in by what it lacks, 12px off the window's edge (Admin ▾, the
-  // last tab, has less room on its right than its menu is wide on a
-  // laptop). In the ☰ drawer Admin's items are rows (static): never moved.
+  // it moves in by what it lacks, 12px off the window's edge (an admin tab
+  // near the pill's right end has less room on its right than its menu is
+  // wide on a laptop). In the ☰ drawer a menu's items are rows (static):
+  // never moved.
   function qmtMenuFit(m) {
     m.style.transform = "";
     if (!m.classList.contains("open") || getComputedStyle(m).position !== "absolute") return;

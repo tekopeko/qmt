@@ -3,7 +3,39 @@
 {% block title %}Online treninzi — QMT{% endblock %}
 {% block content %}
 <h1>{{ c.t("treninzi.head.title") }}</h1>
-{{ c.opt("treninzi.head.lead", "p", ' class="hint"') }}
+{% if staff_groups %}
+{#- staff's /treninzi (28.11.2026, build 2 of roadmap/2026-11-28-admin-view-plan.md; the table is the
+   admin's Treninzi → Online treninzi, /programi): the member's list, every online programme, by
+   razina in LEVELS' order, each under its caption (a razina with none says so), within it by type
+   as a member's list is (the type's caption a level under the razina's, .dx-cap); the lead staff's
+   own, its last four words the way to the table. Staff's own chrome: no slot. #}
+<p class="hint">Svi online programi, po razini. Uređuješ ih u adminu: <a class="tlink" href="/programi">Treninzi → Online treninzi</a>.</p>
+<div style="max-width:640px;">
+  {% for lkey, llabel, types in staff_groups %}
+  <section aria-labelledby="razina-{{ lkey }}"{% if not loop.first %} style="margin-top:34px;"{% endif %}>
+    <h2 id="razina-{{ lkey }}" style="font-size:1.05rem;">{{ llabel }}</h2>
+    {% for key, label, rows in types %}
+    {% if label %}<h3 class="dx-cap"{% if loop.first %} style="margin-top:12px;"{% endif %}>{{ label }}</h3>{% endif %}
+    <div style="display:flex; flex-direction:column; gap:12px;{% if not label %} margin-top:26px;{% endif %}">
+      {% for p in rows %}
+      <a class="card" href="/treninzi/{{ p.id }}"
+         style="padding:16px 20px; text-decoration:none; display:flex; gap:16px; align-items:center;">
+        <div style="flex:1; min-width:0;">
+          <strong>{{ p.title }}</strong>
+          {% set n = p.days|length %}
+          <div class="hint">{{ n }} {{ plural(n, "trening", "treninga", "treninga") }}{% if p.intro %} · {{ p.intro | truncate(60) }}{% endif %}</div>
+        </div>
+        <span style="color:var(--accent); font-weight:700;">→</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="hint" style="margin-top:8px;">Nema programa za ovu razinu.</p>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</div>
+{% else %}{{ c.opt("treninzi.head.lead", "p", ' class="hint"') }}
 
 {% if not has_plan %}
 {% if copy_on("treninzi.no_plan.title") or copy_on("treninzi.no_plan.text") %}
@@ -61,5 +93,5 @@
   {% endif %}
   {% endfor %}
 </div>
-{% endif %}
+{% endif %}{% endif %}
 {% endblock %}

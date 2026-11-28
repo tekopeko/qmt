@@ -326,20 +326,112 @@ def _pop_feedback_prompt(request: Request, user):
             "when": f"{WEEKDAYS_SHORT[latest.weekday()]} {latest:%-d.%-m. %H:%M}"}
 
 
+# ---------- the two views of a staff account (28.11.2026) ----------
+#
+# Build 2 of roadmap/2026-11-28-admin-view-plan.md; the owner: "What do you
+# think of an option where we have a button which switches from his admin
+# and his member view? Then he doesnt need to have 2 different accounts?" A
+# staff account (_is_staff) has a view, "admin" or "member", kept in its
+# session ("view"); a member's account has none. After a login it is the
+# admin view; the avatar's menu switches it (POST /pogled); and the bar
+# follows the page: a page of either side asked for by a GET (a link, a
+# typed address, a bookmark) takes the view along, a shared page keeps it
+# (_ctx). Never a write, a fetch or an asset, and never while staff act as
+# a member: in the whole app the bar is the member's, in a tab's view the
+# admin's. The view decides which bar base.html draws and how /raspored
+# renders for staff (calendar.html); nothing else: every route keeps who
+# may open it.
+VIEWS = ("admin", "member")
+
+# Every GET route of the app by its path, the first pattern that matches
+# the whole of it (_page_kind): "admin", staff's side (the admin bar's
+# pages; /upitnik and /vodic are a staff account's to edit, and a member has
+# no view); "member", a member's tabs (his Karton and its addresses, his
+# Dvoranski treninzi and a training's pages, the online list, a programme's,
+# a day's and the player's pages, Moja članarina); "shared", both views'
+# (the front page, Prehrana, the profile, the raspored, the login pages, and
+# what is no page at all: an image, a clip, the service worker, the
+# healthcheck). tests/test_nav.py holds every GET route to one of them.
+_PAGE_KINDS = (
+    ("admin", r"/(admin|clanarine|kao)(/.*)?"),
+    ("admin", r"/(korisnici|statistika|tekstovi|kartoni|programi|upitnik|vodic)"),
+    ("admin", r"/dvoranski/(clanovi|predlosci(/.*)?)"),
+    ("admin", r"/treninzi/vjezbe(/.*)?"),
+    ("admin", r"/treninzi/[0-9]+(/dan/[0-9]+)?/uredi"),           # the programme's and a day's editors
+    ("admin", r"/karton/[0-9]+"),                                  # the read-only karton
+    ("member", r"/(karton|dvoranski|treninzi)(/.*)?"),
+    ("member", r"/(moja-clanarina|cjenik)"),                       # /cjenik: its old address, a redirect
+    ("shared", r"/|/raspored|/prehrana|/nutricionizam|/profil"),
+    ("shared", r"/(login|signup|forgot|reset|auth/verify)"),
+    ("shared", r"/(slika|media)/[^/]+|/sw\.js|/healthz"),          # no page: the view stays
+)
+
+
+def _page_kind(path: str) -> str | None:
+    """Which side a page is on, by its path ("admin", "member", "shared";
+    _PAGE_KINDS), read without its trailing slash; None for a path the app
+    has no GET route for."""
+    p = path.rstrip("/") or "/"
+    return next((kind for kind, pattern in _PAGE_KINDS if re.fullmatch(pattern, p)), None)
+
+
+def _page_asked(request: Request) -> bool:
+    """Whether the page _ctx is drawing was asked for as a page: a GET that
+    is no fetch and no prefetch. A browser's navigation says so
+    (Sec-Fetch-Mode "navigate", which a navigation the service worker hands
+    on keeps: _asks_for_page), a script's fetch says it is none (another
+    mode, a Dest that is no document); a client that sends no Sec-Fetch-* is
+    asking for the page it is drawn (a test client, an older browser)."""
+    if request.method != "GET":
+        return False
+    if "prefetch" in (request.headers.get("sec-purpose", "") + request.headers.get("purpose", "")).lower():
+        return False
+    mode, dest = request.headers.get("sec-fetch-mode"), request.headers.get("sec-fetch-dest")
+    if mode == "navigate":
+        return True
+    if mode or dest:
+        return dest == "document"
+    return True
+
+
+def _staff_view(request: Request, staff: bool, acting, tab: bool) -> str | None:
+    """The view a bar is drawn in: None for a member's or a guest's (and,
+    while staff act as a member in the whole app, the member's); a tab's
+    view's bar is always the admin's (staff's own, over the member's page);
+    else the session's view, after a page asked for (_page_asked) has taken
+    it along to its side (_page_kind: a shared page keeps it). A session
+    with no view of its own (logged in before the views) is the admin's, a
+    login's."""
+    if not staff:
+        return None
+    if tab:
+        return "admin"
+    if acting is None and _page_asked(request):
+        kind = _page_kind(request.url.path)
+        if kind in VIEWS:
+            request.session["view"] = kind
+    view = request.session.get("view")
+    return view if view in VIEWS else "admin"
+
+
 def _ctx(request: Request, user, copy_texts: dict[str, str] | None = None, **extra):
     # while a staff member acts as a member: the bar over every page names
     # the member (kao) and its pages carry his id (base.html: body data-kao)
     acting = _acting(request)
     show_online, show_gym = _has_online(user), _has_gym(user)
     # a tab's view (27.11.2026, the session's as_scope): the page is the
-    # member's, its top bar the staff member's own (his tabs, Admin ▾, his
-    # avatar), every link of it the exit (base.html's bar_href); elsewhere
-    # the bar is the page's user's, as it always was
+    # member's, its top bar the staff member's own (since 28.11.2026 the
+    # admin view's: its three menus, his avatar), every link of it the exit
+    # (base.html's bar_href); elsewhere the bar is the page's user's, as it
+    # always was, a staff account's in its view (bar_view: admin or member)
     tab = acting is not None and "as_scope" in request.session
     bar = acting[0] if tab else user
+    bar_staff = _can_edit_copy(bar)
+    view = _staff_view(request, bar_staff, acting, tab)
     return {"request": request, "user": user, "weekdays_short": WEEKDAYS_SHORT,
             "actor": acting[0] if acting else None, "kao": acting[1] if acting else None,
-            "kao_tab": tab, "bar_user": bar, "bar_staff": _can_edit_copy(bar), "bar_owner": _is_owner(bar),
+            "kao_tab": tab, "bar_user": bar, "bar_staff": bar_staff, "bar_owner": _is_owner(bar),
+            "bar_view": view, "bar_admin": view == "admin",
             "bar_online": _has_online(bar) if tab else show_online,
             "bar_gym": _has_gym(bar) if tab else show_gym,
             "mojimakrosi_url": config.MOJIMAKROSI_URL,
@@ -387,6 +479,14 @@ def login(request: Request, email: str = Form(...), password: str = Form(...),
     for key in _ACTING_KEYS:
         request.session.pop(key, None)
     request.session["user_id"] = u.id
+    # a staff account starts in the admin view (28.11.2026, the owner: "By
+    # default when logging and opening the Admin's account I would put it in
+    # the admin view mode"), landing where every login lands; a member's
+    # account has no view
+    if _is_staff(u):
+        request.session["view"] = "admin"
+    else:
+        request.session.pop("view", None)
     # Owed osvrti are asked for once, on the first page this login renders —
     # the flag only arms the prompt, _pop_feedback_prompt decides if there is
     # anything to ask about. Staff (the trainer, the owner) book no termini.
@@ -451,6 +551,23 @@ def logout(request: Request):
     request.session.clear()
     # the shop window, not the door back in — logging out is not a prelude to
     # logging in again
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/pogled")
+def pogled(request: Request, view: str = Form("")):
+    """The switch between a staff account's two views (28.11.2026, the
+    avatar's menu: "Pogled člana" in the admin view, "Admin pogled" in the
+    member view): `view` the one to be in, landing on the front page, which
+    both share (the owner: "The landing home page should exist in both
+    modes"); a view that is none changes nothing. A staff route (a member
+    403, a guest to the login; while staff act as a member, refused as he
+    is)."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    if view in VIEWS:
+        request.session["view"] = view
     return RedirectResponse("/", status_code=303)
 
 
@@ -1868,10 +1985,11 @@ ACTING_REFUSED = "U račun trenera ili vlasnika se ne ulazi."
 # the staff member's own, says so once (its slash form his)
 ACTING_LEFT = "Izašao/la si iz pregleda člana."
 # a tab's view (27.11.2026): the member's two areas, every address under them
-# his, but these, which are staff's (the two searches, the templates; and the
+# his, but these, which are staff's (the two entries, the templates, since
+# 28.11.2026 the admin's list of members Dvoranski treninzi; and the
 # read-only view /karton/<id>, _in_member_tab)
 _TAB_AREAS = ("/karton", "/dvoranski")
-_TAB_STAFF = ("/karton/clan", "/dvoranski/clan", "/dvoranski/predlosci")
+_TAB_STAFF = ("/karton/clan", "/dvoranski/clan", "/dvoranski/clanovi", "/dvoranski/predlosci")
 
 
 def _in_member_tab(path: str) -> bool:
@@ -1879,9 +1997,10 @@ def _in_member_tab(path: str) -> bool:
     member's: his Karton and his Dvoranski treninzi, every address under
     them (his forms, his trainings, their writes), and /media (his files,
     his exercises' clips); not the staff routes under those two, the
-    searches (/karton/clan, /dvoranski/clan), the read-only view of a karton
-    (/karton/<id>) and the templates (/dvoranski/predlosci…). A path is read
-    without its trailing slash."""
+    entries (/karton/clan, /dvoranski/clan), the read-only view of a karton
+    (/karton/<id>), the admin's list of members (/dvoranski/clanovi) and
+    the templates (/dvoranski/predlosci…). A path is read without its
+    trailing slash."""
     p = path.rstrip("/") or "/"
     if p.startswith("/media/"):
         return True
@@ -2554,14 +2673,10 @@ def _render_karton(request: Request, viewer, subject, own: bool):
     # a staff member's own karton (24.11.2026): his diary (his online passes,
     # his trainings outside a termin), maxes, weight, limitations and photos
     # as a member's; no upitnik card (staff never fill it: POST /upitnik
-    # refuses them) and no termini (they book none)
+    # refuses them) and no termini (they book none). The search for a member
+    # at its top (27.11.2026) went on 28.11.2026 (build 2 of the admin view):
+    # a member's karton is opened from the admin's Članovi → Kartoni
     staff_own = own and _can_edit_copy(subject)
-    # and since 27.11.2026 the search for a member at its top (the way into
-    # his app from 26.11.2026, build 4, until then; since the evening of
-    # 27.11.2026 into a tab's view of him, POST /karton/clan):
-    # _member_find.html over every member /kao lists, in its order
-    find_members = _kao_members() if staff_own else []
-    find_rows = _find_rows(find_members)
     # the slash forms read as the member's (27.11.2026): the texts here are
     # about him, the trainer's view of his karton too
     return templates.TemplateResponse(request, "karton.html", _ctx(
@@ -2587,7 +2702,6 @@ def _render_karton(request: Request, viewer, subject, own: bool):
         karton_path="/karton" if own else f"/karton/{subject.id}",
         # the trainer's view of a member's karton: "Otvori kao član" (26.11.2026)
         can_act=not own and not _can_edit_copy(subject),
-        find_members=find_members, find_rows=find_rows,
         today=config.today(), tz=config.TZ,
     ))
 
@@ -2598,8 +2712,8 @@ def karton_self(request: Request):
     (the owner: "Lets show the Karton tab in the Admin view as well so that
     Amir can check out the changes we made there"; until then a trainer was
     sent to /clanarine). While staff act as a member it is the member's (in
-    a tab's view too: the Karton tab's search, POST /karton/clan, lands
-    here). A client's read-only karton is /karton/{id}, staff's."""
+    a tab's view too: the admin's Kartoni, POST /karton/clan, lands here).
+    A client's read-only karton is /karton/{id}, staff's."""
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
@@ -2608,71 +2722,80 @@ def karton_self(request: Request):
 
 
 PICK_MEMBER = "Odaberi člana s popisa."
+# the admin's two lists of members (28.11.2026, build 2 of the admin view):
+# where a tab's view of a member is entered from, and where its "Izađi"
+# returns (_find_member's `natrag`, the lists' own)
+KARTONI = "/kartoni"
+GYM_MEMBERS = "/dvoranski/clanovi"
 
 
-def _find_rows(members: list[dict]) -> list[list]:
-    """The search for a member's rows (_member_find.html's #kf-json, the
-    Karton tab's and Dvoranski treninzi's, one list: _kao_members), for
-    base.html's combobox: [id, the name (the row's first line), "email ·
-    plans" (its muted second line; "bez članarine" for none; the plans alone
-    for one named by his email), the email (what typing matches besides the
-    name: never the plans; "" for one named by it)]."""
-    rows = []
-    for m in members:
-        email = m["user"].email
-        named = m["name"] != email
-        plans = m["plans"] or "bez članarine"
-        rows.append([m["user"].id, m["name"], f"{email} · {plans}" if named else plans, email if named else ""])
-    return rows
-
-
-def _find_member(request: Request, user, clan: str, tab: str, refused: str):
-    """The two searches' entry (27.11.2026, evening; the owner: "when he
-    enters the karton tab via the search bar, it should be read and write,
-    just like going to Admin->gledaj kao član ... When entered via the
-    karton tab search, I dont want to view the whole app as that user"):
-    `clan`, 1–9 digits (its spaces aside) naming a member (an account that
-    is neither a trainer nor the owner: _kao_members' rule) → a tab's view
-    of him (_enter_member, `tab` both where "Izađi" returns and where it
-    lands: his own page there, every form of his); nothing, junk, an id
-    naming nobody or a staff account → `refused` saying "Odaberi člana s
-    popisa.", nothing entered, no row. `user` is the staff member the route
-    let in (_require_trainer)."""
+def _find_member(request: Request, user, clan: str, natrag: str, kamo: str):
+    """A tab's view's entry (27.11.2026, evening; the owner: "when he enters
+    the karton tab via the search bar, it should be read and write, just
+    like going to Admin->gledaj kao član ... When entered via the karton tab
+    search, I dont want to view the whole app as that user"; since
+    28.11.2026 the admin's lists post it, Kartoni and Dvoranski treninzi,
+    the member tabs' searches gone): `clan`, 1–9 digits (its spaces aside)
+    naming a member (an account that is neither a trainer nor the owner:
+    _kao_members' rule) → a tab's view of him (_enter_member: `natrag`, the
+    list, where "Izađi" returns; `kamo` his tab, where it lands, his own page
+    there, every form of his); nothing, junk, an id naming nobody or a staff
+    account → back to `natrag` saying "Odaberi člana s popisa.", nothing
+    entered, no row. `user` is the staff member the route let in
+    (_require_trainer)."""
     from urllib.parse import quote
 
+    back = _safe_next(natrag)
     raw = clan.strip()
     member = db.get_user(int(raw)) if re.fullmatch(r"[0-9]{1,9}", raw) else None
     if member is None or _can_edit_copy(member):
-        return RedirectResponse(refused + quote(PICK_MEMBER), status_code=303)
-    return _enter_member(request, user, member, tab, tab, tab=True)
+        return RedirectResponse(back + ("&" if "?" in back else "?") + "error=" + quote(PICK_MEMBER), status_code=303)
+    return _enter_member(request, user, member, back, kamo, tab=True)
 
 
-@app.post("/karton/clan")
-def karton_find(request: Request, clan: str = Form("")):
-    """The Karton tab's search (27.11.2026; a GET to his read-only karton
-    until the evening, the owner then: "when he enters the karton tab via
-    the search bar, it should be read and write"): staff's (a member 403,
-    while acting in the whole app too; in a tab's view the guard has ended
-    it first, so the staff member asks). A member picked → a tab's view of
-    him, landing on his /karton (_find_member); refused, back to the Karton
-    tab saying so. Declared before /karton/{user_id}."""
+@app.get("/kartoni", response_class=HTMLResponse)
+def kartoni_page(request: Request):
+    """"Kartoni" (28.11.2026, build 2 of roadmap/2026-11-28-admin-view-plan.md;
+    the admin's Članovi → Kartoni; the owner: "I would remove the search bar
+    and all other admin operations from the Karton and Dvoranski treninzi
+    and Online treninzi into separate admin tabs"): every member, /kao's
+    rows and order (_kao_members) and its look (kao.html), each "Otvori
+    karton →", POST /karton/clan: a tab's view of him, landing on his
+    /karton, "Izađi" back here. Staff's (a member 403, a guest to the
+    login)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    return _find_member(request, user, clan, "/karton", "/karton?error=")
+    return templates.TemplateResponse(request, "kartoni.html", _ctx(request, user, members=_kao_members()))
+
+
+@app.post("/karton/clan")
+def karton_find(request: Request, clan: str = Form(""), natrag: str = Form("")):
+    """A member's karton, read and write (27.11.2026; the Karton tab's search
+    until 28.11.2026, the admin's Kartoni since, its rows posting `natrag`,
+    the list): staff's (a member 403, while acting in the whole app too; in
+    a tab's view the guard has ended it first, so the staff member asks). A
+    member picked → a tab's view of him, landing on his /karton
+    (_find_member), "Izađi" back to `natrag` (Kartoni when none is sent);
+    refused, back there saying so. Declared before /karton/{user_id}."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    return _find_member(request, user, clan, natrag.strip() or KARTONI, "/karton")
 
 
 @app.get("/karton/clan")
 def karton_find_gone(request: Request):
     """The search's GET of 27.11.2026 (it opened a member's read-only
     karton) went with the evening's build: a GET enters nothing, so a page
-    or a link still holding it lands on the Karton tab, where the search
-    is. Staff's (a member 403). Declared before /karton/{user_id}, which
-    would take "clan" for an id."""
+    or a link still holding it lands where the search is now, the admin's
+    Kartoni (28.11.2026; the Karton tab until Fable's review of that build:
+    it no longer holds a search). Staff's (a member 403). Declared before
+    /karton/{user_id}, which would take "clan" for an id."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    return RedirectResponse("/karton", status_code=303)
+    return RedirectResponse(KARTONI, status_code=303)
 
 
 @app.get("/karton/{user_id}", response_class=HTMLResponse)
@@ -2684,7 +2807,9 @@ def karton_client(request: Request, user_id: int):
     opened, not the whole app as his view"), until the same evening's
     build, when the search came to open a tab's view of him instead (POST
     /karton/clan): Korisnici's "Karton" leads here, its "Otvori kao član"
-    the whole app. Staff's in a tab's view too (_in_member_tab)."""
+    the whole app. Staff's in a tab's view too (_in_member_tab). Since
+    28.11.2026 an admin page (_page_kind), under Članovi → Kartoni, its
+    crumb "Kartoni"."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
@@ -3658,11 +3783,11 @@ def dvoranski_page(request: Request):
     treninga.". "Trening izvan termina", the form (POST /dvoranski/trening;
     a refused date's sentence in it): the day, today or before; for staff
     acting as him the day up to GYM_PLAN_DAYS ahead, a time of day and the
-    gym plan it counts against (_gym_plans). Staff's own page (never while
-    acting, never a member's) has the search for a member at its top
-    (_member_find.html, the Karton tab's, POST /dvoranski/clan; its refusal
-    at the page's top, ?trazi=1). The way to the karton's diary at the
-    page's foot."""
+    gym plan it counts against (_gym_plans). Staff's own page is their own
+    trainings' as a member's (the search for a member and "Predlošci
+    treninga →" at its top went on 28.11.2026 to the admin's Treninzi →
+    Dvoranski treninzi, /dvoranski/clanovi). The way to the karton's diary
+    at the page's foot."""
     from urllib.parse import quote
 
     user = current_user(request)
@@ -3706,15 +3831,12 @@ def dvoranski_page(request: Request):
             if nxt is not None:
                 at = nxt.starts_at.astimezone(config.TZ)
                 next_text = f"{nxt.title}, {WEEKDAYS_SHORT[at.weekday()]} {at:%-d.%-m.} u {at:%H:%M}"
-    # the search for a member (staff's own page: never while acting, when
-    # the page is the member's, nor a member's), the Karton tab's own
-    find_members = _kao_members() if _can_edit_copy(user) else []
-    error = request.query_params.get("error", "")
-    find_error = request.query_params.get("trazi") == "1" and bool(error)
+    # the page's error is its form's (a refused date); the search for a
+    # member at its top went on 28.11.2026 (build 2 of the admin view) to
+    # the admin's Treninzi → Dvoranski treninzi (/dvoranski/clanovi)
     return templates.TemplateResponse(request, "dvoranski.html", _ctx(
         request, user, has_plan=has_plan, cards=cards, next_text=next_text, gym_hours=config.CANCEL_CUTOFF_HOURS,
-        error="" if find_error else error, find_error=find_error,
-        find_members=find_members, find_rows=_find_rows(find_members),
+        error=request.query_params.get("error", ""),
         first_day=db.FIRST_DAY, today=config.today(),
         # staff acting as the member (28.11.2026): the gate says why to them
         # too; the form takes a day ahead, a time and the gym plan it counts
@@ -3723,19 +3845,37 @@ def dvoranski_page(request: Request):
         last_day=_gym_last_day(staff_view), gym_plans=_gym_plans(user.id) if staff_view and has_plan else []))
 
 
-@app.post("/dvoranski/clan")
-def dvoranski_find(request: Request, clan: str = Form("")):
-    """The search on staff's own Dvoranski treninzi (27.11.2026, evening; the
-    owner: "We need a similar search bar on the top of the 'Dvoranski
-    treninzi' tab where Amir can choose to enter that tab of a specific user
-    and input a training for him"): the Karton tab's (_find_member), a
-    member picked → a tab's view of him, landing on his /dvoranski, "Izađi"
-    back here; refused, back here saying so at the page's top (?trazi=1:
-    the page's own error is its form's). Staff's (a member 403)."""
+@app.get("/dvoranski/clanovi", response_class=HTMLResponse)
+def gym_members_page(request: Request):
+    """"Dvoranski treninzi", the admin's (28.11.2026, build 2 of the admin
+    view: Treninzi → Dvoranski treninzi; the owner: "I would remove the
+    search bar and all other admin operations from the Karton and Dvoranski
+    treninzi ... into separate admin tabs"): "Predlošci treninga →" (the
+    templates' list) and every member, /kao's rows and order (_kao_members)
+    and its look (kao.html), a member with no gym plan too (his tab says why
+    nothing can be added), each "Otvori treninge →", POST /dvoranski/clan: a
+    tab's view of him, landing on his /dvoranski, "Izađi" back here.
+    Staff's (a member 403, a guest to the login)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    return _find_member(request, user, clan, "/dvoranski", "/dvoranski?trazi=1&error=")
+    return templates.TemplateResponse(request, "dvoranski_clanovi.html", _ctx(request, user, members=_kao_members()))
+
+
+@app.post("/dvoranski/clan")
+def dvoranski_find(request: Request, clan: str = Form(""), natrag: str = Form("")):
+    """A member's Dvoranski treninzi, his tab (27.11.2026, evening; the owner:
+    "We need a similar search bar on the top of the 'Dvoranski treninzi' tab
+    where Amir can choose to enter that tab of a specific user and input a
+    training for him"; the search on staff's own tab until 28.11.2026, the
+    admin's Dvoranski treninzi since, its rows posting `natrag`, the list):
+    a member picked → a tab's view of him (_find_member), landing on his
+    /dvoranski, "Izađi" back to `natrag` (the list when none is sent);
+    refused, back there saying so. Staff's (a member 403)."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    return _find_member(request, user, clan, natrag.strip() or GYM_MEMBERS, "/dvoranski")
 
 
 @app.post("/dvoranski/trening")
@@ -4526,51 +4666,80 @@ def _program_or_403(request: Request, program_id: int):
     return user, p
 
 
+def _by_type(programs: list) -> list[tuple[str, str, list]]:
+    """A razina's online programmes as a member's list groups them (since
+    23.11.2026): one group per type that has one, in GOALS' order under its
+    label; one of a type not among them (none can be made: both forms
+    require a type) last, under no label."""
+    groups = [(key, label, [p for p in programs if p.goal == key]) for key, label in upitnik.GOALS.items()]
+    groups = [g for g in groups if g[2]]
+    untyped = [p for p in programs if p.goal not in upitnik.GOALS]
+    if untyped:
+        groups.append(("", "", untyped))
+    return groups
+
+
 @app.get("/treninzi", response_class=HTMLResponse)
 def treninzi(request: Request):
     user = current_user(request)
     if user is None:
         from urllib.parse import quote
         return RedirectResponse(f"/login?next={quote('/treninzi')}", status_code=303)
-    if _is_staff(user):                              # staff's table (the owner's too, whatever his flag)
-        rows = db.all_programs()
-        goal_order = list(upitnik.GOALS)
-        # one section per razina, goals in a fixed order inside each
-        groups = [{"label": label,
-                   "rows": sorted((r for r in rows if r[0].level == level),
-                                  key=lambda r: (goal_order.index(r[0].goal)
-                                                 if r[0].goal in upitnik.GOALS else 99,
-                                                 r[0].title))}
-                  for level, label in upitnik.LEVELS.items()]
-        untagged = [r for r in rows if r[0].level not in upitnik.LEVELS]
-        # a template's empty slots, said beside its count of exercises
-        # (26.11.2026): "0 · 7 praznih mjesta", not "0 prazno!"
-        slots = {pid: f"{n} {plural(n, 'prazno mjesto', 'prazna mjesta', 'praznih mjesta')}"
-                 for pid, n in db.program_slot_counts().items()}
-        # the lead's sentence on dvoranski programmes prints only while one
-        # exists (27.11.2026, build 3: no form makes a new one)
-        return templates.TemplateResponse(request, "treninzi_admin.html", _ctx(
-            request, user, groups=groups, untagged=untagged, slots=slots,
-            levels=upitnik.LEVELS, goals=upitnik.GOALS,
-            has_gym_programs=any(p.venue == "dvorana" for p, *_ in rows)))
+    if _is_staff(user):
+        # staff's (the owner's too, whatever his flag) since 28.11.2026, build
+        # 2 of the admin view: the member's list, not the table (the admin's
+        # Treninzi → Online treninzi, /programi): every online programme, by
+        # razina in LEVELS' order, each under its caption, a razina's by type
+        # as a member's list is (a razina with none says so); a programme of
+        # no razina is no member's, and no list's
+        staff_groups = [(level, label, _by_type(db.programs_for_level(level))) for level, label in upitnik.LEVELS.items()]
+        return templates.TemplateResponse(request, "treninzi.html", _ctx(
+            request, user, staff_groups=staff_groups, groups=[], onboarding=None, has_plan=True, levels=upitnik.LEVELS))
     has_plan = _has_online(user)
     onboarding = db.get_onboarding(user.id) if has_plan else None
     # gates stack: no `online` plan -> only the gate card; with a plan but no
     # upitnik -> only the prompt; then the matched programmes render — the
     # whole online side is automatic, nothing is handed out per client.
-    # Since 23.11.2026 every programme of his razina, whatever its type, one
-    # group per type that has one, in GOALS' order under its label; one of a
-    # type not among them (none can be made: both forms require a type)
-    # last, under no label
+    # Since 23.11.2026 every programme of his razina, whatever its type
+    # (_by_type)
     programs = db.programs_for_level(onboarding.level) if onboarding else []
-    groups = [(key, label, [p for p in programs if p.goal == key]) for key, label in upitnik.GOALS.items()]
-    groups = [g for g in groups if g[2]]
-    untyped = [p for p in programs if p.goal not in upitnik.GOALS]
-    if untyped:
-        groups.append(("", "", untyped))
     return templates.TemplateResponse(request, "treninzi.html", _ctx(
-        request, user, groups=groups, onboarding=onboarding,
+        request, user, groups=_by_type(programs), onboarding=onboarding,
         has_plan=has_plan, levels=upitnik.LEVELS))
+
+
+@app.get("/programi", response_class=HTMLResponse)
+def programi(request: Request):
+    """"Online treninzi", the admin's (28.11.2026, build 2 of the admin view:
+    Treninzi → Online treninzi; staff's /treninzi until then): the table of
+    every programme per razina, its type, its trainings and exercises (a
+    template's empty slots beside them), a dvoranski one's chip, and "Novi
+    program" (POST /treninzi, which keeps its address). Staff's (a member
+    403, a guest to the login); the programme's and a day's editors lead
+    back here."""
+    user, redirect = _require_trainer(request)
+    if redirect:
+        return redirect
+    rows = db.all_programs()
+    goal_order = list(upitnik.GOALS)
+    # one section per razina, goals in a fixed order inside each
+    groups = [{"label": label,
+               "rows": sorted((r for r in rows if r[0].level == level),
+                              key=lambda r: (goal_order.index(r[0].goal)
+                                             if r[0].goal in upitnik.GOALS else 99,
+                                             r[0].title))}
+              for level, label in upitnik.LEVELS.items()]
+    untagged = [r for r in rows if r[0].level not in upitnik.LEVELS]
+    # a template's empty slots, said beside its count of exercises
+    # (26.11.2026): "0 · 7 praznih mjesta", not "0 prazno!"
+    slots = {pid: f"{n} {plural(n, 'prazno mjesto', 'prazna mjesta', 'praznih mjesta')}"
+             for pid, n in db.program_slot_counts().items()}
+    # the lead's sentence on dvoranski programmes prints only while one
+    # exists (27.11.2026, build 3: no form makes a new one)
+    return templates.TemplateResponse(request, "treninzi_admin.html", _ctx(
+        request, user, groups=groups, untagged=untagged, slots=slots,
+        levels=upitnik.LEVELS, goals=upitnik.GOALS,
+        has_gym_programs=any(p.venue == "dvorana" for p, *_ in rows)))
 
 
 @app.post("/treninzi")
@@ -4583,15 +4752,16 @@ def create_program(request: Request, title: str = Form(...), intro: str = Form("
     programme there which is not applicable to gym trainings": a gym
     training starts from Amir's templates, /dvoranski/predlosci): the form
     asks no Vrsta, and a posted `venue` is ignored (Online or Dvoranski from
-    24.11.2026 until then)."""
+    24.11.2026 until then). Its form is the admin's Online treninzi
+    (/programi, 28.11.2026), where a refusal comes back."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     title = title.strip()
     if not title:
-        return RedirectResponse("/treninzi?error=Naziv+je+obavezan.", status_code=303)
+        return RedirectResponse("/programi?error=Naziv+je+obavezan.", status_code=303)
     if level not in upitnik.LEVELS or goal not in upitnik.GOALS:
-        return RedirectResponse("/treninzi?error=Odaberi+razinu+i+tip+programa.", status_code=303)
+        return RedirectResponse("/programi?error=Odaberi+razinu+i+tip+programa.", status_code=303)
     pid = db.create_program(title, intro.strip() or None, level, goal)
     return RedirectResponse(f"/treninzi/{pid}/uredi", status_code=303)
 
@@ -5544,13 +5714,14 @@ def program_edit(request: Request, program_id: int, title: str = Form(...),
 @app.post("/treninzi/{program_id}/delete")
 def program_delete(request: Request, program_id: int):
     """The programme, its days and their items go, then the days' intro
-    videos' files; the exercises and their clips stay in the library."""
+    videos' files; the exercises and their clips stay in the library. Back
+    to the admin's Online treninzi (/programi, 28.11.2026)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
     for name in db.delete_program(program_id) or ():
         storage.delete(name)
-    return RedirectResponse("/treninzi?ok=Program+je+obrisan.", status_code=303)
+    return RedirectResponse("/programi?ok=Program+je+obrisan.", status_code=303)
 
 
 # ---------- a programme's days (30.10.2026, stage 2 of the online treninzi spec) ----------

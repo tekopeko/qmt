@@ -86,24 +86,34 @@ CLIENT = ["/", "/raspored", "/raspored?ok=Rezervirano+%E2%9C%93", "/raspored?vie
 # "vjezba:<name>", found on the list by the seed's name (scripts/seed_demo.py:
 # a reseed gives the exercises new ids). Goblet čučanj has tags, similar
 # exercises and a rep note there. "dan:1:uredi" is the editor of the day the
-# client's walk found as "dan:1" (staff's /treninzi is the table of every
-# programme, so the owner's walk takes the path the client's found).
-# /tekstovi (25.11.2026): every text of the app on one page, Admin ▾'s.
+# client's walk found as "dan:1" (the admin's table of every programme,
+# /programi, lists programmes, not the client's, so the owner's walk takes
+# the path the client's found).
+# /tekstovi (25.11.2026): every text of the app on one page, the admin's.
 # /kao (26.11.2026): "Gledaj kao član", the picker of members to act as;
 # /kao/zapisi its record, the owner's.
 # The template (26.11.2026, build 2: the seed's dvoranski "Predložak —
 # kružni trening", empty slots, its Glavni dio A renamed "Krug 1" and a
 # circuit): "predlozak:uredi" its Trening 1's editor, "predlozak:dan" that
-# day's page, found from staff's /treninzi table by its title (no client
-# reaches a dvoranski programme).
+# day's page, found from the admin's table (/programi) by its title (no
+# client reaches a dvoranski programme).
 # Amir's templates of a gym training (27.11.2026, build 3 of the dvoranski
 # treninzi): their list, "/dvoranski/predlosci", and one template's editor,
 # "gymtpl:<name>", found on the list by its name (the seed's "Kružni
 # trening", copy.GYM_TEMPLATES: a Stanica and a Kružni set; a reseed gives
 # the templates new ids).
-OWNER = ["/", "/raspored", "/dvoranski", "/dvoranski/predlosci", "gymtpl:Kružni trening", "/admin", "/clanarine",
-         "/korisnici", "/statistika", "/treninzi", "/treninzi/vjezbe", "vjezba:Goblet čučanj", "dan:1:uredi",
-         "predlozak:uredi", "predlozak:dan", "/profil", "/tekstovi", "/kao", "/kao/zapisi"]
+# The two views of a staff account (28.11.2026, build 2 of the admin view):
+# the walk logs in to the admin view, whose own pages are the admin's lists
+# of members, "/kartoni" and "/dvoranski/clanovi", and its table of
+# programmes, "/programi"; "pogled:member" then switches to the member view
+# (POST /pogled, the avatar's menu's), and the pages after it are a member's
+# tabs as staff have them: the front page and the raspored in it (shared:
+# the member view's calendar), staff's own karton and tab with no search,
+# /treninzi the list by razina, Moja članarina.
+OWNER = ["/", "/raspored", "/kartoni", "/dvoranski/clanovi", "/dvoranski/predlosci", "gymtpl:Kružni trening",
+         "/admin", "/clanarine", "/korisnici", "/statistika", "/programi", "/treninzi/vjezbe", "vjezba:Goblet čučanj",
+         "dan:1:uredi", "predlozak:uredi", "predlozak:dan", "/profil", "/tekstovi", "/kao", "/kao/zapisi",
+         "pogled:member", "/", "/raspored", "/karton", "/dvoranski", "/treninzi", "/moja-clanarina"]
 TEMPLATE_TITLE = "Predložak — kružni trening"          # scripts/seed_demo.py's TEMPLATE
 
 FIND_EXERCISE = """n => { const row = [...document.querySelectorAll('a.ex-row')]
@@ -340,7 +350,7 @@ def template(pg, r: str) -> str | None:
     day's editor, "predlozak:dan" that day's page; found once, kept in
     FOUND."""
     if "predlozak" not in FOUND:
-        pg.goto(BASE + "/treninzi")
+        pg.goto(BASE + "/programi")                  # the admin's table (staff's /treninzi until 28.11.2026)
         pg.wait_for_load_state("networkidle")
         edit = pg.evaluate(FIND_PROGRAM_EDIT, TEMPLATE_TITLE)
         if not edit:
@@ -359,6 +369,11 @@ def run(pg, routes, who, theme, width, findings):
     for r in routes:
         key = f"{who}/{theme}/{width}px{r}"
         path = r
+        if r.startswith("pogled:"):                   # a staff account's view switched (POST /pogled): no page
+            res = pg.request.post(BASE + "/pogled", form={"view": r.split(":", 1)[1]}, max_redirects=0)
+            if res.status != 303:
+                findings["head"].append((key, f"POST /pogled answered {res.status}"))
+            continue
         if r.startswith("vjezba:"):                   # an exercise's page, by its name on the library's list
             pg.goto(BASE + "/treninzi/vjezbe")
             pg.wait_for_load_state("networkidle")

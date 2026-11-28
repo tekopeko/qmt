@@ -1,0 +1,11 @@
+{% extends "kao.html" %}
+{# "Kartoni" (28.11.2026, build 2 of roadmap/2026-11-28-admin-view-plan.md;
+   the admin's Članovi → Kartoni; app.kartoni_page): the /kao page's look,
+   its rows, order and as-you-type filter (kao.html), its own lead and each
+   row's "Otvori karton →", a form into a tab's view of the member (POST
+   /karton/clan, natrag this page), landing on his karton, read and write,
+   "Izađi" back here. Staff's own words (a staff-only template). #}
+{% block title %}Kartoni — QMT{% endblock %}
+{% block kao_lead %}<h1>Kartoni</h1>
+<p class="hint">Otvori karton člana: čitaš ga i u njega upisuješ.</p>{% endblock %}
+{% block kao_go %}<form method="post" action="/karton/clan"><input type="hidden" name="clan" value="{{ m.user.id }}"><input type="hidden" name="natrag" value="/kartoni"><button type="submit" class="act act-kao">Otvori karton →</button></form>{% endblock %}

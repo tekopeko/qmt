@@ -1,0 +1,22 @@
+{% extends "kao.html" %}
+{# "Dvoranski treninzi", the admin's (28.11.2026, build 2 of
+   roadmap/2026-11-28-admin-view-plan.md; Treninzi → Dvoranski treninzi;
+   app.gym_members_page): the /kao page's look, its rows, order and
+   as-you-type filter (kao.html), its own lead, "Predlošci treninga →" (the
+   templates' list, the way in that stood on staff's own Dvoranski treninzi
+   until then) and each row's "Otvori treninge →", a form into a tab's view
+   of the member (POST /dvoranski/clan, natrag this page), landing on his
+   Dvoranski treninzi, "Izađi" back here. A member with no gym plan is
+   listed too: his tab says why nothing can be added. Staff's own words (a
+   staff-only template). #}
+{% block title %}Dvoranski treninzi — QMT{% endblock %}
+{% block head %}{{ super() }}
+<style>
+  /* the way to the templates under the lead (an .act, as it stood on staff's own tab) */
+  .dv-tpl { margin: -10px 0 18px; }
+</style>
+{% endblock %}
+{% block kao_lead %}<h1>Dvoranski treninzi</h1>
+<p class="hint">Pripremi ili dodaj trening članu.</p>
+<p class="dv-tpl"><a class="act" href="/dvoranski/predlosci">Predlošci treninga →</a></p>{% endblock %}
+{% block kao_go %}<form method="post" action="/dvoranski/clan"><input type="hidden" name="clan" value="{{ m.user.id }}"><input type="hidden" name="natrag" value="/dvoranski/clanovi"><button type="submit" class="act act-kao">Otvori treninge →</button></form>{% endblock %}

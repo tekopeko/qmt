@@ -380,12 +380,15 @@ def test_every_way_to_plans_and_money_leads_to_the_new_page():
     # the landing: a member's card for a plan he does not hold
     assert 'href="/moja-clanarina#plan-online"><span class="t">Odaberi plan →</span></a>' in ivan.get("/").text
 
-    # the trainer manages members elsewhere (Admin ▾'s Trenutne članarine):
-    # no membership links for him, but the member's row has the tab since
-    # 26.10.2026: it is where he edits the plans' texts (the page shows him
-    # no plans of his own). The account menu has no item for it any more.
+    # the trainer manages members elsewhere (the admin's Članovi → Trenutne
+    # članarine): no membership links for him, but the member's row has the
+    # tab since 26.10.2026 (since 28.11.2026 his member view's bar): it is
+    # where he edits the plans' texts (the page shows him no plans of his
+    # own). The account menu has no item for it any more.
+    t = client_for("trener@test.local")
+    t.post("/pogled", data={"view": "member"})
     for path in ("/raspored", "/profil"):
-        page = client_for("trener@test.local").get(path).text
+        page = t.get(path).text
         assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page, path   # the nav tab
         assert "Moja članarina →" not in page, path                        # the member links
         menu = page[page.index('id="userMenu"'):page.index('onclick="qmtToggleTheme()"')]
@@ -493,14 +496,17 @@ def test_the_tab_not_a_line_on_clanarine_leads_to_the_members_page():
     ("Trenutne članarine" since 26.10.2026, Admin ▾'s item), has its lead
     and then the members' cards, each card neither "Karton →" nor "Kao
     član →" (the same day). The bar's way there is one, never two: since
-    26.10.2026 the Moja članarina tab in staff's member row, for the
-    trainer and for an owner who does not train alike, and no menu item. A
-    client never reaches /clanarine."""
+    26.10.2026 the Moja članarina tab in staff's member row (since
+    28.11.2026 the member view's bar: /clanarine is an admin page, whose
+    admin bar has no such tab), for the trainer and for an owner who does
+    not train alike, and no menu item. A client never reaches
+    /clanarine."""
     ivan = make_user("ivan@test.local", plans=("grupni",))
     make_user("trener@test.local")                                   # the owner (OWNER_EMAIL), not a trainer
     make_user("coach@test.local", is_trainer=True)                   # a trainer
     for email in ("coach@test.local", "trener@test.local"):
-        page = client_for(email).get("/clanarine").text
+        c = client_for(email)
+        page = c.get("/clanarine").text
         main = page.split("<main")[1]
         assert "Stranica koju vide članovi" not in text(page) and "Moja članarina →" not in page, email
         assert 'href="/moja-clanarina"' not in main, email               # no link to it on the page itself
@@ -508,6 +514,9 @@ def test_the_tab_not_a_line_on_clanarine_leads_to_the_members_page():
         assert "Karton →" not in main and "Kao član →" not in main, email
         assert f'action="/clanarine/{ivan}/uplata"' in main, email      # his card is there
         assert "<title>Trenutne članarine — QMT</title>" in page, email
+        assert 'href="/moja-clanarina"' not in page, email              # the admin bar: none
+        c.post("/pogled", data={"view": "member"})
+        page = c.get("/").text                                           # the member view's bar: the tab
         assert '<a href="/moja-clanarina" class="">Moja članarina</a>' in page, email   # the nav tab
         assert "<span>Moja članarina</span>" not in page, email        # no account-menu item
     assert client_for("ivan@test.local").get("/clanarine").status_code == 403

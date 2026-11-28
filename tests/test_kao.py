@@ -49,7 +49,15 @@ before it runs and is the staff member's own (a page asked for says so,
 "Izašao/la si iz pregleda člana."; a write with his marker runs nothing);
 the bar over its pages is staff's own, every link of it the exit (GET
 /kao/izlaz?kamo=…); while staff act as a member, either way, the two pages'
-titles name him. The whole app's way in stays as it was.
+titles name him. The whole app's way in stays as it was. Since 28.11.2026
+(build 2 of roadmap/2026-11-28-admin-view-plan.md; the owner: "I would
+remove the search bar and all other admin operations from the Karton and
+Dvoranski treninzi ... into separate admin tabs") the two searches are the
+admin's lists of members, Članovi → Kartoni (/kartoni) and Treninzi →
+Dvoranski treninzi (/dvoranski/clanovi, with "Predlošci treninga →"), /kao's
+look and order, each row's form posting the entry with `natrag` the list,
+where "Izađi" returns; staff's own Karton and Dvoranski treninzi carry no
+search; the bar over a tab's view is the admin view's.
 
 The phone reminder (the owner: "if a user didnt give it, when he opens the
 app a popup reminder should appear similarly how a popup appears as a
@@ -61,8 +69,9 @@ tests/test_player.py's and tests/test_karton.py's, the height on the karton
 tests/test_karton.py's.
 
 The browser half walks the picker into a member's account at 390 and 360px
-(touch) and back out, the Karton tab's search into a member's karton at the
-same widths, and the phone reminder at 390 and 1280px."""
+(touch) and back out, Kartoni into a member's karton at the same widths
+(and the three admin pages of 28.11.2026 for overflow), and the phone
+reminder at 390 and 1280px."""
 
 from __future__ import annotations
 
@@ -205,10 +214,17 @@ LEFT = "Izašao/la si iz pregleda člana."
 PAGE = {"Accept": "text/html"}                 # what a browser's navigation sends (_asks_for_page)
 
 
-def enter_tab(c: TestClient, member, tab: str = "/karton"):
-    """A tab's search for `member` (POST /karton/clan or /dvoranski/clan,
-    the field's pick), not followed."""
-    return c.post(f"{tab}/clan", data={"clan": str(member)}, follow_redirects=False)
+def enter_tab(c: TestClient, member, tab: str = "/karton", **form):
+    """A tab's view of `member` (POST /karton/clan or /dvoranski/clan, an
+    admin list's row; since 28.11.2026 its form posts `natrag` too, the
+    list: with none sent, the list is its default), not followed."""
+    return c.post(f"{tab}/clan", data={"clan": str(member), **form}, follow_redirects=False)
+
+
+# the admin's lists a tab's view is entered from, by the tab (28.11.2026), and
+# the admin bar's menu buttons (the old Admin ▾'s place)
+LISTS = {"/karton": "/kartoni", "/dvoranski": "/dvoranski/clanovi"}
+ADMIN_BAR = ('id="clanoviBtn"', 'id="treninziBtn"', 'id="sadrzajBtn"')
 
 
 def keys(c: TestClient) -> dict:
@@ -221,8 +237,8 @@ def h1(page: str) -> str:
 
 
 def nav_hrefs(page: str) -> list[str]:
-    """Every link of the top bar: the brand, the tabs, Admin ▾'s items, the
-    account menu's."""
+    """Every link of the top bar: the brand, the tabs, the admin menus'
+    items (Admin ▾'s until 28.11.2026), the account menu's."""
     head = page.split('<header class="topbar')[1].split("</header>")[0]
     return re.findall(r'<a href="([^"]+)"', head)
 
@@ -358,11 +374,12 @@ def _staff_routes() -> list[tuple[str, str, dict]]:
 
 def test_acting_the_member_gets_his_pages_and_no_staff_route():
     """As ivan: his karton (his mass, not the coach's), his raspored (his
-    booking as "Tvoj sljedeći termin"), the member's bar of tabs (no Admin
-    ▾), no ✎ pill and no editor's markup anywhere; and every route only
-    staff may use, walked from the app's own routes (GET, and every write
-    with his page's marker, so the route itself answers), refuses him as
-    it refuses any member: 403."""
+    booking as "Tvoj sljedeći termin"), the member's bar of tabs (no admin
+    menu, no view switch), no ✎ pill and no editor's markup anywhere; and
+    every route only staff may use, walked from the app's own routes (GET,
+    and every write with his page's marker, so the route itself answers;
+    since 28.11.2026 the admin's lists, its table of programmes and the
+    switch among them), refuses him as it refuses any member: 403."""
     coach, owner, ivan, ana, sara = people()
     today = config.today()
     db.set_weight(ivan, today, Decimal("82.5"))
@@ -377,12 +394,13 @@ def test_acting_the_member_gets_his_pages_and_no_staff_route():
     raspored = c.get("/raspored").text
     assert 'id="ntKicker"' in raspored and "Grupni trening srijedom" in raspored   # his next termin's card
     for page in (karton, raspored, c.get("/").text, c.get("/moja-clanarina").text):
-        assert 'id="adminBtn"' not in page and 'id="copyToggle"' not in page and "data-copy=" not in page
-        assert 'href="/korisnici"' not in page and 'href="/kao"' not in page
+        assert not any(mark in page for mark in ADMIN_BAR) and 'id="copyToggle"' not in page and "data-copy=" not in page
+        assert 'href="/korisnici"' not in page and 'href="/kao"' not in page and 'action="/pogled"' not in page
     walked = _staff_routes()
     paths = {path for _, path, _ in walked}
     assert {"/kao", "/kao/zapisi", "/kao/1", "/admin", "/clanarine", "/korisnici", "/statistika", "/tekstovi",
-            "/karton/1", "/karton/clan", "/treninzi/vjezbe", "/upitnik/pitanje/1"} <= paths and len(walked) > 40
+            "/karton/1", "/karton/clan", "/treninzi/vjezbe", "/upitnik/pitanje/1", "/kartoni", "/dvoranski/clanovi",
+            "/programi", "/pogled"} <= paths and len(walked) > 40
     refused = [(method, path) for method, path, form in walked
                if c.request(method, path + f"?kao={ivan}", data=form or None,
                             follow_redirects=False).status_code != 403]
@@ -510,7 +528,7 @@ def test_izadji_goes_back_and_logout_ends_both():
     assert r.status_code == 303 and r.headers["location"] == "/clanarine"
     assert {k for k in session_of(c) if k.startswith("as_")} == set()
     page = c.get("/karton").text
-    assert 'data-kao="' not in page and 'id="adminBtn"' in page          # his own karton again
+    assert 'data-kao="' not in page and 'title="Amir Trener"' in page     # his own karton again, his own bar
     enter(c, ivan)
     assert c.post(f"/kao/izlaz?kao={ivan}", follow_redirects=False).headers["location"] == "/kao"
     for unsafe in ("https://evil.example/", "//evil.example"):
@@ -706,8 +724,9 @@ def test_the_picker_lists_every_member_in_the_alphabets_order():
     članarine" for none: a lapsed plan runs no more), "Otvori →" posting
     /kao/<id> (amber since build 4, .act-kao); the search's box and lines
     rendered hidden (the script's);
-    Admin ▾ lit there, its item current. The trainer's and the owner's; a
-    member is refused, a guest goes to log in."""
+    its tab lit there (Admin ▾ until 28.11.2026, the admin's Članovi since),
+    its item current. The trainer's and the owner's; a member is refused, a
+    guest goes to log in."""
     coach = make_user("coach@test.local", "Amir Trener", is_trainer=True)
     make_user("trener@test.local", "Tvrtko Vlasnik")
     dario = make_user("dario@test.local", "Dario Kovač", plans=("prehrana",))
@@ -780,160 +799,193 @@ def test_the_shortcuts_lead_into_the_members_account():
         assert who.post("/kao/izlaz", follow_redirects=False).headers["location"] == back
 
 
-# ---------- the Karton tab's search, amber, the upitnik while acting ----------
+# ---------- the admin's lists of members (28.11.2026), amber, the upitnik while acting ----------
 
-def karton_find(page: str, tab: str = "/karton") -> str | None:
-    """A tab's search for a member (_member_find.html), or None."""
-    m = re.search(rf'<form class="k-find" method="post" action="{tab}/clan">.*?</form>', page, re.S)
-    return m.group(0) if m else None
+def has_search(page: str) -> bool:
+    """Whether a page carries the search for a member of 27.11.2026
+    (_member_find.html: form.k-find, its select, its rows), gone since
+    28.11.2026."""
+    return any(mark in page for mark in ('class="k-find"', 'id="kf-json"', 'id="kf-clan"', "kf-row"))
 
 
-def test_the_karton_tab_of_staff_holds_the_search_for_a_members_karton():
-    """On the trainer's and the owner's own karton (the owner who does not
-    train: staff by rule), under the lead and above the cards, ONE form, a
-    POST to /karton/clan (a GET to it from 27.11.2026 until the evening,
-    when it came to enter a tab's view of the member): "Član", a required
-    select of every member /kao lists, in its order ("Ime Prezime · email";
-    one named by his email, the email alone), no staff account, after its
-    empty first option "Odaberi člana…"; beside it "Otvori karton" (.act),
-    the page's without its script, which takes it away; and the combobox's
-    rows as JSON, [id, name, "email · plans" ("bez članarine" for none; the
-    plans alone for one named by his email), the email typing matches
-    besides the name ("" for one named by it)]. Nothing on the page goes
-    into a member's whole app: no solid amber button (.btn-kao, from build
-    4, went with POST /kao), no form to /kao. Not on a member's karton, not
-    on the trainer's view of one, not while staff act as a member (the page
-    is his own karton then); no member at all, no form."""
-    coach, owner, ivan, ana, sara = people()
-    nameless = db.create_user("bez.imena@test.local", "", auth.hash_password("lozinka123")).id
+# an admin list's row (kao.html's, kartoni.html's and dvoranski_clanovi.html's
+# entry): the name, the email, the plans, and its form into a tab's view
+LIST_ROW = (r'<div class="kao-row" data-find="([^"]*)">\s*<div class="kao-who">\s*<strong>([^<]*)</strong>\s*'
+            r'(?:<span class="kao-mail">([^<]*)</span>)?\s*<span class="kao-plans">([^<]*)</span>\s*</div>\s*'
+            r'<form method="post" action="{action}"><input type="hidden" name="clan" value="(\d+)">'
+            r'<input type="hidden" name="natrag" value="{natrag}"><button type="submit" class="act act-kao">{go}</button>'
+            r'</form>')
+
+
+def list_rows(page: str, action: str, natrag: str, go: str) -> list[tuple]:
+    """An admin list's rows, in order: (data-find, the name, the email, the
+    plans, the id its form posts)."""
+    return [(unescape(f), n, m, p, int(i))
+            for f, n, m, p, i in re.findall(LIST_ROW.format(action=re.escape(action), natrag=re.escape(natrag), go=go), page)]
+
+
+def test_kartoni_lists_every_member_and_opens_his_karton():
+    """Kartoni (/kartoni, the admin's Članovi → Kartoni; the owner: "I would
+    remove the search bar and all other admin operations from the Karton
+    ... into separate admin tabs"), the trainer's and the owner's: the /kao
+    page's look, its lead "Otvori karton člana: čitaš ga i u njega
+    upisuješ.", and every member in /kao's order (the alphabet's, a nameless
+    one by his email; no trainer, not the owner), the name in 700, the
+    email, his running plans ("bez članarine" for none: a lapsed plan runs
+    no more), "Otvori karton →" a form posting clan and natrag=/kartoni to
+    /karton/clan (amber, as /kao's "Otvori →"); the as-you-type filter's box
+    and lines rendered hidden (the script's), its "prikaži sve" this page's
+    own address; no "Zapis svih radnji →" (the owner's line on /kao). A
+    member is refused, a guest goes to log in; none, "Još nema članova."."""
+    coach = make_user("coach@test.local", "Amir Trener", is_trainer=True)
+    make_user("trener@test.local", "Tvrtko Vlasnik")
+    dario = make_user("dario@test.local", "Dario Kovač", plans=("prehrana",))
+    cedo = make_user("cedo@test.local", "Čedo Babić", plans=("online", "grupni"))
+    cvita = make_user("cvita@test.local", "Cvita Horvat")
+    u = db.create_user("bez.imena@test.local", "", auth.hash_password("lozinka123"))
     db.mark_email_verified("bez.imena@test.local")
-    order = re.findall(r'<form method="post" action="/kao/(\d+)"><button', client_for("coach@test.local").get("/kao").text)
-    assert [int(i) for i in order] == [ana, nameless, ivan, sara]       # /kao's order: the alphabet's
+    with db.engine.begin() as conn:                                    # dario's plan has lapsed
+        conn.execute(sa_text("UPDATE memberships SET next_payment = next_payment - 60 WHERE user_id = :u"), {"u": dario})
+    want = [("bez.imena@test.local · bez.imena@test.local", "bez.imena@test.local", "", "bez članarine", u.id),
+            ("Cvita Horvat · cvita@test.local", "Cvita Horvat", "cvita@test.local", "bez članarine", cvita),
+            ("Čedo Babić · cedo@test.local", "Čedo Babić", "cedo@test.local", "Grupni trening · Online trening", cedo),
+            ("Dario Kovač · dario@test.local", "Dario Kovač", "dario@test.local", "bez članarine", dario)]
     for email in ("coach@test.local", "trener@test.local"):
-        page = client_for(email).get("/karton").text
-        form = karton_find(page)
-        assert form is not None, email
-        head = page.split("<h1>")[1].split('<div class="k-cards">')[0]
-        assert form in head and head.index('<p class="hint">') < head.index(form), email   # under the lead, above the cards
-        assert '<label for="kf-clan">Član</label>' in form and '<select id="kf-clan" name="clan" required>' in form
-        assert "<input" not in form                                    # the member alone: nothing hidden beside him
-        options = re.findall(r'<option value="(\d*)"( disabled selected)?>([^<]*)</option>', form)
-        assert options == [("", " disabled selected", "Odaberi člana…"), (str(ana), "", "Ana Kovač · ana@test.local"),
-                           (str(nameless), "", "bez.imena@test.local"), (str(ivan), "", "Ivan Horvat · ivan@test.local"),
-                           (str(sara), "", "Sara Jurić · sara@test.local")], email
-        assert re.findall(r"<button[^>]*>.*?</button>", form) == ['<button type="submit" class="act">Otvori karton</button>']
-        rows = json.loads(re.search(r'<script type="application/json" id="kf-json">(.*?)</script>', form, re.S).group(1))
-        assert rows == [[ana, "Ana Kovač", "ana@test.local · Grupni trening", "ana@test.local"],
-                        [nameless, "bez.imena@test.local", "bez članarine", ""],
-                        [ivan, "Ivan Horvat", "ivan@test.local · Grupni trening · Online trening", "ivan@test.local"],
-                        [sara, "Sara Jurić", "sara@test.local · bez članarine", "sara@test.local"]], email
-        assert "btn-kao" not in page and 'action="/kao"' not in page, email
-    assert karton_find(client_for("ivan@test.local").get("/karton").text) is None      # a member's own
+        c = client_for(email)
+        page = c.get("/kartoni").text
+        assert list_rows(page, "/karton/clan", "/kartoni", "Otvori karton →") == want, email
+        order = [int(i) for i in re.findall(r'<form method="post" action="/kao/(\d+)"><button', c.get("/kao").text)]
+        assert [row[4] for row in want] == order                        # /kao's order
+        assert "<title>Kartoni — QMT</title>" in page
+        assert '<h1>Kartoni</h1>\n<p class="hint">Otvori karton člana: čitaš ga i u njega upisuješ.</p>\n<div class="kao">' in page
+        assert 'class="kao-search" role="search" hidden' in page and 'class="hint kao-found" aria-live="polite" hidden' in page
+        assert '· <a class="tlink" href="/kartoni">prikaži sve</a>' in page and 'qmtFold(row.getAttribute("data-find"))' in page
+        main = page.split("<main")[1]
+        assert "Amir Trener" not in main and "Tvrtko Vlasnik" not in main and "Zapis svih radnji" not in main, email
+    assert client_for("cvita@test.local").get("/kartoni").status_code == 403
+    assert TestClient(app).get("/kartoni", follow_redirects=False).headers["location"] == "/login"
+    with db.engine.begin() as conn:                                    # an empty list
+        conn.execute(sa_text("DELETE FROM users WHERE id <> :c"), {"c": coach})
+    assert "Još nema članova." in client_for("coach@test.local").get("/kartoni").text
+
+
+def test_the_admins_dvoranski_treninzi_lists_every_member_and_the_templates():
+    """The admin's Dvoranski treninzi (/dvoranski/clanovi, Treninzi →
+    Dvoranski treninzi), the trainer's and the owner's: the /kao page's look,
+    its lead "Pripremi ili dodaj trening članu.", "Predlošci treninga →"
+    (one .act, the templates' list) under it, and every member in /kao's
+    order, a member with no gym plan too (sara: his tab says why nothing
+    can be added), each "Otvori treninge →" posting clan and
+    natrag=/dvoranski/clanovi to /dvoranski/clan. A member is refused, a
+    guest goes to log in."""
+    coach, owner, ivan, ana, sara = people()
+    for email in ("coach@test.local", "trener@test.local"):
+        page = client_for(email).get("/dvoranski/clanovi").text
+        assert "<title>Dvoranski treninzi — QMT</title>" in page
+        assert ('<h1>Dvoranski treninzi</h1>\n<p class="hint">Pripremi ili dodaj trening članu.</p>\n'
+                '<p class="dv-tpl"><a class="act" href="/dvoranski/predlosci">Predlošci treninga →</a></p>\n<div class="kao">') in page
+        rows = list_rows(page, "/dvoranski/clan", "/dvoranski/clanovi", "Otvori treninge →")
+        assert [(name, plans, i) for _, name, _, plans, i in rows] == [
+            ("Ana Kovač", "Grupni trening", ana), ("Ivan Horvat", "Grupni trening · Online trening", ivan),
+            ("Sara Jurić", "bez članarine", sara)], email
+        assert page.split("<main")[1].count('href="/dvoranski/predlosci"') == 1
+        assert '· <a class="tlink" href="/dvoranski/clanovi">prikaži sve</a>' in page
+    assert client_for("ivan@test.local").get("/dvoranski/clanovi").status_code == 403
+    assert TestClient(app).get("/dvoranski/clanovi", follow_redirects=False).headers["location"] == "/login"
+
+
+def test_staffs_own_karton_and_tab_carry_no_search_and_no_templates():
+    """The admin operations left the member tabs (28.11.2026): staff's own
+    Karton has no search for a member (its lead right over the cards, no
+    form, no field, no rows of members), staff's own Dvoranski treninzi
+    neither, nor "Predlošci treninga →"; a member's own pages, the trainer's
+    view of a karton and his pages while staff act as him (either way in)
+    never had them. The two entries stay, the lists post them (above)."""
+    coach, owner, ivan, ana, sara = people()
+    for email in ("coach@test.local", "trener@test.local"):
+        c = client_for(email)
+        karton, tab = c.get("/karton").text, c.get("/dvoranski").text
+        for page in (karton, tab):
+            main = page.split("<main")[1]
+            assert not has_search(page) and 'action="/karton/clan"' not in page and 'action="/dvoranski/clan"' not in page
+            assert "/dvoranski/predlosci" not in main and "Predlošci treninga" not in main and "Ana Kovač" not in main
+        head = karton.split("<h1>")[1].split('<div class="k-cards">')[0]
+        assert "<form" not in head and "<select" not in head, email
+        assert 'class="dv-tpl"' not in tab and 'href="/kartoni"' not in tab   # the member view's bar: no admin link
+    assert not has_search(client_for("ivan@test.local").get("/karton").text)
     c = client_for("coach@test.local")
-    view = c.get(f"/karton/{ivan}")                                    # the trainer's view, his since 27.11.2026
-    assert view.status_code == 200 and karton_find(view.text) is None and 'id="kf-clan"' not in view.text
-    enter(c, ivan)
-    page = c.get("/karton").text
-    assert bar(page) is not None and karton_find(page) is None and 'id="kf-json"' not in page   # acting: his karton
-    c.post("/kao/izlaz")
-    with db.engine.begin() as conn:                                    # no member at all
-        conn.execute(sa_text("DELETE FROM users WHERE id <> :c AND id <> :o"), {"c": coach, "o": owner})
-    page = c.get("/karton").text
-    assert "<h1>" in page and karton_find(page) is None and 'id="kf-clan"' not in page
+    assert not has_search(c.get(f"/karton/{ivan}").text)
+    for way in ("whole", "tab"):
+        if way == "tab":
+            enter_tab(c, ivan, "/dvoranski", natrag="/dvoranski/clanovi")
+        else:
+            enter(c, ivan)
+        for path in ("/karton", "/dvoranski"):
+            page = c.get(path).text
+            assert bar(page) is not None and not has_search(page) and "Predlošci treninga" not in page, (way, path)
+        c.post(f"/kao/izlaz?kao={ivan}")
 
 
-def test_each_search_enters_a_tabs_view_of_the_member_and_refuses_the_rest():
-    """The two searches (27.11.2026, evening): POST /karton/clan (the Karton
-    tab's) and POST /dvoranski/clan (Dvoranski treninzi's), each `clan` a
-    member's id (its spaces aside), for the trainer and the owner alike →
-    a tab's view of him, landing on that tab, his own page under the strip:
-    the session's four keys (as_user_id him, as_seen now, as_back the tab,
-    as_scope), the entry the record's row (the route's path). A trainer's or
-    the owner's id, an id naming nobody, nothing, junk: back to that tab
-    saying "Odaberi člana s popisa." (the Karton tab at its top as before;
-    Dvoranski treninzi at its top too, ?trazi=1, not in its form's card),
-    nothing entered, no row. The search's GET of the morning enters nothing
-    any more: it leads to the Karton tab. A member asking is refused (403),
-    a guest goes to log in. POST /kao stays gone (405)."""
+def test_each_list_enters_a_tabs_view_of_the_member_and_refuses_the_rest():
+    """The two entries (27.11.2026, evening; since 28.11.2026 posted by the
+    admin's lists' rows): POST /karton/clan (Kartoni's) and POST
+    /dvoranski/clan (the admin's Dvoranski treninzi's), each `clan` a
+    member's id (its spaces aside) and `natrag` the list, for the trainer
+    and the owner alike → a tab's view of him, landing on that tab, his own
+    page under the strip: the session's four keys (as_user_id him, as_seen
+    now, as_back the list, as_scope), the entry the record's row (the
+    route's path); "Izađi" back to the list it was entered from. With no
+    `natrag` sent, the list all the same; one of another site, never ("/").
+    A trainer's or the owner's id, an id naming nobody, nothing, junk: back
+    to the list saying "Odaberi člana s popisa." at its top, nothing
+    entered, no row. The search's GET of 27.11.2026 enters nothing: it leads
+    to the Karton tab. A member asking is refused (403), a guest goes to log
+    in. POST /kao stays gone (405)."""
     coach, owner, ivan, ana, sara = people()
     names = {coach: "Amir Trener", owner: "Tvrtko Vlasnik"}
-    refused = {"/karton": "/karton?error=Odaberi člana s popisa.",
-               "/dvoranski": "/dvoranski?trazi=1&error=Odaberi člana s popisa."}
     for email, staff in (("coach@test.local", coach), ("trener@test.local", owner)):
-        for tab in ("/karton", "/dvoranski"):
+        for tab, lst in LISTS.items():
             c = client_for(email)
             before = time.time()
-            r = c.post(f"{tab}/clan", data={"clan": f" {ana} "}, follow_redirects=False)
+            r = c.post(f"{tab}/clan", data={"clan": f" {ana} ", "natrag": lst}, follow_redirects=False)
             assert (r.status_code, r.headers["location"]) == (303, tab), (email, tab)
             s = session_of(c)
-            assert (s["user_id"], s["as_user_id"], s["as_back"], s["as_scope"]) == (staff, ana, tab, "tab"), (email, tab)
+            assert (s["user_id"], s["as_user_id"], s["as_back"], s["as_scope"]) == (staff, ana, lst, "tab"), (email, tab)
             assert before - 1 <= s["as_seen"] <= time.time() + 1
             assert record()[0] == (names[staff], "Ana Kovač", "POST", f"{tab}/clan", 303), (email, tab)
             page = c.get(tab).text
             assert bar(page) is not None and f'<body data-kao="{ana}">' in page, (email, tab)
-            assert c.post(f"/kao/izlaz?kao={ana}", follow_redirects=False).headers["location"] == tab
+            assert c.post(f"/kao/izlaz?kao={ana}", follow_redirects=False).headers["location"] == lst
+            assert enter_tab(c, ana, tab).headers["location"] == tab and keys(c)["as_back"] == lst   # no natrag: the list
+            c.post(f"/kao/izlaz?kao={ana}")
+            assert enter_tab(c, ana, tab, natrag="https://evil.example/").headers["location"] == tab
+            assert keys(c)["as_back"] == "/"
+            c.post(f"/kao/izlaz?kao={ana}")
             rows = len(record())
+            refused = f"{lst}?error=Odaberi člana s popisa."
             for clan in (str(coach), str(owner), "999999", "", "   ", "abc", "-3", f"{ana}.0", "1" * 12):
-                r = c.post(f"{tab}/clan", data={"clan": clan}, follow_redirects=False)
-                assert (r.status_code, location(r)) == (303, refused[tab]), (email, tab, clan)
-            assert location(c.post(f"{tab}/clan", follow_redirects=False)) == refused[tab]   # no field at all
+                r = enter_tab(c, clan, tab, natrag=lst)
+                assert (r.status_code, location(r)) == (303, refused), (email, tab, clan)
+            assert location(c.post(f"{tab}/clan", follow_redirects=False)) == refused   # no field at all
             assert keys(c) == {} and len(record()) == rows, (email, tab)
-            main = c.get(refused[tab]).text.split("<main")[1].split("</main>")[0]
+            main = c.get(refused).text.split("<main")[1].split("</main>")[0]
             alert = '<div class="alert" role="alert">\n      <span>Odaberi člana s popisa.</span>'
             assert main.count('class="alert"') == 1 and main.index(alert) < main.index("<h1>"), (email, tab)
         r = c.get("/karton/clan", params={"clan": str(ana)}, follow_redirects=False)   # the morning's GET
-        assert (r.status_code, r.headers["location"]) == (303, "/karton") and keys(c) == {}
+        assert (r.status_code, r.headers["location"]) == (303, "/kartoni") and keys(c) == {}   # where the search is now
         assert c.post("/kao", data={"clan": str(ana), "natrag": "/karton"}, follow_redirects=False).status_code == 405
     member = client_for("ivan@test.local")
-    for tab in ("/karton", "/dvoranski"):
+    for tab in LISTS:
         assert enter_tab(member, ana, tab).status_code == 403 and keys(member) == {}
         r = enter_tab(TestClient(app), ana, tab)
         assert r.status_code == 303 and r.headers["location"] == "/login"
     assert member.get("/karton/clan").status_code == 403
 
 
-def test_the_dvoranski_tab_of_staff_holds_the_same_search():
-    """Staff's own Dvoranski treninzi (27.11.2026, evening; the owner: "We
-    need a similar search bar on the top of the 'Dvoranski treninzi' tab
-    where Amir can choose to enter that tab of a specific user and input a
-    training for him") carries the Karton tab's search, one partial
-    (_member_find.html): under the lead, before "Predlošci treninga →" and
-    the sections, a POST to /dvoranski/clan, its options and its rows the
-    Karton tab's, only its action and its no-JS button's words ("Otvori
-    treninge") its own; its rules and its script once each, as on the
-    Karton tab. Never on a member's tab, nor while staff act as one (either
-    way in: the page is then his), nor with no member at all."""
-    coach, owner, ivan, ana, sara = people()
-    for email in ("coach@test.local", "trener@test.local"):
-        c = client_for(email)
-        karton, tab = c.get("/karton").text, c.get("/dvoranski").text
-        k, d = karton_find(karton), karton_find(tab, "/dvoranski")
-        assert k is not None and d is not None, email
-        assert d == k.replace('action="/karton/clan"', 'action="/dvoranski/clan"').replace(
-            '<button type="submit" class="act">Otvori karton</button>',
-            '<button type="submit" class="act">Otvori treninge</button>'), email
-        main = tab.split("<main")[1]
-        assert main.index("</h1>") < main.index(d) < main.index('class="dv-tpl"') < main.index('id="dv-open-h"')
-        for page in (karton, tab):
-            assert page.count(".k-find .kf-row {") == 1 and page.count('getElementById("kf-clan")') == 1, email
-    assert karton_find(client_for("ivan@test.local").get("/dvoranski").text, "/dvoranski") is None
-    c = client_for("coach@test.local")
-    enter(c, ivan)
-    assert karton_find(c.get("/dvoranski").text, "/dvoranski") is None      # the whole app: his page
-    c.post(f"/kao/izlaz?kao={ivan}")
-    enter_tab(c, ivan, "/dvoranski")
-    page = c.get("/dvoranski").text
-    assert karton_find(page, "/dvoranski") is None and 'getElementById("kf-clan")' not in page   # a tab's view: his
-    c.post(f"/kao/izlaz?kao={ivan}")
-    with db.engine.begin() as conn:                                    # no member at all
-        conn.execute(sa_text("DELETE FROM users WHERE id <> :c AND id <> :o"), {"c": coach, "o": owner})
-    assert 'class="k-find"' not in c.get("/dvoranski").text
-
-
 # ---------- a tab's view (27.11.2026, evening) ----------
 
 def test_in_a_tabs_view_the_members_karton_and_tab_are_his():
-    """Entered from the Karton tab's search, the member's two areas are his,
+    """Entered from Kartoni (the Karton tab's search until 28.11.2026), the member's two areas are his,
     read and write: his karton (its title naming him, his limitations), a
     form of it sent with his page's marker saves into his karton and is
     recorded (his limitations, a document under them: multipart), his file
@@ -980,16 +1032,18 @@ def test_in_a_tabs_view_the_members_karton_and_tab_are_his():
 
 
 def test_a_tabs_view_draws_the_staff_members_own_bar():
-    """In a tab's view the top bar is the staff member's own: his tabs (ana
-    has no online plan, the bar Online treninzi all the same), Admin ▾ (the
-    owner's Korisnici and Statistika too), his avatar and his name in its
-    menu, the tab of the area lit (Karton on /karton, Dvoranski treninzi on
-    /dvoranski and a training's page), and every link of it the exit, GET
-    /kao/izlaz?kamo=<its address>, the brand's, the two areas' own tabs' and
-    the account menu's too; the logout stays a form. No ✎ pill, no install
-    banner, no phone reminder (ana has no phone: the whole app shows it her,
-    as before). The whole app's view keeps the member's bar, its links
-    plain."""
+    """In a tab's view the top bar is the staff member's own, since
+    28.11.2026 the admin view's (decision A5 of the admin view's build 2):
+    its three menus and every item (the owner's Korisnici and Statistika
+    too), his avatar and his name in its menu, the area's tab lit and its
+    item current (Članovi → Kartoni on his /karton, Treninzi → Dvoranski
+    treninzi on his /dvoranski and a training's page), and every link of it
+    the exit, GET /kao/izlaz?kamo=<its address>, the brand's and the
+    account menu's too; the logout stays a form; no view switch (a form
+    sent from it would end the view and run nothing). No ✎ pill, no
+    install banner, no phone reminder (ana has no phone: the whole app shows
+    it her, as before). The whole app's view keeps the member's bar, its
+    links plain."""
     coach, owner, ivan, ana, sara = people()
     sid = db.add_oneoff_session("Snaga", datetime.now(config.TZ) - timedelta(hours=1), 60, 8, None)
     with db.session_scope() as s:
@@ -997,18 +1051,21 @@ def test_a_tabs_view_draws_the_staff_members_own_bar():
     tid = db.gym_training_for(ana, sid)
     for email, name, owners in (("coach@test.local", "Amir Trener", False), ("trener@test.local", "Tvrtko Vlasnik", True)):
         c = client_for(email)
-        enter_tab(c, ana)
-        for path, lit in (("/karton", "/karton"), ("/dvoranski", "/dvoranski"), (f"/dvoranski/trening/{tid}", "/dvoranski")):
+        enter_tab(c, ana, natrag="/kartoni")
+        for path, tab, item in (("/karton", "clanovi", "/kartoni"), ("/dvoranski", "treninzi", "/dvoranski/clanovi"),
+                                (f"/dvoranski/trening/{tid}", "treninzi", "/dvoranski/clanovi")):
             page = c.get(path).text
             hrefs = nav_hrefs(page)
             assert hrefs and all(h.startswith("/kao/izlaz?kamo=/") for h in hrefs), (email, path, hrefs)
-            assert {h.split("=", 1)[1] for h in hrefs} >= {"/", "/raspored", "/karton", "/dvoranski", "/treninzi",
-                                                         "/moja-clanarina", "/prehrana", "/kao", "/admin", "/clanarine",
-                                                         "/upitnik", "/treninzi/vjezbe", "/tekstovi", "/profil"}, path
-            assert ("/kao/izlaz?kamo=/korisnici" in hrefs) == owners and ("/kao/izlaz?kamo=/statistika" in hrefs) == owners
-            assert f'<a href="/kao/izlaz?kamo={lit}" class="on">' in page, (email, path)
-            assert 'id="adminBtn"' in page and f'title="{name}"' in page and f"<strong>{name}</strong>" in page
-            assert '<form method="post" action="/logout">' in page
+            assert {h.split("=", 1)[1] for h in hrefs} == {"/", "/kartoni", "/clanarine", "/kao", "/raspored", "/admin",
+                                                         "/dvoranski/clanovi", "/programi", "/treninzi/vjezbe", "/tekstovi",
+                                                         "/upitnik", "/vodic", "/profil"} | (
+                {"/korisnici", "/statistika"} if owners else set()), path
+            assert re.search(rf'id="{tab}Btn" class="navbtn menu-btn on"', page), (email, path)
+            assert re.findall(r'<a href="([^"]+)" role="menuitem" aria-current="page">', page) == \
+                [f"/kao/izlaz?kamo={item}"], (email, path)
+            assert all(m in page for m in ADMIN_BAR) and f'title="{name}"' in page and f"<strong>{name}</strong>" in page
+            assert '<form method="post" action="/logout">' in page and 'action="/pogled"' not in page
             for gone in ('id="copyToggle"', 'id="phoneCard"', 'id="a2hs"', "data-copy="):
                 assert gone not in page, (email, path, gone)
             assert bar(page) is not None and "Gledaš kao: <strong>Ana Kovač</strong>" in bar(page)
@@ -1016,7 +1073,7 @@ def test_a_tabs_view_draws_the_staff_members_own_bar():
     c = client_for("coach@test.local")
     enter(c, ana)                                                        # the whole app: the member's bar
     page = c.get("/karton").text
-    assert "/kao/izlaz?kamo=" not in page and 'id="adminBtn"' not in page and 'id="phoneCard"' in page
+    assert "/kao/izlaz?kamo=" not in page and not any(m in page for m in ADMIN_BAR) and 'id="phoneCard"' in page
     assert '<a href="/karton" class="on">Karton</a>' in page and "/treninzi" not in nav_hrefs(page)   # her plans' tabs
 
 
@@ -1024,23 +1081,24 @@ def test_a_bar_link_ends_the_view_and_lands_on_the_staff_members_own_page():
     """GET /kao/izlaz?kamo=<address> (every link of a tab's view's bar): the
     view ends, its four keys gone, and it lands where the link says, the
     staff member's own page, no flash, no row of the record (a GET); the
-    tabs of the two areas lead to his own Karton and Dvoranski treninzi. An
-    address of another site is never followed ("/"); with none, where
-    "Izađi" goes. Out of a view it just goes."""
+    tabs of the two areas lead to his own Karton and Dvoranski treninzi (no
+    search on either since 28.11.2026). An address of another site is never
+    followed ("/"); with none, where "Izađi" goes (the list the view was
+    entered from). Out of a view it just goes."""
     coach, owner, ivan, ana, sara = people()
     c = client_for("coach@test.local")
     for kamo, lands in (("/raspored", "/raspored"), ("/karton", "/karton"), ("/dvoranski", "/dvoranski"),
-                        ("https://evil.example/", "/"), ("//evil.example", "/"), ("", "/karton")):
+                        ("https://evil.example/", "/"), ("//evil.example", "/"), ("", "/kartoni")):
         enter_tab(c, ivan)
         rows = len(record())
         r = c.get("/kao/izlaz", params={"kamo": kamo} if kamo else {}, follow_redirects=False)
         assert (r.status_code, r.headers["location"]) == (303, lands), kamo
         assert keys(c) == {} and len(record()) == rows, kamo
     page = c.get("/karton").text
-    assert bar(page) is None and karton_find(page) is not None                 # his own Karton tab, its search
+    assert bar(page) is None and 'data-copy="karton.staff.own_lead"' in page and not has_search(page)   # his own Karton
     assert c.get("/kao/izlaz?kamo=/admin", follow_redirects=False).headers["location"] == "/admin"   # out: it goes
-    enter_tab(c, ivan, "/dvoranski")
-    assert c.get("/kao/izlaz", follow_redirects=False).headers["location"] == "/dvoranski"   # none: Izađi's
+    enter_tab(c, ivan, "/dvoranski", natrag="/dvoranski/clanovi")
+    assert c.get("/kao/izlaz", follow_redirects=False).headers["location"] == "/dvoranski/clanovi"   # none: Izađi's
 
 
 def test_off_the_two_areas_a_request_ends_the_view_before_it_runs():
@@ -1070,7 +1128,7 @@ def test_off_the_two_areas_a_request_ends_the_view_before_it_runs():
         assert keys(c) == {}, email
         page = c.get(r.headers["location"]).text
         assert f'<div class="alert ok" role="status">{words}</div>' in page and bar(page) is None, email
-        assert 'id="adminBtn"' in page and "/kao/izlaz?kamo=" not in page, email
+        assert 'id="clanoviBtn"' in page and "/kao/izlaz?kamo=" not in page, email   # his own bar: the admin view's
     # what a navigation looks like when it comes to the server (app._asks_for_page):
     # a browser's own ("document"); one handed on by the app's service worker,
     # which every returning visitor has (Chromium: Sec-Fetch-Dest "empty",
@@ -1114,12 +1172,13 @@ def test_the_staff_routes_under_the_two_areas_are_staffs_and_end_the_view():
     """The areas (app._in_member_tab) are the member's, every route under
     /karton and /dvoranski and /media, but those only staff may use (their
     endpoints ask _require_trainer or _require_owner: read from the app's
-    own routes): the searches (/karton/clan, /dvoranski/clan), the read-only
-    karton (/karton/<id>) and the templates (/dvoranski/predlosci…). In a
-    tab's view each of those is the staff member's: a page of them ends the
-    view and is his (the read-only karton, the templates' list), and the
-    other search, from a page of his own, leaves the one view for the
-    other member's."""
+    own routes): the entries (/karton/clan, /dvoranski/clan), the read-only
+    karton (/karton/<id>), since 28.11.2026 the admin's list of members
+    Dvoranski treninzi (/dvoranski/clanovi), and the templates
+    (/dvoranski/predlosci…). In a tab's view each of those is the staff
+    member's: a page of them ends the view and is his (the read-only
+    karton, the list, the templates' list), and the other entry, from a page
+    of his own, leaves the one view for the other member's."""
     coach, owner, ivan, ana, sara = people()
     staff_paths, member_paths = set(), set()
     for route in app.routes:
@@ -1128,20 +1187,21 @@ def test_the_staff_routes_under_the_two_areas_are_staffs_and_end_the_view():
         names = route.endpoint.__code__.co_names
         path = re.sub(r"\{(\w+)\}", "1", route.path)
         (staff_paths if "_require_trainer" in names or "_require_owner" in names else member_paths).add(path)
-    assert {"/karton/clan", "/karton/1", "/dvoranski/clan", "/dvoranski/predlosci", "/dvoranski/predlosci/1",
-            "/dvoranski/predlosci/1/blok/1/obrisi"} <= staff_paths
+    assert {"/karton/clan", "/karton/1", "/dvoranski/clan", "/dvoranski/clanovi", "/dvoranski/predlosci",
+            "/dvoranski/predlosci/1", "/dvoranski/predlosci/1/blok/1/obrisi"} <= staff_paths
     assert [p for p in staff_paths if web._in_member_tab(p)] == []
     assert [p for p in member_paths if not web._in_member_tab(p)] == []
     assert {"/karton", "/karton/masa", "/dvoranski", "/dvoranski/trening/1/blok/1/odradeno", "/media/1"} <= member_paths
     c = client_for("coach@test.local")
-    for path, words in ((f"/karton/{ana}", "<h1>Karton — Ana Kovač</h1>"), ("/dvoranski/predlosci", "Predlošci treninga")):
+    for path, words in ((f"/karton/{ana}", "<h1>Karton — Ana Kovač</h1>"), ("/dvoranski/predlosci", "Predlošci treninga"),
+                        ("/dvoranski/clanovi", "Pripremi ili dodaj trening članu.")):
         enter_tab(c, ivan)
         r = c.get(path, headers=PAGE, follow_redirects=False)
         assert location(r) == f"{path}?ok={LEFT}" and keys(c) == {}, path
         page = c.get(r.headers["location"]).text
         assert words in page and bar(page) is None, path
     enter_tab(c, ivan)
-    r = c.post("/dvoranski/clan", data={"clan": str(ana)}, follow_redirects=False)   # his own page's search
+    r = c.post("/dvoranski/clan", data={"clan": str(ana)}, follow_redirects=False)   # the other entry, from his own page
     assert r.headers["location"] == "/dvoranski" and keys(c)["as_user_id"] == ana and keys(c)["as_scope"] == "tab"
 
 
@@ -1149,9 +1209,10 @@ def test_a_tabs_view_keeps_the_idle_limit_and_izadji_returns_to_its_tab(monkeypa
     """The idle limit holds in a tab's view as in the whole app: after
     ACT_AS_IDLE_MINUTES with no request the first request, a page or a
     write, runs nothing and goes to the picker saying the view expired.
-    "Izađi" ends it back on the tab it was entered from (the Karton tab's
-    search: the Karton tab; Dvoranski treninzi's: Dvoranski treninzi), a
-    row of the record as every exit."""
+    "Izađi" ends it back on the list it was entered from (since
+    28.11.2026 the admin's: Kartoni for the karton, the admin's Dvoranski
+    treninzi for the tab; until then the tab whose search it was), a row of
+    the record as every exit."""
     coach, owner, ivan, ana, sara = people()
     now = [time.time()]
     monkeypatch.setattr(web, "_clock", lambda: now[0])
@@ -1165,10 +1226,10 @@ def test_a_tabs_view_keeps_the_idle_limit_and_izadji_returns_to_its_tab(monkeypa
     now[0] += 31 * 60
     r = c.post(f"/karton/ogranicenja?kao={ivan}", data={"text": "Leđa."}, follow_redirects=False)
     assert location(r) == EXPIRED and keys(c) == {} and db.get_user(ivan).limitations == ""
-    for tab in ("/karton", "/dvoranski"):
-        enter_tab(c, ivan, tab)
+    for tab, lst in LISTS.items():
+        enter_tab(c, ivan, tab, natrag=lst)
         r = c.post(f"/kao/izlaz?kao={ivan}", follow_redirects=False)
-        assert r.headers["location"] == tab and keys(c) == {} and record()[0][2:] == ("POST", "/kao/izlaz", 303)
+        assert r.headers["location"] == lst and keys(c) == {} and record()[0][2:] == ("POST", "/kao/izlaz", 303)
 
 
 def as_member_reads(page: str) -> str:
@@ -1500,52 +1561,36 @@ def test_into_a_members_account_and_out_on_a_phone(server):
     assert not problems, f"{len(problems)} problems, listed above"
 
 
-# the Karton tab's search as laid out (27.11.2026): the field's input, the
-# form and the cards under it, the buttons in the form, the label, the
-# list's rows by name and its note, the line under the field, what is typed
-# and the value the form sends
-FIND = r"""() => {
-  const q = s => document.querySelector(s), r = e => e.getBoundingClientRect();
-  const input = q('#kf-clan-q'), list = q('#kf-clan-list'), label = q('.k-find label');
-  const i = r(input), f = r(q('.k-find')), l = list.hidden ? null : r(list);
-  return {input: [i.left, i.top, i.width, i.height], form: [f.left, f.width], list: l && [l.top, l.bottom, l.width],
-          cardsTop: r(q('.k-cards')).top, buttons: q('.k-find').querySelectorAll('button').length,
-          label: label.textContent, labelFor: label.htmlFor,
-          names: [...list.querySelectorAll('[role=option] .cbx-name')].map(o => o.textContent),
-          lines: [...list.querySelectorAll('[role=option] .cbx-tags')].map(o => o.textContent),
-          active: [...list.querySelectorAll('[role=option][aria-selected=true] .cbx-name')].map(o => o.textContent),
-          note: (list.querySelector('.cbx-note') || {}).textContent || null, placeholder: input.placeholder,
-          listLabel: list.getAttribute('aria-label'), err: q('#kf-clan-err').textContent,
-          invalid: input.getAttribute('aria-invalid'), typed: input.value, value: q('#kf-clan').value,
-          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth};
-}"""
+# an admin list (28.11.2026) as laid out: its rows shown, its count line, the
+# box's text, the page's overflow
+LISTED = r"""() => ({rows: [...document.querySelectorAll('.kao-row')].filter(r => !r.hidden).map(r => r.querySelector('strong').textContent),
+  found: (document.querySelector('.kao-found') || {}).hidden === false ? document.querySelector('.kao-found').textContent.trim() : null,
+  box: (document.querySelector('form.kao-search input') || {}).value,
+  overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth})"""
+# the open ☰ drawer: its captions, its rows (label, href) and the current one
+DRAWER = """() => ({caps: [...document.querySelectorAll('#mainNav .nav-cap')].map(p => p.textContent),
+  rows: [...document.querySelectorAll('#mainNav a')].filter(a => a.getBoundingClientRect().width > 0)
+           .map(a => [a.textContent.trim(), a.getAttribute('href')]),
+  current: [...document.querySelectorAll('#mainNav [aria-current="page"]')].map(a => a.textContent.trim())})"""
 
 
-def test_the_karton_tabs_search_on_a_phone(server):
-    """At 390px (dark) and 360px (light), touch, the Karton tab of a trainer
-    who is not the owner (the view is staff's again, 27.11.2026): "Član"
-    over the field ("Ime ili email člana"), 44px, the column's width, and no
-    button in the form (the script took the no-JS "Otvori karton" away).
-    Enter with nothing picked says "Odaberi člana s popisa." and goes
-    nowhere. A tap opens the list ("Članovi") of every member, the name over
-    "email · plans", laid over the cards (they do not move); "kov" finds
-    "Kovač" by the name, "mb.tr" Marko by his email's start, "grupni" (a
-    plan) nobody: "Nijedan član ne odgovara traženju.". Ana's row tapped:
-    her karton at once, a tab's view of her since the evening of 27.11.2026
-    (/karton under the strip, "Karton — Ana Kovač"; the trainer's read-only
-    view until then). "Izađi": the Karton tab, the field empty, the value
-    too; and so when the page comes back out of the browser's cache with the
-    pick still in it (its pageshow, persisted, sent by hand: Playwright's
-    Chromium keeps no such cache). "mb.tr" highlights Marko, and Enter opens
-    his karton the same way. Nothing scrolls sideways at either width; no
-    page errors."""
+def test_kartoni_and_the_admin_pages_on_a_phone(server):
+    """At 390px (dark) and 360px (light), touch, a trainer who is not the
+    owner: the admin's three pages of 28.11.2026, Kartoni, its Dvoranski
+    treninzi and its Online treninzi, never scroll sideways. On Kartoni the
+    filter shows as typed ("kov": Ana alone, "1 od 3"; "prikaži sve" clears
+    it); Ana's "Otvori karton →" opens her karton at once, a tab's view of
+    her (/karton under the strip, "Karton — Ana Kovač"), under the admin
+    bar: its ☰ drawer the three captions, every row the exit, Kartoni
+    current; "Izađi" back to Kartoni, the strip gone. No page errors."""
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
     make_user("trener@test.local", "Tvrtko Vlasnik")
     make_user("coach@test.local", "Amir Trener", is_trainer=True)
-    ana = make_user("ana@test.local", "Ana Kovač", plans=("grupni",))
+    make_user("ana@test.local", "Ana Kovač", plans=("grupni",))
     make_user("ivan@test.local", "Ivan Horvat", plans=("grupni", "online"))
-    marko = make_user("mb.trening@test.local", "Marko Babić")
+    make_user("mb.trening@test.local", "Marko Babić")
+    db.create_program("Cijelo tijelo — početna", None, "pocetna", "cijelo")
     problems: list[str] = []
 
     def check(ok: bool, what: str) -> None:
@@ -1557,67 +1602,36 @@ def test_the_karton_tabs_search_on_a_phone(server):
         for w, theme in ((390, "dark"), (360, "light")):
             where = f"[{w}px {theme}]"
             ctx, pg, errors = _login(browser, server, "coach@test.local", w, theme)
-            go(pg, server + "/karton")
-            s = pg.evaluate(FIND)
-            check(s["overflow"] == 0, f"{where} the Karton tab overflows by {s['overflow']}px")
-            (ix, iy, iw, ih), (fx, fw) = s["input"], s["form"]
-            check(abs(ih - 44) < .5 and max(abs(ix - fx), abs(iw - fw)) < .5 and s["buttons"] == 0,
-                  f"{where} 44px, the column's width, no button: input {s['input']}, form {s['form']}, {s['buttons']} buttons")
-            check(s["label"] == "Član" and s["labelFor"] == "kf-clan-q" and s["placeholder"] == "Ime ili email člana"
-                  and s["listLabel"] == "Članovi", f"{where} the words: {s}")
-            url = pg.url
-            pg.tap("#kf-clan-q")
-            pg.keyboard.press("Enter")                                  # nothing picked
-            pg.wait_for_timeout(300)
-            s = pg.evaluate(FIND)
-            check(pg.url == url and s["err"] == "Odaberi člana s popisa." and s["invalid"] == "true" and s["list"] is None,
-                  f"{where} Enter with nothing picked: {pg.url}, {s['err']!r}, the list {s['list']}")
-            pg.evaluate("() => document.getElementById('kf-clan-q').blur()")
-            top = pg.evaluate(FIND)["cardsTop"]
-            pg.tap("#kf-clan-q")
-            s = pg.evaluate(FIND)
-            check(s["names"] == ["Ana Kovač", "Ivan Horvat", "Marko Babić"]
-                  and s["lines"] == ["ana@test.local · Grupni trening", "ivan@test.local · Grupni trening · Online trening",
-                                     "mb.trening@test.local · bez članarine"], f"{where} the list: {s['names']} {s['lines']}")
-            check(s["list"] is not None and s["cardsTop"] == top and s["list"][1] > top,
-                  f"{where} the list lies over the cards: list {s['list']}, cards at {s['cardsTop']} (were {top})")
-            for typed, names, note in (("kov", ["Ana Kovač"], None), ("mb.tr", ["Marko Babić"], None),
-                                       ("grupni", [], "Nijedan član ne odgovara traženju.")):
-                pg.fill("#kf-clan-q", typed)
-                s = pg.evaluate(FIND)
-                check(s["names"] == names and s["note"] == note, f"{where} {typed!r} finds {s['names']}, {s['note']!r}")
-            pg.fill("#kf-clan-q", "kov")
+            for path in ("/kartoni", "/dvoranski/clanovi", "/programi"):
+                go(pg, server + path)
+                check(pg.evaluate(OVERFLOW) == 0, f"{where} {path} overflows by {pg.evaluate(OVERFLOW)}px")
+            go(pg, server + "/kartoni")
+            s = pg.evaluate(LISTED)
+            check(s["rows"] == ["Ana Kovač", "Ivan Horvat", "Marko Babić"] and s["found"] is None and pg.is_visible("form.kao-search"),
+                  f"{where} Kartoni: {s}")
+            pg.fill("form.kao-search input", "kov")
+            s = pg.evaluate(LISTED)
+            check(s["rows"] == ["Ana Kovač"] and (s["found"] or "").startswith("1 od 3"), f"{where} 'kov': {s}")
+            pg.tap(".kao-found a")
+            s = pg.evaluate(LISTED)
+            check(len(s["rows"]) == 3 and s["box"] == "", f"{where} prikaži sve: {s}")
             with pg.expect_navigation():
-                pg.locator("#kf-clan-list [role=option]", has_text="Ana Kovač").first.tap()
+                pg.locator(".kao-row", has_text="Ana Kovač").locator("button").tap()
             pg.wait_for_load_state("networkidle")
             check(pg.url == f"{server}/karton" and pg.text_content("main h1") == "Karton — Ana Kovač"
-                  and pg.locator("div.kao-bar").count() == 1, f"{where} the tap led to {pg.url}: {pg.text_content('main h1')!r}")
+                  and pg.locator("div.kao-bar").count() == 1 and keys_of(ctx).get("as_scope") == "tab",
+                  f"{where} Otvori karton led to {pg.url}: {pg.text_content('main h1')!r}, {keys_of(ctx)}")
             check(pg.evaluate(OVERFLOW) == 0, f"{where} her karton overflows by {pg.evaluate(OVERFLOW)}px")
+            pg.tap(".nav-burger")
+            d = pg.evaluate(DRAWER)
+            check(d["caps"] == ["Članovi", "Treninzi", "Sadržaj"] and d["current"] == ["Kartoni"]
+                  and all(h.startswith("/kao/izlaz?kamo=/") for _, h in d["rows"]), f"{where} the admin bar's drawer: {d}")
+            pg.tap(".nav-burger")
             with pg.expect_navigation():
                 pg.tap(".kao-exit")
             pg.wait_for_load_state("networkidle")
-            s = pg.evaluate(FIND)
-            check(pg.url == server + "/karton" and s["typed"] == "" and s["value"] == "" and s["err"] == ""
-                  and not pg.locator("div.kao-bar").count(),
-                  f"{where} Izađi: {pg.url}, the field {s['typed']!r}, the value {s['value']!r}, {s['err']!r}")
-            pg.evaluate("""a => { document.getElementById('kf-clan-q').value = 'Ana Kovač';
-                                  document.getElementById('kf-clan').value = String(a);
-                                  window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true})); }""", ana)
-            s = pg.evaluate(FIND)
-            check(s["typed"] == "" and s["value"] == "", f"{where} out of the cache: {s['typed']!r}, {s['value']!r}")
-            pg.tap("#kf-clan-q")
-            pg.fill("#kf-clan-q", "mb.tr")
-            check(pg.evaluate(FIND)["active"] == ["Marko Babić"], f"{where} 'mb.tr' highlights {pg.evaluate(FIND)['active']}")
-            with pg.expect_navigation():
-                pg.keyboard.press("Enter")
-            pg.wait_for_load_state("networkidle")
-            check(pg.url == f"{server}/karton" and pg.text_content("main h1") == "Karton — Marko Babić"
-                  and pg.locator("div.kao-bar").count() == 1, f"{where} Enter led to {pg.url}: {pg.text_content('main h1')!r}")
-            with pg.expect_navigation():
-                pg.tap(".kao-exit")
-            pg.wait_for_load_state("networkidle")
-            check(keys_of(ctx).get("as_user_id") is None and not pg.locator("div.kao-bar").count(),
-                  f"{where} Izađi from Marko's ({marko}) view: {pg.url}")
+            check(pg.url == server + "/kartoni" and not pg.locator("div.kao-bar").count() and keys_of(ctx) == {},
+                  f"{where} Izađi led to {pg.url}")
             problems += [f"{where} {e}" for e in errors]
             ctx.close()
         browser.close()
@@ -1626,18 +1640,18 @@ def test_the_karton_tabs_search_on_a_phone(server):
 
 
 def test_a_tabs_view_on_a_phone(server):
-    """At 390px, touch (dark), a trainer who is not the owner: the Karton
-    tab's search, "iv", Ivan's row → his karton under the strip ("Karton —
-    Ivan Horvat"), staff's own ☰ drawer (its Admin rows, every row the
+    """At 390px, touch (dark), a trainer who is not the owner: Kartoni,
+    Ivan's "Otvori karton →" → his karton under the strip ("Karton — Ivan
+    Horvat"), the admin bar's ☰ drawer (its three groups, every row the
     exit); a document uploaded under his limitations is his (and the view
-    lasts); a drawer row tapped ("Raspored") → the trainer's own raspored,
-    the strip gone, the view over. Then the search on his own Dvoranski
-    treninzi → Ivan's tab ("Dvoranski treninzi — Ivan Horvat"), a termin of
-    his three days ahead with "Pripremi trening" and when it opens for him;
-    tapped, its training (the chooser, before Ivan's window), "+ Stanica", a
-    station filled (Goblet čučanj, 3 × 10) and started, his; "Izađi" back to
-    the trainer's own tab. Nothing scrolls sideways at 390 or 360px; no page
-    errors."""
+    lasts); the drawer's Raspored (Treninzi's row) tapped → the trainer's
+    own raspored, the strip gone, the view over. Then the admin's Dvoranski
+    treninzi, Ivan's "Otvori treninge →" → Ivan's tab ("Dvoranski treninzi —
+    Ivan Horvat"), a termin of his three days ahead with "Pripremi trening"
+    and when it opens for him; tapped, its training (the chooser, before
+    Ivan's window), "+ Stanica", a station filled (Goblet čučanj, 3 × 10)
+    and started, his; "Izađi" back to the list. Nothing scrolls sideways at
+    390 or 360px; no page errors."""
     pytest.importorskip("playwright")
     from playwright.sync_api import sync_playwright
     make_user("coach@test.local", "Amir Trener", is_trainer=True)
@@ -1665,24 +1679,20 @@ def test_a_tabs_view_on_a_phone(server):
                 check(pg.evaluate(OVERFLOW) == 0, f"{where} at {w}px overflows by {pg.evaluate(OVERFLOW)}px")
             pg.set_viewport_size({"width": 390, "height": 844})
 
-        def pick(name: str) -> None:
-            pg.tap("#kf-clan-q")
-            pg.fill("#kf-clan-q", "iv")
+        def pick(path: str, name: str) -> None:
+            go(pg, server + path)
             with pg.expect_navigation():
-                pg.locator("#kf-clan-list [role=option]", has_text=name).first.tap()
+                pg.locator(".kao-row", has_text=name).locator("button").tap()
             pg.wait_for_load_state("networkidle")
 
-        go(pg, server + "/karton")
-        pick("Ivan Horvat")
+        pick("/kartoni", "Ivan Horvat")
         check(pg.url == server + "/karton" and pg.text_content("main h1") == "Karton — Ivan Horvat"
               and pg.is_visible("div.kao-bar") and keys_of(ctx).get("as_scope") == "tab",
-              f"the Karton tab's pick: {pg.url}, {pg.text_content('main h1')!r}, {keys_of(ctx)}")
+              f"Kartoni's row: {pg.url}, {pg.text_content('main h1')!r}, {keys_of(ctx)}")
         wide("his karton")
         pg.tap(".nav-burger")
-        drawer = pg.evaluate("""() => ({caps: [...document.querySelectorAll('#mainNav .nav-cap')].map(p => p.textContent),
-            rows: [...document.querySelectorAll('#mainNav a')].filter(a => a.getBoundingClientRect().width > 0)
-                     .map(a => [a.textContent.trim(), a.getAttribute('href')])})""")
-        check(drawer["caps"] == ["Kao član", "Admin"] and any(r[0] == "Gledaj kao član" for r in drawer["rows"])
+        drawer = pg.evaluate(DRAWER)
+        check(drawer["caps"] == ["Članovi", "Treninzi", "Sadržaj"] and any(r[0] == "Gledaj kao član" for r in drawer["rows"])
               and all(h.startswith("/kao/izlaz?kamo=/") for _, h in drawer["rows"]), f"staff's drawer: {drawer}")
         pg.tap(".nav-burger")
         pg.locator("button.act[onclick=\"qmtToggleForm('lim-docs')\"]").tap()          # "Dodaj dokument"
@@ -1698,16 +1708,15 @@ def test_a_tabs_view_on_a_phone(server):
         wide("his karton, his document")
         pg.tap(".nav-burger")
         with pg.expect_navigation():
-            pg.locator("#mainNav > a", has_text="Raspored").tap()
+            pg.locator("#treninziMenu a", has_text="Raspored").tap()
         pg.wait_for_load_state("networkidle")
         check(pg.url == server + "/raspored" and not pg.locator("div.kao-bar").count() and keys_of(ctx) == {},
               f"the drawer's Raspored: {pg.url}, {keys_of(ctx)}")
         wide("the trainer's own raspored")
 
-        go(pg, server + "/dvoranski")
-        pick("Ivan Horvat")
+        pick("/dvoranski/clanovi", "Ivan Horvat")
         check(pg.url == server + "/dvoranski" and pg.text_content("main h1") == "Dvoranski treninzi — Ivan Horvat"
-              and pg.is_visible("div.kao-bar"), f"Dvoranski treninzi's pick: {pg.url}, {pg.text_content('main h1')!r}")
+              and pg.is_visible("div.kao-bar"), f"the list's row: {pg.url}, {pg.text_content('main h1')!r}")
         card = pg.locator(f"#dv-s-{sid}")
         opens = (start - timedelta(hours=config.CANCEL_CUTOFF_HOURS)).strftime("%-d.%-m. u %H:%M")
         check(card.is_visible() and card.locator(".dv-go").inner_text() == "Pripremi trening"
@@ -1741,8 +1750,8 @@ def test_a_tabs_view_on_a_phone(server):
         with pg.expect_navigation():
             pg.tap(".kao-exit")
         pg.wait_for_load_state("networkidle")
-        check(pg.url == server + "/dvoranski" and not pg.locator("div.kao-bar").count() and keys_of(ctx) == {}
-              and pg.is_visible("form.k-find"), f"Izađi led to {pg.url}")
+        check(pg.url == server + "/dvoranski/clanovi" and not pg.locator("div.kao-bar").count() and keys_of(ctx) == {}
+              and pg.is_visible(".kao-list"), f"Izađi led to {pg.url}")
         problems += errors
         ctx.close()
         browser.close()
