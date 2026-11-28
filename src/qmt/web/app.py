@@ -3402,6 +3402,24 @@ def _gym_next(t, b) -> str:
     return _gym_url(t.id, blok=target.id) if target is not None else _gym_url(t.id, dalje=1)
 
 
+def _gym_next_empty(t, block_id: int) -> int | None:
+    """"Spremi" on an empty block (28.11.2026): the next block after
+    `block_id` that holds no exercise, else the first such before it, else
+    None (every block is written)."""
+    blocks = t.blocks
+    k = next((i for i, x in enumerate(blocks) if x.id == block_id), -1)
+    empty = [x for x in blocks[k + 1:] + blocks[:max(k, 0)] if not x.exercise_rows]
+    return empty[0].id if empty else None
+
+
+def _gym_saved(training_id: int, user_id: int, block_id: int) -> RedirectResponse:
+    """Where "Spremi" on an empty block leads: the next block that holds no
+    exercise, "Spremljeno." in it; with none left, back at this one."""
+    t = db.gym_training(training_id, user_id)
+    nxt = _gym_next_empty(t, block_id) if t is not None else None
+    return _gym_back(training_id, "glavno", blok=nxt or block_id, ok=GYM_SAVED)
+
+
 def _gym_overview(t, shown, writable: bool) -> list[dict]:
     """The overview's rows (#pregled), every block in order (read only:
     the blocks that hold an exercise, each with its record's lines):
@@ -4023,15 +4041,19 @@ def gym_block_delete(request: Request, training_id: int, block_id: int):
 @app.post("/dvoranski/trening/{training_id}/blok/{block_id}/stanica")
 def gym_station_save(request: Request, training_id: int, block_id: int, exercise_id: str = Form(""),
                      sets: str = Form(""), reps: str = Form(""), kg: str = Form(""), rest: str = Form(""),
-                     seconds: str = Form(""), note: str = Form(""), uredi: str = Form("")):
-    """A Stanica's exercise and plan in one write ("Kreni"; "Uredi"'s
-    "Spremi", `uredi`): the exercise (needed while it holds none: "Odaberi
-    vježbu s popisa."; fixed once a set is ticked), Serije, Ponavljanja,
-    Opterećenje (kg), Pauza (s), Vrijeme (s), Komentar (db.set_gym_station).
-    Kreni: the station back started, the focus in its first set
-    (?kreni=1); Spremi: back at it, "Spremljeno.". Refused: its sentence in
-    the card, the form open again (?uredi=1 for a started one), nothing
-    changed."""
+                     seconds: str = Form(""), note: str = Form(""), uredi: str = Form(""),
+                     spremi: str = Form("")):
+    """A Stanica's exercise and plan in one write ("Kreni"; an empty
+    station's "Spremi", `spremi`, since 28.11.2026; "Uredi"'s "Spremi",
+    `uredi`): the exercise (needed while it holds none: "Odaberi vježbu s
+    popisa."; fixed once a set is ticked), Serije, Ponavljanja, Opterećenje
+    (kg), Pauza (s), Vrijeme (s), Komentar (db.set_gym_station). Kreni: the
+    station back started, the focus in its first set (?kreni=1); an empty
+    station's Spremi: the next block that holds no exercise, "Spremljeno."
+    in it (a training written one block after another: Amir preparing a
+    member's; with none left, this station); Uredi's Spremi: back at it,
+    "Spremljeno.". Refused: its sentence in the card, the form open again
+    (?uredi=1 for a started one), nothing changed."""
     user, t = _gym_of(request, training_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -4047,6 +4069,8 @@ def gym_station_save(request: Request, training_id: int, block_id: int, exercise
         raise HTTPException(status_code=404)
     if uredi:
         return _gym_back(training_id, "glavno", blok=block_id, ok=GYM_SAVED)
+    if spremi:
+        return _gym_saved(training_id, user.id, block_id)
     return _gym_back(training_id, "glavno", blok=block_id, kreni=1)
 
 
@@ -4195,6 +4219,10 @@ async def gym_circuit_plan(request: Request, training_id: int, block_id: int):
         return _gym_back(training_id, f"red-{added}", blok=block_id, uredi=1, red=added)
     if drop is not None:
         return _gym_back(training_id, "glavno", blok=block_id, uredi=1)
+    if field("spremi") and not b.rounds_saved:
+        # the setup's "Spremi" (28.11.2026): written, and the next block that
+        # holds no exercise opens, as an empty station's
+        return _gym_saved(training_id, user.id, block_id)
     if field("kreni") and not b.rounds_saved:
         if all(r["exercise_id"] is None for r in rows.values()):
             # "Kreni" with every row empty (Fable's review, 27.11.2026): a Krug

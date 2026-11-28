@@ -155,6 +155,11 @@
                text-transform: uppercase; color: var(--muted); }
   .gt-sform .btn, .gt-plan > .btn { margin-top: 4px; }
   @media (max-width: 599px) { .gt-sform > .btn:not(.btn-sm), .gt-plan > .btn:not(.btn-sm) { width: 100%; } }
+  /* an empty block's "Kreni" and "Spremi" (28.11.2026): one row, the filled
+     one first; on a phone each takes half of it */
+  .gt-sgo { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+  .gt-sgo .btn { margin-top: 0; }
+  @media (max-width: 599px) { .gt-sgo .btn { flex: 1 1 0; min-width: 0; } }
 
   /* ===== a Stanica started: the set table (base.html's .pl-sets, its ✓
      the script's), "+ serija" and the no-JS "Spremi" ===== */
@@ -401,6 +406,26 @@
 {# a Stanica's ONE form: the exercise (the library's combobox, fixed once
    a set is ticked), Serije, Ponavljanja, Opterećenje (kg), Pauza (s),
    Vrijeme (s), Komentar, all in sight; "Kreni", or "Uredi"'s "Spremi" #}
+{# an empty block's two buttons (28.11.2026; the owner, preparing a member's
+   training as Amir will: "Why dont we have a 'save' button here? How can
+   Amir prepare a training then?"): "Kreni" (`kreni`: saved, and the block
+   opens to be done, as from build 1) and "Spremi" (`spremi`: saved, and the
+   next block that holds no exercise opens, so a whole training is written
+   one block after another). The filled one is what the viewer is there for:
+   "Kreni" for the member, "Spremi" for staff acting as him. Tree order
+   decides what Enter in a field sends: the filled one first #}
+{% macro start_or_save() %}
+<div class="gt-sgo">
+  {% if actor %}
+  <button type="submit" name="spremi" value="1" class="btn">{{ c.t("gym.form.save") }}</button>
+  <button type="submit" name="kreni" value="1" class="btn btn-ghost">{{ c.t("dan.go.start") }}</button>
+  {% else %}
+  <button type="submit" name="kreni" value="1" class="btn">{{ c.t("dan.go.start") }}</button>
+  <button type="submit" name="spremi" value="1" class="btn btn-ghost">{{ c.t("gym.form.save") }}</button>
+  {% endif %}
+</div>
+{% endmacro %}
+
 {% macro station_form(b, editing) %}{% set it = b.item %}{% set p = "gt-s" ~ b.id %}
 <form class="gt-sform" method="post" action="/dvoranski/trening/{{ t.id }}/blok/{{ b.id }}/stanica">
   {% if editing %}<input type="hidden" name="uredi" value="1">{% endif %}
@@ -427,7 +452,7 @@
   <div class="field gt-scomment"><label for="{{ p }}-note">{{ c.t("gym.form.comment") }}</label>
     <input id="{{ p }}-note" type="text" name="note" maxlength="500" value="{{ it.note }}"></div>
   {% if editing %}<button type="submit" class="btn btn-sm">{{ c.t("gym.form.save") }}</button>
-  {% else %}<button type="submit" class="btn">{{ c.t("dan.go.start") }}</button>{% endif %}
+  {% else %}{{ start_or_save() }}{% endif %}
 </form>
 {% endmacro %}
 
@@ -440,7 +465,15 @@
 {% macro plan_form(b, setup) %}
 <form class="gt-plan" id="gt-plan" method="post" action="/dvoranski/trening/{{ t.id }}/blok/{{ b.id }}/plan">
   <input type="hidden" name="stavke" value="{{ b.items|map(attribute='id')|join(',') }}">
-  {% if setup %}<input type="hidden" name="kreni" value="1">{% endif %}
+  {# Enter in a field sends a form with its FIRST submit button, which here
+     was the first row's ✕: a number typed and Enter (a phone's "Go") took
+     that row away (found 28.11.2026, live since build 1). This one comes
+     first and is what Enter means: the setup's filled button (start_or_save),
+     "Uredi"'s Spremi. `hidden`: a form's default button is its first submit
+     button in the tree whether it is drawn or not (HTML's implicit
+     submission; checked in Chromium), and one that is not drawn is no tap
+     target of 1px for the audit to find #}
+  <button type="submit" hidden{% if setup %} name="{{ 'spremi' if actor else 'kreni' }}" value="1"{% endif %}></button>
   <div class="gt-prows">
     {% for it in b.items %}{% set p = "gt-r" ~ it.id %}{% set held = it.done_sets or it.gone %}
     <div class="gt-prow" id="red-{{ it.id }}">
@@ -471,7 +504,7 @@
     <div><label for="gt-p{{ b.id }}-rest">{{ c.t("gym.circuit.rest") }}</label>
       <input id="gt-p{{ b.id }}-rest" type="number" name="rest" inputmode="numeric" min="0" max="3600" value="{{ b.rest_seconds if b.rest_seconds is not none else '' }}"></div>
   </div>
-  {% if setup %}<button type="submit" class="btn">{{ c.t("dan.go.start") }}</button>
+  {% if setup %}{{ start_or_save() }}
   {% else %}<button type="submit" class="btn btn-sm">{{ c.t("gym.form.save") }}</button>{% endif %}
 </form>
 {% endmacro %}

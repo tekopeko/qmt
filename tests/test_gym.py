@@ -204,6 +204,12 @@ def plan(c: TestClient, tid: int, bid: int, rows: dict, rounds="4", rest="", **e
     return c.post(f"/dvoranski/trening/{tid}/blok/{bid}/plan", data=data, follow_redirects=False)
 
 
+# an empty block's two buttons as a member reads them (28.11.2026): "Kreni"
+# filled, "Spremi" beside it; staff acting as him the other way round
+KRENI = '<button type="submit" name="kreni" value="1" class="btn"><span class="t">Kreni</span></button>'
+SPREMI = '<button type="submit" name="spremi" value="1" class="btn btn-ghost"><span class="t">Spremi</span></button>'
+
+
 def main_card(page: str) -> str:
     """The page's main card (#glavno), to the overview or the foot."""
     return re.split(r'<aside class="pl-side"|<div class="gt-foot-col">', page.split('id="glavno"')[1])[0]
@@ -1609,7 +1615,8 @@ def test_a_station_empty_and_started():
         "Vježba", "Serije", "Ponavljanja", "Opterećenje (kg)", "Pauza (s)", "Vrijeme (s)", "Komentar"]
     assert f'<input type="hidden" id="gt-s{empty}-ex" name="exercise_id" value="" data-hint="">' in form
     assert 'data-tag="girja"' in form and "<details" not in form            # nothing folded
-    assert '<button type="submit" class="btn"><span class="t">Kreni</span></button>' in form
+    # its two buttons (28.11.2026): "Kreni", the member's filled one, then "Spremi"
+    assert form.index(KRENI) < form.index(SPREMI) and form.count('type="submit"') == 2
     assert f'<button type="submit" form="gt-bx-{empty}" class="act act-quiet"><span class="t">Ukloni stanicu</span>' in card
     lib = json.loads(unescape(page.split('<script type="application/json" id="library-json">')[1].split("</script>")[0]))
     assert [row[1:] for row in lib] == [["Goblet čučanj", "girja"], ["Swing", "girja"]]
@@ -1701,6 +1708,67 @@ def test_nastavi_trening_goes_to_the_next_block_not_done():
         assert f'<a class="btn" href="/dvoranski/trening/{tid}/osvrt"><span class="t">Završi trening</span></a>' in card
 
 
+def test_spremi_writes_a_block_and_opens_the_next_empty_one():
+    """An empty block's second button (28.11.2026; the owner, preparing a
+    member's training as Amir will: "Why dont we have a 'save' button here?
+    How can Amir prepare a training then?"): "Spremi" writes the block
+    exactly as "Kreni" does and opens the next block that holds no exercise
+    ("Spremljeno." in it), so a training is written one block after another;
+    with none after it the first empty one before it, with none at all the
+    block itself. Nothing is ticked and no Krug is opened by it. A Kružni
+    set's setup the same. The filled button is the member's "Kreni"; for
+    staff acting as him "Spremi", first in the form, so Enter in a field
+    means it (the set's form: its hidden default button says so)."""
+    ivan = make_user("ivan@test.local")
+    make_user("coach@test.local", is_trainer=True, plans=())
+    ex = library("Goblet čučanj", "Plank")
+    tid = db.add_gym_outside(ivan, config.today())
+    s1, s2 = station(tid, ivan), station(tid, ivan)
+    k3, rows = circuit(tid, ivan)
+    s4 = station(tid, ivan)
+    ci = client_for("ivan@test.local")
+
+    def save_station(c, bid, exercise, **extra):
+        return c.post(f"/dvoranski/trening/{tid}/blok/{bid}/stanica", follow_redirects=False,
+                      data={"exercise_id": str(exercise), "sets": "3", "reps": "10", **extra})
+
+    r = save_station(ci, s2, ex["Plank"], spremi="1")                       # the next empty one after it
+    assert location(r) == f"/dvoranski/trening/{tid}?blok={k3}&ok=Spremljeno.#glavno"
+    it = block(s2).item
+    assert (it.exercise_id, it.sets, it.reps, it.done_sets) == (ex["Plank"], 3, 10, [])
+    assert "Spremljeno." in main_card(ci.get(r.headers["location"]).text)
+    full = {rows[0]: (ex["Goblet čučanj"], 10, 16, None), **{x: (None, None, None, None) for x in rows[1:]}}
+    r = plan(ci, tid, k3, full, rounds="3", rest="60", spremi="1")           # the set: written, not started
+    assert location(r) == f"/dvoranski/trening/{tid}?blok={s4}&ok=Spremljeno.#glavno"
+    assert (block(k3).rounds, block(k3).rest_seconds, block(k3).rounds_saved) == (3, 60, set())
+    assert "gt-kr" not in main_card(ci.get(page_url(tid, blok=k3)).text)     # still its setup, no Krug opened
+    r = save_station(ci, s4, ex["Plank"], spremi="1")                       # none after: the first before
+    assert location(r) == f"/dvoranski/trening/{tid}?blok={s1}&ok=Spremljeno.#glavno"
+    r = save_station(ci, s1, ex["Goblet čučanj"], spremi="1")               # none left: the block itself
+    assert location(r) == f"/dvoranski/trening/{tid}?blok={s1}&ok=Spremljeno.#glavno"
+    assert all(not it.done_sets for b in db.gym_training(tid, ivan).blocks for it in b.items)
+    r = save_station(ci, s1, ex["Goblet čučanj"])                           # "Kreni", and a form with no button: as before
+    assert location(r) == f"/dvoranski/trening/{tid}?blok={s1}&kreni=1#glavno"
+    r = save_station(ci, s1, "", spremi="1", exercise_id="")                 # a refusal: its own card, nothing moved on
+    empty = station(tid, ivan)
+    r = ci.post(f"/dvoranski/trening/{tid}/blok/{empty}/stanica", data={"spremi": "1"}, follow_redirects=False)
+    assert location(r) == f"/dvoranski/trening/{tid}?blok={empty}&error=Odaberi vježbu s popisa.#glavno"
+
+    # staff acting as him: "Spremi" is the filled one and comes first
+    k5, _ = circuit(tid, ivan)
+    cs = client_for("coach@test.local")
+    assert cs.post(f"/kao/{ivan}", follow_redirects=False).status_code == 303
+    staff_kreni = KRENI.replace('class="btn"', 'class="btn btn-ghost"')
+    staff_spremi = SPREMI.replace('class="btn btn-ghost"', 'class="btn"')
+    form = main_card(cs.get(page_url(tid, blok=empty)).text).split('<form class="gt-sform"')[1].split("</form>")[0]
+    assert form.index(staff_spremi) < form.index(staff_kreni) and KRENI not in form
+    form = main_card(cs.get(page_url(tid, blok=k5)).text).split('<form class="gt-plan" id="gt-plan"')[1].split("</form>")[0]
+    assert '<button type="submit" hidden name="spremi" value="1"></button>' in form
+    assert form.index(staff_spremi) < form.index(staff_kreni)
+    mine = main_card(ci.get(page_url(tid, blok=k5)).text)                    # the member's own: Kreni first, as before
+    assert mine.index(KRENI) < mine.index(SPREMI)
+
+
 def test_a_circuit_set_up_and_started():
     """A Kružni set being set up (no Krug saved, none asked for): the
     kicker "Kružni set", ONE form, a box per row (Vježba, the combobox, a
@@ -1722,7 +1790,12 @@ def test_a_circuit_set_up_and_started():
     card = main_card(page)
     assert '<p class="pl-eyebrow" id="gt-k-h"><span><span class="t">Kružni set</span></span></p>' in card
     form = card.split('<form class="gt-plan" id="gt-plan"')[1].split("</form>")[0]
-    assert f'name="stavke" value="{r1},{r2},{r3},{r4}"' in form and '<input type="hidden" name="kreni" value="1">' in form
+    assert f'name="stavke" value="{r1},{r2},{r3},{r4}"' in form and '<input type="hidden" name="kreni"' not in form
+    # what Enter in a field sends is the form's FIRST submit button: the
+    # hidden one that says "kreni", before any row's ✕ (28.11.2026: a number
+    # typed and Enter took the first row away)
+    assert 'name="kreni"' in re.search(r'<button type="submit"[^>]*>', form).group(0)
+    assert '<button type="submit" hidden name="kreni" value="1"></button>' in form
     assert form.count('class="gt-prow"') == 4
     assert f'<input type="hidden" id="gt-r{r2}" name="vjezba_{r2}" value="" data-hint="core">' in form
     assert [re.sub(r"<[^>]+>", "", x) for x in re.findall(rf'<label for="gt-r{r1}(?:-\w+)?">(.*?)</label>', form)] == [
@@ -1732,7 +1805,7 @@ def test_a_circuit_set_up_and_started():
             in form)
     assert 'name="rounds" inputmode="numeric" min="1" max="20" value="4"' in form
     assert 'name="rest" inputmode="numeric" min="0" max="3600" value=""' in form
-    assert '<button type="submit" class="btn"><span class="t">Kreni</span></button>' in form
+    assert form.index(KRENI) < form.index(SPREMI)                          # the member's filled one first
     assert "gt-kr" not in card and "Krug 1" not in card
     # "Kreni" with every row empty: a Krug needs an exercise, so the setup
     # stays and says so (what was typed, the Krug and the pause, is saved)
@@ -2424,7 +2497,7 @@ def test_kruzni_trening_on_a_phone(server):
                     pg.fill(f"#gt-r{rid}-{field}", str(value))
         pg.fill(f"#gt-p{k.id}-rest", "45")
         with pg.expect_navigation():
-            pg.locator("form.gt-plan > button.btn").tap()
+            pg.locator('form.gt-plan .gt-sgo button[name="kreni"]').tap()
         pg.wait_for_load_state("networkidle")
         check("krug=1" in pg.url, f"Kreni led to {pg.url}")
         one = pg.locator(f"#krug-{k.id}-1")
