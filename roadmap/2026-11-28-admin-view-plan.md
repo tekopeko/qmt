@@ -47,7 +47,9 @@ avatar's menu.
   view makes it needless.
 - The front page and Prehrana are the public site, shared by both views.
 - **After a login a staff account is in the admin view** ("By default when logging and
-  opening the Admin's account I would put it in the admin view mode").
+  opening the Admin's account I would put it in the admin view mode") and lands on the
+  front page, as every login does; the switch lands there too ("why not landing page?
+  The landing home page should exist in both modes").
 - **The bar follows the page**: the account remembers its view, the switch changes it,
   and a page of the other side opened directly (a bookmark, a typed address, a link) is
   shown and takes the view along, so nobody meets a member's page under the admin bar or
