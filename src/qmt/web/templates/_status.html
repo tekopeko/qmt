@@ -1,0 +1,27 @@
+{#- A member's name in his status's colour (28.11.2026, build 3 of
+   roadmap/2026-11-28-admin-view-plan.md; the owner: "Whenever a user is
+   displayed, his name should also be colored in green, amber or red
+   depending on the subscription status" … "no need for the extra word for
+   the status"; one who never had a plan: "neutral grey is fine"). The name
+   in a span.st.st-<status> (base.html's colours: --st-active, --st-grace,
+   --st-lapsed, --st-none, and a staff account's --admin), and inside it the
+   status in words for a screen reader, never shown (.st-sr): a staff
+   account's none, its role is said where it stands. The status is the
+   route's (models.member_status, app._status_of); none given, the bare
+   name (an account gone from the acting record). The words are the code's
+   own, a screen reader's alone, never a member's sight (allowed in
+   tests/test_copy_rule.py). Every tag trims its line: a name prints as one
+   run of markup, nothing around it.
+   Use: {% import "_status.html" as st %} … {{ st.name(u.full_name or u.email, status) }} -#}
+{%- macro name(text, status) -%}
+{%- if status -%}
+<span class="st st-{{ status }}">{{ text }}
+{%- if status == "active" %}<span class="st-sr">, članarina aktivna</span>
+{%- elif status == "grace" %}<span class="st-sr">, plaćanje dospijeva</span>
+{%- elif status == "lapsed" %}<span class="st-sr">, članarina istekla</span>
+{%- elif status == "none" %}<span class="st-sr">, bez članarine</span>
+{%- endif %}</span>
+{%- else -%}
+{{ text }}
+{%- endif -%}
+{%- endmacro %}

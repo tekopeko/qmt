@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_copy.html" as c with context %}
+{% import "_status.html" as st %}
 {% block title %}Karton — QMT{% endblock %}
 {% block head %}
 <style>
@@ -248,8 +249,9 @@
      them. A save or a refusal comes back to the card (#masa, #ogranicenja,
      #napredak), clear of the floating bar. ===== */
   /* "Otvori kao član" under the trainer's view's head line (26.11.2026):
-     one .act, tucked under the lead, the cards below it; since build 4 in
-     base.html's amber tint (.act-kao), as every way into a member's app */
+     one .act, tucked under the lead, the cards below it; base.html's
+     .act-kao, as every way into a member's app (amber since build 4, the
+     admin's indigo since 28.11.2026) */
   .kao-open { margin:-8px 0 22px; }
   {#- the Karton tab of the trainer and the owner carried the search for a
      member (form.k-find, _member_find.html's) from 27.11.2026 until
@@ -538,9 +540,11 @@
 {#- the title: the member's own "Moj karton" (a slot); while staff act as him
    (27.11.2026, evening, either way in: the owner, "on the top of the tap it
    should be emphasized which User he is currently looking at") and on the
-   trainer's view "Karton — <ime>", staff's own chrome, the name code. The
-   comment's tag trims the line it stands on: the member's page as before #}
-<h1>{% if own and not actor %}{{ c.t("karton.head.title") }}{% else %}Karton — {{ subject.full_name or subject.email }}{% endif %}</h1>
+   trainer's view "Karton — <ime>", staff's own chrome, the name code; since
+   28.11.2026 (build 3 of the admin view) the name alone in his status's
+   colour (_status.html). The comment's tag trims the line it stands on:
+   the member's page as before #}
+<h1>{% if own and not actor %}{{ c.t("karton.head.title") }}{% else %}Karton — {{ st.name(subject.full_name or subject.email, subject_status) }}{% endif %}</h1>
 {# the head line of the body (23.11.2026): "Visina 178 cm · Masa 82,5 kg
    (12.11.)", each part only when it is known (app._body_line) — the
    member's own on a line under the lead, the trainer's after the age and

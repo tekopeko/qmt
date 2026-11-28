@@ -31,11 +31,13 @@
    At the foot the way to the karton's diary. Every text a slot, gym.tab.*, and the training
    page's where the tab says the same (gym.state.open, gym.state.counted, gym.head.outside,
    gym.head.date_field). While staff act as the member the title names him
-   ("Dvoranski treninzi — Ivan Horvat": the name code). Staff's own page is their own
+   ("Dvoranski treninzi — Ivan Horvat": the name code, since 28.11.2026 in his status's
+   colour, _status.html, build 3 of the admin view). Staff's own page is their own
    trainings' as a member's: the search for a member and "Predlošci treninga →" it carried
    under the lead from 27.11.2026 went on 28.11.2026 to the admin's Treninzi → Dvoranski
    treninzi (/dvoranski/clanovi, build 2 of the admin view). #}
 {% import "_copy.html" as c with context %}
+{% import "_status.html" as st %}
 {% block title %}Dvoranski treninzi — QMT{% endblock %}
 {% block head %}
 <style>
@@ -89,7 +91,7 @@
    28.11.2026, when the search went to the admin's Dvoranski treninzi) #}
 {% block error_alert %}{% endblock %}
 {% block content %}
-<h1>{{ c.t("gym.tab.title") }}{% if kao %} — {{ kao.full_name or kao.email }}{% endif %}</h1>
+<h1>{{ c.t("gym.tab.title") }}{% if kao %} — {{ st.name(kao.full_name or kao.email, kao_status) }}{% endif %}</h1>
 {{ c.opt("gym.tab.lead", "p", ' class="hint"') }}
 {# (28.11.2026) the search for a member and "Predlošci treninga →" that stood here, staff's, are the admin's #}
 

@@ -362,7 +362,9 @@ def test_every_way_to_plans_and_money_leads_to_the_new_page():
     set_membership(uid, "grupni", next_payment=config.today() - timedelta(days=30))
     page = ivan.get("/raspored").text
     assert '<p class="hint gate-line"><span class="t">Nemaš aktivnu članarinu — bez nje rezervacija nije moguća.</span> ' in page
-    assert "istekla" not in page                                      # the lapsed plan is the tab's to show
+    # the lapsed plan is the tab's to show (the avatar menu's head says his
+    # status to a screen reader alone since 28.11.2026, _status.html's unseen label)
+    assert "istekla" not in re.sub(r'<span class="st-sr">[^<]*</span>', "", page)
 
     # without a plan: the timetable, its month page and the plan gate's alert
     assert '<a class="btn btn-sm" href="/moja-clanarina"><span class="t">Pogledaj cjenik →</span></a>' in ana.get("/raspored").text

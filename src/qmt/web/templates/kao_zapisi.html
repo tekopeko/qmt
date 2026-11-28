@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_status.html" as st %}
 {% block title %}Radnje u ime članova — QMT{% endblock %}
 {% block head %}
 <style>
@@ -6,7 +7,9 @@
      "Only a record for me"): one table, newest first, 100 a page. Its
      cells wrap on a phone (a path breaks anywhere), so the table never
      scrolls sideways; the time and the action in tabular figures. Under
-     it "Novije" / "Starije" (.act). */
+     it "Novije" / "Starije" (.act). Since 28.11.2026 (build 3 of the admin
+     view) "Tko" in the admin's colour and "Kao koga" in the member's
+     status's now (_status.html), plain once his account is gone. */
   .kz { width: 100%; max-width: 980px; border-collapse: collapse; font-size: .88rem; }
   .kz th { text-align: left; padding: 8px 6px; border-bottom: 2px solid var(--line);
            font: 600 .76rem var(--font-body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
@@ -43,8 +46,8 @@
     {% for r in rows %}
     <tr>
       <td class="num when">{{ r.at.astimezone(tz).strftime("%-d.%-m.%Y. %H:%M:%S") }}</td>
-      <td class="who">{{ r.actor_name }}</td>
-      <td class="as">{{ r.member_name }}</td>
+      <td class="who">{{ st.name(r.actor_name, "admin") }}</td>
+      <td class="as">{{ st.name(r.member_name, whom.get(r.member_id)) }}</td>
       <td class="num">{{ r.method }} {{ r.path }}</td>
       <td class="num st">{{ r.status if r.status is not none else "—" }}</td>
     </tr>

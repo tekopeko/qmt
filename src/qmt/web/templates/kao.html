@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_status.html" as st %}
 {% block title %}Gledaj kao član — QMT{% endblock %}
 {% block head %}
 <style>
@@ -10,12 +11,14 @@
      shown by the script, the whole list without it), then ONE card of
      rows, a hairline between the ones shown: the name in 700 over the
      email (muted) and the running plans (muted, small), and at the row's
-     end "Otvori →" (.act, a form: into his account; since 26.11.2026,
-     build 4, base.html's amber .act-kao, as every way into a member's
-     app), which wraps under the words on a narrow phone. Since 28.11.2026
-     the admin's Kartoni and Dvoranski treninzi are this page with their
-     own lead and row's entry (kartoni.html, dvoranski_clanovi.html: its
-     blocks kao_lead and kao_go). */
+     end "Otvori →" (.act, a form: into his account; base.html's .act-kao,
+     as every way into a member's app: amber since 26.11.2026, build 4,
+     the admin's indigo since build 3 of the admin view, 28.11.2026), which
+     wraps under the words on a narrow phone. Since 28.11.2026 the admin's
+     Kartoni and Dvoranski treninzi are this page with their own lead and
+     row's entry (kartoni.html, dvoranski_clanovi.html: its blocks kao_lead
+     and kao_go); since its build 3 the name in his status's colour
+     (_status.html). */
   .kao { max-width: 720px; }
   .kao-log { margin: -10px 0 18px; }
   .kao-search { margin: 0 0 12px; }
@@ -49,7 +52,7 @@
     {% for m in members %}
     <div class="kao-row" data-find="{{ m.name }} · {{ m.user.email }}">
       <div class="kao-who">
-        <strong>{{ m.name }}</strong>
+        <strong>{{ st.name(m.name, m.status) }}</strong>
         {% if m.name != m.user.email %}<span class="kao-mail">{{ m.user.email }}</span>{% endif %}
         <span class="kao-plans">{{ m.plans or "bez članarine" }}</span>
       </div>

@@ -2,6 +2,7 @@
    confirm dialog's default words, the osvrt prompt, the error alert's
    link) are copy slots since 25.11.2026: auth.*, app.* (copy.py) #}
 {%- import "_copy.html" as c with context -%}
+{%- import "_status.html" as st -%}
 <!doctype html>
 <html lang="hr" data-theme="dark">
 <head>
@@ -49,6 +50,21 @@
       --good-strong: #116932;
       --warn: #a34a08;                                     /* amber: absence, caution — the karton's flags and "Nisam bio/la", /clanarine's trust note (base's since 29.10.2026) */
       --warn-soft: rgba(163, 74, 8, .13);                  /* its tint */
+      /* a member's status in one colour (28.11.2026, build 3 of the admin
+         view): his name's, AA on the three greys of both themes. Here
+         active is the strong green and lapsed the strong red: the plain
+         ones measure 4.35 and 4.31 on the inset grey */
+      --st-active: var(--good-strong);                     /* a plan of his runs: green */
+      --st-grace: var(--warn);                             /* a payment of his is due, the grace week: amber */
+      --st-lapsed: var(--accent-strong);                   /* he had a plan and none runs: red */
+      --st-none: var(--muted);                             /* he never had a plan: grey */
+      /* the admin's own colour (28.11.2026), an indigo unlike the four: a
+         staff account's avatar and name, every way into a member's
+         account, the strip's "Izađi" */
+      --admin: #4338ca;                                    /* the admin's indigo, as text: AA on the three greys and on its tint */
+      --admin-soft: rgba(67, 56, 202, .10);                /* its tint (the buttons into a member's account) */
+      --admin-fill: #4338ca;                               /* solid indigo under --admin-ink */
+      --admin-ink: #ffffff;                                /* text ON the admin's fill */
       --shadow: 0 1px 2px rgba(20, 20, 22, .05), 0 8px 24px rgba(20, 20, 22, .06);
       --shadow-btn: 0 2px 10px rgba(225, 6, 0, .28);
     }
@@ -74,6 +90,16 @@
       --good-strong: #2b9a5c;
       --warn: #fbbf24;                                     /* amber on dark (AA on --surface) */
       --warn-soft: rgba(251, 191, 36, .15);
+      --st-active: var(--good);
+      --st-grace: var(--warn);
+      --st-lapsed: var(--accent-strong);                   /* plain --accent is 4.31 on the inset grey */
+      --st-none: var(--muted);
+      --admin: #a5b4fc;                                    /* light indigo for text on dark */
+      --admin-soft: rgba(165, 180, 252, .14);
+      /* the fill under white ink: the text's light indigo is too light for
+         it (2.0:1), a deeper one is 5.1:1 */
+      --admin-fill: #5e5ce6;
+      --admin-ink: #ffffff;
       --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
       --shadow-btn: 0 2px 12px rgba(255, 52, 43, .35);
     }
@@ -135,16 +161,34 @@
              flex: 0 1 auto; min-width: 0; }
     .avatar {
       width: 34px; height: 34px; border-radius: 50%; flex: none; padding: 0;
-      background: var(--accent-fill); color: #fff; box-shadow: none; cursor: pointer;
+      background: var(--av-fill); color: var(--av-ink); box-shadow: none; cursor: pointer;
       font: 700 .78rem var(--font-body); letter-spacing: .02em;
       display: flex; align-items: center; justify-content: center;
       text-decoration: none; border: 2px solid transparent;
       transition: border-color .15s, transform .12s;
     }
-    .avatar:hover { transform: translateY(-1px); border-color: rgba(255,255,255,.4); }
+    /* its own fill on hover too: the base button:hover would paint it red */
+    .avatar:hover { transform: translateY(-1px); border-color: rgba(255,255,255,.4); background: var(--av-fill); }
     .avatar.on { border-color: #fff; }
-    /* a red ring on a red circle reads as damage — the avatar focuses in white */
+    /* a coloured ring on a coloured circle reads as damage — the avatar focuses in white */
     .avatar:focus-visible { outline-color: #fff; }
+    /* The avatar's fill is its account's status (28.11.2026, build 3 of the
+       admin view; the owner: "a user's logo is in a different color depending
+       on his subscription status (green->active, amber -> grace period,
+       red->inactive subscription) ... The Admin view gets its own color for
+       an admin"): st-active green, st-grace amber, st-lapsed red, st-none
+       grey, a staff account's st-admin the admin's indigo in the admin view
+       (st-active in its member view, app._status_of). It stands on the dark
+       bar in both themes, so it and its twin at the head of its menu carry
+       data-theme="dark": the dark theme's fills whatever the page's theme,
+       as the bar is. The initials white or dark, whichever is AA on the
+       fill (dark on green 5.7:1, amber 11.4:1, grey 6.8:1; white on red
+       5.0:1, indigo 5.1:1). Red was every avatar's until then. */
+    .avatar.st-active, .who-av.st-active { --av-fill: var(--good-fill); --av-ink: var(--good-ink); }
+    .avatar.st-grace, .who-av.st-grace { --av-fill: var(--warn); --av-ink: var(--bg); }
+    .avatar.st-lapsed, .who-av.st-lapsed { --av-fill: var(--accent-fill); --av-ink: var(--accent-ink); }
+    .avatar.st-none, .who-av.st-none { --av-fill: var(--muted); --av-ink: var(--bg); }
+    .avatar.st-admin, .who-av.st-admin { --av-fill: var(--admin-fill); --av-ink: var(--admin-ink); }
     /* ===== the topbar's menus: one component (26.10.2026) =====
        The account menu behind the avatar and, in a staff account's admin
        view (28.11.2026), the admin bar's three tabs, Članovi, Treninzi and
@@ -187,7 +231,7 @@
     .user-menu .who { display: flex; align-items: center; gap: 12px;
                       padding: 16px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
     .user-menu .who-av { width: 40px; height: 40px; border-radius: 50%; flex: none;
-                         background: var(--accent-fill); color: #fff;
+                         background: var(--av-fill); color: var(--av-ink);       /* the avatar's (above) */
                          font: 700 .82rem var(--font-body);
                          display: flex; align-items: center; justify-content: center; }
     .user-menu .who-txt { min-width: 0; }           /* lets the email ellipsize */
@@ -317,8 +361,9 @@
       }
       .nav form { width: 100%; }
       .nav a.cta, .nav a.dark { margin-left: 0; justify-content: center; }
-      /* The admin bar's drawer (28.11.2026) is its groups, each under a
-         small caption, a hairline before the next (.nav-admin): Članovi,
+      /* The admin bar's drawer (28.11.2026) is Početna, a plain row, then
+         its groups, each under a
+         small caption, a hairline before each (.nav-admin): Članovi,
          Treninzi and Sadržaj, each menu's items as rows like a tab's (no
          icons, the current one .on's look; the tab itself is no row here),
          then the owner's Statistika. A member's drawer, and a staff
@@ -381,27 +426,35 @@
        page, sticky, above the topbar's pill, whose sticky top moves down by
        the strip's height so it sits under it; html's scroll-padding-top
        adds the strip to every anchor's own scroll-margin, so a jump clears
-       both. The karton's amber, --warn on --warn-soft laid over the page's
-       background, solid (no text shows through it; AA in both themes, 4.6:1
-       light, 8.5:1 dark), a hairline under it. One line at every width: the
-       name cut with an ellipsis (the whole name and the email in its
-       title), then "Izađi", a --warn pill with the page's ground for ink
-       (5.5:1 light, 11:1 dark), 32px, 44px on a coarse pointer, never pushed
-       off the screen. Its contents sit on the pill's column (1100px). Its
-       words are staff's own chrome, no copy slot. ===== */
+       both. Since 28.11.2026 (build 3 of the admin view; the owner: "I
+       would recolor the user here as well, maybe then choose a different
+       color for the 'gledas kao' strip") a dark bar in both themes, the
+       topbar's ground made solid (no text shows through it; theme-free, as
+       the bar's own colours: the strip carries data-theme="dark", the dark
+       theme's tokens whatever the page's), a hairline under it as the
+       pill's edge; the karton's amber until then, amber saying a payment
+       is due now. Its words in the bar's muted light text (--muted there,
+       6.5:1), the member's name in his status's colour (the dark theme's
+       --st-*: 5.6:1 red at the least). One line at every width: the name
+       cut with an ellipsis (the whole name and the email in its title),
+       then "Izađi", a pill in the admin's fill (white on its indigo,
+       5.1:1), 32px, 44px on a coarse pointer, never pushed off the screen.
+       Its contents sit on the pill's column (1100px). Its words are
+       staff's own chrome, no copy slot. ===== */
     :root { --kao-h: 44px; }
     @media (pointer: coarse) { :root { --kao-h: 52px; } }
     .kao-bar { position: sticky; top: 0; z-index: 45; height: var(--kao-h); display: flex; align-items: center; gap: 12px;
                padding: 0 max(16px, calc((100% - 1100px) / 2));
-               background: linear-gradient(var(--warn-soft), var(--warn-soft)) var(--bg); color: var(--warn);
-               border-bottom: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+               background: rgb(22, 22, 24); color: var(--muted);
+               border-bottom: 1px solid rgba(255, 255, 255, .09);
                font: 500 .88rem/1.25 var(--font-body); }
     .kao-bar .kao-as { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .kao-bar .kao-as strong { font-weight: 700; }
     .kao-bar form { flex: none; margin: 0; }
     .kao-exit { min-height: 32px; padding: 0 16px; box-shadow: none;
-                background: var(--warn); color: var(--bg); font: 700 .82rem var(--font-body); }
-    .kao-exit:hover { background: color-mix(in srgb, var(--warn) 82%, var(--text)); transform: none; }
+                background: var(--admin-fill); color: var(--admin-ink); font: 700 .82rem var(--font-body); }
+    /* a deeper indigo, never the base red (the white ink gains) */
+    .kao-exit:hover { background: color-mix(in srgb, var(--admin-fill) 84%, var(--bg)); transform: none; }
     @media (pointer: coarse) { .kao-exit { min-height: 44px; padding: 0 18px; } }
     body[data-kao] .topbar { top: calc(var(--kao-h) + 10px); }
     html:has(> body[data-kao]) { scroll-padding-top: var(--kao-h); }
@@ -467,21 +520,41 @@
                  border-color: color-mix(in srgb, var(--text) 40%, transparent); }
     .act-quiet { background: none; color: var(--muted); }
     .act-quiet:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
-    /* ===== amber = someone else's account (26.11.2026, build 4; the owner:
-       "The button to open as another user should also be in amber"): every
-       control that opens a member's app as he has it wears the strip's
-       amber, so nobody takes it for an action on his own account, AA in
-       both themes. .act-kao, on an .act (/kao's "Otvori →", a roster's
-       "Kao član →", the trainer's view's "Otvori kao član"): the karton's
-       amber tint, --warn on --warn-soft as its .act-absent, the hover a
-       deeper tint, never a flood, its background declared so a <button>
-       and an <a> look the same. (The Karton tab's solid amber button, from
-       build 4, went on 27.11.2026: its field opens a member's karton, not
-       his app.) ===== */
-    .act-kao { background: var(--warn-soft); color: var(--warn);
-               border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
-    .act-kao:hover { background: color-mix(in srgb, var(--warn) 26%, transparent); color: var(--warn);
-                     border-color: var(--warn); }
+    /* ===== the admin's colour = someone else's account (since 28.11.2026,
+       build 3 of the admin view; amber from 26.11.2026, build 4, the owner:
+       "The button to open as another user should also be in amber", until
+       amber came to say a payment is due): every control that leads into a
+       member's account wears the admin's indigo, so nobody takes it for an
+       action on his own account, AA in both themes. .act-kao, on an .act
+       (/kao's "Otvori →", Kartoni's "Otvori karton →", the admin's
+       Dvoranski treninzi's "Otvori treninge →", a roster's "Kao član →",
+       the read-only karton's "Otvori kao član"): --admin on --admin-soft
+       with a 40% hairline (6.3:1 light, 6.6:1 dark at the least), the hover
+       a deeper tint (5.3:1, 5.7:1), never a flood, its background declared
+       so a <button> and an <a> look the same. ===== */
+    .act-kao { background: var(--admin-soft); color: var(--admin);
+               border-color: color-mix(in srgb, var(--admin) 40%, transparent); }
+    .act-kao:hover { background: color-mix(in srgb, var(--admin) 20%, transparent); color: var(--admin);
+                     border-color: var(--admin); }
+    /* ===== a member's name in his status's colour (28.11.2026, build 3 of
+       the admin view; the owner: "Whenever a user is displayed, his name
+       should also be colored in green, amber or red depending on the
+       subscription status" … "no need for the extra word for the status"):
+       _status.html's span.st, the name's class the avatar's (above), its
+       colour a --st-* token (a staff account's --admin); inside it the
+       status in words for a screen reader, never shown (.st-sr, .pl-sr's
+       way: its text at its own width, wholly clipped away, set against the
+       name's right edge, so it reaches no further right than the name and
+       the audit's element overflow never meets a box narrower than its
+       text). No word beside the name. A span's rule: the acting record's
+       Status column is a td.st of its own. ===== */
+    span.st { position: relative; }
+    .st.st-active { color: var(--st-active); }
+    .st.st-grace { color: var(--st-grace); }
+    .st.st-lapsed { color: var(--st-lapsed); }
+    .st.st-none { color: var(--st-none); }
+    .st.st-admin { color: var(--admin); }
+    .st-sr { position: absolute; top: 0; right: 0; white-space: nowrap; clip-path: inset(50%); pointer-events: none; }
     /* fingers need more than 31px — grow the small controls only where the
        pointer is coarse, so desktop density is untouched. This block must sit
        BELOW .btn-sm/.act: same specificity, so source order decides, and above
@@ -1154,9 +1227,11 @@
    the strip over every page says whose it is and ends it (POST /kao/izlaz).
    Its words are staff's own chrome, fixed text. The page carries the
    member's id (body data-kao): every write it sends names him (the script
-   under it), and the server runs none drawn for another identity. #}
-<div class="kao-bar" role="status">
-  <p class="kao-as" title="{% if kao.full_name %}{{ kao.full_name }} · {% endif %}{{ kao.email }}">Gledaš kao: <strong>{{ kao.full_name or kao.email }}</strong></p>
+   under it), and the server runs none drawn for another identity. Since
+   28.11.2026 (build 3 of the admin view) a dark bar in both themes (its
+   data-theme: the dark theme's tokens), his name in his status's colour. #}
+<div class="kao-bar" role="status" data-theme="dark">
+  <p class="kao-as" title="{% if kao.full_name %}{{ kao.full_name }} · {% endif %}{{ kao.email }}">Gledaš kao: <strong>{{ st.name(kao.full_name or kao.email, kao_status) }}</strong></p>
   <form method="post" action="/kao/izlaz"><button type="submit" class="kao-exit">Izađi</button></form>
 </div>
 <script>
@@ -1258,7 +1333,13 @@
       {# The admin view's bar (28.11.2026, build 2 of
          roadmap/2026-11-28-admin-view-plan.md; the owner: "separate all admin
          operations in the admin menu ... so that I and Amir have only admin
-         related tabs"; app._ctx's bar_view, which follows the page): three
+         related tabs"; app._ctx's bar_view, which follows the page): Početna,
+         a plain tab, first as in a member's row (since the evening of
+         28.11.2026, the owner on the live bar: "The početna page should be in
+         the same hierarchy as the Članovi, Treninzi etc i.e. on the same
+         place as the user view so that its always available"; an item of
+         Sadržaj's menu for some hours until then, which lit Sadržaj on the
+         front page), then three
          tabs, each a menu in the account menu's component (.menu, one script
          for every menu, one open at a time), and the owner's Statistika, a
          plain tab. A tab is .on while one of its pages is open, that item
@@ -1269,12 +1350,12 @@
          /admin's other pages; Dvoranski treninzi, /dvoranski/clanovi and the
          templates' pages; Online treninzi, /programi and the programme's and
          a day's editors; Vježbe, the library's pages), Sadržaj (Tekstovi,
-         Početna, Upitnik, Vodič). In a tab's view (kao_tab: this bar over the
+         Upitnik, Vodič). In a tab's view (kao_tab: this bar over the
          member's page) his /karton… lights Članovi → Kartoni, his
          /dvoranski… Treninzi → Dvoranski treninzi, every link the exit
-         (bar_href). In the ☰ drawer each menu is its caption over its items as
-         rows (the tab itself no row), a hairline before the next group
-         (.nav-admin), Statistika last. No item opens its page in edit mode. #}
+         (bar_href). In the ☰ drawer Početna is the first row, then each menu
+         is its caption over its items as rows (the tab itself no row), a
+         hairline before each group (.nav-admin), Statistika last. No item opens its page in edit mode. #}
       {% set at_kartoni = path == '/kartoni' or (path.startswith('/karton/') and path[8:].isdigit()) or (kao_tab and path.startswith('/karton')) %}
       {% set at_clanarine = path.startswith('/clanarine') %}
       {% set at_kao = path == '/kao' or path.startswith('/kao/') %}
@@ -1287,7 +1368,8 @@
       {% set at_pocetna = path == '/' %}
       {% set at_upitnik = path.startswith('/upitnik') %}
       {% set at_vodic = path.startswith('/vodic') %}
-      <div class="menu-wrap">
+      <div class="menu-wrap"><a href="{{ bar_href('/') }}" class="navbtn{% if at_pocetna %} on{% endif %}">Početna</a></div>
+      <div class="menu-wrap nav-admin">
         <p class="nav-cap">Članovi</p>
         <button type="button" id="clanoviBtn" class="navbtn menu-btn{% if at_kartoni or at_clanarine or at_kao or at_korisnici %} on{% endif %}"
                 aria-haspopup="true" aria-expanded="false" aria-controls="clanoviMenu">Članovi <span class="caret" aria-hidden="true">▾</span></button>
@@ -1332,14 +1414,11 @@
       </div>
       <div class="menu-wrap nav-admin">
         <p class="nav-cap">Sadržaj</p>
-        <button type="button" id="sadrzajBtn" class="navbtn menu-btn{% if at_tekstovi or at_pocetna or at_upitnik or at_vodic %} on{% endif %}"
+        <button type="button" id="sadrzajBtn" class="navbtn menu-btn{% if at_tekstovi or at_upitnik or at_vodic %} on{% endif %}"
                 aria-haspopup="true" aria-expanded="false" aria-controls="sadrzajMenu">Sadržaj <span class="caret" aria-hidden="true">▾</span></button>
         <div class="menu admin-menu" id="sadrzajMenu" role="menu" aria-labelledby="sadrzajBtn">
           <a href="{{ bar_href('/tekstovi') }}" role="menuitem"{% if at_tekstovi %} aria-current="page"{% endif %}>
             <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5V5h14v1.5M12 5v14M9 19h6"/></svg><span>Tekstovi</span>
-          </a>
-          <a href="{{ bar_href('/') }}" role="menuitem"{% if at_pocetna %} aria-current="page"{% endif %}>
-            <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.8 12 4.5l8 6.3v8.2a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z"/></svg><span>Početna</span>
           </a>
           <a href="{{ bar_href('/upitnik') }}" role="menuitem"{% if at_upitnik %} aria-current="page"{% endif %}>
             <svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4.5" width="14" height="17" rx="2.5"/><path d="M9.5 3h5v3h-5zM8.5 11h7M8.5 14.5h7M8.5 18h4"/></svg><span>Upitnik</span>
@@ -1390,19 +1469,24 @@
   </nav>
   {% endif %}
   {% if user and not brand_only %}
-  {# initials avatar opening the account menu, the way Google apps do it #}
+  {# initials avatar opening the account menu, the way Google apps do it;
+     since 28.11.2026 (build 3 of the admin view) its fill is its account's
+     status (bar_status: a member's own, a staff account's admin or, in its
+     member view, active), as is the name at the menu's head; on the dark
+     bar in both themes, so the avatar and its twin take the dark theme's
+     tokens (data-theme) #}
   {% set initials = ((bar_user.name or bar_user.email)[:1] ~ (bar_user.last_name[:1] if bar_user.last_name else "")) | upper %}
   <div class="menu-wrap">
     <button type="button" id="avatarBtn"
-            class="avatar {% if request.url.path.startswith('/profil') %}on{% endif %}"
+            class="avatar st-{{ bar_status }}{% if request.url.path.startswith('/profil') %} on{% endif %}" data-theme="dark"
             aria-haspopup="true" aria-expanded="false" aria-controls="userMenu"
             title="{{ bar_user.full_name or bar_user.email }}"
             aria-label="Račun">{{ initials }}</button>
     <div class="menu user-menu" id="userMenu" role="menu">
       <div class="who">
-        <span class="who-av" aria-hidden="true">{{ initials }}</span>
+        <span class="who-av st-{{ bar_status }}" data-theme="dark" aria-hidden="true">{{ initials }}</span>
         <span class="who-txt">
-          <strong>{{ bar_user.full_name or "—" }}</strong><span class="mail" title="{{ bar_user.email }}">{{ bar_user.email }}</span>
+          <strong>{{ st.name(bar_user.full_name or "—", bar_status) }}</strong><span class="mail" title="{{ bar_user.email }}">{{ bar_user.email }}</span>
         </span>
       </div>
       <a href="{{ bar_href('/profil') }}" role="menuitem">

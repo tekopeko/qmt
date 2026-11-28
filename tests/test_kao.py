@@ -57,7 +57,10 @@ admin's lists of members, Članovi → Kartoni (/kartoni) and Treninzi →
 Dvoranski treninzi (/dvoranski/clanovi, with "Predlošci treninga →"), /kao's
 look and order, each row's form posting the entry with `natrag` the list,
 where "Izađi" returns; staff's own Karton and Dvoranski treninzi carry no
-search; the bar over a tab's view is the admin view's.
+search; the bar over a tab's view is the admin view's. Since build 3 of the
+same day the strip is a dark bar in both themes, the member's name on it in
+his status's colour, and every way into a member's account wears the
+admin's indigo where it wore amber (tests/test_status.py: the colours).
 
 The phone reminder (the owner: "if a user didnt give it, when he opens the
 app a popup reminder should appear similarly how a popup appears as a
@@ -200,9 +203,21 @@ def record() -> list[tuple]:
 
 
 def bar(page: str) -> str | None:
-    """The strip over a page while acting, or None."""
-    m = re.search(r'<div class="kao-bar" role="status">.*?</div>', page, re.S)
+    """The strip over a page while acting, or None (since 28.11.2026 its tag
+    carries data-theme="dark": build 3 of the admin view)."""
+    m = re.search(r'<div class="kao-bar" role="status"[^>]*>.*?</div>', page, re.S)
     return m.group(0) if m else None
+
+
+def seen(html: str) -> str:
+    """A page as a sighted reader has it (since 28.11.2026, build 3 of the
+    admin view, a member's name is in his status's colour, _status.html:
+    span.st with his status's words for a screen reader inside it): every
+    status span unwrapped, its unseen words dropped. Where a name stands it
+    is what the page printed before, byte for byte (tests/test_status.py
+    holds the spans themselves)."""
+    html = re.sub(r'<span class="st-sr">[^<]*</span>', "", html)
+    return re.sub(r'<span class="st st-[a-z]+">([^<]*)</span>', r"\1", html)
 
 
 STALE = "/karton?error=Stranica je bila otvorena prije ulaska u pregled kao član — ništa nije spremljeno."
@@ -320,7 +335,7 @@ def test_staff_enter_a_members_account_and_the_app_is_his():
         s = session_of(c)
         assert (s["user_id"], s["as_user_id"], s["as_back"]) == (staff, ivan, "/kao") and before - 1 <= s["as_seen"] <= time.time()
         page = c.get("/karton").text
-        assert f'<body data-kao="{ivan}">' in page and "Gledaš kao: <strong>Ivan Horvat</strong>" in page
+        assert f'<body data-kao="{ivan}">' in page and "Gledaš kao: <strong>Ivan Horvat</strong>" in seen(page)
     scope = {"type": "http", "method": "GET", "path": "/", "headers": [], "query_string": b""}
     acting = Request({**scope, "session": {"user_id": coach, "as_user_id": ivan}})
     assert web.current_user(acting).id == ivan and web._actor(acting).id == coach
@@ -390,7 +405,7 @@ def test_acting_the_member_gets_his_pages_and_no_staff_route():
     enter(c, ivan)
     karton = c.get("/karton").text
     # its title names him since the evening of 27.11.2026 ("Moj karton" his own)
-    assert "82,5 kg" in karton and "91 kg" not in karton and "<h1>Karton — Ivan Horvat</h1>" in karton
+    assert "82,5 kg" in karton and "91 kg" not in karton and "<h1>Karton — Ivan Horvat</h1>" in seen(karton)
     raspored = c.get("/raspored").text
     assert 'id="ntKicker"' in raspored and "Grupni trening srijedom" in raspored   # his next termin's card
     for page in (karton, raspored, c.get("/").text, c.get("/moja-clanarina").text):
@@ -441,7 +456,7 @@ def test_the_bar_is_on_every_page_while_acting_and_never_otherwise():
     for name, page in pages.items():
         strip = bar(page)
         assert strip is not None and f'<body data-kao="{ivan}">' in page, name
-        assert 'title="Ivan Horvat · ivan@test.local">Gledaš kao: <strong>Ivan Horvat</strong>' in strip, name
+        assert 'title="Ivan Horvat · ivan@test.local">Gledaš kao: <strong>Ivan Horvat</strong>' in seen(strip), name
         assert '<form method="post" action="/kao/izlaz"><button type="submit" class="kao-exit">Izađi</button></form>' in strip
         assert 'id="a2hs"' not in page and 'id="fbPrompt"' not in page, name
     assert "<h1" in pages["error"] and "403" in pages["error"]
@@ -701,14 +716,16 @@ def test_the_owner_reads_the_record_and_nobody_else():
         conn.execute(sa_text("UPDATE acting_log SET at = :at WHERE path = '/karton/masa'"),
                      {"at": datetime(2026, 11, 20, 14, 3, 7, tzinfo=config.TZ)})
     first = o.get("/kao/zapisi").text
+    # the names as a sighted reader has them (seen(): since build 3 of the
+    # admin view "Tko" is in the admin's colour, "Kao koga" in his status's)
     cells = re.findall(r"<tr>\s*<td class=\"num when\">([^<]*)</td>\s*<td class=\"who\">([^<]*)</td>\s*"
                        r"<td class=\"as\">([^<]*)</td>\s*"
-                       r"<td class=\"num\">([^<]*)</td>\s*<td class=\"num st\">([^<]*)</td>\s*</tr>", first)
+                       r"<td class=\"num\">([^<]*)</td>\s*<td class=\"num st\">([^<]*)</td>\s*</tr>", seen(first))
     assert len(cells) == 100 and cells[0][1:] == ("Amir Trener", "Ivan Horvat", "POST /karton/log/99/edit", "303")
     assert 'href="/kao/zapisi?str=2">Starije →</a>' in first and "← Novije</a>" not in first
     second = o.get("/kao/zapisi?str=2").text
     cells = re.findall(r'<td class="num when">([^<]*)</td>\s*<td class="who">[^<]*</td>\s*<td class="as">[^<]*</td>\s*'
-                       r'<td class="num">([^<]*)</td>\s*<td class="num st">([^<]*)</td>', second)
+                       r'<td class="num">([^<]*)</td>\s*<td class="num st">([^<]*)</td>', seen(second))
     assert cells == [("20.11.2026. 14:03:07", "POST /karton/masa", "—")]
     assert 'href="/kao/zapisi">← Novije</a>' in second and "Starije →</a>" not in second
     assert o.get("/kao/zapisi?str=abc").text.count('<td class="num when">') == 100
@@ -722,7 +739,9 @@ def test_the_picker_lists_every_member_in_the_alphabets_order():
     Dario), by the email for one with none; a row each, the name in 700,
     the email, his running plans by their names in the plans' order ("bez
     članarine" for none: a lapsed plan runs no more), "Otvori →" posting
-    /kao/<id> (amber since build 4, .act-kao); the search's box and lines
+    /kao/<id> (.act-kao: amber since build 4, the admin's indigo since
+    28.11.2026; the name in his status's colour since then, read here as
+    a sighted reader has it, seen()); the search's box and lines
     rendered hidden (the script's);
     its tab lit there (Admin ▾ until 28.11.2026, the admin's Članovi since),
     its item current. The trainer's and the owner's; a member is refused, a
@@ -740,7 +759,7 @@ def test_the_picker_lists_every_member_in_the_alphabets_order():
     rows = re.findall(r'<div class="kao-row" data-find="([^"]*)">\s*<div class="kao-who">\s*<strong>([^<]*)</strong>\s*'
                       r'(?:<span class="kao-mail">([^<]*)</span>)?\s*<span class="kao-plans">([^<]*)</span>\s*</div>\s*'
                       r'<form method="post" action="/kao/(\d+)"><button type="submit" class="act act-kao">Otvori →</button></form>',
-                      page)
+                      seen(page))
     assert [(unescape(f), n, m, p, int(i)) for f, n, m, p, i in rows] == [
         ("bez.imena@test.local · bez.imena@test.local", "bez.imena@test.local", "", "bez članarine", u.id),
         ("Cvita Horvat · cvita@test.local", "Cvita Horvat", "cvita@test.local", "bez članarine", cvita),
@@ -799,7 +818,7 @@ def test_the_shortcuts_lead_into_the_members_account():
         assert who.post("/kao/izlaz", follow_redirects=False).headers["location"] == back
 
 
-# ---------- the admin's lists of members (28.11.2026), amber, the upitnik while acting ----------
+# ---------- the admin's lists of members (28.11.2026), the way in's colour, the upitnik while acting ----------
 
 def has_search(page: str) -> bool:
     """Whether a page carries the search for a member of 27.11.2026
@@ -821,7 +840,8 @@ def list_rows(page: str, action: str, natrag: str, go: str) -> list[tuple]:
     """An admin list's rows, in order: (data-find, the name, the email, the
     plans, the id its form posts)."""
     return [(unescape(f), n, m, p, int(i))
-            for f, n, m, p, i in re.findall(LIST_ROW.format(action=re.escape(action), natrag=re.escape(natrag), go=go), page)]
+            for f, n, m, p, i in re.findall(LIST_ROW.format(action=re.escape(action), natrag=re.escape(natrag), go=go),
+                                             seen(page))]
 
 
 def test_kartoni_lists_every_member_and_opens_his_karton():
@@ -833,7 +853,7 @@ def test_kartoni_lists_every_member_and_opens_his_karton():
     one by his email; no trainer, not the owner), the name in 700, the
     email, his running plans ("bez članarine" for none: a lapsed plan runs
     no more), "Otvori karton →" a form posting clan and natrag=/kartoni to
-    /karton/clan (amber, as /kao's "Otvori →"); the as-you-type filter's box
+    /karton/clan (.act-kao, as /kao's "Otvori →"); the as-you-type filter's box
     and lines rendered hidden (the script's), its "prikaži sve" this page's
     own address; no "Zapis svih radnji →" (the owner's line on /kao). A
     member is refused, a guest goes to log in; none, "Još nema članova."."""
@@ -1005,7 +1025,7 @@ def test_in_a_tabs_view_the_members_karton_and_tab_are_his():
     c = client_for("coach@test.local")
     assert enter_tab(c, ivan).headers["location"] == "/karton"
     karton = c.get("/karton").text
-    assert h1(karton) == "<h1>Karton — Ivan Horvat</h1>" and bar(karton) is not None
+    assert h1(seen(karton)) == "<h1>Karton — Ivan Horvat</h1>" and bar(karton) is not None
     r = c.post(f"/karton/ogranicenja?kao={ivan}", data={"text": "Koljeno."}, follow_redirects=False)
     assert location(r) == "/karton?ok=Ograničenja su spremljena.#ogranicenja"
     r = c.post(f"/karton/ogranicenja/dokument?kao={ivan}", data={"naziv": "Nalaz"},
@@ -1023,7 +1043,7 @@ def test_in_a_tabs_view_the_members_karton_and_tab_are_his():
     r = c.post(f"/dvoranski/trening/{tid}/blok?kao={ivan}", data={"vrsta": "stanica"}, follow_redirects=False)
     assert r.status_code == 303 and len(db.gym_training(tid, ivan).blocks) == 2
     tab = c.get("/dvoranski").text
-    assert h1(tab) == '<h1><span class="t">Dvoranski treninzi</span> — Ivan Horvat</h1>' and f'id="dv-s-{sid}"' in tab
+    assert h1(seen(tab)) == '<h1><span class="t">Dvoranski treninzi</span> — Ivan Horvat</h1>' and f'id="dv-s-{sid}"' in tab
     who, whom = "Amir Trener", "Ivan Horvat"
     assert record()[:4] == [(who, whom, "POST", f"/dvoranski/trening/{tid}/blok", 303),
                             (who, whom, "POST", "/karton/ogranicenja/dokument", 303),
@@ -1064,11 +1084,11 @@ def test_a_tabs_view_draws_the_staff_members_own_bar():
             assert re.search(rf'id="{tab}Btn" class="navbtn menu-btn on"', page), (email, path)
             assert re.findall(r'<a href="([^"]+)" role="menuitem" aria-current="page">', page) == \
                 [f"/kao/izlaz?kamo={item}"], (email, path)
-            assert all(m in page for m in ADMIN_BAR) and f'title="{name}"' in page and f"<strong>{name}</strong>" in page
+            assert all(m in page for m in ADMIN_BAR) and f'title="{name}"' in page and f"<strong>{name}</strong>" in seen(page)
             assert '<form method="post" action="/logout">' in page and 'action="/pogled"' not in page
             for gone in ('id="copyToggle"', 'id="phoneCard"', 'id="a2hs"', "data-copy="):
                 assert gone not in page, (email, path, gone)
-            assert bar(page) is not None and "Gledaš kao: <strong>Ana Kovač</strong>" in bar(page)
+            assert bar(page) is not None and "Gledaš kao: <strong>Ana Kovač</strong>" in seen(bar(page))
         c.post(f"/kao/izlaz?kao={ana}")
     c = client_for("coach@test.local")
     enter(c, ana)                                                        # the whole app: the member's bar
@@ -1199,7 +1219,7 @@ def test_the_staff_routes_under_the_two_areas_are_staffs_and_end_the_view():
         r = c.get(path, headers=PAGE, follow_redirects=False)
         assert location(r) == f"{path}?ok={LEFT}" and keys(c) == {}, path
         page = c.get(r.headers["location"]).text
-        assert words in page and bar(page) is None, path
+        assert words in seen(page) and bar(page) is None, path
     enter_tab(c, ivan)
     r = c.post("/dvoranski/clan", data={"clan": str(ana)}, follow_redirects=False)   # the other entry, from his own page
     assert r.headers["location"] == "/dvoranski" and keys(c)["as_user_id"] == ana and keys(c)["as_scope"] == "tab"
@@ -1265,8 +1285,8 @@ def test_the_whole_apps_way_in_is_as_before_but_for_the_two_titles():
             page = c.get(path, headers=PAGE).text
             assert bar(page) is not None and "/kao/izlaz?kamo=" not in page, (way, path)
             assert as_member_reads(page) == as_member_reads(own.get(path).text), (way, path)
-        assert h1(c.get("/karton").text) == "<h1>Karton — Ivan Horvat</h1>"
-        assert h1(c.get("/dvoranski").text) == '<h1><span class="t">Dvoranski treninzi</span> — Ivan Horvat</h1>'
+        assert h1(seen(c.get("/karton").text)) == "<h1>Karton — Ivan Horvat</h1>"
+        assert h1(seen(c.get("/dvoranski").text)) == '<h1><span class="t">Dvoranski treninzi</span> — Ivan Horvat</h1>'
         c.post(f"/kao/izlaz?kao={ivan}")
     mine = {path: own.get(path).text for path in ("/karton", "/dvoranski")}
     assert h1(mine["/karton"]) == '<h1><span class="t">Moj karton</span></h1>'
@@ -1277,15 +1297,17 @@ def test_the_whole_apps_way_in_is_as_before_but_for_the_two_titles():
     assert "as_scope" not in session_of(c) and session_of(c)["as_user_id"] == ivan
 
 
-def test_every_way_into_a_members_app_is_amber():
-    """The owner: "The button to open as another user should also be in
-    amber." /kao's "Otvori →", a roster's "Kao član →" and the trainer's
-    view's "Otvori kao član" wear base.html's tint (.act.act-kao: --warn on
-    --warn-soft, a deeper tint on hover, its background declared). The
-    Karton tab's solid amber "Otvori kao član" (.btn-kao, from build 4)
-    went on 27.11.2026 with its way into the app: the tab's field opens a
-    member's karton now, nothing amber (the tests above). The strip's
-    "Izađi" stays as it was."""
+def test_every_way_into_a_members_app_wears_the_admins_colour():
+    """One look for every way into a member's app: /kao's "Otvori →", a
+    roster's "Kao član →" and the trainer's view's "Otvori kao član" wear
+    base.html's .act.act-kao (its background declared, a deeper tint on
+    hover). Amber from build 4 (the owner: "The button to open as another
+    user should also be in amber."), the admin's indigo since 28.11.2026
+    (build 3 of the admin view: amber says a payment is due now; --admin on
+    --admin-soft, tests/test_status.py measures it). The Karton tab's solid
+    amber "Otvori kao član" (.btn-kao, from build 4) went on 27.11.2026
+    with its way into the app: the tab's field opens a member's karton now
+    (the tests above). The strip's "Izađi" keeps its words and its form."""
     coach, owner, ivan, ana, sara = people()
     sid = db.add_oneoff_session("Grupni trening", datetime.now(config.TZ) + timedelta(days=1), 60, 8, None)
     db.book(ivan, sid)
@@ -1297,8 +1319,8 @@ def test_every_way_into_a_members_app_is_amber():
     assert '<button type="submit" class="act act-kao">Otvori kao član</button>' in c.get(f"/karton/{ivan}").text
     own = c.get("/karton").text
     assert "btn-kao" not in own and ">Otvori kao član</button>" not in own
-    for rule in (".act-kao { background: var(--warn-soft); color: var(--warn);",
-                 ".act-kao:hover { background: color-mix(in srgb, var(--warn) 26%, transparent); color: var(--warn);"):
+    for rule in (".act-kao { background: var(--admin-soft); color: var(--admin);",
+                 ".act-kao:hover { background: color-mix(in srgb, var(--admin) 20%, transparent); color: var(--admin);"):
         assert rule in own, rule
     enter(c, ivan)
     assert '<form method="post" action="/kao/izlaz"><button type="submit" class="kao-exit">Izađi</button></form>' in c.get("/karton").text
@@ -1432,8 +1454,10 @@ IPHONE = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/60
           "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")
 # the strip and the pill under it, measured: its height and its line's,
 # whether the name is cut, "Izađi"'s box, the pill's top, the contrast of
-# the strip's words and of "Izađi" against what they really sit on (the
-# tint laid over the page's background)
+# the strip's words, of the member's name and of "Izađi" against what they
+# really sit on (since 28.11.2026, build 3 of the admin view, the strip's
+# own dark ground in both themes; the amber tint over the page's background
+# until then)
 STRIP = r"""() => {
   const bar = document.querySelector('.kao-bar'), who = bar.querySelector('.kao-as'), x = bar.querySelector('.kao-exit');
   const tb = document.querySelector('.topbar').getBoundingClientRect(), b = bar.getBoundingClientRect(), xr = x.getBoundingClientRect();
@@ -1441,15 +1465,17 @@ STRIP = r"""() => {
   const lum = ([r, g, bl]) => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
     return .2126 * f(r) + .7152 * f(g) + .0722 * f(bl); };
   const ratio = (a, c) => { const [h, l] = [lum(a), lum(c)].sort((p, q) => q - p); return (h + .05) / (l + .05); };
-  const page = rgb(getComputedStyle(document.body).backgroundColor);
-  const tint = rgb(getComputedStyle(document.documentElement).getPropertyValue('--warn-soft').trim());
-  const ground = [0, 1, 2].map(i => tint[i] * tint[3] + page[i] * (1 - tint[3]));
+  const ground = rgb(getComputedStyle(bar).backgroundColor);
   const lineH = parseFloat(getComputedStyle(who).lineHeight);
   return {h: b.height, top: b.top, whoH: who.getBoundingClientRect().height, lineH, cut: who.scrollWidth > who.clientWidth,
           exitLeft: xr.left, exitRight: xr.right, exitH: xr.height, width: document.documentElement.clientWidth,
-          pillTop: tb.top, pillBottom: tb.bottom,
-          words: ratio(rgb(getComputedStyle(who).color), ground), exit: ratio(rgb(getComputedStyle(x).color), rgb(getComputedStyle(x).backgroundColor))};
+          pillTop: tb.top, pillBottom: tb.bottom, solid: ground[3] === 1,
+          words: ratio(rgb(getComputedStyle(who).color), ground), name: ratio(rgb(getComputedStyle(who.querySelector('.st')).color), ground),
+          exit: ratio(rgb(getComputedStyle(x).color), rgb(getComputedStyle(x).backgroundColor))};
 }"""
+# a title as a sighted reader has it: the name without its words for a screen reader
+SEEN_H1 = ("() => { const h = document.querySelector('main h1').cloneNode(true); "
+           "h.querySelectorAll('.st-sr').forEach(x => x.remove()); return h.textContent; }")
 
 
 def _login(browser, server: str, email: str, width: int, theme: str = "dark", ua: str | None = None, keep_phone: bool = False):
@@ -1523,7 +1549,8 @@ def test_into_a_members_account_and_out_on_a_phone(server):
             check(s["h"] == 52 and s["top"] == 0 and s["whoH"] <= s["lineH"] * 1.2 and not s["cut"],
                   f"{where} the strip: {s}")
             check(s["exitH"] >= 44 and s["exitRight"] <= s["width"] - 15 and s["exitLeft"] > 0, f"{where} Izađi: {s}")
-            check(s["words"] >= 4.5 and s["exit"] >= 4.5, f"{where} contrast: words {s['words']:.2f}, Izađi {s['exit']:.2f}")
+            check(s["solid"] and s["words"] >= 4.5 and s["name"] >= 4.5 and s["exit"] >= 4.5,
+                  f"{where} contrast: words {s['words']:.2f}, name {s['name']:.2f}, Izađi {s['exit']:.2f}, solid {s['solid']}")
             check(s["pillTop"] >= s["h"], f"{where} the pill's top {s['pillTop']} is behind the strip ({s['h']})")
             pg.evaluate("() => window.scrollTo(0, 400)"); pg.wait_for_timeout(150)
             s = pg.evaluate(STRIP)
@@ -1561,9 +1588,11 @@ def test_into_a_members_account_and_out_on_a_phone(server):
     assert not problems, f"{len(problems)} problems, listed above"
 
 
-# an admin list (28.11.2026) as laid out: its rows shown, its count line, the
-# box's text, the page's overflow
-LISTED = r"""() => ({rows: [...document.querySelectorAll('.kao-row')].filter(r => !r.hidden).map(r => r.querySelector('strong').textContent),
+# an admin list (28.11.2026) as laid out: its rows shown (each name as a
+# sighted reader has it: without its status's words for a screen reader,
+# build 3), its count line, the box's text, the page's overflow
+LISTED = r"""() => ({rows: [...document.querySelectorAll('.kao-row')].filter(r => !r.hidden).map(r => {
+    const s = r.querySelector('strong').cloneNode(true); s.querySelectorAll('.st-sr').forEach(x => x.remove()); return s.textContent; }),
   found: (document.querySelector('.kao-found') || {}).hidden === false ? document.querySelector('.kao-found').textContent.trim() : null,
   box: (document.querySelector('form.kao-search input') || {}).value,
   overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth})"""
@@ -1618,9 +1647,9 @@ def test_kartoni_and_the_admin_pages_on_a_phone(server):
             with pg.expect_navigation():
                 pg.locator(".kao-row", has_text="Ana Kovač").locator("button").tap()
             pg.wait_for_load_state("networkidle")
-            check(pg.url == f"{server}/karton" and pg.text_content("main h1") == "Karton — Ana Kovač"
+            check(pg.url == f"{server}/karton" and pg.evaluate(SEEN_H1) == "Karton — Ana Kovač"
                   and pg.locator("div.kao-bar").count() == 1 and keys_of(ctx).get("as_scope") == "tab",
-                  f"{where} Otvori karton led to {pg.url}: {pg.text_content('main h1')!r}, {keys_of(ctx)}")
+                  f"{where} Otvori karton led to {pg.url}: {pg.evaluate(SEEN_H1)!r}, {keys_of(ctx)}")
             check(pg.evaluate(OVERFLOW) == 0, f"{where} her karton overflows by {pg.evaluate(OVERFLOW)}px")
             pg.tap(".nav-burger")
             d = pg.evaluate(DRAWER)
@@ -1686,9 +1715,9 @@ def test_a_tabs_view_on_a_phone(server):
             pg.wait_for_load_state("networkidle")
 
         pick("/kartoni", "Ivan Horvat")
-        check(pg.url == server + "/karton" and pg.text_content("main h1") == "Karton — Ivan Horvat"
+        check(pg.url == server + "/karton" and pg.evaluate(SEEN_H1) == "Karton — Ivan Horvat"
               and pg.is_visible("div.kao-bar") and keys_of(ctx).get("as_scope") == "tab",
-              f"Kartoni's row: {pg.url}, {pg.text_content('main h1')!r}, {keys_of(ctx)}")
+              f"Kartoni's row: {pg.url}, {pg.evaluate(SEEN_H1)!r}, {keys_of(ctx)}")
         wide("his karton")
         pg.tap(".nav-burger")
         drawer = pg.evaluate(DRAWER)
@@ -1715,8 +1744,8 @@ def test_a_tabs_view_on_a_phone(server):
         wide("the trainer's own raspored")
 
         pick("/dvoranski/clanovi", "Ivan Horvat")
-        check(pg.url == server + "/dvoranski" and pg.text_content("main h1") == "Dvoranski treninzi — Ivan Horvat"
-              and pg.is_visible("div.kao-bar"), f"the list's row: {pg.url}, {pg.text_content('main h1')!r}")
+        check(pg.url == server + "/dvoranski" and pg.evaluate(SEEN_H1) == "Dvoranski treninzi — Ivan Horvat"
+              and pg.is_visible("div.kao-bar"), f"the list's row: {pg.url}, {pg.evaluate(SEEN_H1)!r}")
         card = pg.locator(f"#dv-s-{sid}")
         opens = (start - timedelta(hours=config.CANCEL_CUTOFF_HOURS)).strftime("%-d.%-m. u %H:%M")
         check(card.is_visible() and card.locator(".dv-go").inner_text() == "Pripremi trening"

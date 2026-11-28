@@ -1,12 +1,15 @@
 {% extends "base.html" %}
+{% import "_status.html" as st %}
 {% block title %}Polaznici — QMT{% endblock %}
 {% block head %}
 <style>
   /* a booked member's row (26.11.2026): his name and email, then "Kao
      član →" at its end (.act, a form: into his account, his app as he has
-     it, back here at "Izađi"; amber since build 4, base.html's .act-kao,
-     as every way into a member's app); on a phone the row wraps, the
-     email breaking anywhere, so nothing leaves 360px */
+     it, back here at "Izađi"; base.html's .act-kao, as every way into a
+     member's app: amber since build 4, the admin's indigo since
+     28.11.2026), his name in his status's colour since then (a staff
+     member's the admin's); on a phone the row wraps, the email breaking
+     anywhere, so nothing leaves 360px */
   .roster-row { list-style: none; padding: 9px 4px; border-bottom: 1px solid var(--line);
                 display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
   .roster-row strong { overflow-wrap: anywhere; }
@@ -26,7 +29,7 @@
 <ul style="padding:0; max-width:480px;">
   {% for p in people %}
   <li class="roster-row">
-    <strong>{{ p.full_name or "—" }}</strong><span class="hint">{{ p.email }}</span>
+    <strong>{{ st.name(p.full_name or "—", status_of[p.id]) }}</strong><span class="hint">{{ p.email }}</span>
     {% if p.id not in staff_ids %}
     {# into his account, landing on his training of this termin (26.11.2026,
        build 3: rule 2 there; a termin canceled or a booking gone says its

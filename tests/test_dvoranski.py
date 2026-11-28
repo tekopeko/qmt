@@ -1481,8 +1481,11 @@ def test_a_training_planned_ahead_on_a_phone(server):
         pg.request.post(server + "/dvoranski/clan", form={"clan": str(ivan)})  # a tab's view of him
         pg.goto(server + "/dvoranski")
         pg.wait_for_load_state("networkidle")
-        check(pg.is_visible("div.kao-bar") and pg.text_content("main h1") == "Dvoranski treninzi — Ivan Test",
-              f"the tab's view: {pg.text_content('main h1')!r}")
+        # the title as a sighted reader has it: since 28.11.2026 (build 3 of the admin
+        # view) his name carries his status's words for a screen reader, unseen
+        title = pg.evaluate("() => { const h = document.querySelector('main h1').cloneNode(true); "
+                            "h.querySelectorAll('.st-sr').forEach(x => x.remove()); return h.textContent; }")
+        check(pg.is_visible("div.kao-bar") and title == "Dvoranski treninzi — Ivan Test", f"the tab's view: {title!r}")
         check(pg.get_attribute("#dv-day", "max") == (today + timedelta(days=60)).isoformat(), "the day's max")
         check(pg.is_visible("#dv-time") and pg.inner_text(".dv-plan-one") == "Grupni trening",
               "the time field and the plan's words")

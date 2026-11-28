@@ -49,10 +49,16 @@ is deliberately small:
 | page / card / inset | `--bg` / `--surface` / `--surface-2` | three greys, no more |
 | hairline | `--line` | every border and divider |
 | text / secondary | `--text` / `--muted` | there is no third text colour |
-| brand | `--accent` (text) · `--accent-fill` (button fill) · `--accent-dim` (tint) | **the one loud colour — spend it on actions and the current state, never on decoration** |
+| brand | `--accent` (text) · `--accent-fill` (button fill) · `--accent-dim` (tint) | **the one loud colour — spend it on actions and the current state, never on decoration**; since 28.11.2026 also a member's lapsed status, on his avatar and his name alone (below) |
 | brand, on its own tint | `--accent-tint-ink` | accent-coloured text sitting ON `--accent-dim` (`.btn-quiet`, `.tag-11`, the featured chip): plain `--accent` measures 4.0–4.3:1 there, under AA |
 | positive state | `--good` (text) · `--good-fill` / `--good-ink` (button) | "you have this", success |
-| absence / caution | `--warn` (text) · `--warn-soft` (tint) | amber, the one non-brand hue: the karton's flags and "Nisam bio/la", /clanarine's trust note (base tokens since 29.10.2026) |
+| absence / caution | `--warn` (text) · `--warn-soft` (tint) | amber: the karton's flags and "Nisam bio/la", /clanarine's trust note (base tokens since 29.10.2026); since 28.11.2026 also a member's payment due (his grace week). No longer "someone else's account" (the strip, the buttons into a member's app: the admin's, below) |
+| a member's status | `--st-active` · `--st-grace` · `--st-lapsed` · `--st-none` | his name's colour wherever he is shown and his avatar's fill (28.11.2026, build 3 of the admin view; `_status.html`'s `span.st`, the avatar's `st-<status>`): green a plan runs, amber a payment is due, red he had one and none runs, grey he never had one. Aliases, AA on all three greys in both themes: light `--good-strong` / `--warn` / `--accent-strong` / `--muted` (plain `--good` and `--accent` are 4.35 and 4.31 on `--surface-2`), dark `--good` / `--warn` / `--accent-strong` / `--muted`. Never a word beside the name: a screen reader's words alone |
+| the admin | `--admin` (text) · `--admin-soft` (tint) · `--admin-fill` / `--admin-ink` (fill) | **the one hue of its own, an indigo unlike the four**: a staff account's avatar in the admin view and its name, every way into a member's account (`.act-kao`, the tint), the "Gledaš kao" strip's "Izađi" (the fill). Light #4338ca / its tint at 10% / #4338ca under white; dark #a5b4fc / its tint at 14% / #5e5ce6 under white |
+
+The bar and the "Gledaš kao" strip are dark in both themes: what stands on
+them (the avatar, the strip's words and name, "Izađi") carries
+`data-theme="dark"`, the dark theme's tokens whatever the page's.
 
 Both themes are first-class: every token has a dark and a light value, the page
 pre-paints the saved theme, and a design that only looks right in one is wrong.
@@ -138,6 +144,10 @@ action: *"✓ Tvoja pretplata — obnavlja se 4.10."*, *"Aktivna članarina
 (gotovina)"*, *"Nemaš ovu članarinu"*, *"Nisam bio/la"*. Colour reinforces the
 statement (green = have, grey = open, amber = absence, red = act) but never
 carries it alone — a razina badge says "Razina 2 od 3" under its colour ramp.
+The one exception is the owner's (28.11.2026): a member's status on his name
+and his avatar is the colour alone ("no need for the extra word for the
+status"), its words there for a screen reader only (`.st-sr`), and said in
+words where it matters (/moja-clanarina's chip, the lists' plans line).
 Only offer what the user can actually do: a guest never sees "Rezerviraj termin",
 a plan-less client never sees a booking CTA, a subscribed client sees their own
 tier named (Paket "12 treninga mjesečno") and only the other tiers offered. A

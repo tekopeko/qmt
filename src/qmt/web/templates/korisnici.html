@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_status.html" as st %}
 {% block title %}Korisnici — QMT{% endblock %}
 {% block content %}
 <h1>Korisnici</h1>
@@ -24,7 +25,7 @@
     {% for u in users %}
     {% set u_is_owner = owner_email and (u.email or "")|lower == owner_email %}
     <tr style="border-bottom:1px solid var(--line);">
-      <td style="padding:9px 6px;"><strong>{{ u.full_name or "—" }}</strong></td>
+      <td style="padding:9px 6px;"><strong>{{ st.name(u.full_name or "—", status_of[u.id]) }}</strong></td>
       <td style="word-break:break-all;">{{ u.email }}</td>
       <td>
         {% if u.email_verified %}<span style="color:var(--good); font-weight:600;">potvrđen</span>

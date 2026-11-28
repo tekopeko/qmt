@@ -24,7 +24,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .. import auth, config, copy, db, grammar, mailer, payments, reminders, storage, upitnik
 from ..models import (FEELING_LABELS, ONLINE_TIER_SLOTS, ONLINE_TIERS, PAYMENT_METHODS, PLAN_ABBR,
                       PLAN_LABELS, PLAN_TYPES, SECTIONS, SESSION_KINDS, SEXES, WEEKDAYS as DAY_WEEKDAYS,
-                      add_month, alpha_key, duration_text, effort_of, fold, matches, plural, sub_month)
+                      add_month, alpha_key, duration_text, effort_of, fold, matches, member_status, plural, sub_month)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -281,6 +281,19 @@ def _can_edit_copy(user) -> bool:
     return _is_staff(user)
 
 
+def _status_of(user, statuses: dict[int, str], admin: bool = True) -> str:
+    """An account's status, the class of its avatar and of its name
+    (28.11.2026, build 3 of roadmap/2026-11-28-admin-view-plan.md): a
+    member's from `statuses` (db.member_statuses, read once for the whole
+    list; models.member_status: grace, active, lapsed, none), "none" when
+    the list holds none of his; a staff account (_is_staff) is "admin", its
+    own colour, and "active" in its member view (`admin` False), where it
+    counts as holding every plan."""
+    if _is_staff(user):
+        return "admin" if admin else "active"
+    return statuses.get(user.id, "none")
+
+
 def _has_online(user) -> bool:
     """May this user see Online treninzi at all? Staff always (the trainer
     and, since 26.11.2026 whatever his flag, the owner); clients only with
@@ -428,10 +441,20 @@ def _ctx(request: Request, user, copy_texts: dict[str, str] | None = None, **ext
     bar = acting[0] if tab else user
     bar_staff = _can_edit_copy(bar)
     view = _staff_view(request, bar_staff, acting, tab)
+    # whose status the bar's avatar and its menu's name wear (28.11.2026,
+    # build 3 of the admin view): the bar's account's, a member's own (the
+    # member's while staff act as him in the whole app), a staff account's
+    # the admin's in the admin view (a tab's view's too) and "active" in its
+    # member view; and the strip's member's, read once (the bar's when the
+    # bar is his)
+    kao = acting[1] if acting else None
+    statuses = db.member_statuses({u.id for u in (bar, kao) if u is not None and not _can_edit_copy(u)})
+    bar_status = _status_of(bar, statuses, admin=view == "admin") if bar is not None else None
     return {"request": request, "user": user, "weekdays_short": WEEKDAYS_SHORT,
-            "actor": acting[0] if acting else None, "kao": acting[1] if acting else None,
+            "actor": acting[0] if acting else None, "kao": kao,
             "kao_tab": tab, "bar_user": bar, "bar_staff": bar_staff, "bar_owner": _is_owner(bar),
             "bar_view": view, "bar_admin": view == "admin",
+            "bar_status": bar_status, "kao_status": _status_of(kao, statuses) if kao is not None else None,
             "bar_online": _has_online(bar) if tab else show_online,
             "bar_gym": _has_gym(bar) if tab else show_gym,
             "mojimakrosi_url": config.MOJIMAKROSI_URL,
@@ -1310,15 +1333,17 @@ def moja_clanarina(request: Request):
     for m in sorted(memberships, key=lambda m: (not m.is_active(today), order.get(m.plan, len(order)))):
         active = m.is_active(today)
         cancelling = bool(m.stripe_subscription_id) and m.cancel_at_period_end
-        days_left = (m.dospijece - today).days
         # the state in words; the colour only reinforces it. (its words' slot,
         # clanarina.chip.<kind>, since 25.11.2026 the gym owner's text; its
-        # class; the relative day after "dospijeva", code: "sutra", "za 3 dana")
+        # class; the relative day after "dospijeva", code: "sutra", "za 3 dana").
+        # "dospijeva" is Membership.is_due since 28.11.2026, the test a
+        # member's status asks too (amber): until then `dospijeće − today ≤ 7`
+        # here, the same days (dospijeće is next_payment + GRACE_DAYS)
         if not active:
             chip = ("lapsed", "lapsed", "")
         elif cancelling:
             chip = ("cancelling", "off", "")
-        elif days_left <= 7:
+        elif m.is_due(today):
             chip = ("due", "due", _relative_day(m.dospijece, today))
         else:
             chip = ("active", "ok", "")
@@ -2164,9 +2189,12 @@ def _kao_members() -> list[dict]:
     nor the owner), in the alphabet's order (his full name, the email for
     one with none: models.alpha_key), each {"user", "name" (his full name,
     else his email), "plans" (his running plans by their names, PLAN_LABELS
-    in PLAN_TYPES' order, joined by " · "; "" for none)}: /kao's rows and,
-    since 26.11.2026 (build 4), the Karton tab's picker, one list (since
-    27.11.2026 its search, which opens his karton)."""
+    in PLAN_TYPES' order, joined by " · "; "" for none), "status" (since
+    28.11.2026, build 3 of the admin view: models.member_status, his name's
+    colour, from the rows the overview read: no query more)}: /kao's rows
+    and, since 26.11.2026 (build 4), the Karton tab's picker, one list
+    (since 27.11.2026 its search, which opens his karton; since 28.11.2026
+    the admin's Kartoni and Dvoranski treninzi)."""
     today = config.today()
     order = {p: i for i, p in enumerate(PLAN_TYPES)}
     members = []
@@ -2176,7 +2204,8 @@ def _kao_members() -> list[dict]:
             continue
         running = sorted((m.plan for m in row["plans"] if m.is_active(today)), key=lambda p: order.get(p, len(order)))
         members.append({"user": u, "name": u.full_name or u.email,
-                        "plans": " · ".join(PLAN_LABELS.get(p, p) for p in running)})
+                        "plans": " · ".join(PLAN_LABELS.get(p, p) for p in running),
+                        "status": member_status(row["plans"], today)})
     members.sort(key=lambda m: (alpha_key(m["name"]), m["user"].email))
     return members
 
@@ -2207,8 +2236,15 @@ def kao_zapisi(request: Request):
     raw = request.query_params.get("str", "")
     page = int(raw) if re.fullmatch(r"[1-9][0-9]{0,5}", raw) else 1
     rows, older = db.acting_log(page)
+    # "Kao koga" in his status's colour now (28.11.2026, build 3 of the admin
+    # view), while his account is there (member_id, SET NULL when it goes):
+    # the page's members read in one go, their plans in another; "Tko" is
+    # always the admin's colour (the template's)
+    ids = {r.member_id for r in rows if r.member_id is not None}
+    accounts, statuses = db.users_by_id(ids), db.member_statuses(ids)
+    whom = {i: _status_of(u, statuses) for i, u in accounts.items()}
     return templates.TemplateResponse(request, "kao_zapisi.html", _ctx(
-        request, user, rows=rows, page=page, older=older, tz=config.TZ))
+        request, user, rows=rows, page=page, older=older, tz=config.TZ, whom=whom))
 
 
 @app.post("/kao/izlaz")
@@ -2412,12 +2448,16 @@ def session_roster(request: Request, session_id: int):
     if sess is None:
         raise HTTPException(status_code=404)
     people = db.roster(session_id)
+    statuses = db.member_statuses(p.id for p in people if not _can_edit_copy(p))
     return templates.TemplateResponse(request, "roster.html", _ctx(
         request, user, sess=sess,
         local_time=sess.starts_at.astimezone(config.TZ),
         people=people,
         # "Kao član →" on a member's row (26.11.2026), never on staff's
         staff_ids={p.id for p in people if _can_edit_copy(p)},
+        # each name's colour (28.11.2026, build 3 of the admin view): the
+        # booked members' statuses in one read, a staff member's the admin's
+        status_of={p.id: _status_of(p, statuses) for p in people},
     ))
 
 
@@ -2677,10 +2717,17 @@ def _render_karton(request: Request, viewer, subject, own: bool):
     # at its top (27.11.2026) went on 28.11.2026 (build 2 of the admin view):
     # a member's karton is opened from the admin's Članovi → Kartoni
     staff_own = own and _can_edit_copy(subject)
+    # the title's name in his status's colour (28.11.2026, build 3 of the
+    # admin view), read only where the title names him: the read-only
+    # karton, and his own while staff act as him ("Karton — Ivan Horvat")
+    names = not own or _actor(request) is not None
+    subject_status = (_status_of(subject, db.member_statuses([] if _can_edit_copy(subject) else [subject.id]))
+                      if names else None)
     # the slash forms read as the member's (27.11.2026): the texts here are
     # about him, the trainer's view of his karton too
     return templates.TemplateResponse(request, "karton.html", _ctx(
         request, viewer, copy_texts=texts, subject=subject, own=own, age=age, staff_own=staff_own, rod=subject.sex,
+        subject_status=subject_status,
         can_upitnik=own and not staff_own and _has_online(subject),
         onboarding=onboarding, answers=answers,
         levels=upitnik.LEVELS, goals=upitnik.GOALS, max_score_v1=upitnik.MAX_SCORE_V1,
@@ -6173,6 +6220,9 @@ def clanarine_page(request: Request):
     today = config.today()
     rows = db.memberships_overview()
     for row in rows:
+        # his name's colour (28.11.2026, build 3 of the admin view), from the
+        # rows the overview read
+        row["status"] = member_status(row["plans"], today)
         # what an uplata recorded now buys, said beside its button
         # (db.next_cycle, the rule record_payment follows)
         row["next"] = {m.plan: db.next_cycle(m, today) for m in row["plans"]}
@@ -6262,11 +6312,17 @@ def users_page(request: Request):
     user, redirect = _require_owner(request)
     if redirect:
         return redirect
+    users, today = db.list_all_users(), config.today()
+    plans_map = {row["user"].id: row["plans"] for row in db.memberships_overview()}
+    # each name's colour (28.11.2026, build 3 of the admin view): a member's
+    # status from the rows read above, a staff account's the admin's
+    statuses = {u.id: member_status(plans_map.get(u.id, []), today) for u in users}
     return templates.TemplateResponse(request, "korisnici.html", _ctx(
-        request, user, users=db.list_all_users(),
+        request, user, users=users,
         owner_email=config.OWNER_EMAIL,
-        plans_map={row["user"].id: row["plans"] for row in db.memberships_overview()},
-        plan_labels=PLAN_LABELS, plan_abbr=PLAN_ABBR, today=config.today()))
+        plans_map=plans_map,
+        status_of={u.id: _status_of(u, statuses) for u in users},
+        plan_labels=PLAN_LABELS, plan_abbr=PLAN_ABBR, today=today))
 
 
 @app.post("/korisnici/{user_id}/trainer")

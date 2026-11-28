@@ -1,6 +1,6 @@
 # QMT design tokens (generated from base.html — do not edit by hand)
 
-_Regenerated 2026-10-29 by scripts/extract_tokens.py_
+_Regenerated 2026-11-28 by scripts/extract_tokens.py_
 
 | token | light | dark | note |
 |---|---|---|---|
@@ -23,6 +23,14 @@ _Regenerated 2026-10-29 by scripts/extract_tokens.py_
 | `--good-strong` | `#116932` | `#2b9a5c` |  |
 | `--warn` | `#a34a08` | `#fbbf24` | amber: absence, caution — the karton's flags and "Nisam bio/la", /clanarine's trust note (base's since 29.10.2026) |
 | `--warn-soft` | `rgba(163, 74, 8, .13)` | `rgba(251, 191, 36, .15)` | its tint |
+| `--st-active` | `var(--good-strong)` | `var(--good)` | a plan of his runs: green |
+| `--st-grace` | `var(--warn)` | `var(--warn)` | a payment of his is due, the grace week: amber |
+| `--st-lapsed` | `var(--accent-strong)` | `var(--accent-strong)` | he had a plan and none runs: red |
+| `--st-none` | `var(--muted)` | `var(--muted)` | he never had a plan: grey |
+| `--admin` | `#4338ca` | `#a5b4fc` | the admin's indigo, as text: AA on the three greys and on its tint |
+| `--admin-soft` | `rgba(67, 56, 202, .10)` | `rgba(165, 180, 252, .14)` | its tint (the buttons into a member's account) |
+| `--admin-fill` | `#4338ca` | `#5e5ce6` | solid indigo under --admin-ink |
+| `--admin-ink` | `#ffffff` | `#ffffff` | text ON the admin's fill |
 | `--shadow` | `0 1px 2px rgba(20, 20, 22, .05), 0 8px 24px rgba(20, 20, 22, .06)` | `0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35)` |  |
 | `--shadow-btn` | `0 2px 10px rgba(225, 6, 0, .28)` | `0 2px 12px rgba(255, 52, 43, .35)` |  |
 

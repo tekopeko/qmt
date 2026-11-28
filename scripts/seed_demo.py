@@ -68,6 +68,13 @@ PLANS = {
 # ivan's online plan is QMove PRO, the featured middle card: the landing
 # shows a member one owned tier of the three
 ONLINE_TIER = {"ivan@qmt.local": "pro"}
+# The four statuses of a member, one colour each (28.11.2026, the status
+# colours), on the demo's lists: days since the due date of every plan of his.
+# Luka's payment is due since two days (his grace week: amber), Marko's plan
+# lapsed more than a month ago (red: he books nothing in fill_bookings); sara
+# never had a plan (grey) and the rest run (green). So the lists show all four
+# and the audit measures each colour where a name stands.
+LATE = {"luka@qmt.local": 2, "marko@qmt.local": 40}
 
 
 def upsert_user(email: str, name: str, password: str, is_trainer: bool) -> None:
@@ -130,6 +137,16 @@ def main() -> None:
             db.record_payment(u.id, plan, tier=ONLINE_TIER.get(email) if plan == "online" else None)
             n += 1
     print(f"  {n} članarina (sara@qmt.local namjerno bez — demo blokade)")
+
+    from datetime import timedelta
+    from qmt.models import sub_month
+    with db.session_scope() as s:
+        for email, late in LATE.items():
+            uid = db.get_user_by_email(email).id
+            for m in s.scalars(select(Membership).where(Membership.user_id == uid)):
+                m.next_payment = config.today() - timedelta(days=late)
+                m.paid_on = sub_month(m.next_payment)
+    print(f"  {len(LATE)} namjerno nisu aktivne: luka dospijeva, marko istekla (boje statusa)")
 
 
 def fill_bookings() -> None:

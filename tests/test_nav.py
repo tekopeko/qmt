@@ -24,14 +24,18 @@ app is an admin page, a member page or a shared one (app._page_kind, held
 here route by route: a route nobody classified fails), a page of either
 side asked for takes the view along, a shared page keeps it, and a write, a
 fetch, a prefetch, an asset, and anything while staff act as a member,
-never change it. The admin view's bar: three tabs, each a menu in the
+never change it. The admin view's bar: Početna, a plain tab, first as in
+a member's row (since the evening of 28.11.2026, the owner: "The početna
+page should be in the same hierarchy as the Članovi, Treninzi etc"; an item
+of Sadržaj's menu until then), then three tabs, each a menu in the
 account menu's component, Članovi ▾ (Kartoni, Trenutne članarine, Gledaj
 kao član, the owner's Korisnici), Treninzi ▾ (Raspored, Termini, Dvoranski
-treninzi, Online treninzi, Vježbe), Sadržaj ▾ (Tekstovi, Početna, Upitnik,
+treninzi, Online treninzi, Vježbe), Sadržaj ▾ (Tekstovi, Upitnik,
 Vodič), and the owner's Statistika, a plain tab; a tab .on while one of its
 pages is open, that item aria-current; Admin ▾ and the captions "Kao član"
-/ "Admin" gone. In the drawer three captions, ČLANOVI, TRENINZI, SADRŽAJ,
-their items as rows, a hairline before each next group, Statistika last.
+/ "Admin" gone. In the drawer Početna's row, then three captions, ČLANOVI,
+TRENINZI, SADRŽAJ, their items as rows, a hairline before each group,
+Statistika last.
 The member view's bar is a member's with every plan: seven tabs, no admin
 tab.
 
@@ -168,11 +172,23 @@ def stat_tab(page: str) -> tuple[str, bool] | None:
     return (m.group(1), bool(m.group(2))) if m else None
 
 
+def home_tab(page: str) -> tuple[str, bool] | None:
+    """The admin bar's Početna, a plain tab before its menus (since the
+    evening of 28.11.2026): (href, .on), or None (a member's bar has its
+    own, a row of tabs())."""
+    m = re.search(r'<div class="menu-wrap"><a href="([^"]+)" class="navbtn( on)?">Početna</a></div>\s*'
+                  r'<div class="menu-wrap nav-admin">\s*<p class="nav-cap">Članovi</p>', nav(page))
+    return (m.group(1), bool(m.group(2))) if m else None
+
+
 def lit(page: str) -> tuple[list[str], list[str]]:
-    """What the bar marks: the tabs .on (a member row's, an admin menu's,
-    Statistika) and the items aria-current."""
+    """What the bar marks: the tabs .on (a member row's, the admin bar's
+    Početna, an admin menu's, Statistika) and the items aria-current."""
     m = menus(page)
-    on = [label for _, label, o in tabs(page) if o] + [label for label, (o, _) in m.items() if o]
+    on = [label for _, label, o in tabs(page) if o]
+    if (home_tab(page) or ("", False))[1]:
+        on.append("Početna")
+    on += [label for label, (o, _) in m.items() if o]
     if (stat_tab(page) or ("", False))[1]:
         on.append("Statistika")
     return on, [name for _, (_, items) in m.items() for _, name, current in items if current]
@@ -197,7 +213,7 @@ TRAINER_MENUS = {
     "Članovi": [("/kartoni", "Kartoni"), ("/clanarine", "Trenutne članarine"), ("/kao", "Gledaj kao član")],
     "Treninzi": [("/raspored", "Raspored"), ("/admin", "Termini"), ("/dvoranski/clanovi", "Dvoranski treninzi"),
                  ("/programi", "Online treninzi"), ("/treninzi/vjezbe", "Vježbe")],
-    "Sadržaj": [("/tekstovi", "Tekstovi"), ("/", "Početna"), ("/upitnik", "Upitnik"), ("/vodic", "Vodič")]}
+    "Sadržaj": [("/tekstovi", "Tekstovi"), ("/upitnik", "Upitnik"), ("/vodic", "Vodič")]}
 OWNER_MENUS = {**TRAINER_MENUS, "Članovi": TRAINER_MENUS["Članovi"] + [("/korisnici", "Korisnici")]}
 CAPTIONS = ["Članovi", "Treninzi", "Sadržaj"]
 ACCOUNT = ["Profil", "Tamna tema", "Odjava"]
@@ -289,6 +305,7 @@ def test_the_admin_bar_the_member_views_bar_and_the_switch_between_them():
         c = client_for(email)
         page = c.get("/").text
         assert items_of(page) == want and tabs(page) == [] and not seven(page), email
+        assert home_tab(page) == ("/", True), email                       # Početna, first, lit on the front page
         assert '<nav class="nav" id="mainNav">' in page and '<button type="button" class="navbtn nav-burger" onclick=' in page
         assert stat_tab(page) == (("/statistika", False) if owner else None), email
         assert captions(page) == CAPTIONS and account_menu(page) == ADMIN_ACCOUNT, email
@@ -525,8 +542,9 @@ def test_each_admin_page_lights_its_tab_and_its_item():
     Korisnici), Treninzi (Raspored, and a termin's roster, opened from the
     week; Termini and its other pages; Dvoranski treninzi, and the
     templates' pages; Online treninzi, and the programme's and a day's
-    editors; Vježbe, and an exercise's pages), Sadržaj (Tekstovi, Početna,
-    Upitnik, Vodič), the owner's Statistika its plain tab; a shared page of
+    editors; Vježbe, and an exercise's pages), Sadržaj (Tekstovi,
+    Upitnik, Vodič), the front page its plain tab Početna (no menu lit
+    there), the owner's Statistika its plain tab; a shared page of
     no tab (Prehrana, the profile) nothing. In the member view a member
     page lights its tab. The three new pages carry their names."""
     make_user("trener@test.local", is_trainer=True)
@@ -550,7 +568,7 @@ def test_each_admin_page_lights_its_tab_and_its_item():
              (f"/treninzi/{pid}/dan/{did}/uredi", "Treninzi", "Online treninzi"),
              ("/treninzi/vjezbe", "Treninzi", "Vježbe"), ("/treninzi/vjezbe/nova", "Treninzi", "Vježbe"),
              (f"/treninzi/vjezbe/{eid}", "Treninzi", "Vježbe"),
-             ("/tekstovi", "Sadržaj", "Tekstovi"), ("/", "Sadržaj", "Početna"), ("/upitnik", "Sadržaj", "Upitnik"),
+             ("/tekstovi", "Sadržaj", "Tekstovi"), ("/upitnik", "Sadržaj", "Upitnik"),
              ("/vodic", "Sadržaj", "Vodič")]
     owners = [("/kao/zapisi", "Članovi", "Gledaj kao član"), ("/korisnici", "Članovi", "Korisnici")]
     for email, walk in (("coach@test.local", cases), ("trener@test.local", cases + owners)):
@@ -558,7 +576,9 @@ def test_each_admin_page_lights_its_tab_and_its_item():
         for path, tab, item in walk:
             r = c.get(path)
             assert r.status_code == 200 and view_of(c) == "admin", (email, path)
-            assert lit(r.text) == ([tab], [item]), (email, path, lit(r.text))
+            assert lit(r.text) == ([tab], [item]) and home_tab(r.text) == ("/", False), (email, path, lit(r.text))
+        front = c.get("/").text                                          # the front page: Početna alone, no menu's item
+        assert view_of(c) == "admin" and lit(front) == (["Početna"], []) and home_tab(front) == ("/", True), email
         for path in ("/prehrana", "/profil"):
             assert lit(c.get(path).text) == ([], []), (email, path)
     o = client_for("trener@test.local")
@@ -713,16 +733,16 @@ DRAWER = r"""() => {
 
 OPEN = "k => [getComputedStyle(document.getElementById(k + 'Menu')).display !== 'none', document.getElementById(k + 'Btn').getAttribute('aria-expanded')]"
 MEMBER_LABELS = [label for _, label in MEMBER_ROW]
-ADMIN_TABS = ["Članovi ▾", "Treninzi ▾", "Sadržaj ▾", "Statistika"]           # the owner's admin bar as shown
-ADMIN_DRAWER = (["# Članovi"] + [label for _, label in OWNER_MENUS["Članovi"]]
+ADMIN_TABS = ["Početna", "Članovi ▾", "Treninzi ▾", "Sadržaj ▾", "Statistika"]   # the owner's admin bar as shown
+ADMIN_DRAWER = (["Početna", "# Članovi"] + [label for _, label in OWNER_MENUS["Članovi"]]
                 + ["# Treninzi"] + [label for _, label in OWNER_MENUS["Treninzi"]]
                 + ["# Sadržaj"] + [label for _, label in OWNER_MENUS["Sadržaj"]] + ["Statistika"])
 
 
 def test_the_admin_bar_its_menus_and_its_drawer_in_a_browser(server):
     """The owner's admin view at 1280 and 901px (light): the pill one row,
-    the wordmark one of its two, the tabs Članovi ▾ · Treninzi ▾ · Sadržaj ▾
-    · Statistika; each menu shut at first, a click opening it under its tab
+    the wordmark one of its two, the tabs Početna · Članovi ▾ · Treninzi ▾ ·
+    Sadržaj ▾ · Statistika; each menu shut at first, a click opening it under its tab
     inside the window with its items, Escape shutting it; one open at a
     time, a click outside and the account menu shutting it; the keyboard
     (Enter opens, Tab reaches the first item, Escape gives the focus back);
@@ -811,7 +831,7 @@ def test_the_admin_bar_its_menus_and_its_drawer_in_a_browser(server):
         d = pg.evaluate(DRAWER)
         if d["shown"] != ADMIN_DRAWER:
             problems.append(f"{where} the drawer shows {d['shown']}")
-        if d["hairlines"] != ["1px", "1px", "1px"] or not d["inside"] or d["overflow"] or d["scrolls"] != "auto":
+        if d["hairlines"] != ["1px"] * 4 or not d["inside"] or d["overflow"] or d["scrolls"] != "auto":
             problems.append(f"{where} the drawer: hairlines {d['hairlines']}, inside {d['inside']}, overflow {d['overflow']}, "
                             f"overflow-y {d['scrolls']}")
         if d["current"] != [["Početna", "rgba(255, 255, 255, 0.13)"]]:
@@ -1048,7 +1068,12 @@ def test_edit_mode_ends_when_the_editor_leaves_the_page(server):
             check(editing("/raspored"), "the pill pressed on Raspored")
             follow("sadrzaj", "/upitnik")
             check(normal("/upitnik"), "Sadržaj → Upitnik followed in edit mode")
-            follow("sadrzaj", "/")
+            home = '#mainNav a.navbtn[href="/"]'                        # Početna: a plain tab, the drawer's first row
+            if phone:
+                pg.tap(".nav-burger")
+            with pg.expect_navigation():
+                pg.tap(home) if phone else pg.click(home)
+            pg.wait_for_load_state("networkidle")
             check(normal("/"), "Početna followed")
             pg.click("#copyToggle")
             with pg.expect_navigation():

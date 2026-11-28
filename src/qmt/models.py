@@ -293,6 +293,39 @@ class Membership(Base):
     def is_active(self, today: SADate) -> bool:
         return today <= self.dospijece
 
+    def is_due(self, today: SADate) -> bool:
+        """Its payment is due: the plan runs (is_active) and today is its
+        next_payment or later, the grace week (next_payment through
+        dospijeće). ONE test (28.11.2026, build 3 of
+        roadmap/2026-11-28-admin-view-plan.md), asked by /moja-clanarina's
+        chip ("dospijeva", within GRACE_DAYS of dospijeće) and by a member's
+        status (member_status: amber), so the two never disagree."""
+        return self.is_active(today) and today >= self.next_payment
+
+
+# A member's status (28.11.2026, build 3 of roadmap/2026-11-28-admin-view-plan.md;
+# the owner: "a user's logo is in a different color depending on his
+# subscription status (green->active, amber -> grace period, red->inactive
+# subscription)" … "Whenever a user is displayed, his name should also be
+# colored in green, amber or red"; one who never had a plan: "neutral grey is
+# fine"): grace, active, lapsed or none, asked in that order. A staff account
+# has no membership of its own: it is "admin" in the admin view and "active"
+# in the member view, where it counts as holding every plan (app._status_of).
+def member_status(memberships, today: SADate) -> str:
+    """A member's status from his membership rows (any of PLAN_TYPES,
+    prehrana too) on `today`, pure: "grace" when any plan runs and its
+    payment is due (Membership.is_due, the grace week: /moja-clanarina's
+    "dospijeva"), else "active" when any plan runs (is_active, until
+    dospijeće), else "lapsed" when he holds a row and none runs, else "none"
+    (he never had a plan). The avatar's class, a name's class (its colour,
+    base.html's --st-*) and the chip all come from these tests."""
+    plans = [m for m in memberships if m.plan in PLAN_TYPES]
+    if any(m.is_due(today) for m in plans):
+        return "grace"
+    if any(m.is_active(today) for m in plans):
+        return "active"
+    return "lapsed" if plans else "none"
+
 
 PAYMENT_METHODS = {"gotovina": "Gotovina", "kartica": "Kartica", "stripe": "Stripe"}
 

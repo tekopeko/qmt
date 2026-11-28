@@ -35,7 +35,7 @@ from .models import (FEELING_LABELS, ONLINE_TIERS, PLAN_LABELS, SECTIONS, SESSIO
                      SiteCopy,
                      TrainingLog, TrainingSession,
                      UpitnikQuestion, User, Weight, WorkoutLog, alpha_key, effort_of, exercise_alternatives, fold,
-                     kg_text, matches, plural, set_text)
+                     kg_text, matches, member_status, plural, set_text)
 
 # READ COMMITTED is pinned, not assumed: book()'s lock-then-recount is only
 # correct if the recount sees rows committed while we waited on the lock. Under
@@ -1264,6 +1264,35 @@ def memberships_for(user_id: int) -> list[Membership]:
     with session_scope() as s:
         return list(s.scalars(select(Membership).where(Membership.user_id == user_id)
                               .order_by(Membership.plan)))
+
+
+def member_statuses(user_ids, today: date | None = None) -> dict[int, str]:
+    """Each member's status (models.member_status: grace, active, lapsed,
+    none; 28.11.2026, build 3 of the admin view) on `today` (today in
+    Zagreb by default), by his id, in ONE read of the membership rows of
+    the whole list: never a query per member (a roster, the acting record,
+    the bar's own avatar). An id with no row is "none". Staff are the
+    caller's (app._status_of): their own rows mean nothing here."""
+    ids = {int(i) for i in user_ids}
+    if not ids:
+        return {}
+    today = today or config.today()
+    with session_scope() as s:
+        rows = list(s.scalars(select(Membership).where(Membership.user_id.in_(ids))))
+    held: dict[int, list[Membership]] = {}
+    for m in rows:
+        held.setdefault(m.user_id, []).append(m)
+    return {i: member_status(held.get(i, []), today) for i in ids}
+
+
+def users_by_id(user_ids) -> dict[int, User]:
+    """The accounts of a list of ids that still exist, by id, in one read
+    (the acting record's members: a name whose account is there now)."""
+    ids = {int(i) for i in user_ids}
+    if not ids:
+        return {}
+    with session_scope() as s:
+        return {u.id: u for u in s.scalars(select(User).where(User.id.in_(ids)))}
 
 
 def covered_days(user_id: int, first: date, last: date) -> set[date]:

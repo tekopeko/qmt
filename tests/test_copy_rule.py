@@ -77,13 +77,17 @@ def fragments(source: str) -> set[str]:
 # pages, the rest bar the player and it share, and the tag chips its "Dodaj
 # vježbu" prints (the day editor's and the library's until then); since
 # 27.11.2026 the tab "Dvoranski treninzi" (dvoranski.html, build 2 of the
-# dvoranski treninzi).
+# dvoranski treninzi); since 28.11.2026 (build 3 of the admin view) a
+# member's name in his status's colour (_status.html: the head of his own
+# menu in base.html, and while staff act as him his karton's and his tab's
+# titles).
 MEMBER_TEMPLATES = (
     "base.html", "landing.html", "calendar.html", "karton.html", "treninzi.html", "trening_view.html",
     "trening_day.html", "trening_player.html", "trening_kraj.html", "_pass_leave.html", "moja_clanarina.html",
     "_plan_price.html", "_period.html", "_tiers.html", "prehrana.html", "upitnik.html", "_vodic.html", "vodic.html",
     "profil.html", "login.html", "signup.html", "forgot.html", "reset.html", "verify_sent.html", "error.html",
     "karton_trening.html", "karton_trening_osvrt.html", "_rest_bar.html", "_tagbar.html", "dvoranski.html",
+    "_status.html",
 )
 # The templates only staff reach: they stay as they are (the owner was told so).
 # Since 27.11.2026 (build 3 of the dvoranski treninzi) Amir's templates' list
@@ -206,6 +210,12 @@ ALLOWED: dict[str, set[str]] = {
         "Član nema aktivnu članarinu za dvoranu, pa mu se trening ne može dodati.",
     },
     "_tagbar.html": {"još"},                 # "još 5": a count (the tag chips past the first twelve)
+    # a member's status after his name (28.11.2026, build 3 of the admin
+    # view): a screen reader's words alone, never shown (.st-sr), as
+    # trening_player's "Odrađena serija"; the code's own words, as the
+    # status is the code's (models.member_status). What a member reads of
+    # his plans' states are /moja-clanarina's chips, slots (clanarina.chip.*)
+    "_status.html": {", članarina aktivna", ", plaćanje dospijeva", ", članarina istekla", ", bez članarine"},
     "trening_kraj.html": {
         "od",                                # "6 od 8 vježbi"
         "Započet", "i nije završen — nastavak više nije moguć.",   # around its day ("jučer")
@@ -275,9 +285,10 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     # ▾'s "Admin" and the caption "Kao član"; the read-only karton's crumb
     # "Kartoni" where it said "Karton"; staff's member view's line on the
     # raspored, staff's /treninzi's lead, its link and a razina with none;
-    # "Predlošci treninga →" gone from the tab): a long list means texts
-    # were left out
-    assert sum(len(v) for v in ALLOWED.values()) <= 140
+    # "Predlošci treninga →" gone from the tab; 144 since build 3 of the
+    # admin view, the same day: a member's status's four words for a screen
+    # reader, _status.html's): a long list means texts were left out
+    assert sum(len(v) for v in ALLOWED.values()) <= 144
 
 
 def test_the_scan_sees_a_new_literal_and_strips_what_is_code():
