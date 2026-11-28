@@ -5,24 +5,32 @@
    only input in the 'Dvoranski treninzi' tab but Amir and I can always check the user's
    Karton?"): the tab's page, /dvoranski (app.dvoranski_page), the /treninzi list's twin: the
    normal layout, its 640px column, the title and the lead. A member with no gym plan gets the
-   gate's one sentence, as /treninzi's for one with no online plan (staff acting as him get the
-   page: the actor decides). Everyone else (staff for their own trainings) two sections, each
-   its h2 over what it holds. "Otvoreni treninzi", since the evening of 27.11.2026 everything
-   still being written (the owner, of "Zadnji treninzi", which went: "remove it, only list the
-   active trainings"): a card per booked termin whose training is his to write now, the
-   training page's head in small (the termin's title, its date and time in 700, the state
-   line), what it holds ("3 vježbe", its napor once the osvrt is saved), ONE button, "Upiši
-   trening" while it holds no block, else "Nastavi trening"; then a card per training outside
-   a termin still open (no osvrt, held today or yesterday: "Trening izvan termina" where it
-   has no title of its own); and for staff acting as him a card per later booked termin,
-   however far ahead (when it opens for him in its state line's place, "Pripremi trening"
-   while it holds no block: staff's own words). None, one muted line: the next termin and when
-   its training opens, or "Nemaš otvorenih treninga." and its link to the raspored. "Trening
-   izvan termina": the Karton's form of 26.11.2026, moved (Datum, today by default, never after
-   it, not before 2020; "Dodaj trening"), a refused date's sentence in it, not at the page's
-   top (the form asked). At the foot the way to the karton's diary. Every text a slot,
-   gym.tab.*, and the training page's where the tab says the same (gym.state.open,
-   gym.head.outside, gym.head.date_field). While staff act as the member the title names him
+   gate's one sentence, as /treninzi's for one with no online plan, and since 28.11.2026 staff
+   acting as him the same gate with one sentence of theirs under it (the owner: "This is also
+   only for people with a gym membership."; his page until then). Everyone else (staff for
+   their own trainings) two sections, each its h2 over what it holds. "Otvoreni treninzi",
+   since the evening of 27.11.2026 everything still being written (the owner, of "Zadnji
+   treninzi", which went: "remove it, only list the active trainings"): a card per booked
+   termin whose training is his to write now, the training page's head in small (the
+   termin's title, its date and time in 700, the state line), what it holds ("3 vježbe", its
+   napor once the osvrt is saved), ONE button, "Upiši trening" while it holds no block, else
+   "Nastavi trening"; a card per training outside a termin still open (no osvrt; made outside
+   a termin dated yesterday or later, since 28.11.2026 a day staff planned ahead too, its time
+   after its date when it has one; let go of its termin today or yesterday: "Trening izvan
+   termina" where it has no title of its own; one staff made against a gym plan of his says
+   so, "Broji se u članarinu: Grupni trening."); and for staff acting as him a card per later
+   booked termin, however far ahead (when it opens for him in its state line's place,
+   "Pripremi trening" while it holds no block: staff's own words); since 28.11.2026 every card
+   in one order, by when it is. None, one muted line: the next termin and when its training
+   opens, or "Nemaš otvorenih treninga." and its link to the raspored. "Trening izvan
+   termina": the Karton's form of 26.11.2026, moved (Datum, today by default, never after it,
+   not before 2020; "Dodaj trening"), a refused date's sentence in it, not at the page's top
+   (the form asked); for staff acting as the member (28.11.2026) the day up to 60 days ahead,
+   "Vrijeme (neobavezno)" and "Članarina", the gym plan of his it counts against (a select for
+   two or more, its words the plan's name and a tiered one's count: code), staff's own words.
+   At the foot the way to the karton's diary. Every text a slot, gym.tab.*, and the training
+   page's where the tab says the same (gym.state.open, gym.state.counted, gym.head.outside,
+   gym.head.date_field). While staff act as the member the title names him
    ("Dvoranski treninzi — Ivan Horvat": the name code). Staff's own page carries, under the
    lead, the search for a member (_member_find.html, the Karton tab's: a pick enters a tab's
    view of him, POST /dvoranski/clan) and since build 3 (27.11.2026) one .act, "Predlošci
@@ -47,20 +55,31 @@
   .dv-open { padding: 16px 20px 18px; }
   .dv-open h3 { font-size: 1.02rem; overflow-wrap: anywhere; }
   .dv-when { margin-top: 6px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  .dv-state, .dv-holds { margin-top: 2px; color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
+  /* the state line, the plan a training staff made counts against
+     (28.11.2026) and what it holds: muted lines under the date */
+  .dv-state, .dv-plan, .dv-holds { margin-top: 2px; color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
   .dv-go { margin-top: 12px; }
   /* "Trening izvan termina": the Karton's form, moved, in a card; its
-     refusal's sentence over the field */
+     refusal's sentence over the field. For staff acting as the member
+     (28.11.2026) its fields stacked, each 260px at most: the day, the time,
+     the plan (a select, or with one plan its words, 600, over its hidden
+     value) */
   .dv-new { padding: 16px 20px 18px; }
   .dv-new .alert { margin-bottom: 12px; }
   .dv-new .alert > span { min-width: 0; overflow-wrap: anywhere; }
   .dv-form .field { max-width: 260px; margin-bottom: 12px; }
-  .dv-form input[type="date"] { min-width: 0; }
+  .dv-form input[type="date"], .dv-form input[type="time"], .dv-form select { min-width: 0; }
+  /* one plan: its name under a caption in the label's look (a <label> with no control would name nothing) */
+  .dv-plan-cap { font: 600 .76rem var(--font-body); text-transform: uppercase; letter-spacing: .06em;
+                 color: var(--muted); margin-bottom: 5px; }
+  .dv-plan-one { font-weight: 600; overflow-wrap: anywhere; }
   /* the way to the karton's diary, quiet, at the page's foot */
   .dv-all { margin-top: 26px; }
   @media (max-width: 600px) { .dv-open, .dv-new { padding: 14px 16px 16px; } }
-  /* the gate of a member with no gym plan: /treninzi's card */
+  /* the gate of a member with no gym plan: /treninzi's card; staff acting
+     as him read one muted sentence of theirs under it (28.11.2026) */
   .dv-gate { max-width: 640px; padding: 34px; text-align: center; overflow-wrap: anywhere; }
+  .dv-gate-staff { margin-top: 8px; }
   /* staff's way to their templates (27.11.2026, build 3), under the lead */
   .dv-tpl { margin: 0 0 24px; }
   /* a button's words are a slot the editor retypes: they wrap inside it
@@ -87,8 +106,11 @@
 {% endif %}
 
 {% if not has_plan %}
-{% if copy_on("gym.tab.no_plan") %}
-<div class="card dv-gate"><p{% if can_edit_copy %} data-opt{% endif %}><strong>{{ c.t("gym.tab.no_plan") }}</strong></p></div>
+{# the gate; staff acting as such a member (28.11.2026) read under it why nothing is offered:
+   their own words, no slot #}
+{% if copy_on("gym.tab.no_plan") or staff_gate %}
+<div class="card dv-gate">{% if copy_on("gym.tab.no_plan") %}<p{% if can_edit_copy %} data-opt{% endif %}><strong>{{ c.t("gym.tab.no_plan") }}</strong></p>{% endif %}
+{%- if staff_gate %}<p class="hint dv-gate-staff">Član nema aktivnu članarinu za dvoranu, pa mu se trening ne može dodati.</p>{% endif %}</div>
 {% endif %}
 {% else %}
 <div class="dv">
@@ -98,10 +120,13 @@
     <div class="dv-list">
       {% for row in cards %}
       {% if row.kind == "outside" %}
-      {# a training outside a termin still open: no osvrt, held today or yesterday #}
+      {# a training outside a termin still open: no osvrt; made outside a termin dated yesterday
+         or later (a day planned ahead, its time after its date), let go of its termin today or
+         yesterday; one staff made against a gym plan of his says so (28.11.2026) #}
       <article class="card dv-open" id="dv-gt-{{ row.id }}">
         <h3>{% if row.title %}{{ row.title }}{% else %}{{ c.t("gym.head.outside") }}{% endif %}</h3>
         <p class="dv-when">{{ row.when }}</p>
+        {% if row.plan %}<p class="dv-plan">{{ c.t("gym.state.counted") }} {{ row.plan }}.</p>{% endif %}
         {% if row.holds %}<p class="dv-holds">{{ row.holds }}</p>{% endif %}
         <a class="btn btn-sm dv-go" href="/dvoranski/trening/{{ row.id }}">{{ c.t("gym.tab.resume" if row.started else "gym.tab.fill") }}</a>
       </article>
@@ -138,7 +163,29 @@
       <form class="dv-form" method="post" action="/dvoranski/trening">
         <div class="field"><label for="dv-day">{{ c.t("gym.head.date_field") }}</label>
           <input id="dv-day" type="date" name="day" value="{{ today.isoformat() }}"
-                 min="{{ first_day.isoformat() }}" max="{{ today.isoformat() }}" required></div>
+                 min="{{ first_day.isoformat() }}" max="{{ last_day.isoformat() }}" required></div>
+        {%- if plan_ahead %}
+        {# staff acting as the member (28.11.2026): his training planned up to 60 days ahead (the
+           day's max), at a time of day if they give one, counted against a gym plan of his: a
+           select for two or more, the one plan's words and its hidden value for one (each its
+           name and a tiered one's count in this cycle: code). Staff's own words, no slot: the
+           member's form has none of it #}
+        <div class="field"><label for="dv-time">Vrijeme (neobavezno)</label>
+          <input id="dv-time" type="time" name="time"></div>
+        <div class="field">
+          {%- if gym_plans|length > 1 %}
+          <label for="dv-plan">Članarina</label>
+          <select id="dv-plan" name="plan">
+            {%- for key, text in gym_plans %}
+            <option value="{{ key }}">{{ text }}</option>
+            {%- endfor %}
+          </select>
+          {%- else %}{% for key, text in gym_plans %}
+          <p class="dv-plan-cap">Članarina</p>
+          <p class="dv-plan-one">{{ text }}</p><input type="hidden" name="plan" value="{{ key }}">
+          {%- endfor %}{% endif %}
+        </div>
+        {%- endif %}
         <button type="submit" class="btn btn-sm">{{ c.t("gym.tab.outside_create") }}</button>
       </form>
     </div>

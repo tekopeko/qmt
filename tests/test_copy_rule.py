@@ -169,6 +169,9 @@ ALLOWED: dict[str, set[str]] = {
     },
     "karton_trening.html": {
         "Krug",                              # "Krug 2", a Kružni set's Krug's number, as the player's round's
+        # "promijeni datum"'s time of day for staff acting as the member
+        # (28.11.2026): staff's own chrome, which a member never reads
+        "Vrijeme (neobavezno)",
     },
     "dvoranski.html": {
         # staff's way to their templates on their own tab (27.11.2026, build 3
@@ -177,6 +180,12 @@ ALLOWED: dict[str, set[str]] = {
         # that day a later termin's button for staff acting as the member,
         # "Pripremi trening" (its line of when it opens for him is code)
         "Predlošci treninga →", "Pripremi trening",
+        # since 28.11.2026, for staff acting as the member alone: the form's
+        # time of day and the gym plan the training counts against (each
+        # plan's words code), and the sentence under the gate of a member
+        # with no gym plan
+        "Vrijeme (neobavezno)", "Članarina",
+        "Član nema aktivnu članarinu za dvoranu, pa mu se trening ne može dodati.",
     },
     "_tagbar.html": {"još"},                 # "još 5": a count (the tag chips past the first twelve)
     "trening_kraj.html": {
@@ -238,9 +247,13 @@ def test_a_member_facing_template_prints_no_literal_text_but_the_allowed():
     # since build 2 the same day: the nav's tab "Dvoranski treninzi"; 130
     # since build 3: staff's "Predlošci treninga →" on their own tab; 128
     # since the evening: the Karton tab's search's three went with it to
-    # _member_find.html, staff's, and staff's "Pripremi trening" came): a
-    # long list means texts were left out
-    assert sum(len(v) for v in ALLOWED.values()) <= 130
+    # _member_find.html, staff's, and staff's "Pripremi trening" came; 132
+    # since 28.11.2026: staff plan a member's training outside a termin, the
+    # tab's "Vrijeme (neobavezno)" and "Članarina", the training page's
+    # "Vrijeme (neobavezno)", and the sentence under a member's gate for
+    # staff, each read only while staff act as the member): a long list
+    # means texts were left out
+    assert sum(len(v) for v in ALLOWED.values()) <= 132
 
 
 def test_the_scan_sees_a_new_literal_and_strips_what_is_code():

@@ -3292,6 +3292,38 @@ def _gym_staff(request: Request) -> bool:
     return _actor(request) is not None
 
 
+def _gym_last_day(staff: bool) -> date:
+    """The last day a training outside a termin may be given (its form's
+    date `max`, db.read_day's `ahead`): today for the member (and staff's
+    own), for staff acting as the member GYM_PLAN_DAYS ahead (28.11.2026:
+    they plan his training)."""
+    return config.today() + timedelta(days=db.GYM_PLAN_DAYS if staff else 0)
+
+
+def _gym_plans(user_id: int) -> list[tuple[str, str]]:
+    """The member's running gym plans a training staff add outside a termin
+    may count against (28.11.2026), in SESSION_KINDS' order: (its key, its
+    words on the form: its PLAN_LABELS name, a tiered one's count in the
+    cycle that holds today, db.cycle_usage: "Grupni trening · 3 od 8 u ovom
+    ciklusu")."""
+    kinds = db.active_plan_kinds(user_id)
+    out = []
+    for kind in SESSION_KINDS:
+        if kind in kinds:
+            usage = db.cycle_usage(user_id, kind)
+            count = f" · {usage['used']} od {usage['quota']} u ovom ciklusu" if usage else ""
+            out.append((kind, PLAN_LABELS[kind] + count))
+    return out
+
+
+def _gym_at(g) -> datetime:
+    """When a training outside a termin is, as the tab orders its cards
+    (28.11.2026): its start when it has one, else its day's start."""
+    if g.starts_at is not None:
+        return g.starts_at.astimezone(config.TZ)
+    return datetime.combine(g.held_on, datetime.min.time(), tzinfo=config.TZ)
+
+
 def _gym_of(request: Request, training_id: int):
     """(the effective user, his training) for a route; (None, None) for a
     guest; 404 for a training that is not his."""
@@ -3494,7 +3526,9 @@ def _gym_page(request: Request, user, t, status_code: int = 200):
     texts = db.copy_texts()
     return templates.TemplateResponse(request, "karton_trening.html", _ctx(
         request, user, copy_texts=texts, t=t, when=_gym_when(t), writable=writable, state_key=state_key,
-        state_text=state_text, can_date=writable and t.session_id is None and t.outside, view=view, shown=shown,
+        state_text=state_text, can_date=writable and t.outside and (staff or not t.plan),
+        # a training staff made against a gym plan: its day and its deletion are staff's (db.GYM_STAFFS)
+        can_drop=staff or not t.plan, view=view, shown=shown,
         kicker=f"Stanica {t.station_number(shown)} od {t.stations_count}" if station else "",
         rows=_gym_rows(shown.item) if station and shown.started and not shown.item.gone else [],
         fields=",".join(db.set_fields(shown.item)) if station else "",
@@ -3512,15 +3546,25 @@ def _gym_page(request: Request, user, t, status_code: int = 200):
         uredi=q.get("uredi") == "1", krug_word=krug, red=_id(q.get("red")), focus_set=q.get("kreni") == "1",
         odmor=rest if writable and rest is not None and 1 <= rest <= 3600 else None,
         at_chooser=at_chooser, in_card=in_card, here=here,
-        # "← Natrag": the tab (build 2, 27.11.2026), for staff acting as the
-        # member whatever his plans (the evening of 27.11.2026: the page is
-        # theirs for anyone, the gate the member's alone); a member with no
-        # tab (his gym plan lapsed) the karton's diary row, as build 1's
-        back="/dvoranski" if _has_gym(user) or staff else
+        # "← Natrag": the tab (build 2, 27.11.2026) for a member who has it;
+        # one with no tab (no gym plan running) the karton's diary row, as
+        # build 1's, and so for staff acting as him since 28.11.2026 (the
+        # owner: "This is also only for people with a gym membership.": the
+        # tab shows such a member's gate to staff too; from the evening of
+        # 27.11.2026 until then the tab, his page whatever his plans)
+        back="/dvoranski" if _has_gym(user) else
         f"/karton#{'gt-%d' % t.id if t.holds_anything or t.session_id is None else 's-%d' % t.session_id}",
         library_rows=[[e.id, e.name, e.tags] for e, _ in db.exercises()] if writable and view in ("station", "circuit") else [],
         tags=_tag_chips() if writable and station else [], max_sets=db.MAX_SETS, first_day=db.FIRST_DAY,
-        today=config.today()), status_code=status_code)
+        today=config.today(),
+        # "promijeni datum" (28.11.2026): for staff acting as the member the
+        # day up to GYM_PLAN_DAYS ahead and its time of day (its value the
+        # stored one, emptied to take it away); the member's the day alone,
+        # today at the latest, as before
+        plan_ahead=staff, last_day=_gym_last_day(staff),
+        time_value=f"{t.starts_at.astimezone(config.TZ):%H:%M}" if t.outside and t.starts_at is not None else "",
+        # a training staff made counts against a gym plan of his: said under the date
+        plan_label=PLAN_LABELS.get(t.plan, "") if t.plan else ""), status_code=status_code)
 
 
 def _same_query(request: Request, path: str) -> RedirectResponse:
@@ -3587,37 +3631,45 @@ def _gym_facts(t) -> str:
 def dvoranski_page(request: Request):
     """The tab's page (dvoranski.html): a guest to the login; a member with
     no gym plan the gate, as /treninzi's for one with no online plan ("Dvoranski
-    treninzi su dio članarine za dvoranu."); staff always, for their own
-    trainings; staff acting as a member (either way in) his page whatever
-    his plans (27.11.2026, evening: the actor decides, as POST
-    /dvoranski/trening). "Otvoreni treninzi" since that evening is
+    treninzi su dio članarine za dvoranu."), and since 28.11.2026 staff acting
+    as him the same gate, one sentence of theirs under it (the owner: "This
+    is also only for people with a gym membership."; from the evening of
+    27.11.2026 until then his page whatever his plans); staff always, for
+    their own trainings. "Otvoreni treninzi" since that evening is
     everything still being written (the owner, of "Zadnji treninzi", which
-    went: "remove it, only list the active trainings"), one card each, in
-    this order: his booked termini whose training he may write now
-    (db.gym_open_termini, the soonest first: the termin's title, its date
-    and time, until when, what it holds, "Upiši trening" while it holds no
-    block, else "Nastavi trening", → /dvoranski/termin/<id>); his trainings
-    outside a termin with no osvrt saved, held today or yesterday (the
-    termin's own rule, "until the end of the day after it"; the newest
-    first: "Trening izvan termina" where it has no title of its own, its
-    date, what it holds, the same two buttons, → its page); and for staff
-    acting as him every later booked termin of his, however far ahead
-    (db.gym_later_termini, the soonest first: "Članu se otvara u …" where
-    the member's card says until when, "Pripremi trening" while it holds no
-    block). None of them: his next booked termin and when its training
-    opens, or "Nemaš otvorenih treninga.". "Trening izvan termina", the
-    form (POST /dvoranski/trening; a refused date's sentence in it). Staff's
-    own page (never while acting, never a member's) has the search for a
-    member at its top (_member_find.html, the Karton tab's, POST
-    /dvoranski/clan; its refusal at the page's top, ?trazi=1). The way to
-    the karton's diary at the page's foot."""
+    went: "remove it, only list the active trainings"), one card each: his
+    booked termini whose training he may write now (db.gym_open_termini:
+    the termin's title, its date and time, until when, what it holds,
+    "Upiši trening" while it holds no block, else "Nastavi trening", →
+    /dvoranski/termin/<id>); his trainings outside a termin with no osvrt
+    saved: one made outside a termin dated yesterday or later (since
+    28.11.2026: staff plan one ahead, his from the moment it is made), one
+    let go of its termin today or yesterday as before (the termin's own
+    rule, "until the end of the day after it"): "Trening izvan termina"
+    where it has no title of its own, its date and its time when it has
+    one, for one staff made against a gym plan of his "Broji se u
+    članarinu: …", what it holds, the same two buttons, → its page; and for
+    staff acting as him every later booked termin of his, however far ahead
+    (db.gym_later_termini: "Članu se otvara u …" where the member's card
+    says until when, "Pripremi trening" while it holds no block). Since
+    28.11.2026 the cards in one order by when they are (a termin's start, a
+    training's time, or its day's start with no time). None of them: his
+    next booked termin and when its training opens, or "Nemaš otvorenih
+    treninga.". "Trening izvan termina", the form (POST /dvoranski/trening;
+    a refused date's sentence in it): the day, today or before; for staff
+    acting as him the day up to GYM_PLAN_DAYS ahead, a time of day and the
+    gym plan it counts against (_gym_plans). Staff's own page (never while
+    acting, never a member's) has the search for a member at its top
+    (_member_find.html, the Karton tab's, POST /dvoranski/clan; its refusal
+    at the page's top, ?trazi=1). The way to the karton's diary at the
+    page's foot."""
     from urllib.parse import quote
 
     user = current_user(request)
     if user is None:
         return RedirectResponse(f"/login?next={quote('/dvoranski')}", status_code=303)
     staff_view = _gym_staff(request)
-    has_plan = _has_gym(user) or staff_view
+    has_plan = _has_gym(user)                       # the member's plans, whoever looks (28.11.2026)
     cards, next_text = [], ""
     if has_plan:
         now = datetime.now(config.TZ)
@@ -3629,19 +3681,26 @@ def dvoranski_page(request: Request):
             cards.append({
                 # _gym_when reads a termin's start as a training's: "srijeda 25.11.2026. · 18:00"
                 "kind": "open", "id": s.id, "title": s.title, "when": _gym_when(s), "until": _gym_until(s.starts_at),
-                "holds": _gym_facts(t), "started": t is not None and bool(t.blocks)})
-        # a training outside a termin (or let go of its termin) still being
-        # written: no osvrt, held today or yesterday (gym_trainings: the newest first)
+                "holds": _gym_facts(t), "started": t is not None and bool(t.blocks), "at": s.starts_at})
+        # a training outside a termin still being written: no osvrt; one made
+        # outside a termin dated yesterday or later (a planned one: his from
+        # the moment it is made), one let go of its termin today or yesterday
         for g in gyms:
-            if g.session_id is None and g.finished_at is None and today - timedelta(days=1) <= g.held_on <= today:
-                cards.append({"kind": "outside", "id": g.id, "title": g.title, "when": _gym_when(g),
-                              "holds": _gym_facts(g), "started": bool(g.blocks)})
+            if g.session_id is not None or g.finished_at is not None or g.held_on < today - timedelta(days=1):
+                continue
+            if not g.outside and g.held_on > today:
+                continue
+            cards.append({"kind": "outside", "id": g.id, "title": g.title, "when": _gym_when(g),
+                          "plan": PLAN_LABELS.get(g.plan, "") if g.plan else "",
+                          "holds": _gym_facts(g), "started": bool(g.blocks), "at": _gym_at(g)})
         if staff_view:
             for s in db.gym_later_termini(user.id, now):
                 t = by_session.get(s.id)
                 cards.append({"kind": "later", "id": s.id, "title": s.title, "when": _gym_when(s),
                               "opens": _gym_opens_for(s.starts_at), "holds": _gym_facts(t),
-                              "started": t is not None and bool(t.blocks)})
+                              "started": t is not None and bool(t.blocks), "at": s.starts_at})
+        # one order by when they are (28.11.2026); at one moment a termin's card first
+        cards.sort(key=lambda row: (row["at"], row["kind"] == "outside", row["id"]))
         if not cards:
             nxt = next((s for s in db.my_upcoming(user.id) if not s.canceled), None)
             if nxt is not None:
@@ -3656,7 +3715,12 @@ def dvoranski_page(request: Request):
         request, user, has_plan=has_plan, cards=cards, next_text=next_text, gym_hours=config.CANCEL_CUTOFF_HOURS,
         error="" if find_error else error, find_error=find_error,
         find_members=find_members, find_rows=_find_rows(find_members),
-        first_day=db.FIRST_DAY, today=config.today()))
+        first_day=db.FIRST_DAY, today=config.today(),
+        # staff acting as the member (28.11.2026): the gate says why to them
+        # too; the form takes a day ahead, a time and the gym plan it counts
+        # against (each plan's words, _gym_plans)
+        staff_gate=staff_view and not has_plan, plan_ahead=staff_view and has_plan,
+        last_day=_gym_last_day(staff_view), gym_plans=_gym_plans(user.id) if staff_view and has_plan else []))
 
 
 @app.post("/dvoranski/clan")
@@ -3675,28 +3739,39 @@ def dvoranski_find(request: Request, clan: str = Form("")):
 
 
 @app.post("/dvoranski/trening")
-def gym_outside(request: Request, day: str = Form("")):
+def gym_outside(request: Request, day: str = Form(""), time: str = Form(""), plan: str = Form("")):
     """"Dodaj trening" on the tab's "Trening izvan termina" (27.11.2026,
     build 2; the Karton's "+ Dodaj trening izvan termina" from 26.11.2026
     until then, POST /karton/trening): a gym training outside a termin on
-    that date (db.read_day: not in the future, not before 2020;
+    that date (db.read_day: not before 2020, not in the future;
     db.add_gym_outside), then its page, where it is written as a termin's
-    is. Made by a member with a gym plan, by staff for themselves, and by
-    staff acting as a member whatever his plans (rule 1's "at any time": the
-    actor decides); anyone else back to the tab, which turns him away,
-    nothing made. A date refused: back at the form, its sentence there."""
+    is. Made by a member with a gym plan and by staff for themselves; since
+    28.11.2026 for a member only while a gym plan of his runs, whoever makes
+    it (the owner: "This is also only for people with a gym membership.";
+    from the evening of 27.11.2026 until then staff acting as a member made
+    it whatever his plans): anyone else back to the tab, which shows him the
+    gate, nothing made. Staff acting as the member plan it (28.11.2026): the
+    day up to GYM_PLAN_DAYS ahead, a time of day ("Vrijeme (neobavezno)",
+    db.read_time; empty for none) and the gym plan of his it counts against
+    (`plan`; db.add_gym_outside refuses one that is none of his running
+    gym plans, a day after its dospijeće, a full cycle); the member's own
+    form has neither, and a time or a plan he posts is ignored. Refused:
+    back at the form, its sentence there, nothing made."""
     from urllib.parse import quote
 
     user = current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    if not (_has_gym(user) or _gym_staff(request)):
+    if not _has_gym(user):                           # the member's plans, whoever posts (28.11.2026)
         return RedirectResponse("/dvoranski", status_code=303)
+    staff = _gym_staff(request)
     try:
-        when = db.read_day(day)
-    except ValueError as e:
+        when = db.read_day(day, ahead=db.GYM_PLAN_DAYS if staff else 0)
+        at = db.read_time(time) if staff else None
+        made = db.add_gym_outside(user.id, when, at, plan.strip() if staff else None)
+    except (ValueError, db.BookingError) as e:
         return RedirectResponse(f"/dvoranski?error={quote(str(e))}#trening-novi", status_code=303)
-    return RedirectResponse(f"/dvoranski/trening/{db.add_gym_outside(user.id, when)}", status_code=303)
+    return RedirectResponse(f"/dvoranski/trening/{made}", status_code=303)
 
 
 # ---------- Amir's templates (27.11.2026, build 3 of the dvoranski treninzi) ----------
@@ -3976,10 +4051,11 @@ def gym_osvrt_save(request: Request, training_id: int, effort: str = Form(""), f
     if not saved:
         raise HTTPException(status_code=404)
     # back where "← Natrag" leads (Fable's review of build 2, 27.11.2026): the
-    # tab for a viewer who has it (staff acting as the member always), a
-    # termin's training still open there with its napor; the karton's diary
-    # row for one who has not, as build 1's
-    if _has_gym(user) or _gym_staff(request):
+    # tab for a member who has it (staff acting as him alike since 28.11.2026:
+    # the tab shows his gate to them too), a termin's training still open
+    # there with its napor; the karton's diary row for one who has not, as
+    # build 1's
+    if _has_gym(user):
         return RedirectResponse(f"/dvoranski?ok={quote('Trening je spremljen.')}", status_code=303)
     return RedirectResponse(f"/karton?ok={quote('Trening je spremljen.')}#gt-{training_id}", status_code=303)
 
@@ -4307,17 +4383,25 @@ def gym_empty(request: Request, training_id: int):
 
 
 @app.post("/dvoranski/trening/{training_id}/datum")
-def gym_day(request: Request, training_id: int, day: str = Form("")):
-    """"promijeni datum", a training outside a termin's (db.read_day's
-    rules; db.set_gym_day); a termin's training, or one let go of its
+def gym_day(request: Request, training_id: int, day: str = Form(""), time: str = Form("")):
+    """"promijeni datum", a training made outside a termin's (no session, no
+    title: GymTraining.outside; db.read_day's rules; db.set_gym_day): the
+    member's the day alone, today or before, its time kept as stored (one
+    he posts is ignored); since 28.11.2026 staff acting as him the day up
+    to GYM_PLAN_DAYS ahead and its time (db.read_time; emptied, none), and
+    one that counts against a gym plan of his judged as an add (its
+    dospijeće, its cycle's paket). A termin's training, or one let go of its
     termin, has no such form: 404."""
     user, t = _gym_of(request, training_id)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    if t.session_id is not None or not t.outside:
+    if not t.outside:
         raise HTTPException(status_code=404)
+    staff = _gym_staff(request)
     try:
-        db.set_gym_day(training_id, user.id, db.read_day(day), staff=_gym_staff(request))
+        when = db.read_day(day, ahead=db.GYM_PLAN_DAYS if staff else 0)
+        at = db.read_time(time) if staff else db.KEEP
+        db.set_gym_day(training_id, user.id, when, at, staff=staff)
     except (ValueError, db.BookingError) as e:
         return _gym_back(training_id, error=str(e))
     return _gym_back(training_id, ok="Datum je spremljen.")
@@ -4338,7 +4422,7 @@ def gym_delete(request: Request, training_id: int):
         db.delete_gym_training(training_id, user.id, staff=_gym_staff(request))
     except db.BookingError as e:
         return _gym_back(training_id, error=str(e))
-    if _has_gym(user) or _gym_staff(request):         # the tab for a viewer who has it, as the osvrt's save
+    if _has_gym(user):                                # the tab for a member who has it, as the osvrt's save
         return RedirectResponse("/dvoranski?ok=Trening+je+obrisan.", status_code=303)
     return RedirectResponse("/karton?ok=Trening+je+obrisan.#osvrti", status_code=303)
 

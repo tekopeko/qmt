@@ -424,17 +424,23 @@ never muted), `.dv-state` and `.dv-holds` (muted .88rem), then ONE `.btn.btn-sm`
 (`.dv-go`, 12px over it: the card's primary action, no glow), the cards 12px apart
 (`.dv-list`); none open, one muted `.hint.dv-none` (its link a `.tlink`).
 "Trening izvan termina" (`#trening-novi`): a `.card.dv-new` holding the form
-(`.dv-form`: the date `.field`, 260px at most, then `.btn.btn-sm`), a refusal's
+(`.dv-form`: the date `.field`, 260px at most, then `.btn.btn-sm`; since 28.11.2026 for staff acting as the
+member two more fields stacked under it, each 260px at most: "Vrijeme (neobavezno)", a `type=time` input,
+and "Članarina", a select of his gym plans, or with one plan its words in 600, `.dv-plan-one`, over a
+hidden value), a refusal's
 `.alert` inside the card, over the field (the page's top shows none). Since the evening of 27.11.2026 the list goes on with the same card for a training
 outside a termin still open (`#dv-gt-<id>`: "Trening izvan termina" in the title's place, its date, what it
-holds, no state line) and, for staff acting as the member alone, a later booked termin of his (the state
+holds, no state line; its time after its date when it has one, and for one staff made against a gym
+plan `.dv-plan`, a muted .88rem line under the date, "Broji se u članarinu: Grupni trening.", since
+28.11.2026) and, for staff acting as the member alone, a later booked termin of his (the state
 line's place says when it opens for him, "Članu se otvara u …"; its button "Pripremi trening" while it holds
 no block); an open termin's `.dv-holds` says its napor once the osvrt is saved. "Zadnji treninzi"
 (`.card.dv-last`, its `.dv-row`s, `.dv-kicker`, `.dv-at`, `.dv-facts`) went then; "Svi tvoji treninzi su u
 kartonu →" (`.act.act-quiet.dv-all`) stands at the page's foot, 26px under the last section. While staff act
 as the member the h1 names him ("Dvoranski treninzi — Ivan Horvat"). A member with no
 gym plan: the gate's `.card.dv-gate`, /treninzi's (34px, centred, its one sentence
-bold; staff acting as him get his page). Its buttons' words wrap inside them (the training page's rule). Staff's
+bold; since 28.11.2026 staff acting as him the same gate, a muted `.hint.dv-gate-staff` line of theirs
+under it, 8px over it; from the evening of 27.11.2026 until then his page). Its buttons' words wrap inside them (the training page's rule). Staff's
 page (27.11.2026, build 3) carries one `.act` under the lead, "Predlošci treninga →"
 (`p.dv-tpl`, 24px over the first section; staff's own words), never a member's.
 **Amir's templates** (`dvoranski_predlosci.html`, `dvoranski_predlozak.html`,
@@ -492,7 +498,9 @@ and `.pl-dock` (the phone's dark pill, "Pregled · 2/6 ✓" → `#pregled`, gone
 (`.gt-head`): `.gt-kicker` over the bare h1, `.gt-when` (700 tabular `--text`,
 never muted: the owner's "so that there is no confusion which training they
 edit"), outside a termin "promijeni datum" (`.act.act-quiet` summary of
-`details.gt-date`, its form wrapping under the line), `.gt-state` (muted .92rem).
+`details.gt-date`, its form wrapping under the line; for staff acting as the member since 28.11.2026 a
+time field beside the date, `.gt-time`, 150px, where both fit), `.gt-state` (muted .92rem; the line
+"Broji se u članarinu: …" under the date of a training staff made against a gym plan the same).
 **The chooser** (`.gt-chooser`, the main card's while the training holds no
 block, and the foot's "Promijeni predložak", `details.gt-change`): `.gt-ch-h`
 (h2 1.05rem), `.gt-tpl-list` (a grid 8px apart) of `button.gt-tpl-row`, each a

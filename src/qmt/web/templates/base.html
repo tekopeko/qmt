@@ -558,6 +558,10 @@
                    box-shadow: var(--shadow); cursor: pointer; }
     .copy-toggle:hover { background: var(--surface-2); transform: none; }
     .copy-toggle[aria-pressed="true"] { background: var(--accent-fill); color: var(--accent-ink); border-color: transparent; }
+    /* out of the way while the phone's menu is open (28.11.2026, the owner, on
+       his phone as admin: "it goes over the menu and looks bad"): the pill is
+       fixed at the window's bottom, where the open drawer's last rows are */
+    body:has(#mainNav.open) .copy-toggle { display: none; }
     body.editing .ed { outline: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 3px;
                        border-radius: 3px; cursor: text; }
     body.editing .ed:hover { outline-style: solid; }

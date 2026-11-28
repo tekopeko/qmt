@@ -14,7 +14,7 @@ import math
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from decimal import Decimal
 from fractions import Fraction
 from typing import Iterator
@@ -953,7 +953,12 @@ def _refusal(s, user_id: int, sess: TrainingSession | None,
              now: datetime) -> tuple[str, BookingError] | None:
     """Why `user_id` may not book `sess`: (reason, the error book() raises),
     or None when the booking may go in. The caller holds the session row FOR
-    UPDATE, so the counts below are the ones that decide.
+    UPDATE, so the counts below are the ones that decide; the member's
+    membership row of the termin's kind is taken FOR UPDATE after it, before
+    the paket is counted (28.11.2026: a training staff add outside a termin
+    counts in the paket too and takes the same row, so a booking and an add
+    never both take its last place; the session row first, then the
+    membership's, wherever both are taken).
 
     book() and book_series() both ask this, so their rules cannot drift, and
     both are bound by the same two limits: the booking window (this week and
@@ -977,7 +982,7 @@ def _refusal(s, user_id: int, sess: TrainingSession | None,
             f"{weeks_text(config.BOOKING_WEEKS, words=True)} unaprijed.")
     if sess.kind not in active_plan_kinds(user_id, s):
         return "članarina", _plan_needed(sess.kind)
-    m = _membership(s, user_id, sess.kind)
+    m = _membership(s, user_id, sess.kind, lock=True)
     if day > m.dospijece:
         return "razdoblje", BookingError(
             f"Članarina vrijedi do {m.dospijece:%-d.%-m.} — za kasnije termine treba nova uplata.")
@@ -1001,9 +1006,15 @@ def _plan_needed(kind: str) -> MembershipRequired:
         f"Za termin \"{PLAN_LABELS.get(kind, kind)}\" treba ti aktivna članarina.", kind)
 
 
-def _membership(s, user_id: int, plan: str) -> Membership | None:
-    return s.scalar(select(Membership).where(Membership.user_id == user_id,
-                                             Membership.plan == plan))
+def _membership(s, user_id: int, plan: str, lock: bool = False) -> Membership | None:
+    """The member's row of `plan`; with `lock` FOR UPDATE and read afresh
+    (populate_existing: a row this session read before is reread under the
+    lock), the paket's lock (28.11.2026), which _refusal and a training
+    staff add outside a termin take before they count."""
+    q = select(Membership).where(Membership.user_id == user_id, Membership.plan == plan)
+    if lock:
+        q = q.with_for_update().execution_options(populate_existing=True)
+    return s.scalar(q)
 
 
 def _holds(s, user_id: int, session_id: int) -> bool:
@@ -1013,15 +1024,26 @@ def _holds(s, user_id: int, session_id: int) -> bool:
 
 
 def _cycle_used(s, user_id: int, kind: str, start: date, end: date) -> int:
-    """Live bookings of `kind` whose termin falls inside [start, end) local."""
+    """Live bookings of `kind` whose termin falls inside [start, end) local,
+    and since 28.11.2026 his trainings outside a termin that staff made
+    against `kind` (GymTraining.plan; no session) held on a day inside it:
+    each counts in the paket as a booked termin does. One count for every
+    reader: book()'s and the series' paket (_refusal), cycle_usage (/moja-
+    clanarina's "n od N u ovom ciklusu", staff's form), trust_bookings and
+    the training staff add (_gym_plan_room)."""
     lo = datetime.combine(start, datetime.min.time(), tzinfo=config.TZ)
     hi = datetime.combine(end, datetime.min.time(), tzinfo=config.TZ)
-    return s.scalar(
+    booked = s.scalar(
         select(func.count()).select_from(Booking)
         .join(TrainingSession, TrainingSession.id == Booking.session_id)
         .where(Booking.user_id == user_id, TrainingSession.kind == kind,
                ~TrainingSession.canceled,
                TrainingSession.starts_at >= lo, TrainingSession.starts_at < hi)) or 0
+    made = s.scalar(
+        select(func.count()).select_from(GymTraining)
+        .where(GymTraining.user_id == user_id, GymTraining.plan == kind, GymTraining.session_id.is_(None),
+               GymTraining.held_on >= start, GymTraining.held_on < end)) or 0
+    return booked + made
 
 
 def cycle_usage(user_id: int, plan: str, on: date | None = None) -> dict | None:
@@ -1157,12 +1179,15 @@ def book_series(user_id: int, session_id: int) -> dict:
 
     ONE transaction, dates in order: the session rows are locked in starts_at
     order, so two series (or a series and book()) cannot deadlock. Each date
-    is materialized the way a week view does it, locked FOR UPDATE and judged
-    by book()'s own rules (_refusal), the window and the period included. A
-    canceled, closed, full or already-held date is skipped and reported; a
-    spent paket stops the run and the rest stays unbooked. The quota is
-    counted inside this transaction, so what the loop books counts as it
-    goes.
+    is materialized the way a week view does it and locked FOR UPDATE, every
+    one before the first is judged (since 28.11.2026: _refusal takes the
+    member's membership row, and the session rows come before it here as in
+    book(), or a series holding that row and a book() holding a later
+    date's could wait on each other), then judged by book()'s own rules
+    (_refusal), the window and the period included. A canceled, closed,
+    full or already-held date is skipped and reported; a spent paket stops
+    the run and the rest stays unbooked. The quota is counted inside this
+    transaction, so what the loop books counts as it goes.
 
     Returns {"booked": [dates], "skipped": [(date, reason)], "stopped":
     "paket" | None, "until": the series' bound, "quota": the paket size
@@ -1177,12 +1202,14 @@ def book_series(user_id: int, session_id: int) -> dict:
             raise _plan_needed(sess.kind)
         m = _membership(s, user_id, sess.kind)
         dates, until = _series_dates(sess, m)
-        booked, skipped, stopped = [], [], None
-        for day in dates:
+        occurrences = []
+        for day in dates:                    # every date's session row first, in date order
             starts = _materialize(s, t, day)
-            occ = s.execute(select(TrainingSession).where(
+            occurrences.append((day, s.execute(select(TrainingSession).where(
                 TrainingSession.template_id == t.id, TrainingSession.starts_at == starts,
-            ).with_for_update()).scalar_one_or_none()
+            ).with_for_update()).scalar_one_or_none()))
+        booked, skipped, stopped = [], [], None
+        for day, occ in occurrences:         # then each judged (the membership row's lock: _refusal)
             refused = _refusal(s, user_id, occ, now)
             if refused is None:
                 s.add(Booking(user_id=user_id, session_id=occ.id))
@@ -1340,9 +1367,11 @@ def next_cycle(m: Membership | None, today: date) -> tuple[date, date]:
 
 def trust_bookings(user_id: int, plan: str) -> int:
     """The client's live termini of `plan` in its grace week, next_payment
-    through dospijeće: booked and trained on trust. While the plan is lapsed
-    they are unpaid (/clanarine's amber note); any uplata moves next_payment
-    on, and they stop counting, whichever month it buys."""
+    through dospijeće: booked and trained on trust (since 28.11.2026 with
+    the trainings staff made him outside a termin against `plan` on those
+    days: _cycle_used's one count). While the plan is lapsed they are unpaid
+    (/clanarine's amber note); any uplata moves next_payment on, and they
+    stop counting, whichever month it buys."""
     with session_scope() as s:
         m = _membership(s, user_id, plan)
         if m is None:
@@ -1676,21 +1705,42 @@ def booking_history(user_id: int, limit: int = 20) -> list[TrainingSession]:
 NO_EXERCISE = "Odaberi vježbu s popisa."
 UNKNOWN_EXERCISE = "Nepoznata vježba."
 BAD_DAY = "Neispravan datum."
+BAD_TIME = "Neispravno vrijeme."
 FIRST_DAY = date(2020, 1, 1)          # a training outside a termin: no date before it
+# staff acting as a member plan his training outside a termin up to so many
+# days ahead (28.11.2026; the owner: "he adds a training for a user coming to
+# the gym on his own on a saturday at some time slot"); the member's own form
+# stays today or before
+GYM_PLAN_DAYS = 60
 
 
-def read_day(raw: str | None, today: date | None = None) -> date:
+def read_day(raw: str | None, today: date | None = None, ahead: int = 0) -> date:
     """A training outside a termin's date as its form posts it (an ISO date,
-    the date input's): not in the future, not before FIRST_DAY
-    (2020-01-01); else ValueError BAD_DAY ("Neispravan datum.")."""
+    the date input's): not before FIRST_DAY (2020-01-01), not after today,
+    or since 28.11.2026 not after `ahead` days from it (staff acting as the
+    member: GYM_PLAN_DAYS); else ValueError BAD_DAY ("Neispravan datum.")."""
     value = (raw or "").strip()
     try:
         day = date.fromisoformat(value) if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) else None
     except ValueError:
         day = None
-    if day is None or not FIRST_DAY <= day <= (today or config.today()):
+    if day is None or not FIRST_DAY <= day <= (today or config.today()) + timedelta(days=ahead):
         raise ValueError(BAD_DAY)
     return day
+
+
+def read_time(raw: str | None) -> dtime | None:
+    """A training outside a termin's time of day as staff's form posts it
+    (28.11.2026, the time input's "10:00"): None for an empty one (no time),
+    else ValueError BAD_TIME ("Neispravno vrijeme.") for anything but HH:MM
+    from 00:00 to 23:59."""
+    value = (raw or "").strip()
+    if not value:
+        return None
+    m = re.fullmatch(r"([0-9]{2}):([0-9]{2})", value)
+    if m is None or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+        raise ValueError(BAD_TIME)
+    return dtime(int(m.group(1)), int(m.group(2)))
 
 
 # ---------- the estimated maxes (23.11.2026) ----------
@@ -1774,7 +1824,8 @@ def _logged_sets(user_id: int) -> list[tuple]:
     or OUTSIDE_TERMIN for a training outside a termin), since 26.11.2026
     each gym training's saved sets (GymTrainingItem.done, on its held_on,
     as soon as they are saved, no osvrt needed; where: its title and its
-    time, "Grupni trening · 18:00", or OUTSIDE_TERMIN; an exercise gone from
+    time, "Grupni trening · 18:00", or OUTSIDE_TERMIN and its time when it
+    has one (28.11.2026); an exercise gone from
     the library read under its name, gone_key) and each finished online
     pass's (WorkoutLog.done, on the day it was started; where: the day's
     label as the pass keeps it; an entry is the exercise done, the similar
@@ -1807,7 +1858,9 @@ def _logged_sets(user_id: int) -> list[tuple]:
         if not sets or (ex is None and not name):                # nothing saved, or an empty one
             continue
         time = f"{starts.astimezone(config.TZ):%H:%M}" if starts is not None else ""
-        where = " · ".join(w for w in (title, time) if w) or OUTSIDE_TERMIN
+        # its title, else (made outside a termin) OUTSIDE_TERMIN, then its time when it has one:
+        # "Grupni trening · 18:00", "Trening izvan termina · 10:00" (staff's planned one, 28.11.2026)
+        where = " · ".join(w for w in (title or OUTSIDE_TERMIN, time) if w)
         entry = {"exercise_id": ex if ex is not None else gone_key(name), "name": name, "sets": sets}
         found.append((on, 1, row_id, (block_at, position), "gym", where, entry))   # its place: its block's, then its own
     for started, row_id, raw, label in online:
@@ -3874,12 +3927,73 @@ def gym_training_for(user_id: int, session_id: int, staff: bool = False) -> int:
                                                      GymTraining.session_id == session_id))
 
 
-def add_gym_outside(user_id: int, day: date) -> int:
+NO_GYM_PLAN = "Odaberi članarinu."
+
+
+def gym_after_due(due: date) -> str:
+    """A training staff add (or move) after the plan's dospijeće, booking's
+    rule said about the member: "Članarina člana vrijedi do 8.5. — za
+    kasniji dan je treba produljiti."."""
+    return f"Članarina člana vrijedi do {due:%-d.%-m.} — za kasniji dan je treba produljiti."
+
+
+def gym_paket_full(quota: int, start: date, end: date) -> str:
+    """A training staff add (or move) into a tiered plan's full cycle, the
+    cycle in book()'s own words: "Član je iskoristio svih 8 treninga u
+    ciklusu 1.5.–31.5."."""
+    return f"Član je iskoristio svih {quota} treninga u ciklusu {start:%-d.%-m.}–{(end - timedelta(days=1)):%-d.%-m.}."
+
+
+def _gym_start(day: date, at: dtime | None) -> datetime | None:
+    """A training outside a termin's start: that day at that time of day in
+    Zagreb, None with no time."""
+    return None if at is None else datetime.combine(day, at, tzinfo=config.TZ)
+
+
+def _gym_plan_room(s: Session, m: Membership, day: date, skip: GymTraining | None = None) -> None:
+    """May a training on `day` count against `m` (its row held FOR UPDATE:
+    _membership(lock=True))? Booking's two limits: not after its dospijeće
+    (gym_after_due), and for a tiered plan a place left in the cycle that
+    holds the day (gym_paket_full; _cycle_used's count, `skip` the training
+    being moved, whose own place in that cycle is not a second one). Else
+    BookingError, nothing written."""
+    if day > m.dospijece:
+        raise BookingError(gym_after_due(m.dospijece))
+    if m.sessions_per_cycle:
+        start, end = m.cycle_bounds(day)
+        used = _cycle_used(s, m.user_id, m.plan, start, end)
+        if skip is not None and skip.plan == m.plan and skip.session_id is None and start <= skip.held_on < end:
+            used -= 1
+        if used >= m.sessions_per_cycle:
+            raise BookingError(gym_paket_full(m.sessions_per_cycle, start, end))
+
+
+def add_gym_outside(user_id: int, day: date, at: dtime | None = None, plan: str | None = None) -> int:
     """A training outside a termin on `day` (POST /dvoranski/trening since
     27.11.2026, the tab's form; POST /karton/trening until then; its date
-    read by read_day): no session, no title, no start, no block. Its id."""
+    read by read_day): no session, no title, no block; with a time of day
+    (`at`, read_time: since 28.11.2026 staff acting as the member plan it)
+    its start that day at that time in Zagreb, else none. Every way of
+    making one goes through here.
+
+    `plan` (28.11.2026; the owner: "It should be counted. This is also only
+    for people with a gym membership."): None for one that counts nothing
+    (the member's own, staff's own); given, staff made it for the member and
+    it counts against that gym plan of his as a booked termin does
+    (_cycle_used): his membership row taken FOR UPDATE first (the paket's
+    lock, as _refusal's: an add and a booking at once never both take its
+    last place, two adds neither), then refused with nothing made when it
+    is not one of his running plans that book termini (NO_GYM_PLAN,
+    "Odaberi članarinu.", an empty one too), the day is after its dospijeće
+    or its cycle is full (_gym_plan_room). Its id."""
     with session_scope() as s:
-        t = GymTraining(user_id=user_id, session_id=None, title="", starts_at=None, held_on=day, note="")
+        if plan is not None:
+            m = _membership(s, user_id, plan, lock=True) if plan in SESSION_KINDS else None
+            if m is None or not m.is_active(config.today()):
+                raise BookingError(NO_GYM_PLAN)
+            _gym_plan_room(s, m, day)
+        t = GymTraining(user_id=user_id, session_id=None, title="", starts_at=_gym_start(day, at), held_on=day,
+                        plan=plan, note="")
         s.add(t)
         s.flush()
         return t.id
@@ -4595,28 +4709,55 @@ def empty_gym_training(training_id: int, user_id: int, staff: bool = False) -> b
         return True
 
 
+# a training staff made against a gym plan (GymTraining.plan) is counted in the
+# member's paket: its day and its being there are staff's to change, or a
+# member would take it out of his cycle himself (Fable's review, 28.11.2026:
+# the owner agreed that a deleted one gives its place back, which is staff's
+# doing). He writes it, ticks it and gives its osvrt as any of his.
+GYM_STAFFS = "Ovaj trening je dodao trener i broji se u članarinu — pomaknuti ga ili obrisati može samo on."
+
+
 def delete_gym_training(training_id: int, user_id: int, staff: bool = False) -> bool:
     """"Obriši trening": a training outside a termin (or one let go of its
     termin), with its blocks and its osvrt. False for one that is no
-    member's, or a termin's (it goes with its booking: cancel_booking)."""
+    member's, or a termin's (it goes with its booking: cancel_booking). One
+    that counts against a gym plan is staff's alone to delete (BookingError
+    GYM_STAFFS for the member himself, nothing deleted)."""
     with session_scope() as s:
         t = _gym_locked(s, training_id, user_id, staff)
         if t is None or t.session_id is not None:
             return False
+        if t.plan and not staff:
+            raise BookingError(GYM_STAFFS)
         s.delete(t)
         return True
 
 
-def set_gym_day(training_id: int, user_id: int, day: date, staff: bool = False) -> bool:
-    """"promijeni datum": a training made outside a termin to `day` (read by
-    read_day). False for one that is no member's, or one with a termin's
-    start (a termin's date is a fact, a training let go of its termin keeps
-    it)."""
+def set_gym_day(training_id: int, user_id: int, day: date, at=KEEP, staff: bool = False) -> bool:
+    """"promijeni datum": a training made outside a termin (no session and
+    no title: GymTraining.outside) to `day` (read by read_day), with or
+    without a time: `at` a time of day (read_time) or None to take it away
+    (staff's form, 28.11.2026), KEEP (the member's: the day alone) its time
+    as stored, on the new day. False for one that is no member's, a
+    termin's, or one let go of its termin (it keeps the termin's title, date
+    and start: a termin's date is a fact). One that counts against a gym
+    plan (GymTraining.plan), moved by staff: his membership row FOR UPDATE
+    after the training's, then the new day judged as an add's
+    (_gym_plan_room: dospijeće, the paket; its own place in its cycle not a
+    second one), BookingError and nothing changed when it does not fit."""
     with session_scope() as s:
         t = _gym_locked(s, training_id, user_id, staff)
-        if t is None or t.session_id is not None or t.starts_at is not None:
+        if t is None or not t.outside:
             return False
-        t.held_on = day
+        if t.plan and not staff:                     # a counted one's day is staff's (GYM_STAFFS)
+            raise BookingError(GYM_STAFFS)
+        if staff and t.plan:
+            m = _membership(s, user_id, t.plan, lock=True)
+            if m is not None:
+                _gym_plan_room(s, m, day, skip=t)
+        if at is KEEP:
+            at = None if t.starts_at is None else t.starts_at.astimezone(config.TZ).time()
+        t.held_on, t.starts_at = day, _gym_start(day, at)
         t.updated_at = func.now()
         return True
 

@@ -1610,11 +1610,21 @@ class GymTraining(Base):
     `starts_at` the termin's then (snapshots: a record), `held_on` its
     Zagreb date. A training outside a termin (POST /dvoranski/trening, the
     tab's form, since 27.11.2026; POST /karton/trening until then) has no
-    session, title '' and no start, `held_on` the date the member picked. A
-    cancelled booking takes its training with it (db.cancel_booking): the
-    row goes when nothing was done in it, one that holds a record is let go
-    of its termin (session_id NULL), its title and date as they were, and
-    reads on as a training outside a termin. `effort` (1–10), `feeling` (a
+    session and title '', `held_on` the date picked; no start, but since
+    28.11.2026 one staff acting as the member plan with a time of day: its
+    `starts_at` that day and time in Zagreb. A cancelled booking takes its
+    training with it (db.cancel_booking): the row goes when nothing was done
+    in it, one that holds a record is let go of its termin (session_id
+    NULL), its title and date as they were, and reads on as a training
+    outside a termin. The two with no session are told apart by the title
+    alone (`outside`): one made outside a termin has none, one let go of its
+    termin keeps the termin's. `plan` (since 28.11.2026, migration
+    a3f6c1e8d47b): the member's gym plan a training staff made outside a
+    termin counts against, a SESSION_KINDS key (ck_gym_trainings_plan), set
+    when staff make it and never by a member; NULL for every other (a
+    termin's training counts by its booking, one let go of its termin not at
+    all): db._cycle_used counts it in the cycle that holds its day.
+    `effort` (1–10), `feeling` (a
     FEELING_LABELS key) and `note` are the osvrt, `finished_at` its first
     save. Written by db.py only, the row locked FOR UPDATE, each write asking
     db.gym_can_write (the member's window; staff acting as him at any
@@ -1640,6 +1650,8 @@ class GymTraining(Base):
     feeling: Mapped[str | None] = mapped_column(String(10), nullable=True)  # FEELING_LABELS key
     note: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # the gym plan a training staff made outside a termin counts against (28.11.2026; NULL: none)
+    plan: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
                                                  onupdate=func.now())
@@ -1648,6 +1660,7 @@ class GymTraining(Base):
         # a member's one training of a termin; a training outside one (NULL) as many as he likes
         Index("uq_gym_trainings_user_session", "user_id", "session_id", unique=True,
               postgresql_where=sql_text("session_id IS NOT NULL")),
+        CheckConstraint("plan IN (" + ", ".join(f"'{k}'" for k in SESSION_KINDS) + ")", name="ck_gym_trainings_plan"),
     )
 
     # its blocks in their order; the CASCADE deletes them (and their items) with it
@@ -1657,10 +1670,13 @@ class GymTraining(Base):
 
     @property
     def outside(self) -> bool:
-        """Made outside a termin (no start: its date the member's). One let
-        go of its termin (a cancelled booking that held a record) keeps the
-        termin's title and start, and is no termin's now (session_id)."""
-        return self.starts_at is None
+        """Made outside a termin: no session and no title. Since 28.11.2026
+        the title alone tells it apart from one let go of its termin (a
+        cancelled booking that held a record: no termin's now, session_id
+        NULL, but the termin's title and start kept), for one made outside a
+        termin may carry a start too (staff acting as the member plan it at a
+        time of day)."""
+        return self.session_id is None and not self.title
 
     @property
     def items(self) -> list["GymTrainingItem"]:

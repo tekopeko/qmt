@@ -11,8 +11,10 @@
    with no tab the karton at its diary row), the clock from the first tick (the script's,
    shown while it is writable, not finished and that tick is at most 4 h
    old) and "Završi trening" (the osvrt); the head (the kicker, the termin's
-   title, the date and time in 700, outside a termin "promijeni datum", the
-   state line); then the main card, one block (?blok=: by default the first
+   title, the date and time in 700, outside a termin "promijeni datum": for
+   staff acting as the member since 28.11.2026 the day up to 60 days ahead and
+   a time of day; the state line, or for a training staff made against a gym
+   plan "Broji se u članarinu: …"); then the main card, one block (?blok=: by default the first
    not done), or the "what next" card once every block is done, or with no
    block the template chooser; the overview (#pregled, every block, a link
    each, the one on screen ringed, "+ Stanica" and "+ Kružni set" at its
@@ -128,6 +130,8 @@
   .gt-date > summary::-webkit-details-marker { display: none; }
   .gt-date-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 8px; font-weight: 400; }
   .gt-date-form .field { margin: 0; flex: 0 1 220px; min-width: 0; }
+  /* staff's time of day beside the date where both fit (28.11.2026) */
+  .gt-date-form .gt-time { flex-basis: 150px; }
   .gt-date-form input { min-width: 0; min-height: 44px; }
   .gt-date:not([open]) > .gt-date-form { display: none; }
   .gt-state { margin-top: 4px; color: var(--muted); font-size: .92rem; overflow-wrap: anywhere; }
@@ -597,7 +601,13 @@
         <form class="gt-date-form" method="post" action="/dvoranski/trening/{{ t.id }}/datum">
           <div class="field"><label for="gt-day">{{ c.t("gym.head.date_field") }}</label>
             <input id="gt-day" type="date" name="day" value="{{ t.held_on.isoformat() }}"
-                   min="{{ first_day.isoformat() }}" max="{{ today.isoformat() }}" required></div>
+                   min="{{ first_day.isoformat() }}" max="{{ last_day.isoformat() }}" required></div>
+          {%- if plan_ahead %}
+          {# staff acting as the member (28.11.2026): the day up to 60 days ahead (its max) and its
+             time of day, the stored one, emptied to take it away; staff's own words, no slot #}
+          <div class="field gt-time"><label for="gt-time">Vrijeme (neobavezno)</label>
+            <input id="gt-time" type="time" name="time" value="{{ time_value }}"></div>
+          {%- endif %}
           <button type="submit" class="btn btn-sm">{{ c.t("gym.head.date_save") }}</button>
         </form>
       </details>
@@ -609,6 +619,9 @@
     {% if state_key == "gym.state.open" %}<p class="gt-state">{{ c.t("gym.state.open") }} {{ state_text }}.</p>
     {% elif state_key %}{{ c.opt(state_key, "p", ' class="gt-state"') }}
     {% elif state_text %}<p class="gt-state">{{ state_text }}</p>{% endif %}
+    {# a training staff made outside a termin counts against a gym plan of the member's
+       (28.11.2026): one muted line, the plan's name code #}
+    {% if plan_label %}<p class="gt-state">{{ c.t("gym.state.counted") }} {{ plan_label }}.</p>{% endif %}
   </div>
 
   <div class="pl-grid gt-grid{% if not view %} solo{% endif %}">
@@ -769,7 +782,9 @@
         {{ chooser(false) }}
       </details>
       {% endif %}
-      {% if writable and (t.session_id is none or t.blocks) %}
+      {# "Obriši trening" outside a termin (a counted one, GymTraining.plan:
+         staff's alone to delete, can_drop) or a termin's "Isprazni trening" #}
+      {% if writable and ((t.session_id is none and can_drop) or (t.session_id is not none and t.blocks)) %}
       <div class="gt-foot">
         {% if t.session_id is none %}
         <form method="post" action="/dvoranski/trening/{{ t.id }}/obrisi"

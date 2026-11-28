@@ -1154,12 +1154,15 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
     # heading, a row's button and its empty line, went on the evening of
     # 27.11.2026: the tab lists what is active, the karton keeps the record;
     # the link's key stays last_all). The training page's slots print where
-    # the tab says the same: an open termin's state line (gym.state.open)
-    # and a training outside a termin's name (gym.head.outside). Not slots:
-    # a termin's title, the dates and times, the window's end, the hours, "3
-    # vježbe", the osvrt's facts ("napor 7/10 · Dobro"), and what only staff
-    # acting as the member read (a later termin's "Članu se otvara …" and
-    # "Pripremi trening": staff's own chrome) ----
+    # the tab says the same: an open termin's state line (gym.state.open),
+    # a training outside a termin's name (gym.head.outside) and since
+    # 28.11.2026 the plan a training staff made counts against
+    # (gym.state.counted). Not slots: a termin's title, the dates and times,
+    # the window's end, the hours, "3 vježbe", the osvrt's facts ("napor
+    # 7/10 · Dobro"), a plan's name and count, and what only staff acting as
+    # the member read (a later termin's "Članu se otvara …" and "Pripremi
+    # trening", and since 28.11.2026 the form's "Vrijeme (neobavezno)" and
+    # "Članarina", the gate's sentence for them: staff's own chrome) ----
     "gym.tab.title": Slot("Dvoranski treninzi", CAP, "Dvoranski treninzi: naslov", required=True),
     "gym.tab.lead": Slot("Ovdje upisuješ svoje treninge u dvorani. Sve što upišeš ostaje u tvom kartonu.", CAP,
                          "Dvoranski treninzi: uvodna rečenica"),
@@ -1213,6 +1216,12 @@ SLOTS: dict[str, Slot | ListSlot | RowsSlot | FlagSlot | ImageSlot] = {
                              "Trening u dvorani · stanje: upis zatvoren"),
     "gym.state.staff": Slot("Za člana je upis zatvoren; uređuješ kao trener.", CAP,
                             "Trening u dvorani · stanje: trener izvan članova roka"),
+    # since 28.11.2026: a training staff made outside a termin counts against
+    # one of the member's gym plans (GymTraining.plan), said under its date
+    # and on the tab's card, "Broji se u članarinu: Grupni trening." (the
+    # plan's name the app's, PLAN_LABELS; the words a caption before a value)
+    "gym.state.counted": Slot("Broji se u članarinu:", CAP,
+                              "Trening u dvorani · stanje: Broji se u članarinu:, prije članarine", required=True),
     # the template chooser (a training with no block; "Promijeni predložak"
     # at the page's foot before the first tick): its heading, the line over
     # "+ Stanica" / "+ Kružni set" (its "sam/a" read as the member's), the

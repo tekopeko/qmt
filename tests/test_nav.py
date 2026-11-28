@@ -536,6 +536,11 @@ def test_the_bar_menu_and_drawer_in_a_browser(server):
                     check(d["shown"] == want, f"the drawer shows {d['shown']}")
                     check(d["hairline"] == ("1px" if staff else None), f"the hairline between its sections: {d['hairline']}")
                     check(d["inside"] and d["overflow"] == 0, f"the drawer leaves the window (overflow {d['overflow']})")
+                    if staff:                                              # the edit pill gets out of the open menu's way (28.11.2026)
+                        check(not pg.locator("#copyToggle").is_visible(), "the edit pill shows over the open drawer")
+                        pg.tap(".nav-burger")
+                        check(pg.locator("#copyToggle").is_visible(), "the edit pill did not come back with the drawer shut")
+                        pg.tap(".nav-burger")
                     if staff:                                              # an item leads to its page, marked as .on is
                         with pg.expect_navigation():
                             pg.tap("#mainNav >> text=Trenutne članarine")

@@ -3288,10 +3288,12 @@ PARTS = "a7d3c5e9f214_day_parts_and_slots.py"
 # whose key points at the trainings: dropped before them, made after them;
 # and 9b4e2d7f1c58 (27.11.2026, the dvoranski treninzi's build 1) their
 # blocks and the templates: the models' gym tables since, dropped before
-# the trainings, made on top of the parts (which it drops)
+# the trainings, made on top of the parts (which it drops); and a3f6c1e8d47b
+# (28.11.2026) a training's plan, the gym plan one staff add counts against
 GYM = "c4e1b7f9a2d6_gym_trainings.py"
 GYM_PARTS = "36d6e2c97de7_gym_training_parts.py"
 GYM_BLOCKS = "9b4e2d7f1c58_gym_training_blocks.py"
+GYM_PLAN = "a3f6c1e8d47b_gym_trainings_plan.py"
 
 
 def _old_items() -> list[tuple]:
@@ -3364,7 +3366,8 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     planned weight; a7d3c5e9f214 Glavni dio C, the parts' names and the
     slots; c4e1b7f9a2d6 the gym trainings, whose items point at the
     library; 36d6e2c97de7 their parts; 9b4e2d7f1c58 their blocks and the
-    templates), and every table is the models'."""
+    templates; a3f6c1e8d47b a training's plan), and every table is the
+    models'."""
     mig = _migration("4c2e8a6f1d39_exercise_library.py")
     assert (mig.revision, mig.down_revision) == ("4c2e8a6f1d39", "b18ebed39701")
     with db.engine.begin() as conn:                                         # the tables as before the revision
@@ -3436,6 +3439,7 @@ def test_the_migration_folds_the_items_into_the_library_and_back(capsys):
     _run(_migration(GYM).upgrade)                                            # and the gym trainings
     _run(_migration(GYM_PARTS).upgrade)                                      # and their parts (part B)
     _run(_migration(GYM_BLOCKS).upgrade)                                     # and their blocks, the templates
+    _run(_migration(GYM_PLAN).upgrade)                                       # and a training's plan (28.11.2026)
     assert "program_items" not in _tables() and "gym_training_parts" not in _tables() and _schema_diffs(
         TRENINZI | {"program_day_circuits", "program_day_parts", "gym_trainings", "gym_training_items",
                     "gym_training_blocks", "gym_templates", "gym_template_blocks"}) == []

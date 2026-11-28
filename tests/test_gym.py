@@ -262,6 +262,7 @@ GYM_TABLES = {"gym_trainings", "gym_training_items", "gym_training_blocks", "gym
 OLD = "c4e1b7f9a2d6_gym_trainings.py"
 OLD_PARTS = "36d6e2c97de7_gym_training_parts.py"
 BLOCKS = "9b4e2d7f1c58_gym_training_blocks.py"
+PLAN = "a3f6c1e8d47b_gym_trainings_plan.py"      # a training's plan (28.11.2026), on top of the blocks'
 
 
 def _before_the_gym() -> None:
@@ -281,10 +282,12 @@ def test_the_gym_migrations_run_there_and_back_and_end_as_the_models():
     index on a member and a termin, the deferred place, the CHECK on a
     part) and 36d6e2c97de7 (their parts: two CHECKs) each make their tables
     and take them away, the karton's TrainingLog rows untouched; and
-    9b4e2d7f1c58 on top of them leaves the gym tables as the models have
-    them, to their indexes and constraints."""
-    old, parts, blocks = _migration(OLD), _migration(OLD_PARTS), _migration(BLOCKS)
+    9b4e2d7f1c58 on top of them, and since 28.11.2026 a3f6c1e8d47b on top of
+    it (a training's plan: tests/test_dvoranski.py), leave the gym tables
+    as the models have them, to their indexes and constraints."""
+    old, parts, blocks, plan = _migration(OLD), _migration(OLD_PARTS), _migration(BLOCKS), _migration(PLAN)
     assert (blocks.revision, blocks.down_revision) == ("9b4e2d7f1c58", "3d9a6f2c8b51")
+    assert (plan.revision, plan.down_revision) == ("a3f6c1e8d47b", "9b4e2d7f1c58")
     ivan = make_user("ivan@test.local")
     with db.session_scope() as s:
         s.add(TrainingLog(user_id=ivan, date=date(2026, 11, 20), effort=6, note="Staro.", sets="[]"))
@@ -312,6 +315,7 @@ def test_the_gym_migrations_run_there_and_back_and_end_as_the_models():
     assert "gym_training_parts" not in sa_inspect(db.engine).get_table_names()
     _run(parts.upgrade)
     _run(blocks.upgrade)
+    _run(plan.upgrade)
     assert "gym_training_parts" not in sa_inspect(db.engine).get_table_names()
     assert _schema_diffs(GYM_TABLES) == []
     for name in ("uq_gym_training_blocks_position", "uq_gym_training_items_block_position", "uq_gym_templates_position",
@@ -332,8 +336,9 @@ def test_the_blocks_migration_converts_a_training_and_takes_it_back():
     into 'trening_b' (a circuit part again, its rounds and rest), the ratings
     back on the items, no block, no template. Up again: the same blocks, the
     stations first (the order the old shape can say), as the models have
-    them."""
-    old, parts, blocks = _migration(OLD), _migration(OLD_PARTS), _migration(BLOCKS)
+    them. (Since 28.11.2026 a3f6c1e8d47b, a training's plan, runs on top of
+    it each time, and back before its downgrade: the models read it.)"""
+    old, parts, blocks, plan = _migration(OLD), _migration(OLD_PARTS), _migration(BLOCKS), _migration(PLAN)
     ivan = make_user("ivan@test.local")
     ex = library("Plank", "Goblet čučanj", "Sklekovi", "Istezanje")
     sid = termin(ivan, now() - timedelta(hours=2), title="Snaga")
@@ -365,6 +370,7 @@ def test_the_blocks_migration_converts_a_training_and_takes_it_back():
     A, S, B, C, D = (ids[k] for k in "ASBCD")
 
     _run(blocks.upgrade)
+    _run(plan.upgrade)
     t = db.gym_training(tid, ivan)
     assert [(b.position, b.kind, b.rounds, b.rest_seconds, b.effort) for b in t.blocks] == [
         (1, "stanica", None, None, 5), (2, "stanica", None, None, None), (3, "kruzni", 3, 90, 7),
@@ -383,6 +389,7 @@ def test_the_blocks_migration_converts_a_training_and_takes_it_back():
     assert [(x.title, x.facts) for x in db.gym_templates()] == [("Stanični trening", "6 stanica"),
                                                                  ("Kružni trening", "1 stanica · kružni set · 4 kruga")]
 
+    _run(plan.downgrade)
     _run(blocks.downgrade)
     names = set(sa_inspect(db.engine).get_table_names())
     assert "gym_training_parts" in names and not {"gym_training_blocks", "gym_templates", "gym_template_blocks"} & names
@@ -395,6 +402,7 @@ def test_the_blocks_migration_converts_a_training_and_takes_it_back():
         (tid, "trening_b", "", 3, 90)]
 
     _run(blocks.upgrade)
+    _run(plan.upgrade)
     assert _schema_diffs(GYM_TABLES) == []
     t = db.gym_training(tid, ivan)
     assert [(b.kind, b.rounds, b.rest_seconds, b.effort, [it.id for it in b.items]) for b in t.blocks] == [
@@ -2169,7 +2177,9 @@ GONE = ("gym.empty", "gym.template.open", "gym.part.edit", "gym.part.name", "gym
 def test_every_text_of_the_page_is_a_slot_with_its_words():
     """The page's and its osvrt's texts are slots, gym.<area>.* (65 since
     27.11.2026: the blocks' 34 came, part A's and part B's 22 that the page
-    no longer prints went), labelled "Trening u dvorani…" in the editor's
+    no longer prints went; 66 since 28.11.2026: "Broji se u članarinu:"
+    under a training staff made against a gym plan, gym.state.counted, which
+    the tab's card prints too), labelled "Trening u dvorani…" in the editor's
     bar, required but for a kicker, a state's whole sentence, a lead line
     and an empty block's word; each printed on a page the member reads with
     its default words (a confirm's in its attribute, the script's in the
@@ -2178,7 +2188,7 @@ def test_every_text_of_the_page_is_a_slot_with_its_words():
     edited prints in its place; /tekstovi lists them under "Trening u
     dvorani", after "Trening (izvođenje)", area by area, after the tab's
     own (since 27.11.2026, "Dvoranski treninzi": gym.tab.*)."""
-    assert len(GYM_SLOTS) == 65 and not set(GONE) & set(copy.SLOTS)
+    assert len(GYM_SLOTS) == 66 and not set(GONE) & set(copy.SLOTS)
     assert {k for k in GYM_SLOTS if not copy.SLOTS[k].required} == GYM_OPTIONAL
     assert all(copy.SLOTS[k].label.startswith("Trening u dvorani") for k in GYM_SLOTS)
     ivan = make_user("ivan@test.local")
@@ -2208,9 +2218,10 @@ def test_every_text_of_the_page_is_a_slot_with_its_words():
     gone = station(alldone, ivan, db.create_exercise("Stara vježba"), 1)
     db.save_gym_done(gone, ivan, [{"reps": 5, "kg": 0.0}])
     db.delete_exercise(block(gone).items[0].exercise_id)                    # its sets as text, "Odrađeno:"
+    counted = db.add_gym_outside(ivan, config.today(), plan="grupni")        # staff's, against his grupni (28.11.2026)
     ci, cs = client_for("ivan@test.local"), client_for("coach@test.local")
     pages = [ci.get(page_url(live, blok=b)).text for b in (s1, k, s3, setup)]
-    pages += [ci.get(page_url(x)).text for x in (chooser, picked, closed, done, alldone)]
+    pages += [ci.get(page_url(x)).text for x in (chooser, picked, closed, done, alldone, counted)]
     pages += [ci.get(page_url(alldone, blok=b)).text for b in (kdone, gone)]
     pages.append(ci.get(f"/dvoranski/trening/{live}/osvrt").text)
     cs.post(f"/kao/{ivan}")
