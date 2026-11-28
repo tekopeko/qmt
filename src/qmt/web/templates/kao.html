@@ -23,6 +23,20 @@
   .kao-log { margin: -10px 0 18px; }
   .kao-search { margin: 0 0 12px; }
   .kao-search input { width: 100%; }
+  /* The four chips under the search (28.11.2026, build 4 of the admin
+     view; the owner: "We should also somehow separate users which are for
+     gym and for online trainings … Amir just wants to somehow group this
+     many users he will have."): Svi · Dvorana · Online · Bez članarine,
+     base.html's .tagbar and .tag-chip (the library's tag chips) as links,
+     each a list's address (the page without the script), ONE chosen,
+     aria-current: the pressed look. Each says how many members it holds,
+     the whole list's, after its word: muted (4.6:1 light, 5.6 dark), and
+     the chip's own ink where the muted grey falls under AA (measured: on
+     the pressed tint 4.3:1 light; on the hover wash 3.8 light, 4.2 dark).
+     They wrap, never scroll sideways. */
+  .kao-groups { margin: 0 0 12px; }
+  .kao-gn { margin-left: 5px; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .kao-groups .tag-chip:is(:hover, [aria-current="true"]) .kao-gn { color: inherit; }
   .kao-found { margin: -4px 0 10px; }
   .kao-list { overflow: hidden; }
   .kao-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-height: 60px; padding: 10px 18px; }
@@ -32,13 +46,15 @@
   .kao-mail { color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
   .kao-plans { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
   .kao-row form { margin: 0 0 0 auto; flex: none; }
-  .kao-none, .kao-empty { padding: 16px 18px; color: var(--muted); overflow-wrap: anywhere; }
+  .kao-none, .kao-nogroup, .kao-empty { padding: 16px 18px; color: var(--muted); overflow-wrap: anywhere; }
 </style>
 {% endblock %}
 {% block content %}
 {#- a page that is this one with its own words (kartoni.html,
    dvoranski_clanovi.html) gives its h1, lead and links (kao_lead) and its
-   row's entry (kao_go); "prikaži sve" is the page's own address #}
+   row's entry (kao_go); its chips, their counts and links, the chosen one
+   and "prikaži sve" (the page's own address in Svi) are its route's
+   (app._members_list) #}
 {% block kao_lead %}<h1>Gledaj kao član</h1>
 <p class="hint">Otvori aplikaciju kao član: vidiš što on vidi i radiš što on može. Sve što ovako promijeniš bilježi se.</p>
 {% if is_owner %}<p class="hint kao-log"><a class="tlink" href="/kao/zapisi">Zapis svih radnji →</a></p>{% endif %}{% endblock %}
@@ -47,10 +63,18 @@
   <form class="kao-search" role="search" hidden>
     <input type="search" name="q" placeholder="Ime ili email" aria-label="Traži člana po imenu ili emailu" autocomplete="off">
   </form>
-  <p class="hint kao-found" aria-live="polite" hidden><span class="kao-n">{{ members|length }}</span> od {{ members|length }} · <a class="tlink" href="{{ request.url.path }}">prikaži sve</a></p>
+  {#- the four chips (_members_list: `group` the chosen one, `group_start`
+     the page's own, each chip's count the whole list's and its link the
+     list in its group, the page's ?q= kept) #}
+  <div class="tagbar kao-groups" role="group" aria-label="Skupina članova" data-start="{{ group_start }}">
+    {%- for g in group_chips %}
+    <a class="tag-chip" href="{{ g.href }}" data-grupa="{{ g.key }}"{% if g.key == group %} aria-current="true"{% endif %}>{{ g.word }} <span class="kao-gn">{{ g.count }}</span></a>
+    {%- endfor %}
+  </div>
+  <p class="hint kao-found" aria-live="polite"{% if group == "svi" %} hidden{% endif %}><span class="kao-n">{{ group_n }}</span> od {{ members|length }} · <a class="tlink" href="{{ group_all }}">prikaži sve</a></p>
   <div class="card kao-list">
     {% for m in members %}
-    <div class="kao-row" data-find="{{ m.name }} · {{ m.user.email }}">
+    <div class="kao-row" data-find="{{ m.name }} · {{ m.user.email }}" data-grupe="{{ m.groups|join(' ') }}"{% if group != "svi" and group not in m.groups %} hidden{% endif %}>
       <div class="kao-who">
         <strong>{{ st.name(m.name, m.status) }}</strong>
         {% if m.name != m.user.email %}<span class="kao-mail">{{ m.user.email }}</span>{% endif %}
@@ -60,6 +84,7 @@
     </div>
     {% endfor %}
     <p class="kao-none" hidden>Nijedan član ne odgovara traženju „<span class="kao-q"></span>”.</p>
+    <p class="kao-nogroup"{% if group_n %} hidden{% endif %}>Nema članova u ovoj skupini.</p>
   </div>
   {% else %}
   <div class="card"><p class="kao-empty">Još nema članova.</p></div>
@@ -70,45 +95,78 @@
 <script>
   // The search filters as it is typed (the library's way, vjezbe.html): a
   // row is kept when every word typed is in its name or its email, both
-  // folded (qmtFold, base.html: "kovac" finds "Kovač"). The count ("3 od 41
-  // · prikaži sve") shows while the box holds text, the none line when
-  // nothing is kept, and the address follows (?q=, replaceState a little
-  // after the last key), so a reload or Back shows the same list. Enter
-  // sends nothing; "prikaži sve" clears the box in place. Without the
-  // script the box stays hidden and the whole list shows.
+  // folded (qmtFold, base.html: "kovac" finds "Kovač"). Since 28.11.2026
+  // (build 4 of the admin view) the chips over the rows narrow them too, in
+  // place: a tap chooses one (aria-current), and a row is kept when it is in
+  // the chosen group (its data-grupe; Svi every row) AND holds every word
+  // typed. The count ("3 od 41 · prikaži sve") shows while anything narrows
+  // the list (text typed, or a chip other than Svi), the none line when
+  // nothing is kept (with text typed the search's sentence, with none the
+  // group's), and the address follows (replaceState: ?grupa= when it is not
+  // the page's own, data-start, beside ?q=; a little after the last key, at
+  // once after a tap), so a reload or Back shows the same list; each chip's
+  // link follows it too (a new tab opens the same list). Enter sends
+  // nothing; "prikaži sve" empties the box and chooses Svi, in place.
+  // Without the script the box stays hidden, the chips are links and the
+  // server draws the chosen group's rows.
   (function () {
     var form = document.querySelector("form.kao-search"), box = form && form.querySelector("input");
     var count = document.querySelector(".kao-found"), none = document.querySelector(".kao-none");
-    if (!box || !count || !none) return;
+    var nogroup = document.querySelector(".kao-nogroup"), bar = document.querySelector(".kao-groups");
+    if (!box || !count || !none || !nogroup || !bar) return;
     var shownN = count.querySelector(".kao-n"), quoted = none.querySelector(".kao-q"), later = null;
+    var start = bar.getAttribute("data-start"), chips = [].slice.call(bar.querySelectorAll("a[data-grupa]"));
+    var group = (chips.filter(function (a) { return a.getAttribute("aria-current") === "true"; })[0] || chips[0])
+                  .getAttribute("data-grupa");
     var rows = [].map.call(document.querySelectorAll(".kao-row[data-find]"), function (row) {
-      return [row, qmtFold(row.getAttribute("data-find"))];
+      return [row, qmtFold(row.getAttribute("data-find")), (row.getAttribute("data-grupe") || "").split(" ")];
     });
-    function filter(follow) {
+    // a list's address: its group when it is not the page's own, the words typed
+    function address(g, typed) {
+      var query = [];
+      if (g !== start) query.push("grupa=" + g);
+      if (typed) query.push("q=" + encodeURIComponent(typed));
+      return location.pathname + (query.length ? "?" + query.join("&") : "");
+    }
+    function filter(follow, now) {
       var typed = box.value.trim(), words = qmtFold(typed).split(/\s+/).filter(Boolean), kept = 0;
       rows.forEach(function (r) {
-        var hit = words.every(function (w) { return r[1].indexOf(w) >= 0; });
+        var hit = (group === "svi" || r[2].indexOf(group) >= 0) && words.every(function (w) { return r[1].indexOf(w) >= 0; });
         r[0].hidden = !hit;
         if (hit) kept++;
       });
+      chips.forEach(function (a) {
+        var g = a.getAttribute("data-grupa");
+        if (g === group) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current");
+        a.setAttribute("href", address(g, typed));
+      });
       shownN.textContent = kept;
-      count.hidden = !typed;
+      count.hidden = !typed && group === "svi";
       quoted.textContent = typed;
-      none.hidden = kept > 0;
+      none.hidden = kept > 0 || !typed;
+      nogroup.hidden = kept > 0 || !!typed;
       if (follow) {
-        // a little after the last key (WebKit refuses more than 100 replaceState calls in 30 s)
+        // after a key a little after the last one (WebKit refuses more than
+        // 100 replaceState calls in 30 s), after a tap at once
         clearTimeout(later);
-        later = setTimeout(function () {
-          try { history.replaceState(null, "", location.pathname + (typed ? "?q=" + encodeURIComponent(typed) : "")); } catch (e) {}
-        }, 250);
+        var write = function () { try { history.replaceState(null, "", address(group, typed)); } catch (e) {} };
+        if (now) write(); else later = setTimeout(write, 250);
       }
     }
     form.hidden = false;
     box.addEventListener("input", function () { filter(true); });
     form.addEventListener("submit", function (e) { e.preventDefault(); box.blur(); });
+    bar.addEventListener("click", function (e) {
+      var a = e.target.closest("a[data-grupa]");
+      // a new tab or window (a modifier held) is the link's own: the same list there
+      if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      group = a.getAttribute("data-grupa");
+      filter(true, true);
+    });
     count.querySelector("a").addEventListener("click", function (e) {
       e.preventDefault();
-      box.value = ""; filter(true); box.focus();
+      box.value = ""; group = "svi"; filter(true, true); box.focus();
     });
     var q = new URLSearchParams(location.search).get("q");
     if (q) box.value = q;

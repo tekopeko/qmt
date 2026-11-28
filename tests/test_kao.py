@@ -61,6 +61,13 @@ search; the bar over a tab's view is the admin view's. Since build 3 of the
 same day the strip is a dark bar in both themes, the member's name on it in
 his status's colour, and every way into a member's account wears the
 admin's indigo where it wore amber (tests/test_status.py: the colours).
+Since build 4 (the owner: "We should also somehow separate users which are
+for gym and for online trainings … Amir just wants to somehow group this
+many users he will have.") the three lists carry four chips, Svi · Dvorana ·
+Online · Bez članarine, by what a member runs now (app._member_groups, the
+two tabs' rule, never stored; read with the list, one batch), Kartoni and
+/kao opening on Svi, the admin's Dvoranski treninzi on Dvorana; each chip a
+link (?grupa=), filtering in place with the script, with the search.
 
 The phone reminder (the owner: "if a user didnt give it, when he opens the
 app a popup reminder should appear similarly how a popup appears as a
@@ -73,8 +80,8 @@ tests/test_karton.py's.
 
 The browser half walks the picker into a member's account at 390 and 360px
 (touch) and back out, Kartoni into a member's karton at the same widths
-(and the three admin pages of 28.11.2026 for overflow), and the phone
-reminder at 390 and 1280px."""
+(and the three admin pages of 28.11.2026 for overflow), the three lists'
+chips at 390px (touch), and the phone reminder at 390 and 1280px."""
 
 from __future__ import annotations
 
@@ -101,7 +108,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from sqlalchemy import inspect as sa_inspect, text as sa_text
+from sqlalchemy import event, inspect as sa_inspect, text as sa_text
 from starlette.requests import Request
 
 from qmt import auth, config, copy, db, upitnik
@@ -756,7 +763,8 @@ def test_the_picker_lists_every_member_in_the_alphabets_order():
     with db.engine.begin() as conn:                                    # dario's plan has lapsed
         conn.execute(sa_text("UPDATE memberships SET next_payment = next_payment - 60 WHERE user_id = :u"), {"u": dario})
     page = client_for("coach@test.local").get("/kao").text
-    rows = re.findall(r'<div class="kao-row" data-find="([^"]*)">\s*<div class="kao-who">\s*<strong>([^<]*)</strong>\s*'
+    rows = re.findall(r'<div class="kao-row" data-find="([^"]*)" data-grupe="[a-z ]+">\s*<div class="kao-who">\s*'
+                      r'<strong>([^<]*)</strong>\s*'
                       r'(?:<span class="kao-mail">([^<]*)</span>)?\s*<span class="kao-plans">([^<]*)</span>\s*</div>\s*'
                       r'<form method="post" action="/kao/(\d+)"><button type="submit" class="act act-kao">Otvori →</button></form>',
                       seen(page))
@@ -828,8 +836,11 @@ def has_search(page: str) -> bool:
 
 
 # an admin list's row (kao.html's, kartoni.html's and dvoranski_clanovi.html's
-# entry): the name, the email, the plans, and its form into a tab's view
-LIST_ROW = (r'<div class="kao-row" data-find="([^"]*)">\s*<div class="kao-who">\s*<strong>([^<]*)</strong>\s*'
+# entry): the name, the email, the plans, and its form into a tab's view; since
+# build 4 of the admin view its groups (the chips') and, outside the chosen
+# chip's group, hidden
+LIST_ROW = (r'<div class="kao-row" data-find="([^"]*)" data-grupe="[a-z ]+"(?: hidden)?>\s*<div class="kao-who">\s*'
+            r'<strong>([^<]*)</strong>\s*'
             r'(?:<span class="kao-mail">([^<]*)</span>)?\s*<span class="kao-plans">([^<]*)</span>\s*</div>\s*'
             r'<form method="post" action="{action}"><input type="hidden" name="clan" value="(\d+)">'
             r'<input type="hidden" name="natrag" value="{natrag}"><button type="submit" class="act act-kao">{go}</button>'
@@ -895,8 +906,10 @@ def test_the_admins_dvoranski_treninzi_lists_every_member_and_the_templates():
     its lead "Pripremi ili dodaj trening članu.", "Predlošci treninga →"
     (one .act, the templates' list) under it, and every member in /kao's
     order, a member with no gym plan too (sara: his tab says why nothing
-    can be added), each "Otvori treninge →" posting clan and
-    natrag=/dvoranski/clanovi to /dvoranski/clan. A member is refused, a
+    can be added; since build 4 of the admin view under Svi or Bez
+    članarine, the list opening on Dvorana: the chips' own test below),
+    each "Otvori treninge →" posting clan and natrag=/dvoranski/clanovi to
+    /dvoranski/clan; "prikaži sve" this page in Svi. A member is refused, a
     guest goes to log in."""
     coach, owner, ivan, ana, sara = people()
     for email in ("coach@test.local", "trener@test.local"):
@@ -909,7 +922,7 @@ def test_the_admins_dvoranski_treninzi_lists_every_member_and_the_templates():
             ("Ana Kovač", "Grupni trening", ana), ("Ivan Horvat", "Grupni trening · Online trening", ivan),
             ("Sara Jurić", "bez članarine", sara)], email
         assert page.split("<main")[1].count('href="/dvoranski/predlosci"') == 1
-        assert '· <a class="tlink" href="/dvoranski/clanovi">prikaži sve</a>' in page
+        assert '· <a class="tlink" href="/dvoranski/clanovi?grupa=svi">prikaži sve</a>' in page
     assert client_for("ivan@test.local").get("/dvoranski/clanovi").status_code == 403
     assert TestClient(app).get("/dvoranski/clanovi", follow_redirects=False).headers["location"] == "/login"
 
@@ -1000,6 +1013,200 @@ def test_each_list_enters_a_tabs_view_of_the_member_and_refuses_the_rest():
         r = enter_tab(TestClient(app), ana, tab)
         assert r.status_code == 303 and r.headers["location"] == "/login"
     assert member.get("/karton/clan").status_code == 403
+
+
+# ---------- the lists' chips (28.11.2026, build 4 of the admin view) ----------
+
+# each staff list of members and the chip it opens on (the plan agreed:
+# "Dvoranski treninzi opens on Dvorana, Kartoni on Svi"; /kao on Svi)
+LIST_PATHS = (("/kao", "svi"), ("/kartoni", "svi"), ("/dvoranski/clanovi", "dvorana"))
+CHIP_WORDS = (("svi", "Svi"), ("dvorana", "Dvorana"), ("online", "Online"), ("bez", "Bez članarine"))
+# a list's row as drawn: the name (data-find's first part), its groups, whether hidden
+ROW = re.compile(r'<div class="kao-row" data-find="([^"]*) · [^"]*" data-grupe="([a-z ]+)"( hidden)?>')
+DAY = timedelta(days=1)
+
+
+def due(uid: int, kind: str, next_payment: date) -> None:
+    """A plan of his whose next payment falls on `next_payment`: recorded,
+    then dated, so its state is its dates', never the clock's luck."""
+    db.record_payment(uid, kind)
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("UPDATE memberships SET next_payment = :d WHERE user_id = :u AND plan = :p"),
+                     {"d": next_payment, "u": uid, "p": kind})
+
+
+def grouped() -> dict[str, tuple[str, ...]]:
+    """A trainer who is not the owner, the owner (who does not train), and
+    six members whose groups the chips' tests read their counts off: Ana's
+    grupni (Dvorana), Ivan's grupni and online (Dvorana and Online), Olga's
+    online (Online), Marko's grupni lapsed, Sara with no plan ever and
+    Petar's prehrana alone (the three Bez članarine). Each member's groups
+    by his name."""
+    make_user("coach@test.local", "Amir Trener", is_trainer=True)
+    make_user("trener@test.local", "Tvrtko Vlasnik")
+    make_user("ana@test.local", "Ana Kovač", plans=("grupni",))
+    make_user("ivan@test.local", "Ivan Horvat", plans=("grupni", "online"))
+    make_user("olga@test.local", "Olga Mrežna", plans=("online",))
+    due(make_user("marko@test.local", "Marko Babić"), "grupni", config.today() - 40 * DAY)
+    make_user("sara@test.local", "Sara Jurić")
+    make_user("petar@test.local", "Petar Prehrana", plans=("prehrana",))
+    return {"Ana Kovač": ("dvorana",), "Ivan Horvat": ("dvorana", "online"), "Olga Mrežna": ("online",),
+            "Marko Babić": ("bez",), "Sara Jurić": ("bez",), "Petar Prehrana": ("bez",)}
+
+
+def in_groups(groups: dict[str, tuple[str, ...]]) -> dict[str, list[str]]:
+    """Each chip's members, in the list's order (the alphabet's: these names
+    start with plain letters), "svi" every one."""
+    order = sorted(groups)
+    return {"svi": order, **{g: [n for n in order if g in groups[n]] for g in ("dvorana", "online", "bez")}}
+
+
+def count_queries(fn) -> int:
+    """How many statements `fn` sends to the database."""
+    sent = []
+    listen = lambda *args, **kw: sent.append(1)     # noqa: E731
+    event.listen(db.engine, "before_cursor_execute", listen)
+    try:
+        fn()
+    finally:
+        event.remove(db.engine, "before_cursor_execute", listen)
+    return len(sent)
+
+
+def test_a_members_groups_are_what_he_runs_now():
+    """The groups (app._member_groups), derived from the plans a member runs
+    now and never stored: Dvorana while a gym plan runs (each of the four
+    that book termini, and one in its grace week: it still runs), Online
+    while the online plan runs, both when both (that order); a gym plan
+    lapsed and online running is Online alone; every plan lapsed, none
+    ever, prehrana alone: Bez članarine. One rule: the two tabs ask it
+    (_has_gym, _has_online agree with every member's groups, a staff
+    account has both), and every list's rows carry it (data-grupe). Staff
+    are in no list, as before."""
+    today = config.today()
+    coach = make_user("coach@test.local", "Amir Trener", is_trainer=True)
+    owner = make_user("trener@test.local", "Tvrtko Vlasnik")
+    ahead, grace, lapsed = today + 20 * DAY, today - 2 * DAY, today - 8 * DAY   # lapsed: dospijeće was yesterday
+    want: dict[str, tuple[str, ...]] = {}
+    cases = (("Ana Grupni", (("grupni", ahead),), ("dvorana",)),
+             ("Bruno Individualni", (("individualni", ahead),), ("dvorana",)),
+             ("Cvita Poluindividualni", (("poluindividualni", ahead),), ("dvorana",)),
+             ("Davor Rehabilitacija", (("rehabilitacija", ahead),), ("dvorana",)),
+             ("Ema Dospijeva", (("grupni", grace),), ("dvorana",)),
+             ("Filip Online", (("online", ahead),), ("online",)),
+             ("Goran Oboje", (("grupni", ahead), ("online", ahead)), ("dvorana", "online")),
+             ("Hana Prebacila", (("grupni", lapsed), ("online", ahead)), ("online",)),
+             ("Iva Istekla", (("grupni", lapsed), ("online", lapsed)), ("bez",)),
+             ("Jura Nikad", (), ("bez",)),
+             ("Kata Prehrana", (("prehrana", ahead),), ("bez",)))
+    for i, (name, plans, groups) in enumerate(cases):
+        uid = make_user(f"clan{i}@test.local", name)
+        for kind, next_payment in plans:
+            due(uid, kind, next_payment)
+        want[name] = groups
+    members = web._kao_members()
+    assert {m["name"]: m["groups"] for m in members} == want                   # staff in none
+    for m in members:
+        assert web._has_gym(m["user"]) == ("dvorana" in m["groups"]), m["name"]
+        assert web._has_online(m["user"]) == ("online" in m["groups"]), m["name"]
+    for staff in (coach, owner):
+        assert web._has_gym(db.get_user(staff)) and web._has_online(db.get_user(staff))
+    assert web._member_groups([]) == web._member_groups(["prehrana"]) == ("bez",)
+    assert web._member_groups(["online", "rehabilitacija", "prehrana"]) == ("dvorana", "online")
+    c = client_for("coach@test.local")
+    for path, _ in LIST_PATHS:
+        rows = {unescape(n): tuple(g.split()) for n, g, _ in ROW.findall(c.get(path).text)}
+        assert rows == want, path
+
+
+def test_a_list_reads_its_members_groups_at_once():
+    """The groups come with the members in the one read the lists made
+    already (_kao_members over db.memberships_overview): each list, with a
+    chip asked for and a search kept or not, sends as many statements for
+    fifty members as for five, of every group."""
+    make_user("coach@test.local", "Amir Trener", is_trainer=True)
+    kinds = ((), ("grupni",), ("online",), ("grupni", "online"), ("prehrana",))
+
+    def members(first: int, last: int) -> None:
+        for i in range(first, last):
+            make_user(f"clan{i}@test.local", f"Član Broj{i}", plans=kinds[i % len(kinds)])
+
+    c = client_for("coach@test.local")
+    asked = [path + query for path, _ in LIST_PATHS for query in ("", "?grupa=bez&q=broj")]
+
+    def statements() -> dict[str, int]:
+        return {a: count_queries(lambda: c.get(a)) for a in asked}
+
+    members(0, 5)
+    statements()                                                         # the first requests' own reads aside
+    five = statements()
+    members(5, 50)
+    assert len(web._kao_members()) == 50
+    assert statements() == five, (five, statements())
+
+
+def test_each_list_opens_on_its_chip_and_draws_the_group_asked_for():
+    """The four chips under the search, Svi · Dvorana · Online · Bez
+    članarine, a group labelled for a screen reader: each a link to its list
+    (?grupa= when it is not the page's own chip), its count the whole
+    list's; Kartoni and /kao open on Svi, the admin's Dvoranski treninzi on
+    Dvorana; ?grupa= each value chooses its chip (aria-current) and draws
+    its members' rows, the rest hidden; one that is none of the four is the
+    page's own. The count line shows while a chip other than Svi narrows the
+    list ("2 od 6 · prikaži sve", "prikaži sve" leading to Svi), hidden on
+    Svi; a group with nobody says "Nema članova u ovoj skupini.". With ?q=
+    the chips keep it (the search is the script's: the server draws the
+    group), "prikaži sve" drops it."""
+    groups = grouped()
+    members = in_groups(groups)
+    every = len(members["svi"])
+    c = client_for("coach@test.local")
+
+    def href(path: str, start: str, key: str, q: str = "") -> str:
+        query = "&".join(([f"grupa={key}"] if key != start else []) + ([f"q={q}"] if q else []))
+        return path + ("?" + query if query else "")
+
+    for path, start in LIST_PATHS:
+        for asked in (None, "svi", "dvorana", "online", "bez", "nepostoji", "", "SVI"):
+            group = asked if asked in ("svi", "dvorana", "online", "bez") else start
+            page = c.get(path, params={} if asked is None else {"grupa": asked}).text
+            where = (path, asked)
+            assert ('<div class="tagbar kao-groups" role="group" aria-label="Skupina članova" '
+                    f'data-start="{start}">') in page, where
+            for key, word in CHIP_WORDS:
+                current = ' aria-current="true"' if key == group else ""
+                assert (f'<a class="tag-chip" href="{href(path, start, key)}" data-grupa="{key}"{current}>{word} '
+                        f'<span class="kao-gn">{len(members[key])}</span></a>') in page, (where, key)
+            bar = page.split('<div class="tagbar kao-groups"')[1].split("</div>")[0]
+            assert bar.count("<a ") == len(CHIP_WORDS) and bar.count('aria-current="true"') == 1, where
+            rows = ROW.findall(page)
+            assert [unescape(n) for n, _, hid in rows if not hid] == members[group], where
+            assert sorted(unescape(n) for n, _, hid in rows if hid) == sorted(set(members["svi"]) - set(members[group])), where
+            found = re.search(r'<p class="hint kao-found" aria-live="polite"( hidden)?><span class="kao-n">([^<]*)</span>'
+                              r' od ([^<]*) · <a class="tlink" href="([^"]*)">prikaži sve</a></p>', page)
+            assert found.groups() == ((" hidden" if group == "svi" else None), str(len(members[group])), str(every),
+                                      href(path, start, "svi")), where
+            assert '<p class="kao-nogroup" hidden>Nema članova u ovoj skupini.</p>' in page, where
+        # a search kept: the chips carry it, "prikaži sve" not; the server draws the group alone
+        page = c.get(path, params={"grupa": "online", "q": "ivan horvat"}).text
+        for key, _ in CHIP_WORDS:                                        # (an attribute's "&" is "&amp;")
+            assert f'href="{href(path, start, key, "ivan%20horvat").replace("&", "&amp;")}" data-grupa="{key}"' in page, (path, key)
+        assert '<a class="tlink" href="{}">prikaži sve</a>'.format(href(path, start, "svi")) in page
+        assert [unescape(n) for n, _, hid in ROW.findall(page) if not hid] == members["online"], path
+    # nobody in a group: Online with every online plan lapsed
+    with db.engine.begin() as conn:
+        conn.execute(sa_text("UPDATE memberships SET next_payment = next_payment - 60 WHERE plan = 'online'"))
+    groups = {**groups, "Ivan Horvat": ("dvorana",), "Olga Mrežna": ("bez",)}
+    members = in_groups(groups)
+    assert members["online"] == []
+    for path, start in LIST_PATHS:
+        page = c.get(path, params={"grupa": "online"}).text
+        assert (f'<a class="tag-chip" href="{href(path, start, "online")}" data-grupa="online" aria-current="true">'
+                f'Online <span class="kao-gn">{len(members["online"])}</span></a>') in page, path
+        assert '<p class="kao-nogroup">Nema članova u ovoj skupini.</p>' in page, path
+        assert '<p class="kao-none" hidden>Nijedan član ne odgovara traženju' in page, path
+        assert all(hid for _, _, hid in ROW.findall(page)), path
+        assert f'<span class="kao-n">{len(members["online"])}</span> od {every} · ' in page, path
 
 
 # ---------- a tab's view (27.11.2026, evening) ----------
@@ -1781,6 +1988,153 @@ def test_a_tabs_view_on_a_phone(server):
         pg.wait_for_load_state("networkidle")
         check(pg.url == server + "/dvoranski/clanovi" and not pg.locator("div.kao-bar").count() and keys_of(ctx) == {}
               and pg.is_visible(".kao-list"), f"Izađi led to {pg.url}")
+        problems += errors
+        ctx.close()
+        browser.close()
+    print("\n".join(problems))
+    assert not problems, f"{len(problems)} problems, listed above"
+
+
+# a list's chips and rows as the script left them (build 4 of the admin view):
+# the chosen chip, each chip's height, whether every chip sits inside the
+# chips' row, the rows shown (each name as a sighted reader has it), the count
+# line, the two empty sentences, the box, the address, whether the page is
+# still the one loaded (window.__stay), the page's overflow
+CHIPS = r"""() => {
+  const bar = document.querySelector('.kao-groups'), br = bar.getBoundingClientRect(), chips = [...bar.querySelectorAll('a')];
+  const seen = el => { const s = el.cloneNode(true); s.querySelectorAll('.st-sr').forEach(x => x.remove()); return s.textContent; };
+  const line = sel => { const p = document.querySelector(sel); return p.hidden ? null : p.textContent.trim(); };
+  return {current: chips.filter(a => a.getAttribute('aria-current') === 'true').map(a => a.dataset.grupa),
+          heights: chips.map(a => a.getBoundingClientRect().height),
+          inside: chips.every(a => { const r = a.getBoundingClientRect(); return r.left >= br.left - .5 && r.right <= br.right + .5; }),
+          rows: [...document.querySelectorAll('.kao-row')].filter(r => !r.hidden).map(r => seen(r.querySelector('strong'))),
+          found: line('.kao-found'), none: line('.kao-none'), nogroup: line('.kao-nogroup'),
+          box: document.querySelector('form.kao-search input').value, address: location.pathname + location.search,
+          stayed: window.__stay === 1,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth};
+}"""
+
+
+def test_the_chips_on_a_phone(server):
+    """At 390px, touch (dark), a trainer who is not the owner, on each of
+    the three lists (Gledaj kao član, Kartoni, the admin's Dvoranski
+    treninzi), a long name among the members: the chips under the search,
+    the page's own chosen (Svi; Dvorana), each 32px tall at least on the
+    coarse pointer, all inside the column, nothing scrolling sideways at 390
+    or 360px. A tap on each chip filters the rows in place (no load),
+    chooses it, and the address follows (?grupa= when it is not the page's
+    own); a chip and a typed word narrow together, the address holding both;
+    nothing left with a word typed: the search's sentence; "prikaži sve"
+    empties the box, chooses Svi, every row back. A reload keeps the chip.
+    From Kartoni and the Dvoranski treninzi list a row's entry into the
+    member's tab, then Back: the list in its chip, the view over; entered
+    again, "Izađi": the list's own address, its own chip; from /kao (the
+    whole app) "Izađi". Then, every online plan lapsed, Online with nobody
+    says "Nema članova u ovoj skupini.". No page errors."""
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+    groups = grouped()
+    long = "Zvonimir Aleksandar Maksimilijan Horvat-Kovačević-Babić"
+    make_user("zvonimir.aleksandar.maksimilijan.horvat.kovacevic.babic@test.local", long, plans=("grupni",))
+    groups[long] = ("dvorana",)
+    members = in_groups(groups)
+    every = len(members["svi"])
+    lands = {"/kao": "/karton", "/kartoni": "/karton", "/dvoranski/clanovi": "/dvoranski"}
+    problems: list[str] = []
+
+    def check(ok: bool, what: str) -> None:
+        if not ok:
+            problems.append(what)
+
+    def address(path: str, start: str, key: str, typed: str = "") -> str:
+        query = "&".join(([f"grupa={key}"] if key != start else []) + ([f"q={typed}"] if typed else []))
+        return path + ("?" + query if query else "")
+
+    def found(n: int) -> str:
+        return f"{n} od {every} · prikaži sve"
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        ctx, pg, errors = _login(browser, server, "coach@test.local", 390, "dark")
+
+        def state() -> dict:
+            return pg.evaluate(CHIPS)
+
+        def tap(key: str) -> None:
+            pg.locator(f'.kao-groups a[data-grupa="{key}"]').tap()
+
+        def wide(where: str) -> None:
+            for w, h in ((390, 844), (360, 780)):
+                pg.set_viewport_size({"width": w, "height": h})
+                s = state()
+                check(s["overflow"] == 0 and s["inside"], f"{where} at {w}px: overflow {s['overflow']}, chips inside: {s['inside']}")
+            pg.set_viewport_size({"width": 390, "height": 844})
+
+        def enter_sara(path: str) -> None:
+            with pg.expect_navigation():
+                pg.locator(".kao-row", has_text="Sara Jurić").locator("button").tap()
+            pg.wait_for_load_state("networkidle")
+            check(pg.url == server + lands[path] and pg.locator("div.kao-bar").count() == 1, f"{path}: Sara's entry led to {pg.url}")
+
+        for path, start in LIST_PATHS:
+            go(pg, server + path)
+            pg.evaluate("() => { window.__stay = 1; }")
+            s = state()
+            check(s["current"] == [start] and s["rows"] == members[start] and s["box"] == ""
+                  and s["found"] == (None if start == "svi" else found(len(members[start]))), f"{path} as it opens: {s}")
+            check(len(s["heights"]) == len(CHIP_WORDS) and all(h >= 32 for h in s["heights"]), f"{path} the chips: {s['heights']}")
+            wide(f"{path} as it opens")
+            for key, _ in CHIP_WORDS:                                   # each chip, in place
+                tap(key)
+                s = state()
+                check(s["current"] == [key] and s["rows"] == members[key] and s["stayed"]
+                      and s["address"] == address(path, start, key)
+                      and s["found"] == (None if key == "svi" else found(len(members[key])))
+                      and s["none"] is None and s["nogroup"] is None, f"{path} tapped {key}: {s}")
+            wide(f"{path} after the taps")
+            tap("dvorana")                                              # a chip and a word together
+            pg.locator("form.kao-search input").fill("horvat")
+            pg.wait_for_timeout(400)                                     # the address, a little after the last key
+            s = state()
+            want = [n for n in members["dvorana"] if "horvat" in n.lower()]
+            check(s["rows"] == want and s["found"] == found(len(want)) and s["stayed"]
+                  and s["address"] == address(path, start, "dvorana", "horvat"), f"{path} Dvorana and 'horvat': {s}")
+            tap("bez")                                                   # nothing left, a word typed
+            s = state()
+            check(s["rows"] == [] and s["none"] == "Nijedan član ne odgovara traženju „horvat”." and s["nogroup"] is None
+                  and s["address"] == address(path, start, "bez", "horvat"), f"{path} Bez članarine and 'horvat': {s}")
+            pg.tap(".kao-found a")                                       # prikaži sve
+            s = state()
+            check(s["box"] == "" and s["current"] == ["svi"] and s["rows"] == members["svi"] and s["found"] is None
+                  and s["none"] is None and s["stayed"] and s["address"] == address(path, start, "svi"), f"{path} prikaži sve: {s}")
+            tap("bez")                                                   # a reload keeps the chip
+            pg.reload(); pg.wait_for_load_state("networkidle")
+            s = state()
+            check(s["current"] == ["bez"] and s["rows"] == members["bez"] and not s["stayed"]
+                  and s["address"] == address(path, start, "bez"), f"{path} reloaded: {s}")
+            enter_sara(path)
+            if path != "/kao":                                           # a tab's view: Back re-asks the list
+                pg.go_back(); pg.wait_for_load_state("networkidle")
+                s = state()
+                check(s["address"].startswith(address(path, start, "bez")) and s["current"] == ["bez"]
+                      and s["rows"] == members["bez"] and not pg.locator("div.kao-bar").count() and keys_of(ctx) == {},
+                      f"{path} Back from Sara's tab: {s}, {keys_of(ctx)}")
+                enter_sara(path)
+            with pg.expect_navigation():
+                pg.tap(".kao-exit")
+            pg.wait_for_load_state("networkidle")
+            s = state()
+            check(pg.url == server + path and s["current"] == [start] and s["rows"] == members[start] and keys_of(ctx) == {},
+                  f"{path} Izađi led to {pg.url}: {s}")
+        with db.engine.begin() as conn:                                  # nobody in a group
+            conn.execute(sa_text("UPDATE memberships SET next_payment = next_payment - 60 WHERE plan = 'online'"))
+        online_now: list[str] = []
+        for path, start in LIST_PATHS:
+            go(pg, server + path)
+            tap("online")
+            s = state()
+            check(s["rows"] == online_now and s["nogroup"] == "Nema članova u ovoj skupini." and s["none"] is None
+                  and s["found"] == found(len(online_now)), f"{path} Online with nobody: {s}")
         problems += errors
         ctx.close()
         browser.close()

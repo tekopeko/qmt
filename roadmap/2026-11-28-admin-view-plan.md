@@ -95,3 +95,14 @@ give anything the Karton tab doesnt already provide").
 
 Later, if asked: a list of online members under Online treninzi; one screen for member
 and exercise.
+
+## What was built (28.11.2026; STATUS.md has each entry)
+
+All four builds, the same day, in this order. Two things changed on the way, both the
+owner's: the switch and the login land on the front page, not Raspored ("The landing home
+page should exist in both modes"), and Početna is a plain tab of the admin bar, first as in
+a member's row, not an item of Sadržaj ("on the same place as the user view so that its
+always available"). The admin's colour is an indigo ("Yes, the indigo is fine, especially
+in the dark mode. LAter on we might change the colors on the light mode."), and with it the
+"Gledaš kao" strip went dark and the buttons into a member's account left amber, which now
+says a payment is due.

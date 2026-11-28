@@ -294,11 +294,30 @@ def _status_of(user, statuses: dict[int, str], admin: bool = True) -> str:
     return statuses.get(user.id, "none")
 
 
+def _member_groups(running) -> tuple[str, ...]:
+    """A member's groups (28.11.2026, build 4 of
+    roadmap/2026-11-28-admin-view-plan.md; the owner: "We should also
+    somehow separate users which are for gym and for online trainings …
+    Amir just wants to somehow group this many users he will have."), from
+    the kinds of the plans he runs now (`running`: active until dospijeće,
+    as db.active_plan_kinds and Membership.is_active have it), derived,
+    never stored: "dvorana" while a plan that books termini runs
+    (SESSION_KINDS), "online" while the online plan runs, both when both
+    (in that order), and "bez" when neither does (lapsed, never subscribed,
+    prehrana alone). ONE rule: the two tabs ask it (_has_gym: "dvorana",
+    _has_online: "online"), and the staff lists of members chip by it
+    (_kao_members, _members_list)."""
+    kinds = set(running)
+    groups = (("dvorana",) if kinds & set(SESSION_KINDS) else ()) + (("online",) if "online" in kinds else ())
+    return groups or ("bez",)
+
+
 def _has_online(user) -> bool:
     """May this user see Online treninzi at all? Staff always (the trainer
     and, since 26.11.2026 whatever his flag, the owner); clients only with
-    an active `online` plan (the tab is a paid product, not a teaser)."""
-    return bool(user) and (_is_staff(user) or "online" in db.active_plan_kinds(user.id))
+    an active `online` plan (the tab is a paid product, not a teaser): the
+    group "online" (_member_groups, since 28.11.2026: the lists' rule)."""
+    return bool(user) and (_is_staff(user) or "online" in _member_groups(db.active_plan_kinds(user.id)))
 
 
 def _has_gym(user) -> bool:
@@ -308,10 +327,11 @@ def _has_gym(user) -> bool:
     tab shows only to members with an online plan.")? _has_online's twin:
     staff always; a member while a plan that books termini runs
     (SESSION_KINDS: grupni, individualni, poluindividualni,
-    rehabilitacija; active as active_plan_kinds has it, until dospijeće).
+    rehabilitacija; active as active_plan_kinds has it, until dospijeće):
+    the group "dvorana" (_member_groups, since 28.11.2026: the lists' rule).
     While staff act as a member it is asked of the member (current_user):
     his plans decide, as for every tab."""
-    return bool(user) and (_is_staff(user) or bool(set(SESSION_KINDS) & db.active_plan_kinds(user.id)))
+    return bool(user) and (_is_staff(user) or "dvorana" in _member_groups(db.active_plan_kinds(user.id)))
 
 
 def _pop_feedback_prompt(request: Request, user):
@@ -2191,10 +2211,12 @@ def _kao_members() -> list[dict]:
     else his email), "plans" (his running plans by their names, PLAN_LABELS
     in PLAN_TYPES' order, joined by " · "; "" for none), "status" (since
     28.11.2026, build 3 of the admin view: models.member_status, his name's
-    colour, from the rows the overview read: no query more)}: /kao's rows
-    and, since 26.11.2026 (build 4), the Karton tab's picker, one list
-    (since 27.11.2026 its search, which opens his karton; since 28.11.2026
-    the admin's Kartoni and Dvoranski treninzi)."""
+    colour, from the rows the overview read: no query more), "groups"
+    (since build 4 of the same day: _member_groups of his running plans,
+    the chips', from the same rows: no query more)}: /kao's rows and, since
+    26.11.2026 (build 4), the Karton tab's picker, one list (since
+    27.11.2026 its search, which opens his karton; since 28.11.2026 the
+    admin's Kartoni and Dvoranski treninzi)."""
     today = config.today()
     order = {p: i for i, p in enumerate(PLAN_TYPES)}
     members = []
@@ -2205,9 +2227,47 @@ def _kao_members() -> list[dict]:
         running = sorted((m.plan for m in row["plans"] if m.is_active(today)), key=lambda p: order.get(p, len(order)))
         members.append({"user": u, "name": u.full_name or u.email,
                         "plans": " · ".join(PLAN_LABELS.get(p, p) for p in running),
-                        "status": member_status(row["plans"], today)})
+                        "status": member_status(row["plans"], today), "groups": _member_groups(running)})
     members.sort(key=lambda m: (alpha_key(m["name"]), m["user"].email))
     return members
+
+
+# The chips over the staff lists of members (28.11.2026, build 4 of
+# roadmap/2026-11-28-admin-view-plan.md), in their order: each its ?grupa=
+# value and its word. "svi" is every member; the rest are _member_groups'.
+MEMBER_GROUPS = (("svi", "Svi"), ("dvorana", "Dvorana"), ("online", "Online"), ("bez", "Bez članarine"))
+
+
+def _members_list(request: Request, user, template: str, path: str, start: str = "svi"):
+    """A staff list of members (kao.html and the two pages that are it with
+    their own words: /kao, /kartoni, /dvoranski/clanovi): every member
+    (_kao_members, its one read) and the four chips over the rows
+    (MEMBER_GROUPS), one chosen: `?grupa=`, or the page's `start` for none
+    or for a value that is none of the four. The chosen group's rows are
+    drawn, the rest `hidden` (each row's groups in it for the script); each
+    chip says how many members it holds, the whole list's, and is a link to
+    its list, the page without the script: `path`, `?grupa=` only when it is
+    not `start`, the page's `?q=` kept (the search is the script's, which
+    narrows the rows by it at load: the server draws the group alone).
+    "prikaži sve" leads to Svi with no `q`."""
+    from urllib.parse import quote, urlencode
+
+    members = _kao_members()
+    keys = [key for key, _ in MEMBER_GROUPS]
+    asked = request.query_params.get("grupa", "")
+    group = asked if asked in keys else start
+    q = request.query_params.get("q", "").strip()
+
+    def url(key: str, typed: str) -> str:
+        query = urlencode([(k, v) for k, v in (("grupa", key if key != start else ""), ("q", typed)) if v],
+                          quote_via=quote)
+        return path + ("?" + query if query else "")
+
+    counts = {key: sum(1 for m in members if key == "svi" or key in m["groups"]) for key in keys}
+    chips = [{"key": key, "word": word, "count": counts[key], "href": url(key, q)} for key, word in MEMBER_GROUPS]
+    return templates.TemplateResponse(request, template, _ctx(
+        request, user, members=members, group=group, group_start=start, group_chips=chips,
+        group_n=counts[group], group_all=url("svi", "")))
 
 
 @app.get("/kao", response_class=HTMLResponse)
@@ -2215,12 +2275,13 @@ def kao_page(request: Request):
     """"Gledaj kao član" (Admin ▾'s first item): every member (_kao_members)
     with his running plans (none: "bez članarine"), and "Otvori →", POST
     /kao/<id>. A search filters the rows as it is typed (the page's script;
-    the whole list without it). The owner also gets the way to the record
-    (/kao/zapisi)."""
+    the whole list without it), and since 28.11.2026 four chips by what a
+    member runs now (_members_list), opening on Svi. The owner also gets the
+    way to the record (/kao/zapisi)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    return templates.TemplateResponse(request, "kao.html", _ctx(request, user, members=_kao_members()))
+    return _members_list(request, user, "kao.html", "/kao")
 
 
 @app.get("/kao/zapisi", response_class=HTMLResponse)
@@ -2808,12 +2869,12 @@ def kartoni_page(request: Request):
     and Online treninzi into separate admin tabs"): every member, /kao's
     rows and order (_kao_members) and its look (kao.html), each "Otvori
     karton →", POST /karton/clan: a tab's view of him, landing on his
-    /karton, "Izađi" back here. Staff's (a member 403, a guest to the
-    login)."""
+    /karton, "Izađi" back here; /kao's chips (_members_list), opening on
+    Svi. Staff's (a member 403, a guest to the login)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    return templates.TemplateResponse(request, "kartoni.html", _ctx(request, user, members=_kao_members()))
+    return _members_list(request, user, "kartoni.html", KARTONI)
 
 
 @app.post("/karton/clan")
@@ -3901,12 +3962,15 @@ def gym_members_page(request: Request):
     templates' list) and every member, /kao's rows and order (_kao_members)
     and its look (kao.html), a member with no gym plan too (his tab says why
     nothing can be added), each "Otvori treninge →", POST /dvoranski/clan: a
-    tab's view of him, landing on his /dvoranski, "Izađi" back here.
+    tab's view of him, landing on his /dvoranski, "Izađi" back here; /kao's
+    chips (_members_list), opening on Dvorana (the plan agreed:
+    "Dvoranski treninzi opens on Dvorana, Kartoni on Svi."; a member with no
+    gym plan under Svi or Bez članarine).
     Staff's (a member 403, a guest to the login)."""
     user, redirect = _require_trainer(request)
     if redirect:
         return redirect
-    return templates.TemplateResponse(request, "dvoranski_clanovi.html", _ctx(request, user, members=_kao_members()))
+    return _members_list(request, user, "dvoranski_clanovi.html", GYM_MEMBERS, start="dvorana")
 
 
 @app.post("/dvoranski/clan")
